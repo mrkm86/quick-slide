@@ -238,9 +238,13 @@ class RealProcessLifecycleTests(unittest.TestCase):
             s, _, b = self._http(port, "POST", f"/api/launches/{launch_id}/attach", {"token": token},
                                  {"X-Quick-Slide-Session": session})
             self.assertEqual((s, json.loads(b)["error"]["code"]), (409, "already_consumed"))
-            # P2 の口は「まだ使えない」と答える（成功したふりをしない）
-            s, _, b = self._http(port, "POST", "/api/intakes", {"manuscript": "x"}, {"X-Quick-Slide-Session": session})
+            # まだ無い口は「まだ使えない」と答える（成功したふりをしない）
+            s, _, b = self._http(port, "POST", "/api/conversations/deck", {"origin": {"kind": "conversation"}},
+                                 {"X-Quick-Slide-Session": session})
             self.assertEqual((s, json.loads(b)["error"]["code"]), (503, "not_ready_in_v2"))
+            # 取り込みは形を検査する（原稿だけの不完全な形は断る。何も作らない）
+            s, _, b = self._http(port, "POST", "/api/intakes", {"manuscript": "x"}, {"X-Quick-Slide-Session": session})
+            self.assertEqual((s, json.loads(b)["error"]["code"]), (400, "validation_error"))
         finally:
             rc, stopped = self._cli("stop")
         self.assertEqual((rc, stopped.get("stopped")), (0, True), stopped)

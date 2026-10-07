@@ -19,15 +19,17 @@ from quick_slide.store import Store
 
 P1_TABLES = {"assets", "brands", "brand_revisions", "brand_assets", "styles", "style_revisions", "decks", "tags",
              "deck_tags", "events", "deletion_tasks", "launches", "schema_migrations"}
+# P2（0002）: 取り込み・台本の版とページ・ページの同一性・描いた回とページの結果・仕事
+P2_TABLES = {"intakes", "scripts", "script_pages", "page_ids", "runs", "run_pages", "jobs"}
 
 
 class MigrationTests(unittest.TestCase):
-    def test_a_fresh_db_gets_exactly_the_p1_tables(self) -> None:
+    def test_a_fresh_db_gets_exactly_the_p1_and_p2_tables(self) -> None:
         store = open_store(self)
         tables = {r[0] for r in store.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        self.assertEqual(tables, P1_TABLES)
+        self.assertEqual(tables, P1_TABLES | P2_TABLES)
         for v1_only in ("plan_revisions", "plan_pages", "batches", "batch_items", "attempts", "slide_versions",
-                        "deck_revisions", "instructions", "intakes", "runs", "tasks", "formats", "drafts", "exports"):
+                        "deck_revisions", "instructions", "tasks", "formats", "drafts", "exports"):
             self.assertNotIn(v1_only, tables)
         st = status(store.conn)
         self.assertTrue(st.up_to_date)

@@ -66,6 +66,8 @@ class OriginHostSessionTests(unittest.TestCase):
         self.assertEqual(self.fx.get("/api/health").status, 200, "拒否された stop でサーバは止まらない")
 
     def test_not_ready_routes_also_require_the_session(self) -> None:
+        r = self.fx.request("POST", "/api/conversations/deck", {})
+        self.assertEqual((r.status, r.error_code), (403, "session_required"))
         r = self.fx.request("POST", "/api/intakes", {})
         self.assertEqual((r.status, r.error_code), (403, "session_required"))
 
@@ -176,7 +178,7 @@ class NoTracebackTests(unittest.TestCase):
         self.assertNotIn("ValidationError", r.body.decode("utf-8"))
 
     def test_not_ready_routes_answer_in_the_error_shape_and_log_no_error(self) -> None:
-        r = self.fx.post("/api/intakes", {"manuscript": "x"})
+        r = self.fx.post("/api/conversations/deck", {"origin": {"kind": "conversation", "runtime": "other"}})
         self.assertEqual(r.status, 503)
         err = r.json()["error"]
         self.assertEqual(err["code"], "not_ready_in_v2")

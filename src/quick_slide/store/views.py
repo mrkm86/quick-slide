@@ -5,7 +5,7 @@
 - 削除のための asset 参照の和集合（参照の数は保存せず、全参照の和集合からその都度導く）
 
 件数・状態は**実際に読んだ行**から出す。推測値・見積り（残り時間・進捗率）はここに置かない。
-P1 のデッキはページを持たない（枚数 0・先頭の画像なし）。台本の版・描いた回は P2 で足す。
+ページの枚数・先頭の画像は「見せる回」（`runs.shown_run`）から数える。
 """
 
 from __future__ import annotations
@@ -25,10 +25,12 @@ def _like_escape(q: str) -> str:
 
 
 # assets への参照の和集合（削除時の専有 / 共有の判定に使う）。deck_id が NULL の行はデッキに属さない参照。
-# P2 で描いた回のページの画像・持ち込みの画像の参照をここに足す
+# 描いた回のページの画像はそのデッキの専有（P3 で持ち込みの画像の参照を足す）
 _ASSET_REFS_CTE = (
     "WITH refs(asset_id, deck_id, source) AS ("
     " SELECT asset_id, NULL, 'brand_assets' FROM brand_assets"
+    " UNION ALL SELECT rp.asset_id, r.deck_id, 'run_pages' FROM run_pages rp JOIN runs r ON r.id=rp.run_id"
+    "  WHERE rp.asset_id IS NOT NULL"
     ")"
 )
 
@@ -42,6 +44,7 @@ class DeckViewsMixin(StoreBase):
                           (deck_row["brand_revision_id"],))
         style = self._one("SELECT t.id,t.name FROM style_revisions tr JOIN styles t ON t.id=tr.style_id WHERE tr.id=?",
                           (deck_row["style_revision_id"],))
+        pages = self.deck_page_summary(did)
         return {
             "id": did,
             "title": deck_row["title"],
@@ -55,17 +58,18 @@ class DeckViewsMixin(StoreBase):
             "archived_at": deck_row["archived_at"],
             "deleted_at": deck_row["deleted_at"],
             "origin_deck_id": deck_row["origin_deck_id"],
-            # 構成（台本の版＋採用した描いた回）はまだ無い。画面はこれが null のとき「ページなし」と言う
-            "current_revision_id": None,
+            # 構成（台本の版＋採用した描いた回）。P2 は「見せる回」の id（P3 で採用が入る）
+            "current_revision_id": pages["run_id"],
             "lock_version": deck_row["lock_version"],
             "created_at": deck_row["created_at"],
             "updated_at": deck_row["updated_at"],
             "tags": [t["name"] for t in self.deck_tags(did)],
             "brand": brand,
             "style": style,
-            "page_count": 0,
-            "ready_count": 0,
-            "thumbnail_asset_id": None,
+            "page_count": pages["page_count"],
+            "ready_count": pages["ready_count"],
+            "thumbnail_asset_id": pages["thumbnail_asset_id"],
+            "working": self.deck_working(did),
         }
 
     def home_decks(self, *, recent_limit: int = 10) -> dict[str, Any]:

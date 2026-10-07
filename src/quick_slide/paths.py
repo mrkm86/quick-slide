@@ -18,6 +18,8 @@ DEFAULT_HOME = Path.home() / ".quick-slide"
 # リポ同梱の静的ファイル（静的配信ルート）。データ置き場とは別で、config/ と db/ はこの下に無い。
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WEB_APP_DIR = REPO_ROOT / "web" / "app"
+# エンジン（html-slide・image-slide）。サーバは呼ぶだけで、中身は持たない（台本の決まりも実行時にここから読む）
+SKILLS_DIR = REPO_ROOT / "skills"
 
 
 @dataclass(frozen=True)
@@ -64,11 +66,27 @@ class DataRoot:
 
     @property
     def decks_dir(self) -> Path:
-        """デッキごとの置き場（台本の版・描いた回）。中身を作るのは P2 以降。"""
+        """デッキごとの置き場（台本の版・描いた回）。"""
         return self.root / "decks"
 
     def deck_dir(self, deck_id: str) -> Path:
         return self.decks_dir / deck_id
+
+    def scripts_dir(self, deck_id: str) -> Path:
+        """台本の版（`<版>.json`）。"""
+        return self.deck_dir(deck_id) / "scripts"
+
+    def run_dir(self, deck_id: str, run_id: str) -> Path:
+        """描いた回の出力（エンジンの `--out`）。台本係の控え（`writer/`）もここに置く。"""
+        return self.deck_dir(deck_id) / "runs" / run_id
+
+    def page_asset_rel(self, deck_id: str, run_id: str, page_no: int) -> str:
+        """描いた回のページの画像を資産として配る置き場（`assets/` の下・データ置き場からの相対）。
+
+        配信は `assets/` の下に閉じている（`server/static.py`）ので、エンジンの出力をここへ**ハードリンク**で張る
+        （複製しない・出力フォルダを配信の根にしない）。
+        """
+        return f"assets/decks/{deck_id}/{run_id}/slide-{page_no:02d}.png"
 
     @property
     def runtime_dir(self) -> Path:

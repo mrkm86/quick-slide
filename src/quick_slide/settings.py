@@ -1,8 +1,8 @@
 """設定（`config/settings.json`。秘密は入れない）。
 
 `intake`（原稿の上限・抜粋の保存期間）・`launch`（起動トークンの期限）・`browser`（画面の開き方）・
-`server`（bind 先とポート）・既定のブランド。値は暫定運用値。未知のキーは拒否せず無視する
-（P2 以降で台本係・描き係の設定を足す）。
+`server`（bind 先とポート）・`writer`（台本係の LLM: `auto` / `claude` / `codex`）・`worker`（同時に動かす仕事の数・
+時間の上限・検査の回数）・既定のブランド。値は暫定運用値。未知のキーは拒否せず無視する。
 
 `browser.mode` は環境変数 `QUICK_SLIDE_BROWSER` で上書きできる。
 """
@@ -27,6 +27,8 @@ LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 # 「ぜんぶの口」を意味するアドレス。どの網に出るかを人が選んだことにならないので、書かれても開かない。
 WILDCARD_HOSTS = ("0.0.0.0", "::")
 DEFAULT_PORT = 7801  # v1 と並べて動かさない（データの置き場も分ける）
+# 台本係の LLM。auto = 会話の出所（origin.runtime）に合わせ、分からなければ手元にある CLI（claude → codex の順）
+WRITER_CHOICES = ("auto", "claude", "codex")
 
 
 
@@ -181,12 +183,45 @@ class ServerSettings:
 
 
 @dataclass(frozen=True)
+class WorkerSettings:
+    """台本係・描き係（サーバの中のワーカー）。
+
+    - `parallel`: 同時に進めるデッキの数（1 つのデッキの中の並列はエンジンが持つ。image-slide は既定 8 本）
+    - `writer_timeout_seconds`: 台本係の LLM 1 回の上限
+    - `render_timeout_seconds`: エンジン 1 回（描いて書き出すまで）の上限
+    - `max_check_rounds`: 台本を書いて検査に通すまでの回数の上限（`NG:` を返して直させる）
+    """
+
+    parallel: int = 2
+    writer_timeout_seconds: float = 900.0
+    render_timeout_seconds: float = 3600.0
+    max_check_rounds: int = 3
+
+    def __post_init__(self) -> None:
+        if isinstance(self.parallel, bool) or not isinstance(self.parallel, int) or not (1 <= self.parallel <= 8):
+            raise ValidationError("worker.parallel は 1〜8 の整数")
+        for name in ("writer_timeout_seconds", "render_timeout_seconds"):
+            v = getattr(self, name)
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or not (0 < v <= 24 * 3600):
+                raise ValidationError(f"worker.{name} は 0 より大きく 86400 以下の数値")
+        r = self.max_check_rounds
+        if isinstance(r, bool) or not isinstance(r, int) or not (1 <= r <= 10):
+            raise ValidationError("worker.max_check_rounds は 1〜10 の整数")
+
+
+@dataclass(frozen=True)
 class Settings:
     intake: IntakeSettings = field(default_factory=IntakeSettings)
     launch: LaunchSettings = field(default_factory=LaunchSettings)
     browser: BrowserSettings = field(default_factory=BrowserSettings)
     server: ServerSettings = field(default_factory=ServerSettings)
+    writer: str = "auto"
+    worker: WorkerSettings = field(default_factory=WorkerSettings)
     default_brand_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.writer not in WRITER_CHOICES:
+            raise ValidationError(f"writer は {'/'.join(WRITER_CHOICES)} のいずれか")
 
     @classmethod
     def load(cls, path: Path, *, env: dict[str, str] | None = None) -> "Settings":
@@ -204,6 +239,7 @@ class Settings:
         launch_raw = _section(raw, "launch")
         browser_raw = _section(raw, "browser")
         server_raw = _section(raw, "server")
+        worker_raw = _section(raw, "worker")
         try:
             intake = IntakeSettings(
                 max_manuscript_chars=int(intake_raw.get("max_manuscript_chars", IntakeSettings.max_manuscript_chars)),
@@ -233,12 +269,22 @@ class Settings:
             server = ServerSettings(
                 host=server_raw.get("host", ServerSettings.host), port=port_raw, host_names=tuple(names_raw)
             )
+            worker = WorkerSettings(
+                parallel=worker_raw.get("parallel", WorkerSettings.parallel),
+                writer_timeout_seconds=worker_raw.get("writer_timeout_seconds", WorkerSettings.writer_timeout_seconds),
+                render_timeout_seconds=worker_raw.get("render_timeout_seconds", WorkerSettings.render_timeout_seconds),
+                max_check_rounds=worker_raw.get("max_check_rounds", WorkerSettings.max_check_rounds),
+            )
         except (TypeError, ValueError) as exc:
             raise ValidationError(f"settings.json の値の型が不正です（{exc.__class__.__name__}）") from exc
         default_brand = raw.get("default_brand_id")
         if default_brand is not None and not isinstance(default_brand, str):
             raise ValidationError("default_brand_id は文字列か null")
-        return cls(intake=intake, launch=launch, browser=browser, server=server, default_brand_id=default_brand)
+        writer = raw.get("writer", "auto")
+        if not isinstance(writer, str):
+            raise ValidationError("writer は文字列（auto / claude / codex）")
+        return cls(intake=intake, launch=launch, browser=browser, server=server, writer=writer, worker=worker,
+                   default_brand_id=default_brand)
 
 
 def _section(raw: dict, key: str) -> dict:

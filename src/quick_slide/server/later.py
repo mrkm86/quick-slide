@@ -1,4 +1,4 @@
-"""v2 でまだ使えない口（P2 以降）。
+"""v2 でまだ使えない口（P3 以降）。
 
 画面（v1 から写したもの）が呼ぶ URL は残し、**黙って成功したふりをしない**。答えは v1 と同じエラーの形
 （`{"error": {"code", "message"}}`）で、日本語の本文と安定した `code` を返す。画面は `capabilities` を見て
@@ -17,7 +17,7 @@ if TYPE_CHECKING:  # 実行時は app.py の末尾で遅延 import される（�
 NOT_READY_CODE = "not_ready_in_v2"
 NOT_READY_STATUS = 503
 # 画面にも出る 1 文（`capabilities[*].reason` と同じ）。押せない理由として読まれる
-NOT_READY_REASON = "v2 ではまだ使えません（P2 以降）"
+NOT_READY_REASON = "v2 ではまだ使えません（P3 以降）"
 NOT_READY_MESSAGE = NOT_READY_REASON + "。"
 
 

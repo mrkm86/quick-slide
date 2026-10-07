@@ -3,7 +3,8 @@
 構成:
 - `QuickSlideServer` — bind・Store・`server.json`・起動時掃除・停止を持つ。`start()` → `serve_forever()` → `close()`
 - `_Handler` — `BaseHTTPRequestHandler`。全 verb を `QuickSlideServer.dispatch` に渡すだけ
-- ルート表 `ROUTES` と各ハンドラ（`_route_*`）。P2 以降の口は `later.py` が「まだ使えない」と答える
+- ルート表 `ROUTES` と各ハンドラ（`_route_*`）。まだ無い口は `later.py` が「まだ使えない」と答える
+- ワーカー（`worker/pool.py`）はサーバの中のスレッド。`start()` の最後に起こし、`close()` の最初に止める
 
 守っている性質（tests/ が確認する）:
 - I1/I8 静的配信は `static.py` の許可リスト経由のみ。データ置き場は静的ルートの外
@@ -45,6 +46,8 @@ from ..paths import WEB_APP_DIR, DataRoot
 from ..security.tokens import hash_token
 from ..settings import LOOPBACK_HOSTS, Settings, bind_refusal, bind_scope
 from ..store import Store
+from ..worker.pool import WorkerPool
+from ..worker.tools import Tools
 from .errors import GENERIC_500_MESSAGE, ApiError, bad_json, from_store_error, method_not_allowed, not_found
 from .later import NOT_READY_CODE
 from .runtime import InstanceLock, ServerRecord, http_host, remove_record, status, write_record
@@ -214,6 +217,8 @@ class QuickSlideServer:
         port: int | None = None,
         static_root: Path | str | None = None,
         clock: Clock | None = None,
+        tools: Tools | None = None,
+        start_workers: bool = True,
     ) -> None:
         self.root = root if isinstance(root, DataRoot) else DataRoot.resolve(root)
         self.settings = settings or Settings.load(self.root.settings_path)
@@ -239,6 +244,9 @@ class QuickSlideServer:
         self._httpd: _HTTPServer | None = None
         self._lock = InstanceLock(self.root.server_lock_path)
         self._stopping = threading.Event()
+        self.tools = tools or Tools()
+        self.start_workers = start_workers   # 試験で取り込みの形だけを見るときは起こさない
+        self.workers: WorkerPool | None = None
 
     # --- ライフサイクル ---
     @property
@@ -286,6 +294,10 @@ class QuickSlideServer:
                 raise StartupError(f"bind 結果がループバックではありません（{bound_ip}）。起動を中止します")
             self.store = Store.open(self.root, settings=self.settings, clock=self.clock, startup_sweep=False)
             self.sweep_summary = run_startup_sweep(self.store)
+            # 起動時掃除のあとでワーカーを起こす（前のセッションの「走っている」仕事は掃除が失敗にしてある）
+            if self.start_workers:
+                self.workers = WorkerPool(self, self.root, self.settings, self.tools)
+                self.workers.start()
             self.started_at = utcnow()
             self._uptime_clock_name, self._uptime_read = elapsed_clock()
             self._t0 = self._uptime_read()
@@ -321,7 +333,12 @@ class QuickSlideServer:
         threading.Thread(target=self.shutdown, name="quick-slide-stop", daemon=True).start()
 
     def close(self) -> None:
-        # httpd → Store → server.json → server.lock の順。P2 で描き係の監督が入ったら、その停止を先頭に足す
+        # ワーカー → httpd → Store → server.json → server.lock の順。ワーカーは台帳に終わりを書いてから止まる
+        if self.workers is not None:
+            try:
+                self.workers.stop()
+            finally:
+                self.workers = None
         if self._httpd is not None:
             try:
                 self._httpd.server_close()
@@ -506,6 +523,7 @@ class QuickSlideServer:
             "startup_sweep": self.sweep_summary,
             "browser": {"mode": self.settings.browser.mode, "attach_wait_seconds": self.settings.browser.attach_wait_seconds},
             "static_available": self.static.available,
+            "worker": self.workers.status() if self.workers is not None else None,
         }
         return db_ok, body
 
@@ -526,7 +544,12 @@ class QuickSlideServer:
         self.request_stop()
         return Response.json(202, {"stopping": True, "instance_id": self.instance_id})
 
-    def _launch_url(self, deck_id: str, launch_id: str | None, token: str | None) -> str:
+    def wake_worker(self) -> None:
+        """**仕事を作った直後に**ワーカーを起こす。取りこぼしても、ワーカーは数秒ごとに見に来る。"""
+        if self.workers is not None:
+            self.workers.wake()
+
+    def launch_url(self, deck_id: str, launch_id: str | None, token: str | None) -> str:
         base = f"{self.url}/slides/{deck_id}"
         if launch_id is None or token is None:
             return base
@@ -726,6 +749,7 @@ def _two_uuid_route(prefix: str, name1: str, middle: str, name2: str, suffix: st
 
 # デッキ・設定の API（別モジュール）。Request / Response を参照するのでここで遅延 import する（循環回避）
 from . import deck_routes as _deck_routes  # noqa: E402
+from . import intake_routes as _intake_routes  # noqa: E402
 from . import later as _later  # noqa: E402
 from . import settings_routes as _settings_routes  # noqa: E402
 
@@ -752,8 +776,8 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"GET"}), _exact("/api/health"), QuickSlideServer._route_health),
     (frozenset({"GET"}), _exact("/api/session"), QuickSlideServer._route_session),
     (frozenset({"POST"}), _exact("/api/server/stop"), QuickSlideServer._route_stop),
-    # 会話からの投入（P2）。口は残し、「まだ使えない」と答える
-    (frozenset({"POST"}), _exact("/api/intakes"), _not_ready),
+    # 会話からの投入
+    (frozenset({"POST"}), _exact("/api/intakes"), _intake_routes.route_intake),
     (frozenset({"GET"}), _uuid_route("/api/launches/", "launch_id"), QuickSlideServer._route_launch_get),
     (frozenset({"POST"}), _uuid_route("/api/launches/", "launch_id", "/attach"), QuickSlideServer._route_attach),
     (frozenset({"POST"}), _exact("/api/events/clipboard-copy"), QuickSlideServer._route_clipboard_copy),
@@ -767,7 +791,7 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"GET"}), _two_uuid_route("/api/trash/", "deletion_task_id", "/assets/", "asset_id", "/file"),
      QuickSlideServer._route_trashed_asset_file),
     (frozenset({"POST"}), _exact("/api/trash/purge"), _deck_routes.route_trash_purge),
-    # 会話に結びついたスライドを引く（P2。読み取りだが POST: 会話識別子を URL に載せない）
+    # 会話に結びついたスライドを引く（P3。読み取りだが POST: 会話識別子を URL に載せない）
     (frozenset({"POST"}), _exact("/api/conversations/deck"), _not_ready),
     (frozenset({"GET"}), _exact("/api/decks/home"), _deck_routes.route_home),
     (frozenset({"GET"}), _exact("/api/decks"), _deck_routes.route_list),
@@ -780,7 +804,7 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/delete"), _deck_routes.route_delete),
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/restore"), _deck_routes.route_restore),
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/purge"), _deck_routes.route_purge),
-    # --- ページの操作・修正指示・描く・書き出し（P2〜P5）。口は残し、「まだ使えない」と答える ---
+    # --- ページの操作・修正指示・描き直し・書き出し（P3〜P5）。口は残し、「まだ使えない」と答える ---
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/pages/reorder"), _not_ready),
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/pages/insert"), _not_ready),
     (frozenset({"POST"}), _two_uuid_route("/api/decks/", "deck_id", "/pages/", "slide_id", "/duplicate"), _not_ready),
@@ -810,12 +834,14 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
 def run_startup_sweep(store: Store) -> dict[str, Any]:
     """アクセス層の掃除を 1 つずつ実行する。1 つが失敗しても他は続け、失敗とスキップを件数で報告する。
 
-    P1 は期限切れの起動（launch）だけ。P2 で会話の抜粋の期限切れ・描き係の預かりの期限切れを足す。
+    期限切れの起動（launch）と、前のサーバで「走っている」まま残った仕事（失敗にする。勝手に作り直さない）。
     """
-    summary: dict[str, Any] = {"launches_expired": None, "skipped_items": 0, "problems": [], "failed_sweeps": []}
+    summary: dict[str, Any] = {"launches_expired": None, "jobs_interrupted": None, "skipped_items": 0, "problems": [],
+                               "failed_sweeps": []}
     problems: list[dict[str, Any]] = []
     sweeps: tuple[tuple[str, Callable[[], list[str]]], ...] = (
         ("launches_expired", store.expire_launches),
+        ("jobs_interrupted", store.fail_interrupted_jobs),
     )
     for name, fn in sweeps:
         try:

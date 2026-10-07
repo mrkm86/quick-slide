@@ -1,9 +1,10 @@
 """画面に出す語彙。**状態名とデータ上の状態の対応はこのファイル 1 か所に集める**。
 
 画面（`web/app/`）は状態名を自分では作らず、API が付ける `display` の `key` / `label` / `motion` と、
-`GET /api/vocabulary` の語をそのまま使う。v1 の画面が読むキーは全部そろえる（値の一部は P2 以降で使い始める）。
+`GET /api/vocabulary` の語をそのまま使う。v1 の画面が読むキーは全部そろえる（値の一部は P3 以降で使い始める）。
 
-ページの状態（`page_states`）の名前は v1 と同じ。描いた回のページの結果をどの名前に寄せるかは P2 で決める。
+ページの状態（`page_states`）の名前は v1 と同じ。描いた回のページの結果は `run_page_display` が寄せる。
+台本係・描き係がいま何をしているかの 1 文（企画の帯）は `planning_message` が作る。
 """
 
 from __future__ import annotations
@@ -49,6 +50,9 @@ DECK_STATUS_LABELS: dict[str, str] = {"draft": "下書き", "review": "レビュ
 DECK_MODE_LABELS: dict[str, str] = {"presentation": "プレゼン", "pitch": "ピッチ"}
 
 EDIT_MODE_LABELS: dict[str, str] = {"minor": "微修正", "remake": "作り直し"}
+
+# 版（描いた回のページ）の出どころ
+SOURCE_KIND_LABELS: dict[str, str] = {"generated": "生成"}
 
 # 並べ替えの操作中に画面が出す語。`moved` の `{n}` だけは画面が数を入れる
 REORDER_MESSAGES: dict[str, str] = {
@@ -191,6 +195,61 @@ def purge_all_done_message(count: int, freed: int, kept_back: int) -> str:
     return text
 
 
+def page_display(key: str, *, reason: str | None = None) -> dict[str, Any]:
+    label, motion = PAGE_STATE_LABELS[key]
+    out: dict[str, Any] = {"key": key, "label": label, "motion": motion, "group": PAGE_STATE_GROUPS[key]}
+    if reason:
+        out["reason"] = reason
+    return out
+
+
+def run_page_display(page_state: str | None, run_state: str, *, has_image: bool) -> dict[str, Any]:
+    """描いた回のページの状態 → 画面の語（v1 と同じ名前）。
+
+    - 絵がある → 完成
+    - 回がまだ動いている: 絵が返った（drawn）→ 画像を調整中 / まだ → 生成中
+    - 回が終わったのに絵が無い → 失敗（理由は回の文が帯に出る）
+    """
+    if page_state == "ready" and has_image:
+        return page_display("ready")
+    if page_state == "ready":
+        return {"key": "unknown", "label": "画像を取得できません", "motion": False, "group": "failed"}
+    if run_state in ("queued", "writing", "checking", "rendering"):
+        if page_state == "failed":
+            return page_display("failed")
+        return page_display("adjusting" if page_state == "drawn" else "generating")
+    return page_display("failed")
+
+
+# 台本係・描き係がいま何をしているか（スライドの画面の「企画の帯」）。**あと何秒かは言わない**
+PLANNING_MESSAGES: dict[str, str] = {
+    "queued": "順番を待っています。前の仕事が終わったら始めます。",
+    "writing": "台本を書いています。",
+    "rewriting": "台本を直しています（{round}回目）。",
+    "checking": "台本を確かめています。",
+    "starting": "描く準備をしています。",
+    "pages": "ページを描いています（{done}/{total}）。",
+    "finishing": "仕上げています（PPTX・PDF・ページの画像）。",
+    "images": "画像を描いています（{done}/{total}）。",
+    "compose": "スライドを組んでいます。",
+}
+
+
+def planning_message(run_state: str, progress: dict[str, Any]) -> str | None:
+    if run_state == "queued":
+        return PLANNING_MESSAGES["queued"]
+    if run_state == "writing":
+        rnd = int(progress.get("round") or 1)
+        return PLANNING_MESSAGES["writing"] if rnd <= 1 else PLANNING_MESSAGES["rewriting"].format(round=rnd)
+    if run_state == "checking":
+        return PLANNING_MESSAGES["checking"]
+    if run_state == "rendering":
+        step = progress.get("step") or "starting"
+        text = PLANNING_MESSAGES.get(step, PLANNING_MESSAGES["starting"])
+        return text.format(done=int(progress.get("done") or 0), total=int(progress.get("total") or 0))
+    return None
+
+
 def progress_headline(total: int, ready: int, generating: int) -> str:
     """進みの帯の 1 行目。**文は画面ではなくここが作る**。あと何秒かは言わない。"""
     if total == 0:
@@ -241,6 +300,7 @@ def vocabulary() -> dict[str, Any]:
         "deck_statuses": {s: DECK_STATUS_LABELS[s] for s in DECK_STATUSES},
         "deck_modes": {m: DECK_MODE_LABELS[m] for m in DECK_MODES},
         "edit_modes": EDIT_MODE_LABELS,
+        "source_kinds": SOURCE_KIND_LABELS,
         "reorder": REORDER_MESSAGES,
         "card": CARD_WORDS,
         "card_limits": card_limits(),

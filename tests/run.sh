@@ -4,6 +4,8 @@
 # 方針:
 #   - 実の置き場（~/.quick-slide）を読まない・書かない。サーバは一時ディレクトリの置き場とポート 0 で立てる
 #   - 本物のブラウザ（ヘッドレス Chrome）で画面を開く試験は tests/live。Chrome が無ければ skip する
+#   - 本物の claude / codex（台本係・絵を描くエンジン）は呼ばない。既定の差し先を「呼ばれたら落ちる」偽物にしておき、
+#     試験は自分で偽物（tests/fakes/）を差す。描いた絵のキャッシュも使い捨てのフォルダへ
 #   - .pyc を書かない（このリポは配布物そのもので、__pycache__ を残さない）
 #   - 失敗したら非ゼロで落ちる
 #
@@ -15,6 +17,13 @@ PY="${PYTHON:-python3}"
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPATH="$ROOT/src"
 unset QUICK_SLIDE_HOME QUICK_SLIDE_BROWSER
+REFUSE="$ROOT/tests/fakes/refuse.py"
+chmod +x "$ROOT"/tests/fakes/fake_*.py "$REFUSE" "$ROOT"/skills/*/tests/fake_codex.py 2>/dev/null
+export QUICK_SLIDE_CLAUDE="$REFUSE" QUICK_SLIDE_CODEX_TEXT="$REFUSE" HTML_SLIDE_CODEX="$REFUSE" IMAGE_SLIDE_CODEX="$REFUSE"
+SCRATCH="$(mktemp -d -t quick-slide-tests)"
+trap 'rm -rf "$SCRATCH"' EXIT
+export HTML_SLIDE_CACHE="$SCRATCH/html-slide-cache" IMAGE_SLIDE_CACHE="$SCRATCH/image-slide-cache"
+export CODEX_HOME="$SCRATCH/no-codex-home"
 
 cd "$ROOT"
 "$PY" -m unittest discover -s tests -t tests "$@"

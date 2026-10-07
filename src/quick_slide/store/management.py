@@ -14,8 +14,8 @@
 完全削除（`purge_deck_from_trash`）はごみ箱の中身を**本当に消す**：そのデッキの行を 1 つ残らず消し、
 退避したファイルとデッキの置き場（`decks/<id>/`）まで消す。共有している asset は行もファイルも触らない。
 
-P1 のデッキはページを持たないので、専有する asset は無い。P2 で台本・描いた回が入ると、
-`views._ASSET_REFS_CTE` と `_PURGE_DELETES` にその表を足す（足し忘れは外部キーの検査が止める）。
+描いた回のページの画像（`run_pages.asset_id`）はそのデッキの専有で、`views._ASSET_REFS_CTE` に入っている。
+台本・描いた回・仕事の行は `_PURGE_DELETES` が消す（足し忘れは外部キーの検査が止める）。
 """
 
 from __future__ import annotations
@@ -31,6 +31,8 @@ from ..errors import NotFoundError, StateError, ValidationError
 from .base import StoreBase
 
 MANIFEST_SCHEMA_VERSION = 1
+# 描いている途中のスライドは完全には消さない（ワーカーがまだ書き込む）。画面のごみ箱の行と同じ 1 文
+WORKING_PURGE_REASON = "このスライドはまだ作っている途中なので、完全には削除できません。終わってからもう一度お試しください。"
 
 
 def _sha256_file(path: Path) -> str:
@@ -243,7 +245,7 @@ class DeckManagementMixin(StoreBase):
         """
         dirs = [self.root.trash_dir / r["id"]
                 for r in self._all("SELECT id FROM deletion_tasks WHERE deck_id=?", (deck_id,))]
-        # デッキの置き場（台本の版・描いた回の出力。P2 以降で中身が入る）
+        # デッキの置き場（台本の版・描いた回の出力）
         dirs.append(self.root.deck_dir(deck_id))
         return self.deck_asset_usage(deck_id), dirs
 
@@ -284,7 +286,8 @@ class DeckManagementMixin(StoreBase):
         deck = self._get("decks", deck_id)
         if deck["deleted_at"] is None:
             raise StateError("このスライドはごみ箱にありません。先にごみ箱へ移してください")
-        # 描いている途中のスライドは消せない（P2 で描いた回が入ったら、ここで断る）
+        if self.deck_working(deck_id):
+            raise StateError(WORKING_PURGE_REASON)
 
         # 1. 消す前に「どのファイルを消すか」と「どれだけ空くか」を控える（行を消したあとでは辿れない）
         freed = self.purge_estimate(deck_id)["bytes"]
@@ -351,6 +354,13 @@ class DeckManagementMixin(StoreBase):
 # デッキ 1 つに属する行の**全て**。完全削除がここだけを見て消す（他に書き足さない）。
 # 書き忘れた表があれば commit 時の外部キー検査が落ち、何も消えないまま断る。
 _PURGE_DELETES: tuple[str, ...] = (
+    "DELETE FROM run_pages WHERE run_id IN (SELECT id FROM runs WHERE deck_id=:d)",
+    "DELETE FROM jobs WHERE deck_id=:d",
+    "DELETE FROM runs WHERE deck_id=:d",
+    "DELETE FROM script_pages WHERE script_id IN (SELECT id FROM scripts WHERE deck_id=:d)",
+    "DELETE FROM scripts WHERE deck_id=:d",
+    "DELETE FROM page_ids WHERE deck_id=:d",
+    "DELETE FROM intakes WHERE deck_id=:d",
     "DELETE FROM launches WHERE deck_id=:d",
     "DELETE FROM deck_tags WHERE deck_id=:d",
     "DELETE FROM deletion_tasks WHERE deck_id=:d",

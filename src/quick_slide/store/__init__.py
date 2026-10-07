@@ -19,14 +19,18 @@ from .base import StoreBase
 from .brands import BrandsMixin
 from .decks import DecksMixin
 from .events import EventsMixin
+from .intakes import IntakesMixin
 from .launches import LaunchesMixin
 from .management import DeckManagementMixin
 from .presets import PresetsMixin
+from .runs import RunsMixin
 from .styles import StylesMixin
 from .views import DeckViewsMixin
 
 
 class Store(
+    IntakesMixin,
+    RunsMixin,
     DeckManagementMixin,
     DeckViewsMixin,
     LaunchesMixin,
@@ -62,8 +66,8 @@ class Store(
         return store
 
     def startup_sweep(self) -> dict[str, list[str]]:
-        """起動時の掃除: 期限切れ launch。P2 で会話の抜粋の期限切れを足す。"""
-        return {"launches_expired": self.expire_launches()}
+        """起動時の掃除: 期限切れ launch・前のサーバで途中だった仕事（失敗にする。作り直さない）。"""
+        return {"launches_expired": self.expire_launches(), "jobs_interrupted": self.fail_interrupted_jobs()}
 
 
 __all__ = ["Store"]

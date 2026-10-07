@@ -22,10 +22,13 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from quick_slide.clock import Clock, FixedClock  # noqa: E402
-from quick_slide.paths import WEB_APP_DIR, DataRoot  # noqa: E402
+from quick_slide.paths import SKILLS_DIR, WEB_APP_DIR, DataRoot  # noqa: E402
 from quick_slide.server.app import SESSION_HEADER, QuickSlideServer  # noqa: E402
 from quick_slide.settings import Settings  # noqa: E402
 from quick_slide.store import Store  # noqa: E402
+from quick_slide.worker.tools import Tools  # noqa: E402
+
+FAKES = REPO / "tests" / "fakes"
 
 T0 = "2026-09-07T00:00:00.000000Z"
 
@@ -97,12 +100,15 @@ class HttpResult:
 
 class ServerFixture:
     def __init__(self, tmp: Path, *, settings: Settings | None = None, static_root: Path | None = None,
-                 clock: Clock | None = None, host: str = "127.0.0.1") -> None:
+                 clock: Clock | None = None, host: str = "127.0.0.1", tools: Tools | None = None,
+                 start_workers: bool = True) -> None:
         self.tmp = tmp
         self.root = DataRoot(tmp / "home")
         self.clock = clock or FixedClock(T0)
         self.server = QuickSlideServer(self.root, settings=settings or Settings(), host=host, port=0,
-                                       static_root=static_root or WEB_APP_DIR, clock=self.clock)
+                                       static_root=static_root or WEB_APP_DIR, clock=self.clock,
+                                       tools=tools or Tools(claude=str(FAKES / "refuse.py"), codex=str(FAKES / "refuse.py")),
+                                       start_workers=start_workers)
         self.thread = self.server.start_in_thread()
         self.port = self.server.bound_port
         self.host = host
@@ -267,3 +273,81 @@ def allowed_static_bodies(root: Path) -> set[bytes]:
         if p.suffix in STATIC_TYPES and p.name == p.name.strip() and not p.name.endswith("."):
             ok.add(p.read_bytes())
     return ok
+
+
+# --- P2: 偽物の台本係・エンジンの偽物の codex ---------------------------------------------------------------
+
+def fake_jwt(exp: float) -> str:
+    import base64
+    import time
+
+    enc = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip("=")  # noqa: E731
+    return f"{enc({'alg': 'none'})}.{enc({'exp': int(exp), 'iat': int(time.time())})}.sig"
+
+
+def fake_codex_home(base: Path) -> Path:
+    """エンジンが読む「ChatGPT でログイン済み」の偽の CODEX_HOME（本物のホームは読まない）。"""
+    import time
+
+    home = base / "codex-home"
+    home.mkdir(parents=True, exist_ok=True)
+    last = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 86400))
+    (home / "auth.json").write_text(json.dumps({
+        "auth_mode": "chatgpt", "OPENAI_API_KEY": None, "last_refresh": last,
+        "tokens": {"id_token": "x", "access_token": fake_jwt(time.time() + 5 * 86400), "refresh_token": "r",
+                   "account_id": "a"}}))
+    return home
+
+
+def fake_tools(testcase, *, mode: str = "ok", images: bool = True, skills_dir: Path | None = None,
+               extra: dict[str, str] | None = None) -> tuple[Tools, Path]:
+    """偽物の台本係（claude 風・codex 風）と、エンジンの偽物の codex を差した Tools。戻り値 (tools, 記録の置き場)。
+
+    エンジンは本物（`skills/`）。描いた絵のキャッシュ・エンジンの設定は使い捨てのフォルダへ向ける。
+    """
+    tmp = temp_dir(testcase, "quick-slide-fakes-")
+    env = {
+        "FAKE_WRITER_LOG": str(tmp / "writer-calls"), "FAKE_WRITER_MODE": mode, "FAKE_WRITER_IMAGES": "1" if images else "0",
+        "FAKE_CODEX_LOG": str(tmp / "codex-calls"), "CODEX_HOME": str(fake_codex_home(tmp)),
+        "HTML_SLIDE_CODEX": str(SKILLS_DIR / "html-slide" / "tests" / "fake_codex.py"),
+        "IMAGE_SLIDE_CODEX": str(SKILLS_DIR / "image-slide" / "tests" / "fake_codex.py"),
+        "HTML_SLIDE_CACHE": str(tmp / "html-slide-cache"), "IMAGE_SLIDE_CACHE": str(tmp / "image-slide-cache"),
+        "HTML_SLIDE_CONFIG": str(tmp / "no-config.yaml"), "IMAGE_SLIDE_CONFIG": str(tmp / "no-config.yaml"),
+        **(extra or {}),
+    }
+    return Tools(claude=str(FAKES / "fake_claude.py"), codex=str(FAKES / "fake_codex_text.py"),
+                 skills_dir=skills_dir or SKILLS_DIR, extra_env=env), tmp
+
+
+def writer_calls(log_root: Path) -> list[dict[str, Any]]:
+    d = log_root / "writer-calls"
+    return [json.loads(p.read_text(encoding="utf-8")) for p in sorted(d.glob("*.json"))] if d.is_dir() else []
+
+
+MANUSCRIPT = """# 会議を半分にする（架空の題材）
+
+- 会議は 1 人あたり週 11.5 時間まで増えた（架空）
+- 3 つのルール: 25 分を基本に・議題は前日までに・決めたらその場で閉じる
+- 来月から 2 チームで試す
+"""
+
+
+def intake_payload(*, runtime: str = "claude_code", title: str | None = "会議を半分にする", **attrs: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {"schema_version": 1, "origin": {"kind": "conversation", "runtime": runtime},
+                               "manuscript": MANUSCRIPT, "deck_attributes": attrs}
+    if title is not None:
+        payload["title_hint"] = title
+    return payload
+
+
+def wait_until_idle(fx: "ServerFixture", deck_id: str, seconds: float = 180.0) -> dict[str, Any]:
+    """そのデッキの仕事が終わるまで待ち、一番新しい描いた回を返す。"""
+    import time
+
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        with fx.server.store_lock:
+            if not fx.store.deck_working(deck_id):
+                return fx.store.latest_run(deck_id)
+        time.sleep(0.2)
+    raise AssertionError(f"{seconds:.0f} 秒待っても仕事が終わらなかった")

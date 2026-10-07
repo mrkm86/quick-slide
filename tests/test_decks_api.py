@@ -205,7 +205,7 @@ class MutationTests(unittest.TestCase):
 
 
 class NotReadyRoutesTests(unittest.TestCase):
-    """P2 以降の口は残し、v1 と同じエラーの形で「まだ使えない」と答える。成功したふりをしない。"""
+    """P3 以降の口は残し、v1 と同じエラーの形で「まだ使えない」と答える。成功したふりをしない。"""
 
     def setUp(self) -> None:
         self.fx = start_server(self)
@@ -213,7 +213,7 @@ class NotReadyRoutesTests(unittest.TestCase):
 
     def test_every_later_route_answers_not_ready(self) -> None:
         d, s = self.deck["id"], str(uuid.uuid4())
-        posts = ["/api/intakes", "/api/conversations/deck", f"/api/decks/{d}/pages/reorder", f"/api/decks/{d}/pages/insert",
+        posts = ["/api/conversations/deck", f"/api/decks/{d}/pages/reorder", f"/api/decks/{d}/pages/insert",
                  f"/api/decks/{d}/pages/{s}/duplicate", f"/api/decks/{d}/pages/{s}/remove",
                  f"/api/decks/{d}/pages/{s}/visibility", f"/api/decks/{d}/exports", f"/api/decks/{d}/adopt",
                  f"/api/decks/{d}/instructions", f"/api/decks/{d}/instructions/{s}/generate",

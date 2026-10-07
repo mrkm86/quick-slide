@@ -23,11 +23,21 @@ LAUNCH_STATES = ("pending", "attached", "expired", "cancelled")
 ATTACHED_VIA = ("integrated", "external", "unknown")
 ORIGIN_KINDS = ("conversation", "paste", "file", "headless")
 ORIGIN_RUNTIMES = ("claude_code", "codex", "browser", "cli", "other")
+# 台本の版を誰が書いたか・どの LLM で書いたか
+SCRIPT_WRITTEN_BY = ("writer", "screen", "conversation")
+WRITER_BACKENDS = ("claude", "codex")
+# 描いた回の状態（書く → 確かめる → 描く → 終わり）。ページごとの結果
+RUN_STATES = ("queued", "writing", "checking", "rendering", "importing", "done", "failed")
+RUN_ACTIVE_STATES = ("queued", "writing", "checking", "rendering", "importing")
+RUN_PAGE_STATES = ("pending", "drawn", "ready", "failed")
+# ワーカーの仕事。P2 は「原稿から 1 冊作る」（書く → 確かめる → 描く）だけ
+JOB_KINDS = ("make",)
+JOB_STATES = ("queued", "running", "done", "failed")
 
 # --- DDL に CHECK が無く、アクセス層だけが持つ語彙 ---
 DELETION_STATES = ("pending", "running", "trashed", "restored", "purged", "failed")
 
-# イベント種別（events.kind）。P2 以降で台本・描いた回の種別を足す。
+# イベント種別（events.kind）。
 EVENT_KINDS = (
     "brand_created",
     "brand_revision_added",
@@ -48,6 +58,14 @@ EVENT_KINDS = (
     "launch_attach_rejected",
     "launch_expired",
     "clipboard_copy",
+    # P2: 会話から 1 冊（取り込み → 台本係 → 検査 → 描き係）
+    "intake_created",
+    "job_started",
+    "job_finished",
+    "script_saved",
+    "run_updated",     # 状態・進みが変わった（画面の実況が last_event_seq で気づく）
+    "run_finished",
+    "job_requeued",    # サーバが途中で止まった仕事を、安全な段から続ける
 )
 
 

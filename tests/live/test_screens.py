@@ -73,7 +73,7 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
             self.assertEqual(page.eval("document.querySelector('.deck-title h1').textContent"), deck["title"])
             # 描く・直す・書き出しは押せない（理由が 1 か所に出る）
             self.assertTrue(page.eval("document.querySelector('.btn--export-pdf').disabled"))
-            self.assertIn("P2", page.eval("document.querySelector('.screen-reasons').textContent"))
+            self.assertIn("P3", page.eval("document.querySelector('.screen-reasons').textContent"))
 
     def test_settings_screens(self) -> None:
         page = self.open("/settings", "document.querySelectorAll('.setting-row').length >= 1", "ブランドの一覧")

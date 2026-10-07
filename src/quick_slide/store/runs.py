@@ -1,0 +1,396 @@
+"""台本の版・描いた回・ページごとの結果・ワーカーの仕事（P2）。
+
+流れ（1 つの仕事 = 原稿から 1 冊）:
+
+    仕事（jobs: queued → running → done|failed。途中で止まったら resume_from から続ける）
+      └ 描いた回（runs: queued → writing ⇄ checking → rendering → importing → done|failed）
+          ├ 台本の版（scripts: 台本係が書くたびに 1 版。検査に通った版を描いた回が指す）
+          │   └ ページ（script_pages: ページの番号 → page_ids の同一性・型・見出し）
+          └ ページごとの結果（run_pages: pending → drawn → ready|failed。画像は assets の行）
+
+**段は始める前に台帳に書く。** エンジンが終わったこと（importing。終わり方は engine_result_json）と、
+出力を取り込んで画面に見せたこと（done）は別の段で、画面が見せるのは取り込み終えた回（done）だけ。
+ページの同一性（page_ids）は台本の各ページの `id`（デッキの中で一意）に結ぶので、台本を書き直しても
+同じ `id` のページは同じページのまま。
+
+状態の変化は必ず `run_updated` などの出来事と同じトランザクションで書く（画面の実況は `last_event_seq` が
+動いたときだけ描き直す）。
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+from typing import Any
+
+from ..enums import JOB_STATES, RUN_ACTIVE_STATES, RUN_PAGE_STATES, RUN_STATES, SCRIPT_WRITTEN_BY, WRITER_BACKENDS, require
+from ..errors import StateError, ValidationError
+from .base import StoreBase, dump_json, load_json
+
+# 起動したときに「走っている」まま残っていた仕事（前のサーバが途中で止まった）に付ける文
+INTERRUPTED_MESSAGE = "台本を書いている途中でサーバが止まったため、中断しました。もう一度会話から頼んでください。"
+GAVE_UP_MESSAGE = "サーバが何度も途中で止まったため、作るのをやめました。もう一度会話から頼んでください。"
+# 続きから戻すのは、この回数まで（止まり続ける仕事を延々と回さない）
+MAX_JOB_ATTEMPTS = 3
+
+
+class RunsMixin(StoreBase):
+    # --- 描いた回・仕事を作る（取り込みのトランザクションの中で呼ぶ） ---
+    def create_run(self, deck_id: str, *, args: dict[str, Any]) -> dict[str, Any]:
+        self._require_tx()
+        from ..engines import engine_for
+
+        mode = require(args.get("mode"), tuple(("presentation", "pitch")), "runs.mode")
+        number = int(self._scalar("SELECT COALESCE(MAX(number),0)+1 FROM runs WHERE deck_id=?", (deck_id,)))
+        rid = self.new_id()
+        now = self.now()
+        out_rel = f"decks/{deck_id}/runs/{rid}"
+        self._exec(
+            "INSERT INTO runs(id,deck_id,number,mode,engine,args_json,state,out_dir,created_at,updated_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (rid, deck_id, number, mode, engine_for(mode).skill, dump_json(args), "queued", out_rel, now, now))
+        return self.run(rid)
+
+    def create_job(self, deck_id: str, *, run_id: str, intake_id: str | None, kind: str = "make") -> dict[str, Any]:
+        self._require_tx()
+        jid = self.new_id()
+        self._exec("INSERT INTO jobs(id,deck_id,kind,run_id,intake_id,state,created_at) VALUES(?,?,?,?,?,?,?)",
+                   (jid, deck_id, kind, run_id, intake_id, "queued", self.now()))
+        return self._get("jobs", jid)
+
+    # --- 参照 ---
+    def run(self, run_id: str) -> dict[str, Any]:
+        row = self._get("runs", run_id)
+        row["args"] = load_json(row.pop("args_json"))
+        row["progress"] = load_json(row.pop("progress_json"))
+        row["record"] = load_json(row.pop("record_json"))
+        row["engine_result"] = load_json(row.pop("engine_result_json"))
+        return row
+
+    def job(self, job_id: str) -> dict[str, Any]:
+        return self._get("jobs", job_id)
+
+    def script(self, script_id: str) -> dict[str, Any]:
+        row = self._get("scripts", script_id)
+        row["check_notes"] = load_json(row.pop("check_notes_json"))
+        return row
+
+    def script_path(self, script_row: dict[str, Any]) -> Path:
+        return self.root.root / script_row["path"]
+
+    def runs_for_deck(self, deck_id: str) -> list[dict[str, Any]]:
+        rows = self._all("SELECT id FROM runs WHERE deck_id=? ORDER BY number DESC", (deck_id,))
+        return [self.run(r["id"]) for r in rows]
+
+    def deck_working(self, deck_id: str) -> bool:
+        """そのデッキの仕事が待っているか動いているか（画面の `live.working` と完全削除の可否が見る）。"""
+        return self._scalar("SELECT 1 FROM jobs WHERE deck_id=? AND state IN ('queued','running') LIMIT 1",
+                            (deck_id,)) is not None
+
+    def shown_run(self, deck_id: str) -> dict[str, Any] | None:
+        """画面に出す回: **出力を取り込み終えた（done）一番新しい回**。描いている途中・失敗した回は出さない
+        （進みと失敗の理由は帯の 1 文が言う）。"""
+        rid = self._scalar("SELECT id FROM runs WHERE deck_id=? AND state='done' ORDER BY number DESC LIMIT 1",
+                           (deck_id,))
+        return None if rid is None else self.run(rid)
+
+    def page_key_of(self, page_id: str) -> str | None:
+        return self._scalar("SELECT key FROM page_ids WHERE id=?", (page_id,))
+
+    def latest_run(self, deck_id: str) -> dict[str, Any] | None:
+        rid = self._scalar("SELECT id FROM runs WHERE deck_id=? ORDER BY number DESC LIMIT 1", (deck_id,))
+        return None if rid is None else self.run(rid)
+
+    def run_pages(self, run_id: str) -> list[dict[str, Any]]:
+        """回のページ（台本の番号順）。見出し・型・本文は台本のページから、状態と絵は回の結果から。"""
+        rows = self._all(
+            "SELECT sp.page_no,sp.page_id,sp.type,sp.title,sp.body,rp.state,rp.asset_id,rp.warnings_json,"
+            "  a.state AS asset_state"
+            " FROM runs r JOIN script_pages sp ON sp.script_id=r.script_id"
+            " LEFT JOIN run_pages rp ON rp.run_id=r.id AND rp.page_no=sp.page_no"
+            " LEFT JOIN assets a ON a.id=rp.asset_id"
+            " WHERE r.id=? ORDER BY sp.page_no", (run_id,))
+        for r in rows:
+            r["warnings"] = load_json(r.pop("warnings_json")) if r["warnings_json"] is not None else []
+        return rows
+
+    def deck_page_summary(self, deck_id: str) -> dict[str, Any]:
+        """カードに出す枚数・できた枚数・先頭の絵（見せる回から）。"""
+        run = self.shown_run(deck_id)
+        if run is None:
+            return {"page_count": 0, "ready_count": 0, "thumbnail_asset_id": None, "run_id": None}
+        pages = self.run_pages(run["id"])
+        ready = [p for p in pages if p["state"] == "ready" and p["asset_state"] == "ready"]
+        first = pages[0] if pages else None
+        thumb = first["asset_id"] if first and first["state"] == "ready" and first["asset_state"] == "ready" else None
+        return {"page_count": len(pages), "ready_count": len(ready), "thumbnail_asset_id": thumb, "run_id": run["id"]}
+
+    # --- ワーカー: 仕事を取る・終える ---
+    def claim_job(self, worker: str) -> dict[str, Any] | None:
+        """待っている仕事を 1 つ取る（古い順）。**削除済みのデッキの仕事は取らずに失敗にする。**"""
+        with self.transaction():
+            while True:
+                row = self._one("SELECT j.*,d.deleted_at FROM jobs j JOIN decks d ON d.id=j.deck_id"
+                                " WHERE j.state='queued' ORDER BY j.created_at,j.rowid LIMIT 1")
+                if row is None:
+                    return None
+                now = self.now()
+                if row["deleted_at"] is not None:
+                    self._finish_job_row(row["id"], "failed", "deck_deleted", now)
+                    self._end_run(row["run_id"], "failed", message="スライドが削除されたので、作るのをやめました。",
+                                  failure_kind="cancelled")
+                    continue
+                n = self._exec("UPDATE jobs SET state='running',worker=?,started_at=?,attempts=attempts+1"
+                               " WHERE id=? AND state='queued'", (worker, now, row["id"]))
+                if n != 1:
+                    continue
+                self._exec("UPDATE runs SET started_at=COALESCE(started_at,?),updated_at=? WHERE id=?",
+                           (now, now, row["run_id"]))
+                self.append_event("job_started", {"job_id": row["id"], "run_id": row["run_id"], "kind": row["kind"]},
+                                  deck_id=row["deck_id"])
+                return self.job(row["id"])
+
+    def finish_job(self, job_id: str, state: str, *, error_class: str | None = None) -> None:
+        require(state, JOB_STATES, "jobs.state")
+        with self.transaction():
+            self._finish_job_row(job_id, state, error_class, self.now())
+
+    def _finish_job_row(self, job_id: str, state: str, error_class: str | None, now: str) -> None:
+        job = self._get("jobs", job_id)
+        self._exec("UPDATE jobs SET state=?,error_class=?,ended_at=? WHERE id=?", (state, error_class, now, job_id))
+        self.append_event("job_finished", {"job_id": job_id, "state": state, "error_class": error_class},
+                          deck_id=job["deck_id"])
+
+    def recover_interrupted_jobs(self) -> dict[str, list[str]]:
+        """起動時の掃除: 前のサーバで「走っている」まま残った仕事を、**安全な段から続けるか、理由つきで失敗にする**。
+        「働いている」のまま残すことはしない。
+
+        | 止まった段 | どうするか |
+        |---|---|
+        | queued・writing・checking（検査に通った台本がまだ無い） | 失敗にする。台本係の LLM を黙ってもう一度呼ぶと、利用者の知らないところでサブスクの枠を使うため |
+        | rendering（台本は検査済み） | 待ちに戻し、描くところから（エンジンは描き終えた絵をキャッシュから使い回す） |
+        | importing（エンジンは終わっている） | 待ちに戻し、取り込むところから |
+
+        続きから戻すのは `MAX_JOB_ATTEMPTS` 回まで。待っていた仕事（一度も始まっていない）はそのまま残す。
+        """
+        out: dict[str, list[str]] = {"requeued": [], "failed": []}
+        with self.transaction():
+            rows = self._all("SELECT id,run_id,deck_id,attempts FROM jobs WHERE state='running'")
+            now = self.now()
+            for r in rows:
+                run = self._get("runs", r["run_id"])
+                stage = {"rendering": "render", "importing": "import"}.get(run["state"])
+                if stage is not None and r["attempts"] < MAX_JOB_ATTEMPTS:
+                    self._exec("UPDATE jobs SET state='queued',resume_from=?,worker=NULL WHERE id=?", (stage, r["id"]))
+                    if stage == "render":
+                        self._exec("UPDATE run_pages SET state='pending' WHERE run_id=? AND state!='pending'",
+                                   (r["run_id"],))
+                    self.append_event("job_requeued", {"job_id": r["id"], "run_id": r["run_id"], "resume_from": stage,
+                                                       "attempts": r["attempts"]}, deck_id=r["deck_id"])
+                    out["requeued"].append(r["id"])
+                    continue
+                self._finish_job_row(r["id"], "failed", "interrupted", now)
+                if run["state"] in RUN_ACTIVE_STATES:
+                    message = GAVE_UP_MESSAGE if stage is not None else INTERRUPTED_MESSAGE
+                    self._end_run(r["run_id"], "failed", message=message, failure_kind="interrupted")
+                out["failed"].append(r["id"])
+        return out
+
+    def fail_interrupted_jobs(self) -> list[str]:
+        """起動時の掃除の口（`server/app.run_startup_sweep`）。戻した仕事も失敗にした仕事も数に入る。"""
+        r = self.recover_interrupted_jobs()
+        return r["requeued"] + r["failed"]
+
+    # --- 描いた回の状態 ---
+    def set_run_state(self, run_id: str, state: str, *, progress: dict[str, Any] | None = None,
+                      args_update: dict[str, Any] | None = None) -> None:
+        """進行中の状態（writing / checking / rendering）と進み。終わりは `finish_run`。"""
+        require(state, RUN_STATES, "runs.state")
+        if state not in RUN_ACTIVE_STATES:
+            raise ValidationError("終わりの状態は finish_run で書く")
+        with self.transaction():
+            run = self.run(run_id)
+            if run["state"] not in RUN_ACTIVE_STATES:
+                raise StateError("終わった回の状態は変えられません")
+            prog = run["progress"] if progress is None else progress
+            args = run["args"] if args_update is None else {**run["args"], **args_update}
+            if run["state"] == state and prog == run["progress"] and args == run["args"]:
+                return  # 何も変わっていなければ出来事も書かない（画面をちらつかせない）
+            self._exec("UPDATE runs SET state=?,progress_json=?,args_json=?,updated_at=? WHERE id=?",
+                       (state, dump_json(prog), dump_json(args), self.now(), run_id))
+            self.append_event("run_updated", {"run_id": run_id, "state": state, "progress": prog},
+                              deck_id=run["deck_id"])
+
+    def set_run_record(self, run_id: str, record: dict[str, Any]) -> None:
+        """再現の記録（エンジンの引数・設定の控え・台本の版・エンジンの印）を足す（同じキーは上書き）。"""
+        with self.transaction():
+            run = self._get("runs", run_id)
+            merged = {**(load_json(run["record_json"]) or {}), **record}
+            self._exec("UPDATE runs SET record_json=? WHERE id=?", (dump_json(merged), run_id))
+
+    def enter_importing(self, run_id: str, result: dict[str, Any]) -> None:
+        """エンジンが終わった。終わり方を控えてから取り込みの段に入る（取り込みの途中で止まっても、ここから続く）。"""
+        with self.transaction():
+            run = self.run(run_id)
+            if run["state"] not in RUN_ACTIVE_STATES:
+                raise StateError("終わった回です")
+            self._exec("UPDATE runs SET state='importing',engine_result_json=?,updated_at=? WHERE id=?",
+                       (dump_json(result), self.now(), run_id))
+            self.append_event("run_updated", {"run_id": run_id, "state": "importing", "rc": result.get("rc")},
+                              deck_id=run["deck_id"])
+
+    def engine_result(self, run_id: str) -> dict[str, Any] | None:
+        return load_json(self._scalar("SELECT engine_result_json FROM runs WHERE id=?", (run_id,)))
+
+    def mark_run_page(self, run_id: str, page_no: int, state: str) -> None:
+        """描いている途中のページの印（drawn = 絵が返ってきた・failed = 描けなかった）。"""
+        require(state, RUN_PAGE_STATES, "run_pages.state")
+        if state == "ready":
+            raise ValidationError("ready は finish_run で書く（絵の行と一緒に）")
+        with self.transaction():
+            run = self._get("runs", run_id)
+            n = self._exec("UPDATE run_pages SET state=? WHERE run_id=? AND page_no=? AND state!=?",
+                           (state, run_id, page_no, state))
+            if n:
+                self.append_event("run_updated", {"run_id": run_id, "page_no": page_no, "page_state": state},
+                                  deck_id=run["deck_id"])
+
+    def _end_run(self, run_id: str, state: str, *, message: str | None, failure_kind: str | None,
+                 rc: int | None = None) -> None:
+        self._require_tx()
+        run = self._get("runs", run_id)
+        now = self.now()
+        self._exec("UPDATE runs SET state=?,rc=?,message=?,failure_kind=?,ended_at=?,updated_at=? WHERE id=?",
+                   (state, rc, message, failure_kind, now, now, run_id))
+        # 終わった回に「描いている途中」の印を残さない（画面が永遠に「生成中」と言わないように）
+        self._exec("UPDATE run_pages SET state='failed' WHERE run_id=? AND state IN ('pending','drawn')", (run_id,))
+        self.append_event("run_finished", {"run_id": run_id, "state": state, "rc": rc, "failure_kind": failure_kind},
+                          deck_id=run["deck_id"])
+
+    def fail_run(self, run_id: str, *, message: str, failure_kind: str, rc: int | None = None) -> None:
+        with self.transaction():
+            run = self._get("runs", run_id)
+            if run["state"] not in RUN_ACTIVE_STATES:
+                return
+            self._end_run(run_id, "failed", message=message, failure_kind=failure_kind, rc=rc)
+
+    # --- 台本の版 ---
+    def save_script(self, deck_id: str, data: dict[str, Any], *, written_by: str, writer_backend: str | None,
+                    intake_id: str | None, run_id: str | None, round_no: int | None = None,
+                    instruction: str | None = None) -> dict[str, Any]:
+        """台本の版を 1 つ足す（`decks/<デッキ>/scripts/<版>.json` に書いてから行を足す）。"""
+        require(written_by, SCRIPT_WRITTEN_BY, "scripts.written_by")
+        if writer_backend is not None:
+            require(writer_backend, WRITER_BACKENDS, "scripts.writer_backend")
+        if not isinstance(data, dict) or not isinstance(data.get("slides"), list):
+            raise ValidationError("台本は slides を持つオブジェクト")
+        text = json.dumps(data, ensure_ascii=False, indent=1) + "\n"
+        raw = text.encode("utf-8")
+        with self.transaction():
+            version = int(self._scalar("SELECT COALESCE(MAX(version),0)+1 FROM scripts WHERE deck_id=?", (deck_id,)))
+            rel = f"decks/{deck_id}/scripts/{version}.json"
+            path = self.root.root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_bytes(raw)
+            os.replace(tmp, path)
+            sid = self.new_id()
+            self._exec(
+                "INSERT INTO scripts(id,deck_id,version,path,sha256,written_by,writer_backend,intake_id,instruction,"
+                " round,page_count,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (sid, deck_id, version, rel, hashlib.sha256(raw).hexdigest(), written_by, writer_backend, intake_id,
+                 instruction, round_no, len(data["slides"]), self.now()))
+            self.append_event("script_saved", {"script_id": sid, "version": version, "run_id": run_id,
+                                               "written_by": written_by, "writer_backend": writer_backend,
+                                               "round": round_no, "pages": len(data["slides"])}, deck_id=deck_id)
+            return self.script(sid)
+
+    def set_script_check(self, script_id: str, rc: int, notes: list[str]) -> None:
+        with self.transaction():
+            self._exec("UPDATE scripts SET check_rc=?,check_notes_json=? WHERE id=?",
+                       (rc, dump_json([str(n)[:500] for n in notes[:50]]), script_id))
+
+    def start_rendering(self, run_id: str, script_id: str, pages: list[dict[str, Any]],
+                        progress: dict[str, Any]) -> None:
+        """検査に通った台本を回に結び、ページ（同一性・見出し）と「描いている途中」の行を作る。
+
+        ページの同一性は台本の `id`（`pages[].key`）で引く。同じデッキで前に使った `id` なら同じ page_ids の行。
+        """
+        with self.transaction():
+            run = self.run(run_id)
+            script = self.script(script_id)
+            if run["deck_id"] != script["deck_id"]:
+                raise ValidationError("別のデッキの台本です")
+            if run["state"] not in RUN_ACTIVE_STATES:
+                raise StateError("終わった回には台本を結べません")
+            now = self.now()
+            for p in pages:
+                pid = self._scalar("SELECT id FROM page_ids WHERE deck_id=? AND key=?", (run["deck_id"], p["key"]))
+                if pid is None:
+                    pid = self.new_id()
+                    self._exec("INSERT INTO page_ids(id,deck_id,key,created_at) VALUES(?,?,?,?)",
+                               (pid, run["deck_id"], p["key"], now))
+                self._exec("INSERT INTO script_pages(script_id,page_no,page_id,type,title,body) VALUES(?,?,?,?,?,?)",
+                           (script_id, p["no"], pid, p["type"], p["title"], p["body"]))
+                self._exec("INSERT INTO run_pages(run_id,page_no,page_id,state) VALUES(?,?,?,'pending')",
+                           (run_id, p["no"], pid))
+            self._exec("UPDATE runs SET script_id=?,state='rendering',progress_json=?,updated_at=? WHERE id=?",
+                       (script_id, dump_json(progress), now, run_id))
+            self.append_event("run_updated", {"run_id": run_id, "state": "rendering", "script_id": script_id,
+                                              "pages": len(pages), "progress": progress}, deck_id=run["deck_id"])
+
+    def finish_run(self, run_id: str, *, state: str, rc: int | None, message: str | None,
+                   failure_kind: str | None, pages: dict[int, dict[str, Any]]) -> None:
+        """描き終えた回の結果を書く。`pages` は {番号: {"file": 画像のパスか None, "warnings": [...]}}。
+
+        画像は `assets/decks/<デッキ>/<回>/slide-NN.png` にハードリンクで張ってから資産の行にする
+        （配信は assets/ の下だけ。エンジンの出力フォルダは配信しない）。
+        """
+        require(state, ("done", "failed"), "runs.state")
+        run = self.run(run_id)
+        staged: dict[int, tuple[str, str, int, int | None, int | None]] = {}
+        for no, info in pages.items():
+            src = info.get("file")
+            if not src:
+                continue
+            rel = self.root.page_asset_rel(run["deck_id"], run_id, no)
+            dst = self.root.root / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dst.with_name(dst.name + ".tmp")
+            tmp.unlink(missing_ok=True)
+            try:
+                os.link(src, tmp)
+            except OSError:
+                import shutil
+
+                shutil.copyfile(src, tmp)
+            os.replace(tmp, dst)
+            data = dst.read_bytes()
+            w, h = _png_size(data)
+            staged[no] = (rel, hashlib.sha256(data).hexdigest(), len(data), w, h)
+        with self.transaction():
+            current = self._get("runs", run_id)
+            if current["state"] not in RUN_ACTIVE_STATES:
+                raise StateError("この回はもう終わっています")
+            for no, info in pages.items():
+                warnings = [str(w)[:300] for w in (info.get("warnings") or [])][:20]
+                if no in staged:
+                    rel, sha, size, w, h = staged[no]
+                    asset = self.register_asset(relative_path=rel, media_type="image/png", sha256=sha, bytes_=size,
+                                                width=w, height=h)
+                    self._exec("UPDATE run_pages SET state='ready',asset_id=?,warnings_json=? WHERE run_id=? AND page_no=?",
+                               (asset["id"], dump_json(warnings), run_id, no))
+                else:
+                    self._exec("UPDATE run_pages SET state='failed',warnings_json=? WHERE run_id=? AND page_no=?",
+                               (dump_json(warnings), run_id, no))
+            self._end_run(run_id, state, message=message, failure_kind=failure_kind, rc=rc)
+            self._exec("UPDATE decks SET updated_at=? WHERE id=?", (self.now(), run["deck_id"]))
+
+
+def _png_size(data: bytes) -> tuple[int | None, int | None]:
+    """PNG の IHDR から幅と高さ（読めなければ None）。"""
+    if len(data) >= 24 and data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR":
+        return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+    return None, None
