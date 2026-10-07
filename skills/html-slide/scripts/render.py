@@ -27,7 +27,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -37,6 +36,7 @@ HERE = Path(__file__).resolve().parent
 sys.dont_write_bytecode = True   # 置いた場所（配る物の中・ほかの環境からのリンク先）に __pycache__ を残さない
 sys.path.insert(0, str(HERE))
 
+import browser as B  # noqa: E402
 import pptx_writer  # noqa: E402
 
 EXTRACT = HERE / "extract.mjs"
@@ -60,15 +60,16 @@ def _html(path) -> Path:
 
 
 def extract(html_path, mode: str = "contract", out_json=None) -> dict:
-    node = shutil.which("node")
-    if not node:
-        raise RenderError("node が無い", 4)
+    lack = B.missing()                      # Node・puppeteer-core・Chrome の在りか（browser.py・ADR 0016）
+    if lack:
+        raise RenderError("・".join(lack) + "。" + B.SETUP_HINT, 4)
+    node, _ = B.node()
     html = _html(html_path)
     with tempfile.TemporaryDirectory(prefix="html-slide-") as tmp:
         out = Path(out_json) if out_json else Path(tmp) / "parts.json"
         try:
             r = subprocess.run([node, str(EXTRACT), "--mode", mode, str(html), str(out)],
-                               capture_output=True, text=True, timeout=TIMEOUT)
+                               capture_output=True, text=True, timeout=TIMEOUT, env=B.child_env())
         except subprocess.TimeoutExpired:
             raise RenderError(f"extract.mjs が {TIMEOUT} 秒で終わらない", 1)
         if r.returncode != 0:

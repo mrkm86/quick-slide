@@ -397,15 +397,16 @@ def fit_logo_plates(html_path, info) -> None:
     if not lg:
         return
     html_path = pathlib.Path(html_path)
-    node = shutil.which("node")
+    import browser as B
+    node, _ = B.node()
     if not node:
-        raise DeckError("ロゴの置き場を調べるのに node が要る")
+        raise DeckError(f"ロゴの置き場を調べるのに node が要る。{B.SETUP_HINT}")
     order = LOGO_POSITIONS[lg["position"]]
     boxes = [logo_box(lg, c) for c in order]
     with tempfile.TemporaryDirectory(prefix="html-slide-logo-") as tmp:
         r = subprocess.run([node, str(pathlib.Path(__file__).with_name("logo_ground.mjs")), str(html_path), tmp,
                             str(LOGO_RING), *(",".join(map(str, b)) for b in boxes)],
-                           capture_output=True, text=True, timeout=600)
+                           capture_output=True, text=True, timeout=600, env=B.child_env())
         if r.returncode != 0:
             raise DeckError(f"ロゴの置き場を調べられなかった: {r.stderr.strip()[:300]}")
         hits = json.loads(r.stdout.strip().splitlines()[-1])["pages"]

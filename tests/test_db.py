@@ -29,15 +29,18 @@ P1_TABLES = {"assets", "brands", "brand_revisions", "brand_assets", "styles", "s
 P2_TABLES = {"intakes", "scripts", "script_pages", "page_ids", "runs", "run_pages", "jobs"}
 # P3（0003）: デッキのいまの台本
 P3_TABLES = {"deck_heads"}
+# P5（0004）: 書き出しの記録
+P5_TABLES = {"exports"}
 
 
 class MigrationTests(unittest.TestCase):
     def test_a_fresh_db_gets_exactly_the_p1_and_p2_tables(self) -> None:
         store = open_store(self)
         tables = {r[0] for r in store.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        self.assertEqual(tables, P1_TABLES | P2_TABLES | P3_TABLES)
+        self.assertEqual(tables, P1_TABLES | P2_TABLES | P3_TABLES | P5_TABLES)
         for v1_only in ("plan_revisions", "plan_pages", "batches", "batch_items", "attempts", "slide_versions",
-                        "deck_revisions", "instructions", "tasks", "formats", "drafts", "exports"):
+                        "deck_revisions", "instructions", "tasks", "formats", "drafts"):
+            # exports は P5 で作り直した（描いた回のファイルの記録。v1 の形ではない）
             self.assertNotIn(v1_only, tables)
         st = status(store.conn)
         self.assertTrue(st.up_to_date)

@@ -27,6 +27,61 @@
   function insertWords() { return (SS.vocab && SS.vocab.insert) || {}; }
   // 書き出し（P9-b）の確認文・進行中・完了の語も同じ（正本は EXPORT_WORDS / EXPORT_FORMAT_LABELS）
   function exportWords() { return (SS.vocab && SS.vocab.export) || {}; }
+
+  // 「設定を替えて組み直す」の器（P5）。ブランドとスタイルを選んで送る。選べるもの・いまの値・注意の 1 文は
+  // サーバ（`GET /api/decks/<id>/look`）から読む。送ると直しと同じ仕事になり、画面は実況で替わる
+  function openRebuild(deckId, onDone) {
+    SS.api("/api/decks/" + deckId + "/look").then(function (look) {
+      function select(id, items, current) {
+        var sel = h("select", { id: id });
+        items.forEach(function (it) {
+          var o = h("option", { value: it.id, text: it.name });
+          if (it.id === current.id) { o.selected = true; }
+          sel.appendChild(o);
+        });
+        if (!items.some(function (it) { return it.id === current.id; })) {
+          var gone = h("option", { value: "", text: current.name + "（削除済み・いまのまま）" });
+          gone.selected = true;
+          sel.insertBefore(gone, sel.firstChild);
+        }
+        return sel;
+      }
+      var brandSel = select("rebuild-brand", look.brands, look.brand);
+      var styleSel = select("rebuild-style", look.styles, look.style);
+      var errors = h("p", { class: "reason", role: "alert" });
+      var submit = h("button", { class: "btn btn--primary", type: "button", text: "組み直す" });
+      var cancel = h("button", { class: "btn", type: "button", text: "やめる" });
+      var box = h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "設定を替えて組み直す" },
+        h("h3", { text: "設定を替えて組み直す" }),
+        h("p", { class: "muted small", text: look.notice }),
+        h("label", { class: "setting-field", for: "rebuild-brand" }, h("span", { text: "ブランド" }), brandSel),
+        h("label", { class: "setting-field", for: "rebuild-style" }, h("span", { text: "スタイル" }), styleSel),
+        errors,
+        h("div", { class: "modal-actions" }, cancel, submit));
+      var backdrop = h("div", { class: "modal-backdrop" }, box);
+      function close() { document.removeEventListener("keydown", onEscape, true); if (backdrop.parentNode) { backdrop.parentNode.removeChild(backdrop); } }
+      function onEscape(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+      submit.addEventListener("click", function () {
+        var body = {};
+        if (brandSel.value) { body.brand_id = brandSel.value; }
+        if (styleSel.value) { body.style_id = styleSel.value; }
+        submit.disabled = true;
+        SS.api("/api/decks/" + deckId + "/rebuild", { method: "POST", body: body }).then(function (r) {
+          close();
+          if (r && r.message) { SS.toast(r.message); }
+          if (onDone) { onDone(); }
+        }, function (e) {
+          submit.disabled = false;
+          errors.textContent = (e && e.message) ? e.message : "処理できませんでした。もう一度お試しください。";
+        });
+      });
+      cancel.addEventListener("click", close);
+      backdrop.addEventListener("click", function (e) { if (e.target === backdrop) { close(); } });
+      document.addEventListener("keydown", onEscape, true);
+      document.body.appendChild(backdrop);
+      brandSel.focus();
+    }).catch(SS.toastError);
+  }
   function exportFormatLabels() { return (SS.vocab && SS.vocab.export_formats) || {}; }
   // スライドの名前の長さの上限。home.js と同じ口から取る（画面に数を書かない）
   function deckLimits() { return (SS.vocab && SS.vocab.card_limits) || {}; }
@@ -1474,6 +1529,9 @@
         btn.disabled = true;
         btn.textContent = words.building || original;
         SS.api("/api/decks/" + deckId + "/exports", { method: "POST", body: { format: format } }).then(function (r) {
+          // 見せている回にその形式が無いときは、サーバが描き直してから配る（P5）。時間内に終わらなければ
+          // URL は無く「作っています」の 1 文だけが来る（もう一度押してもらう）
+          if (!r || !r.export || !r.export.download_url) { SS.toast((r && r.message) || words.building || ""); return; }
           if (words.success) { SS.toast(words.success); }
           // ダウンロードはサーバの `Content-Disposition: attachment` が実行する（新しいウィンドウ・
           // タブは開かない。既に版の画像保存で使っている手口と同じ。line 693 相当）
@@ -1545,7 +1603,15 @@
       });
       titleInput.addEventListener("blur", commitTitle);
       // この画面は名前を鉛筆でその場で直せるので、メニューには「名前を変更」を出さない（2026-09-18）
-      deckMenuBtn.addEventListener("click", function () { SS.menu(deckMenuBtn, SS.deckActions(deck, caps, reload, { renameInPlace: true })); });
+      // 「設定を替えて組み直す」（P5）: いまの台本のまま、ブランド・スタイルを選び直して組み直す。
+      // 押せるかはサーバの `capabilities.rebuild`（メニューを開いたときの答えを読む）
+      deckMenuBtn.addEventListener("click", function () {
+        var items = SS.deckActions(deck, caps, reload, { renameInPlace: true });
+        var rb = SS.cap(caps, "rebuild");
+        items.unshift({ label: rb.label, disabled: !rb.available, reason: rb.reason,
+                        onSelect: function () { openRebuild(deckId, reload); } }, "-");
+        SS.menu(deckMenuBtn, items);
+      });
       // 3 段に積む（2026-09-18、利用者の指示）: パンくず / **大きいタイトルと同じ段の右端に書き出し** /
       // 状態・構成・ブランド。副題（`subtitle` / `purpose`）はここに出さないことにした
       // （企画の言い直しで、タイトルのすぐ下で二度読ませる価値がない）。値は API に残っている

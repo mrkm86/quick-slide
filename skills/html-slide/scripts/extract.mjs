@@ -7,7 +7,9 @@
 // 部品 JSON の形は references/parts-format.md。
 // 終了コード: 0 = 読めた（違反の有無は JSON の violations）/ 1 = 実行時エラー / 4 = Chrome・puppeteer-core が無い
 //
-// Node のモジュールは html-video と同じ ~/.cache/html-video/node_modules を借りる（スキルの中に node_modules を置かない）。
+// Node のモジュール（puppeteer-core）と Chrome の在りかは呼ぶ側（browser.py）が探して環境変数 HTML_SLIDE_NODE_MODULES・
+// HTML_SLIDE_CHROME で渡す（ADR 0016）。直に呼ばれて渡されなかったときだけ、前からの置き場（~/.cache/…）を見る。
+// スキルの中に node_modules を置かない。
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -16,6 +18,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const NM = process.env.HTML_SLIDE_NODE_MODULES || path.join(os.homedir(), '.cache/html-video/node_modules');
 const CHROME_DIR = path.join(os.homedir(), '.cache/puppeteer/chrome-headless-shell');
+const SETUP_HINT = '入れ方はスキルの references/deploy.md（Quick Slide から使うなら `python3 <プラグイン>/skills/quick-slide/scripts/quick_slide_setup.py --setup`）';
 
 function die(msg, rc) {
   process.stderr.write(`NG: ${msg}\n`);
@@ -888,10 +891,10 @@ async function main() {
   try {
     puppeteer = require(path.join(NM, 'puppeteer-core'));
   } catch (e) {
-    die(`puppeteer-core が無い（${NM}）。html-video の setup で入る`, 4);
+    die(`puppeteer-core が無い（${NM}）。${SETUP_HINT}`, 4);
   }
   const exe = chromePath();
-  if (!exe) die(`Chrome（headless shell）が無い（${CHROME_DIR}）。html-video の setup で入る`, 4);
+  if (!exe) die(`Chrome（headless shell）が無い（${CHROME_DIR}）。${SETUP_HINT}`, 4);
   const browser = await puppeteer.launch({ executablePath: exe, args: ['--allow-file-access-from-files', '--font-render-hinting=none'] });
   try {
     const page = await browser.newPage();

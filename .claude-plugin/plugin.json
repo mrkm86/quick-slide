@@ -1,7 +1,7 @@
 {
   "name": "quick-slide",
   "version": "2.0.0",
-  "description": "台本（資料用の JSON）から16:9の日本語スライドを作るQuick Slide。編集できて動く PPTX（html-slide）と、画像生成で1枚ずつ描く資料（image-slide）。",
+  "description": "会話から16:9の日本語スライドを作って直すQuick Slide。3つのスキル: quick-slide（会話の入口。原稿を整えてローカルの画面に渡し、ページを指定して直し、PPTX・PDF を書き出す）・html-slide（編集できて動く PPTX を組むエンジン）・image-slide（画像生成で1枚ずつ描くエンジン）。",
   "author": {
     "name": "Quick Slide"
   },

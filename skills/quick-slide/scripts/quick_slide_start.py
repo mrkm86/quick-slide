@@ -18,6 +18,8 @@ P3:
 - `--revise [--deck <ID>] [--pages 7,8] --note "…" [--remake] [--attach <画像>]…`: 会話から直す。スライドを省けば
   この会話から作った一番新しいスライド。`--pages` を省けばスライド全体への指示
 
+P5: `--doctor`（導入の確かめ）・`--setup [--yes]`（足りないものを入れる）は `quick_slide_setup.py` に任せる。
+
 **実体（サーバのコード）の探し方**: `--repo` → 環境変数 `QUICK_SLIDE_REPO` → このスキルを載せたプラグインの根
 （`skills/quick-slide/scripts/` から 3 つ上）。指されているのに実体が無ければ、黙って次へ落ちずにその場で止まる。
 
@@ -518,10 +520,25 @@ def cmd_revise(repo: Path, home: Path, args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_setup(args: argparse.Namespace) -> int:
+    """導入の確かめ・入れる（同じフォルダの `quick_slide_setup.py` に任せる。import せずに読む＝__pycache__ を書かない）。"""
+    import runpy
+
+    tool = runpy.run_path(str(Path(__file__).resolve().with_name("quick_slide_setup.py")), run_name="quick_slide_setup")
+    argv = ["--setup"] if args.setup else ["--doctor"]
+    if args.setup and args.yes:
+        argv.append("--yes")
+    if args.home:
+        argv += ["--home", args.home]
+    return int(tool["main"](argv))
+
+
 def run(args: argparse.Namespace) -> int:
     home = data_root(args.home)
     if args.where:
         return cmd_where(args, home)
+    if args.doctor or args.setup:
+        return cmd_setup(args)
     for flag, what in ((args.append_to_deck, "既存のスライドへの追加（--append-to-deck）"),
                        (args.attach and not args.revise, "新しく作るときの画像の添付（--attach。--revise と一緒なら使える）"),
                        (args.transcript_file, "会話抜粋（--transcript-file）")):
@@ -605,6 +622,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-open", action="store_true", help="自動で開かない（既定の挙動を明示するとき）")
     p.add_argument("--dry-run", action="store_true", help="投入せず、サーバの起動と payload の要約だけ出す")
     p.add_argument("--where", action="store_true", help="どこを実体（src/quick_slide）として見ているかを出す（サーバは起こさない）")
+    p.add_argument("--doctor", action="store_true", help="導入の確かめ（何が揃っていて何が足りないか。quick_slide_setup.py --doctor と同じ）")
+    p.add_argument("--setup", action="store_true", help="足りないものを Quick Slide の置き場に入れる（入れる前に何をするかを出す）")
+    p.add_argument("--yes", action="store_true", help="--setup で聞かずに入れる（会話で利用者に聞いてから使う）")
     p.add_argument("--home", help=f"データの置き場（既定: ${ENV_HOME} または ~/.quick-slide）")
     p.add_argument("--repo", help=f"実体のあるリポジトリ（この実行だけ。{ENV_REPO} より優先）")
     p.add_argument("--server-timeout", type=float, default=30.0, help="サーバの起動を待つ秒数")

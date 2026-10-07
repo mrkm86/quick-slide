@@ -1,7 +1,7 @@
 {
   "name": "quick-slide",
   "version": "2.0.0",
-  "description": "台本（資料用の JSON）から16:9の日本語スライドを作るQuick Slide。編集できて動く PPTX（html-slide）と、画像生成で1枚ずつ描く資料（image-slide）。",
+  "description": "会話から16:9の日本語スライドを作って直すQuick Slide。3つのスキル: quick-slide（会話の入口。原稿を整えてローカルの画面に渡し、ページを指定して直し、PPTX・PDF を書き出す）・html-slide（編集できて動く PPTX を組むエンジン）・image-slide（画像生成で1枚ずつ描くエンジン）。",
   "author": {
     "name": "Quick Slide"
   },
@@ -21,18 +21,21 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Quick Slide",
-    "shortDescription": "台本から16:9の日本語スライド（資料・プレゼン・パワポ）を作る",
-    "longDescription": "Quick Slide は、台本（資料用の JSON）から16:9の日本語スライドを作るプラグインです。html-slide は文字も図形も PowerPoint の部品として組んだ、あとから直せて動く PPTX を作ります。image-slide は同じ台本を画像生成で1枚ずつ丸ごと描いた資料にします。どちらも PDF・ページごとの画像・サムネイル一覧を出せます。",
+    "shortDescription": "会話から16:9の日本語スライド（資料・プレゼン・パワポ）を作って直す",
+    "longDescription": "Quick Slide は、会話の続きから16:9の日本語スライドを作り、ブラウザの画面でページを指定して直し、PPTX・PDF に書き出すプラグインです。スキル quick-slide が会話を原稿に整えてローカルのサーバに渡し、台本係（Claude Code か Codex）が台本を書きます。描くのは 2 つのエンジンで、html-slide は文字も図形も PowerPoint の部品として組んだ、あとから直せて動く PPTX を、image-slide は同じ台本を画像生成（ChatGPT のサブスク枠の Codex）で1枚ずつ描いた資料を作ります。初めて使う前に quick_slide_setup.py --doctor で足りないものを確かめ、--setup で入れます。",
     "developerName": "Quick Slide",
     "category": "Productivity",
     "capabilities": [
-      "台本から編集できて動く PPTX を作る（html-slide）",
-      "同じ台本を画像生成で1枚ずつ描いた資料にする（image-slide）",
-      "PDF・ページごとの画像・サムネイル一覧を出す"
+      "会話からスライドを作り、画面の URL を返す（quick-slide）",
+      "ページを指定して直す・版から戻す・並べ替える・隠す",
+      "編集できて動く PPTX を組む（html-slide）",
+      "同じ台本を画像生成で1枚ずつ描く（image-slide）",
+      "画面の回の PPTX・PDF・ページの画像を書き出す"
     ],
     "defaultPrompt": [
-      "この内容を html-slide でスライドにして。",
-      "この台本を image-slide で絵の資料にして。"
+      "この内容をスライドにして。",
+      "この話を提案資料にまとめて。構成を先に見せて。",
+      "3枚目の見出しを短くして。"
     ]
   }
 }

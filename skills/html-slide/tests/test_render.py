@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """描き出し係（extract.mjs・pptx_writer・from_video・verify）のテスト。`python3 test_render.py <名前>` で1本ずつ走る。
 
-- Chrome（~/.cache/puppeteer）と puppeteer-core（~/.cache/html-video/node_modules）は手元に入っているものを使う。ネットワークは使わない
+- Chrome と puppeteer-core は手元に入っているものを scripts/browser.py が探して使う（ADR 0016）。ネットワークは使わない
 - HTML は fixtures/contract-ok.html（決まりに沿った3枚）と fixtures/contract-bad.html（違反入り）
 - from_video は Chrome を通さず、作った部品 JSON と台本で規則だけを見る
 - PPTX は一時フォルダに書いて消す

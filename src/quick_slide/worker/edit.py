@@ -11,7 +11,8 @@
 | visibility | 非表示 / 表示（台本の `_hidden`。エンジンに渡す台本からは抜く） | 呼ばない |
 | reorder | 並べ替え | 呼ばない |
 | restore | 版スタックの前の姿に戻す（その回の台本のページの中身に戻し、絵だけが違ったなら、その回の絵をエンジンが読む場所へ戻す） | 呼ばない |
-| render | いまの台本で描き直す（止まった回の再開） | 呼ばない |
+| render | いまの台本で描き直す（止まった回の再開・書き出す形式が見せる回に無いとき） | 呼ばない |
+| rebuild | 設定を替えて組み直す（いまの台本を、いまのブランド・スタイル・書式で。P5） | 呼ばない |
 """
 
 from __future__ import annotations
@@ -24,10 +25,10 @@ from pathlib import Path
 from typing import Any
 
 from ..childenv import child_env
-from ..engines import engine_for
+from ..engines import RC_DEPENDENCY, engine_for
 from ..render import look as LOOK
 from ..render import workspace as W
-from ..render.runner import check_prerequisites
+from ..render.runner import DEPENDENCY_MESSAGE, DOCTOR_HINT, check_prerequisites
 from ..scriptdoc import (
     HIDDEN_KEY,
     deep,
@@ -121,7 +122,9 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
             result = _reorder(ctx, deck_id, req, data)
         elif op == "restore":
             result = _restore(ctx, deck_id, req, data, engine.mode, args)
-        elif op == "render":
+        elif op in ("render", "rebuild"):
+            # 描き直し（再開・書き出しの形式が無いとき）と、設定を替えて組み直す（P5）。どちらも台本はそのまま、
+            # 設定（ブランド・スタイル・書式）はこの回の最初に読み直してある（settle_look）。描いた絵はキャッシュから
             result = EditResult(data=data, plan=RenderPlan())
         else:
             return fail("知らない直しです。", "edit")
@@ -310,8 +313,9 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
             previous = answer
             problems = _engine_problems(checked.problems or ["NG: 検査で止まった（理由の行が取れなかった）"], result.data)
             continue
-        return fail("台本を確かめられませんでした（エンジンの検査が動きませんでした）。導入の手順を確かめてください。", "check",
-                    checked.rc)
+        if checked.rc == RC_DEPENDENCY:
+            return fail(DEPENDENCY_MESSAGE, "dependency", checked.rc)
+        return fail("台本を確かめられませんでした（エンジンの検査が動きませんでした）。" + DOCTOR_HINT, "check", checked.rc)
     return fail(f"直した台本を {rounds} 回確かめましたが、エンジンの決まりに合いませんでした。指示を短くするか、もう一度頼んでください。",
                 "script")
 

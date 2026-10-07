@@ -28,15 +28,20 @@ from typing import Any
 
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, RC_OK, RC_PARTIAL, RC_SCRIPT, Engine
+from ..paths import SKILLS_DIR
 from ..worker.proc import run_process
 from ..worker.tools import Tools
 
 CHECK_TIMEOUT_SECONDS = 300.0
 
+# 導入の確かめと入れる口（skills/quick-slide/scripts/quick_slide_setup.py）。止まっている帯の文がこれを言う
+SETUP_SCRIPT = SKILLS_DIR / "quick-slide" / "scripts" / "quick_slide_setup.py"
+DOCTOR_HINT = f"足りないものは `python3 {SETUP_SCRIPT} --doctor` で分かります（会話で「Quick Slide の導入を確かめて」と頼んでも同じ）。"
 CODEX_LOGIN_MESSAGE = ("画像を描く Codex にログインできていません（または見つかりません）。"
-                       "ターミナルで `codex login`（ChatGPT でログイン）をしてから、もう一度頼んでください。")
-DEPENDENCY_MESSAGE = ("描くのに要るもの（Node・Chrome など）が足りません。導入の手順"
-                      "（skills/html-slide/references/deploy.md）のとおりに入れてから、もう一度頼んでください。")
+                       "ターミナルで `codex login`（ChatGPT でログイン）をしてから、もう一度頼んでください。" + DOCTOR_HINT)
+DEPENDENCY_MESSAGE = ("描くのに要るもの（Node・puppeteer-core・Chrome など）が足りません。"
+                      f"`python3 {SETUP_SCRIPT} --doctor` で足りないものを確かめ、`--setup` で入れてから"
+                      "（会話で「Quick Slide の導入をして」と頼んでも入ります）、もう一度頼んでください。")
 AUTH_TIMEOUT_SECONDS = 120.0
 
 _PITCH_PLAN = re.compile(r"^(\d+)枚（描く (\d+)・使い回す (\d+)）")
@@ -76,11 +81,37 @@ class Prerequisites:
     failure_kind: str | None = None
 
 
+def browser_missing(*, tools: Tools, home: Path, cwd: Path, stop: threading.Event | None = None) -> list[str] | None:
+    """プレゼン（html-slide）が Chrome で組むのに要るもの（Node・puppeteer-core・Chrome）のうち足りないもの。
+    エンジンの `browser.py`（在りかの探し方の正本）に聞く。聞けなければ None（描くときの rc=4 で分かる）。"""
+    probe = tools.skills_dir / "html-slide" / "scripts" / "browser.py"
+    if not probe.is_file():
+        return None
+    r = run_process([tools.python, str(probe)], cwd=cwd, env=child_env(home=home, extra=tools.extra_env),
+                    timeout=AUTH_TIMEOUT_SECONDS, stop=stop)
+    if r.rc != RC_OK or r.launch_error or r.timed_out or r.stopped:
+        return None
+    try:
+        data = json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return [k for k in ("node", "node_modules", "chrome") if not (data.get(k) or {}).get("ok")]
+
+
 def check_prerequisites(engine: Engine, *, tools: Tools, home: Path, cwd: Path,
                         stop: threading.Event | None = None) -> Prerequisites:
-    """描く前に 1 回だけ確かめる（ピッチは `image_slide.py auth`。プレゼンは描くときの rc=4 で分かる）。"""
+    """描く前に 1 回だけ確かめる。台本係を呼ぶ前なので、描けないのにサブスクの枠を使わない。
+    ピッチは `image_slide.py auth`（Codex のログイン）。プレゼンは Chrome で組む道具が揃っているか（P5）。"""
     cmd = engine.auth_command(tools.python, tools.skills_dir)
     if cmd is None:
+        if engine.mode == "presentation":
+            cwd.mkdir(parents=True, exist_ok=True)
+            lack = browser_missing(tools=tools, home=home, cwd=cwd, stop=stop)
+            if lack:
+                return Prerequisites(False, RC_DEPENDENCY, DEPENDENCY_MESSAGE, "dependency")
+            return Prerequisites(True, None if lack is None else 0)
         return Prerequisites(True, None)
     cwd.mkdir(parents=True, exist_ok=True)
     r = run_process(cmd, cwd=cwd, env=child_env(home=home, extra=tools.extra_env), timeout=AUTH_TIMEOUT_SECONDS,

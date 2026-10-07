@@ -1,0 +1,189 @@
+"""P5: 導入の確かめ（`--doctor`）と入れる（`--setup`）。`skills/quick-slide/scripts/quick_slide_setup.py`。
+
+使い捨ての HOME と、本物の python・node だけの PATH で走らせる（本物の claude・codex は PATH に入れない）。
+npm と Chrome を入れる道具（`@puppeteer/browsers`）は偽物にして、ネットワークに出ない。本物を入れる通しは
+`test_p5_fresh_machine.py`（任意）。
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import textwrap
+import unittest
+from pathlib import Path
+
+from helpers import FAKES, REPO, temp_dir
+
+SETUP = REPO / "skills" / "quick-slide" / "scripts" / "quick_slide_setup.py"
+START = REPO / "skills" / "quick-slide" / "scripts" / "quick_slide_start.py"
+FAKE_CODEX = REPO / "skills" / "image-slide" / "tests" / "fake_codex.py"
+
+
+def tool_dirs() -> list[str]:
+    """本物の python3・node・npm の在りか（PATH に入れる。claude・codex のある場所は入れない）。"""
+    out = []
+    for name in ("python3", "node"):
+        p = shutil.which(name)
+        if p and str(Path(p).parent) not in out:
+            out.append(str(Path(p).parent))
+    return out + ["/usr/bin", "/bin"]
+
+
+class SetupBase(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = temp_dir(self, "qs-setup-")
+        self.home = self.tmp / "home"
+        self.home.mkdir()
+        self.qs = self.home / ".quick-slide"
+        self.fakebin = self.tmp / "bin"
+        self.fakebin.mkdir()
+
+    def env(self, **extra: str) -> dict[str, str]:
+        env = {"HOME": str(self.home), "PATH": os.pathsep.join([str(self.fakebin), *tool_dirs()]),
+               "LANG": "ja_JP.UTF-8", "PYTHONDONTWRITEBYTECODE": "1", "TMPDIR": str(self.tmp),
+               "IMAGE_SLIDE_CODEX": str(FAKE_CODEX), "FAKE_CODEX_LOG": str(self.tmp / "codex-log"),
+               "QUICK_SLIDE_CLAUDE": str(FAKES / "fake_claude.py")}
+        env.update(extra)
+        return env
+
+    def run_tool(self, *args: str, script: Path = SETUP, **extra: str) -> tuple[int, str, dict]:
+        r = subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, env=self.env(**extra),
+                           timeout=120, stdin=subprocess.DEVNULL)
+        last = json.loads(r.stdout.strip().splitlines()[-1])
+        return r.returncode, r.stdout, last
+
+    def checks(self, out: dict) -> dict[str, dict]:
+        return {c["id"]: c for c in out["checks"]}
+
+
+@unittest.skipIf(shutil.which("node") is None, "node が無い")
+class DoctorTests(SetupBase):
+    def test_doctor_on_a_fresh_home_says_what_is_missing_and_writes_nothing(self) -> None:
+        rc, text, out = self.run_tool("--doctor")
+        self.assertEqual(rc, 4, text)
+        self.assertEqual(out["status"], "doctor")
+        c = self.checks(out)
+        for key in ("python", "package:python-pptx", "package:lxml", "package:Pillow", "package:PyYAML", "node",
+                    "puppeteer-core", "chrome", "font", "codex", "codex_login", "writer", "home", "port"):
+            self.assertIn(key, c)
+        self.assertEqual((c["puppeteer-core"]["level"], c["chrome"]["level"]), ("ng", "ng"))
+        self.assertIn(str(self.qs / "engines" / "html-slide"), c["chrome"]["detail"])
+        self.assertEqual(c["codex_login"]["level"], "ok", "偽物の codex は ChatGPT でログイン済みと答える")
+        self.assertEqual(c["writer"]["found"], ["claude"])
+        self.assertFalse(out["ready"]["presentation"])
+        self.assertIn("--setup", out["setup"])
+        self.assertIn("足りない", text)
+        self.assertFalse(self.qs.exists(), "doctor は何も書かない")
+        # 本物の claude・codex の名前の出力（ログインの文）をそのまま出さない
+        self.assertNotIn("Logged in", text)
+
+    def test_doctor_sees_tools_given_by_environment(self) -> None:
+        nm = self.tmp / "nm" / "node_modules"
+        (nm / "puppeteer-core").mkdir(parents=True)
+        chrome = self.tmp / "chrome-bin"
+        chrome.write_text("")
+        rc, text, out = self.run_tool("--doctor", HTML_SLIDE_NODE_MODULES=str(nm), HTML_SLIDE_CHROME=str(chrome))
+        c = self.checks(out)
+        self.assertEqual((c["puppeteer-core"]["level"], c["puppeteer-core"]["source"]), ("ok", "env"))
+        self.assertEqual((c["chrome"]["level"], c["chrome"]["source"]), ("ok", "env"))
+
+    def test_codex_logged_out_and_no_writer(self) -> None:
+        rc, text, out = self.run_tool("--doctor", FAKE_CODEX_LOGGEDOUT="1", QUICK_SLIDE_CLAUDE="")
+        c = self.checks(out)
+        self.assertEqual(c["codex_login"]["level"], "ng")
+        self.assertIn("codex login", c["codex_login"]["fix"])
+        self.assertEqual(c["writer"]["level"], "ng")
+
+    def test_the_start_script_runs_the_doctor_too(self) -> None:
+        rc, text, out = self.run_tool("--doctor", script=START)
+        self.assertEqual((rc, out["status"]), (4, "doctor"))
+        self.assertFalse(list((REPO / "skills" / "quick-slide" / "scripts").glob("__pycache__")))
+
+
+@unittest.skipIf(shutil.which("node") is None, "node が無い")
+class SetupTests(SetupBase):
+    def fake_npm(self) -> Path:
+        """偽物の npm: `install --prefix <P> … puppeteer-core` で <P>/node_modules/puppeteer-core と、Chrome を入れる偽物の
+        `.bin/browsers` を作る。呼ばれた引数を書く。"""
+        tag_py = textwrap.dedent('''
+            import platform, sys
+            m = platform.machine().lower()
+            if sys.platform == "darwin":
+                tag, pre = ("mac-arm64", "mac_arm") if m in ("arm64", "aarch64") else ("mac-x64", "mac")
+            else:
+                tag, pre = ("linux64", "linux")
+        ''')
+        browsers = self.tmp / "browsers.py"
+        browsers.write_text("#!" + sys.executable + "\n" + tag_py + textwrap.dedent('''
+            import json, os, pathlib
+            args = sys.argv[1:]
+            pathlib.Path(os.environ["FAKE_NPM_LOG"]).open("a").write(json.dumps(["browsers", *args]) + "\\n")
+            assert args[:2] == ["install", "chrome-headless-shell@stable"], args
+            root = pathlib.Path(args[args.index("--path") + 1])
+            exe = root / "chrome-headless-shell" / f"{pre}-150.0.1" / f"chrome-headless-shell-{tag}" / "chrome-headless-shell"
+            exe.parent.mkdir(parents=True, exist_ok=True)
+            exe.write_text("")
+            exe.chmod(0o755)
+        '''), encoding="utf-8")
+        browsers.chmod(0o755)
+        npm = self.fakebin / "npm"
+        npm.write_text("#!" + sys.executable + "\n" + textwrap.dedent(f'''
+            import json, os, pathlib, sys
+            args = sys.argv[1:]
+            pathlib.Path(os.environ["FAKE_NPM_LOG"]).open("a").write(json.dumps(["npm", *args]) + "\\n")
+            assert args[0] == "install" and "-g" not in args and "--global" not in args, args
+            prefix = pathlib.Path(args[args.index("--prefix") + 1])
+            nm = prefix / "node_modules"
+            (nm / "puppeteer-core").mkdir(parents=True, exist_ok=True)
+            (nm / ".bin").mkdir(exist_ok=True)
+            link = nm / ".bin" / "browsers"
+            link.write_bytes(pathlib.Path({str(browsers)!r}).read_bytes())
+            link.chmod(0o755)
+        '''), encoding="utf-8")
+        npm.chmod(0o755)
+        return npm
+
+    def test_setup_without_yes_only_shows_the_plan(self) -> None:
+        self.fake_npm()
+        rc, text, out = self.run_tool("--setup", FAKE_NPM_LOG=str(self.tmp / "npm-log"))
+        self.assertEqual(rc, 4)
+        self.assertEqual(out["installed"], [])
+        self.assertEqual(out["planned"], ["puppeteer-core", "chrome"])
+        self.assertIn("npm install --prefix", text)
+        self.assertFalse((self.tmp / "npm-log").exists(), "聞かずに入れない")
+        self.assertFalse(self.qs.exists())
+
+    def test_setup_yes_installs_into_the_quick_slide_home_only(self) -> None:
+        self.fake_npm()
+        log = self.tmp / "npm-log"
+        rc, text, out = self.run_tool("--setup", "--yes", FAKE_NPM_LOG=str(log))
+        calls = [json.loads(line) for line in log.read_text().splitlines()]
+        engine = self.qs / "engines" / "html-slide"
+        self.assertEqual(calls[0][:4], ["npm", "install", "--prefix", str(engine / "node")])
+        self.assertEqual(calls[1][:3], ["browsers", "install", "chrome-headless-shell@stable"])
+        self.assertEqual(calls[1][-1], str(engine / "chrome"))
+        self.assertEqual([d["id"] for d in out["installed"]], ["puppeteer-core", "chrome"])
+        self.assertTrue(all(d["ok"] for d in out["installed"]), out["installed"])
+        c = self.checks(out)
+        self.assertEqual((c["puppeteer-core"]["level"], c["puppeteer-core"]["source"]), ("ok", "quick-slide"))
+        self.assertEqual((c["chrome"]["level"], c["chrome"]["source"]), ("ok", "quick-slide"))
+        self.assertEqual(out["ready"]["presentation"], c["font"]["level"] != "ng")
+        # 入れたのは Quick Slide の置き場の中だけ（HOME の直下に .npm・.cache などを作らない＝偽物なので作らない）
+        made = sorted(p.name for p in self.home.iterdir())
+        self.assertEqual(made, [".quick-slide"])
+        # 2 回目は入れるものが無い
+        rc2, text2, out2 = self.run_tool("--setup", "--yes", FAKE_NPM_LOG=str(log))
+        self.assertEqual(out2["installed"], [])
+        self.assertEqual(len(log.read_text().splitlines()), 2)
+
+    def test_yes_alone_is_an_input_error(self) -> None:
+        rc, _, out = self.run_tool("--yes")
+        self.assertEqual((rc, out["code"]), (2, "yes_without_setup"))
+
+
+if __name__ == "__main__":
+    unittest.main()

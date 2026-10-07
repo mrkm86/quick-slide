@@ -20,6 +20,7 @@ from .brands import BrandsMixin
 from .decks import DecksMixin
 from .edits import EditsMixin
 from .events import EventsMixin
+from .exports import ExportsMixin
 from .intakes import IntakesMixin
 from .launches import LaunchesMixin
 from .management import DeckManagementMixin
@@ -30,6 +31,7 @@ from .views import DeckViewsMixin
 
 
 class Store(
+    ExportsMixin,
     IntakesMixin,
     EditsMixin,
     RunsMixin,

@@ -1,6 +1,6 @@
 ---
 name: quick-slide
-description: Quick Slide で会話の続きからスライドを作り、会話から直す。ユーザーが「スライドにして」「資料にまとめて」「プレゼンを作って」「パワポにして」「企画書/提案書/説明資料にして」「デッキにして」「ピッチ資料にして」「〇〇について調べて5ページぐらいでまとめて」、または make slides / build a deck / turn this into a presentation のように言ったら、ツール名が出てこなくても使う。作ったスライドについて「7・8枚目を直して」「この絵を夜に」「見出しを短く」と言われたときも使う。人に見せる資料は構成（ページごとの見出しと要点）を会話で合意してから描き、自分が知るための「調べてまとめて」は調べてそのまま描く。会話の内容を原稿に整え、ローカルの Quick Slide（未起動なら自分で起動する）に投入し、スライドの画面の URL を会話に返す。台本を書き（Claude Code か Codex）、検査して、エンジン（html-slide・image-slide）が描くところまでは Quick Slide が自分で進める。
+description: Quick Slide で会話の続きからスライドを作り、会話から直す。この機械で初めて使うとき・「足りない」と言われたときは導入の確かめ（--doctor）と、利用者に聞いてからの導入（--setup）もする。ユーザーが「スライドにして」「資料にまとめて」「プレゼンを作って」「パワポにして」「企画書/提案書/説明資料にして」「デッキにして」「ピッチ資料にして」「〇〇について調べて5ページぐらいでまとめて」、または make slides / build a deck / turn this into a presentation のように言ったら、ツール名が出てこなくても使う。作ったスライドについて「7・8枚目を直して」「この絵を夜に」「見出しを短く」と言われたときも使う。人に見せる資料は構成（ページごとの見出しと要点）を会話で合意してから描き、自分が知るための「調べてまとめて」は調べてそのまま描く。会話の内容を原稿に整え、ローカルの Quick Slide（未起動なら自分で起動する）に投入し、スライドの画面の URL を会話に返す。台本を書き（Claude Code か Codex）、検査して、エンジン（html-slide・image-slide）が描くところまでは Quick Slide が自分で進める。
 ---
 
 # Quick Slide（会話から 1 冊・会話から直す）
@@ -20,6 +20,37 @@ description: Quick Slide で会話の続きからスライドを作り、会話�
 5. **会話で見つけていない数字は足さない。** 調べてまとめるときも、見つけた資料に書いてある数字だけを使い、出典を添える
 
 ## 手順
+
+### 導入を確かめる（この機械で初めて使うとき・足りないと言われたとき）
+
+次のどれかのときは、投入の前に**導入の確かめ**を走らせる（何も書かない・数秒）:
+
+- この機械で初めて Quick Slide を使う（データの置き場 `~/.quick-slide/` がまだ無い）
+- 投入・直しの答えや画面の止まっている帯が「描くのに要るもの（Node・puppeteer-core・Chrome など）が足りません」
+  「Codex にログインできていません」と言った（エンジンの rc=4）
+- 利用者が「導入して」「セットアップして」「動かない」と言った
+
+```bash
+python3 "${SKILL_DIR}/scripts/quick_slide_setup.py" --doctor
+```
+
+最終行の JSON の `checks[]`（`level` が `ng` のもの）と `ready`（presentation・pitch・images）を読む。
+
+1. **`ng` を利用者に伝え、入れてよいか聞く。** 入れるのは管理者の権限が要らないものだけで、置き場は Quick Slide の中
+   （`~/.quick-slide/engines/html-slide/` の puppeteer-core と Chrome の headless shell・Python のパッケージは `pip --user`）。
+   ダウンロードが数百 MB あることも言う
+2. 承知されたら `--setup --yes` を流す（聞かずに流さない。`--yes` を付けないと計画を出して止まる）
+
+   ```bash
+   python3 "${SKILL_DIR}/scripts/quick_slide_setup.py" --setup --yes
+   ```
+
+3. **Quick Slide が入れないもの**（出力の `manual`）は、コマンドを会話に書いて利用者にしてもらう:
+   Node（nodejs.org か `brew install node`）・`codex` CLI（`npm install -g @openai/codex`）・ログイン（`codex login`。
+   ChatGPT で）・PowerPoint の游ゴシックが無い機体の字体（html-slide の設定の `fonts:`）。**ログインを代わりにしない**
+4. もう一度 `--doctor` を流し、使いたいモードの `ready` が真になったら投入に進む
+
+`quick_slide_start.py --doctor`・`--setup [--yes]` でも同じものが走る。
 
 ### 0. 最初の 1 冊の作り方を決める（2 つ）
 
@@ -180,6 +211,12 @@ python3 "${SKILL_DIR}/scripts/quick_slide_start.py" --revise --pages 7,8 --note 
   `--wait` のときは `pages`・`summary`・`suggestions` も
 - **URL はいつも会話に残す**（`url` は起動のトークンの付かない、何度でも開ける URL）
 - 前の姿に戻したい・ページを足す・並べ替える・隠す・複製するは、画面でできる（版スタックの前の版を押す・ページの間の「＋」・左の一覧を掴む・ページの「⋮」）
+- 色・ロゴ・スタイルを替えて組み直したいときは、画面の右上の「⋮」→「設定を替えて組み直す」（台本は変えない。プレゼンは描いた絵をそのまま使う）
+
+### 6. 書き出す
+
+PPTX・PDF は**画面の右上のボタン**で書き出す（画面に出ている回のファイルがそのまま落ちる。名前はスライドの題）。
+非表示のページは入らない。会話から頼まれたら、URL を書いて「画面の右上の PDF・PPTX のボタンで書き出せます」と伝える。
 
 ## まだできないこと
 
@@ -199,6 +236,7 @@ python3 "${SKILL_DIR}/scripts/quick_slide_start.py" --revise --pages 7,8 --note 
 | `code: pages_invalid` / `no_pages` | ページの番号が範囲の外・まだページが無い。返った `url` を会話に書き、番号を確かめてもらう |
 | `code: wait_timeout` | まだ描いている。`url` を会話に書き、画面で進みを見てもらう（仕事は止まっていない） |
 | `status: revise_failed` / `result: failed` | `result_message`（サーバの 1 文）をそのまま伝える |
+| 「描くのに要るもの（Node・Chrome など）が足りません」・`dependency` | 上の「導入を確かめる」。`--doctor` → 利用者に聞いて `--setup --yes` |
 | 画面に「ログインできていません」の帯 | 台本を書く CLI（`claude` は /login、`codex` は `codex login`）か、絵を描く Codex（`codex login`）のログインが切れている。帯の文のとおりに伝える |
 
 ## 秘匿

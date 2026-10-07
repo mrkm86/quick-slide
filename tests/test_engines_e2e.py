@@ -8,13 +8,12 @@
 
 from __future__ import annotations
 
+import json
 import os
-import shutil
 import unittest
-from pathlib import Path
 from unittest import mock
 
-from helpers import fake_tools, intake_payload, start_server, wait_until_idle, writer_calls
+from helpers import SKILLS_DIR, fake_tools, intake_payload, start_server, wait_until_idle, writer_calls
 
 from quick_slide.childenv import API_KEY_VARS
 from quick_slide.settings import Settings, WorkerSettings
@@ -23,14 +22,18 @@ KEYS = {name: "sk-should-never-reach-the-child-0123456789" for name in API_KEY_V
 
 
 def html_slide_ready() -> str | None:
-    """html-slide が描ける機械か（Node・puppeteer-core・Chrome。置き方は skills/html-slide/references/deploy.md）。"""
-    if shutil.which("node") is None:
-        return "node が無い"
-    if not (Path.home() / ".cache" / "puppeteer").is_dir():
-        return "Chrome（~/.cache/puppeteer）が無い"
-    if not (Path.home() / ".cache" / "html-video" / "node_modules" / "puppeteer-core").is_dir():
-        return "puppeteer-core が無い"
-    return None
+    """html-slide が描ける機械か（Node・puppeteer-core・Chrome。在りかはエンジンの `browser.py` が探す・ADR 0016）。"""
+    import subprocess
+    import sys
+
+    r = subprocess.run([sys.executable, str(SKILLS_DIR / "html-slide" / "scripts" / "browser.py")], capture_output=True,
+                       text=True, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, timeout=60)
+    try:
+        found = json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return "browser.py が答えない"
+    lack = [k for k in ("node", "node_modules", "chrome") if not found[k]["ok"]]
+    return f"{'・'.join(lack)} が無い" if lack else None
 
 
 class BothModesEndToEndTests(unittest.TestCase):

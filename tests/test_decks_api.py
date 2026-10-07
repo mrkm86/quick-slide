@@ -90,11 +90,11 @@ class ReadApiTests(unittest.TestCase):
                 self.assertEqual(set(cap), {"available", "label", "reason"}, key)
                 self.assertFalse(cap["available"], key)
                 self.assertTrue(cap["reason"], key)
-            # 直す口は P3 からある。ページが無いうちは「ページが無い」と言う。書き出しは P5 まで「まだ」
+            # 直す口は P3 から、書き出し・設定を替えて組み直すは P5 からある。ページが無いうちは「ページが無い」と言う
             for key in ("deck_instruction", "page_instruction", "pages_instruction", "regenerate", "adopt_version",
-                        "insert_page", "reorder_pages", "duplicate_page", "page_visibility"):
+                        "insert_page", "reorder_pages", "duplicate_page", "page_visibility", "export", "rebuild"):
                 self.assertEqual(caps[key]["reason"], "まだページがありません。ページができるまでお待ちください。", key)
-            self.assertEqual(caps["export"]["reason"], NOT_READY_REASON)
+            self.assertEqual(caps["generate"]["reason"], NOT_READY_REASON)
             self.assertEqual(caps["resume"]["reason"], "描き直すものはありません。")
 
     def test_progress_has_every_key_the_screen_reads(self) -> None:
@@ -342,7 +342,7 @@ class TrashInterruptedTests(unittest.TestCase):
 
 
 class NotReadyRoutesTests(unittest.TestCase):
-    """まだ無い口（ページの削除・書き出し P5・v1 の企画の口）は残し、v1 と同じエラーの形で「まだ使えない」と答える。
+    """まだ無い口（ページの削除・v1 の企画の口）は残し、v1 と同じエラーの形で「まだ使えない」と答える。
     成功したふりをしない。P3 で作った直す口は、ページの無いデッキには「ページが無い」と断る。"""
 
     def setUp(self) -> None:
@@ -351,10 +351,10 @@ class NotReadyRoutesTests(unittest.TestCase):
 
     def test_every_later_route_answers_not_ready(self) -> None:
         d, s = self.deck["id"], str(uuid.uuid4())
-        posts = [f"/api/decks/{d}/pages/{s}/remove", f"/api/decks/{d}/exports",
+        posts = [f"/api/decks/{d}/pages/{s}/remove",
                  f"/api/decks/{d}/instructions/{s}/generate", f"/api/decks/{d}/plans/{s}/approve",
                  f"/api/decks/{d}/generate"]
-        gets = [f"/api/decks/{d}/plan", f"/api/exports/{s}/file"]
+        gets = [f"/api/decks/{d}/plan"]
         for path in posts:
             r = self.fx.post(path, {"text": "x"})
             self.assertEqual((r.status, r.error_code), (503, "not_ready_in_v2"), path)

@@ -18,11 +18,18 @@ from pathlib import Path
 from typing import Any
 
 from ..childenv import child_env
-from ..engines import Engine, engine_for, engine_marker
+from ..engines import RC_DEPENDENCY, Engine, engine_for, engine_marker
 from ..paths import DataRoot
 from ..render import look as LOOK
 from ..render import workspace as W
-from ..render.runner import RenderOutcome, check_prerequisites, check_script, render_deck
+from ..render.runner import (
+    DEPENDENCY_MESSAGE,
+    DOCTOR_HINT,
+    RenderOutcome,
+    check_prerequisites,
+    check_script,
+    render_deck,
+)
 from ..scriptdoc import (
     engine_view,
     one_page,
@@ -370,7 +377,8 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
             previous, problems = data, result.problems or ["NG: 検査で止まった（理由の行が取れなかった）"]
             log.info("run %s: 台本の検査で止まった（%d 回目・%d 行）", run_id, round_no, len(problems))
             continue
-        return fail("台本を確かめられませんでした（エンジンの検査が動きませんでした）。導入の手順を確かめてください。", "check",
-                    result.rc)
+        if result.rc == RC_DEPENDENCY:
+            return fail(DEPENDENCY_MESSAGE, "dependency", result.rc)
+        return fail("台本を確かめられませんでした（エンジンの検査が動きませんでした）。" + DOCTOR_HINT, "check", result.rc)
     return fail(f"台本を {rounds} 回書き直しましたが、エンジンの決まりに合いませんでした。原稿を短くするか、もう一度頼んでください。",
                 "script")

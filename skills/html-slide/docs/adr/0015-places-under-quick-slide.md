@@ -20,4 +20,4 @@
 
 ## 残したこと
 
-- puppeteer-core を html-video の置き場（`~/.cache/html-video/node_modules/`）から借りている。Quick Slide v2 の導入の手順で用意する
+- puppeteer-core を別の道具の置き場（`~/.cache/html-video/node_modules/`）から借りていた。ADR 0016 で在りかの探し方を決めた（その置き場は最後の候補として残す）

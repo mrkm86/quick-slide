@@ -3,8 +3,8 @@
 //
 //   node snapshot.mjs <deck.html> <出力ディレクトリ|-> [--only 3,5] [--pdf <deck.pdf>]
 //
-// 出力は <出力ディレクトリ>/slide-01.png …（- なら撮らない）。node_modules は ~/.cache/html-video/node_modules（puppeteer-core）を、
-// Chrome は ~/.cache/puppeteer/chrome-headless-shell の一番新しい版を使う（どちらもネットワークに出ない）
+// 出力は <出力ディレクトリ>/slide-01.png …（- なら撮らない）。puppeteer-core と Chrome は呼ぶ側（browser.py）が探して
+// 環境変数で渡す（渡されなければ ~/.cache/html-video/node_modules と ~/.cache/puppeteer の一番新しい版。ネットワークに出ない）
 // 文字のはみ出し（scrollWidth・scrollHeight が箱より大きい）と section の外に出る要素は、撮るついでに警告する
 import { createRequire } from "node:module";
 import fs from "node:fs";
@@ -13,8 +13,10 @@ import path from "node:path";
 import url from "node:url";
 
 const HOME = os.homedir();
-const require = createRequire(path.join(HOME, ".cache/html-video/node_modules/"));
-const puppeteer = require("puppeteer-core");
+// puppeteer-core と Chrome の在りかは呼ぶ側（browser.py）が環境変数で渡す（ADR 0016）。無ければ前からの置き場
+const NM = process.env.HTML_SLIDE_NODE_MODULES || path.join(HOME, ".cache/html-video/node_modules");
+const require = createRequire(import.meta.url);
+const puppeteer = require(path.join(NM, "puppeteer-core"));
 
 function chromePath() {
   if (process.env.HTML_SLIDE_CHROME) return process.env.HTML_SLIDE_CHROME;

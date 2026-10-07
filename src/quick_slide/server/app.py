@@ -854,6 +854,7 @@ def _two_uuid_route(prefix: str, name1: str, middle: str, name2: str, suffix: st
 # デッキ・設定の API（別モジュール）。Request / Response を参照するのでここで遅延 import する（循環回避）
 from . import deck_routes as _deck_routes  # noqa: E402
 from . import edit_routes as _edit_routes  # noqa: E402
+from . import export_routes as _export_routes  # noqa: E402
 from . import intake_routes as _intake_routes  # noqa: E402
 from . import later as _later  # noqa: E402
 from . import settings_routes as _settings_routes  # noqa: E402
@@ -888,8 +889,8 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"POST"}), _uuid_route("/api/launches/", "launch_id", "/attach"), QuickSlideServer._route_attach),
     (frozenset({"POST"}), _exact("/api/events/clipboard-copy"), QuickSlideServer._route_clipboard_copy),
     (frozenset({"GET"}), _uuid_route("/api/assets/", "asset_id", "/file"), QuickSlideServer._route_asset_file),
-    # 書き出しの配布（P5）
-    (frozenset({"GET"}), _uuid_route("/api/exports/", "export_id", "/file"), _not_ready),
+    # 書き出しの配布（P5。server/export_routes.py）
+    (frozenset({"GET"}), _uuid_route("/api/exports/", "export_id", "/file"), _export_routes.route_export_file),
     # --- デッキ管理（server/deck_routes.py）。POST は _route が 3 重検査を掛ける ---
     (frozenset({"GET"}), _exact("/api/vocabulary"), _deck_routes.route_vocabulary),
     (frozenset({"GET"}), _exact("/api/tags"), _deck_routes.route_tags),
@@ -921,9 +922,12 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/instructions"), _edit_routes.route_instructions),
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/resume"), _edit_routes.route_resume),
     (frozenset({"GET"}), _two_uuid_route("/api/decks/", "deck_id", "/jobs/", "job_id"), _edit_routes.route_job),
-    # --- まだ無い口（ページの削除・書き出し P5・v1 の企画の口）。口は残し、「まだ使えない」と答える ---
+    # --- 書き出し・設定を替えて組み直す（P5） ---
+    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/exports"), _export_routes.route_create_export),
+    (frozenset({"GET"}), _uuid_route("/api/decks/", "deck_id", "/look"), _edit_routes.route_look),
+    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/rebuild"), _edit_routes.route_rebuild),
+    # --- まだ無い口（ページの削除・v1 の企画の口）。口は残し、「まだ使えない」と答える ---
     (frozenset({"POST"}), _two_uuid_route("/api/decks/", "deck_id", "/pages/", "slide_id", "/remove"), _not_ready),
-    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/exports"), _not_ready),
     (frozenset({"POST"}), _two_uuid_route("/api/decks/", "deck_id", "/instructions/", "instruction_id", "/generate"),
      _not_ready),
     (frozenset({"GET"}), _uuid_route("/api/decks/", "deck_id", "/plan"), _not_ready),

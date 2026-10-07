@@ -9,6 +9,7 @@
 | 設定 | エンジン |
 |---|---|
 | ブランドの配色 | `--theme <回の控え>/settings/theme.yaml`（`palette.engine_theme`） |
+| ブランドの字体 | テーマの `font`・`font_files`（エンジンの設定の `fonts:` に字体ファイルがあるときだけ。`brand_font`・P5） |
 | ブランドのロゴ（使う種類の画像） | `--logo`（PNG・JPEG だけ。加工しない） |
 | ブランドの白いロゴ（`logo_white`） | `--logo-white`（ピッチだけ。縦横比がロゴと 2% 以内で合うときだけ） |
 | ロゴの角 | `--logo-position`（bottom-right・bottom-left・top-right） |
@@ -87,8 +88,10 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
     theme = palette.engine_theme(colors)
     settings_dir = root.run_settings_dir(run["deck_id"], run["id"])
     settings_dir.mkdir(parents=True, exist_ok=True)
+    # 字体の控え（使えなかった理由も）は記録の `font` に書く（付属のブランドの字体は名前だけなので毎回ここに出る）
+    font = brand_font(root, brand_cfg, engine.skill)
     theme_path = settings_dir / "theme.yaml"
-    theme_path.write_text(palette.theme_yaml(theme), encoding="utf-8")
+    theme_path.write_text(palette.theme_yaml(theme) + font_yaml(font), encoding="utf-8")
 
     # --- ブランド: ロゴ ---
     logo_cfg = brand_cfg.get("logo") or {}
@@ -133,6 +136,7 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
         "brand": {"id": brand_rev["brand_id"], "revision_id": brand_rev["id"], "revision": brand_rev["revision"]},
         "style": {"id": style_rev["style_id"], "revision_id": style_rev["id"], "revision": style_rev["revision"]},
         "theme": theme, "theme_file": str(theme_path),
+        "font": font,
         "theme_sha256": hashlib.sha256(theme_path.read_bytes()).hexdigest(),
         "logo": None if logo_path is None else {"path": str(logo_path), "sha256": logo_sha, "variant": variant},
         "logo_white": None if white_path is None else {"path": str(white_path), "sha256": white_sha},
@@ -141,6 +145,64 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
         "allowed_types": allowed, "overrides": overrides or None, "notes": notes,
     }
     return update, record
+
+
+ENGINE_DEFAULT_FONT = "Yu Gothic"
+DEFAULT_FONT_NAMES = {"yu gothic", "yugothic", "游ゴシック", "游ゴシック体"}
+_UNSAFE_FONT = set('"\\<>;{}')
+
+
+def brand_font(root: DataRoot, brand_cfg: dict[str, Any], skill: str) -> dict[str, Any]:
+    """ブランドの字体 → エンジンのテーマの `font`・`font_files`（P5）。
+
+    エンジンは字体の名前だけでは組めない（文字の幅を字体ファイルで測る・PNG に焼く）。だから**字体ファイルの在りかが
+    分かるときだけ**渡す: エンジンの設定（`engines/<スキル>/config.yaml`）の `fonts:` にその名前の regular（と bold）が
+    書いてあり、ファイルがあること。分からなければエンジンの既定（游ゴシック）のまま組み、回の記録（`look.font.note`）に理由を書く。
+    ブランドの字体は本文（`fonts.body`）の名前、無ければ見出し（`fonts.heading`）。代わりの名前（`fallback_families`）も順に見る。
+    戻り値: {"requested", "applied"（渡した名前か None）, "files"（regular・bold）, "note"}。
+    """
+    fonts = brand_cfg.get("fonts") if isinstance(brand_cfg.get("fonts"), dict) else {}
+    names: list[str] = []
+    for role in ("body", "heading"):
+        f = fonts.get(role) if isinstance(fonts.get(role), dict) else {}
+        for n in [f.get("requested_family"), *(f.get("fallback_families") or [])]:
+            if isinstance(n, str) and n.strip() and n.strip() not in names:
+                names.append(n.strip())
+    requested = names[0] if names else None
+    out: dict[str, Any] = {"requested": requested, "applied": None, "files": None, "note": None}
+    if requested is None or requested.lower() in DEFAULT_FONT_NAMES:
+        return out
+    from .caches import engine_config
+
+    configured = engine_config(root, skill).get("fonts")
+    configured = configured if isinstance(configured, dict) else {}
+    for name in names:
+        if name.lower() in DEFAULT_FONT_NAMES or name in ("sans-serif", "serif") or set(name) & _UNSAFE_FONT:
+            continue
+        spec = configured.get(name)
+        if not isinstance(spec, dict) or not spec.get("regular"):
+            continue
+        files = {k: str(Path(str(spec.get(k) or spec["regular"])).expanduser()) for k in ("regular", "bold")}
+        if all(Path(v).is_file() for v in files.values()):
+            out.update(applied=name, files=files)
+            if name != requested:
+                out["note"] = f"ブランドの字体 {requested} の字体ファイルが分からないので、代わりの {name} で組みます"
+            return out
+    out["note"] = (f"ブランドの字体 {requested} の字体ファイルが分からないので、エンジンの既定（{ENGINE_DEFAULT_FONT}）で組みます"
+                   f"（エンジンの設定の fonts: に字体ファイルの在りかを書けば使います）")
+    return out
+
+
+def font_yaml(font: dict[str, Any]) -> str:
+    """テーマの YAML に足す行（字体を渡すときだけ）。値は JSON の文字列（YAML の二重引用符の書き方と同じ）。"""
+    if not font.get("applied"):
+        return ""
+    import json
+
+    files = font["files"]
+    return (f"font: {json.dumps(font['applied'], ensure_ascii=False)}\n"
+            f"font_files:\n  regular: {json.dumps(files['regular'], ensure_ascii=False)}\n"
+            f"  bold: {json.dumps(files['bold'], ensure_ascii=False)}\n")
 
 
 def _current_revision(store: Any, kind: str, revision_id: str) -> dict[str, Any]:

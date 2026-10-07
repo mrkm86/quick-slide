@@ -15,8 +15,10 @@ import path from "node:path";
 import url from "node:url";
 
 const HOME = os.homedir();
-const require = createRequire(path.join(HOME, ".cache/html-video/node_modules/"));
-const puppeteer = require("puppeteer-core");
+// puppeteer-core と Chrome の在りかは呼ぶ側（browser.py）が環境変数で渡す（ADR 0016）。無ければ前からの置き場
+const NM = process.env.HTML_SLIDE_NODE_MODULES || path.join(HOME, ".cache/html-video/node_modules");
+const require = createRequire(import.meta.url);
+const puppeteer = require(path.join(NM, "puppeteer-core"));
 
 function chromePath() {
   if (process.env.HTML_SLIDE_CHROME) return process.env.HTML_SLIDE_CHROME;

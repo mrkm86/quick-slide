@@ -231,7 +231,7 @@ def engine_theme(colors: dict[str, Any]) -> dict[str, str]:
     | 強調色（accent。基本色と同じなら書かない＝エンジンが primary を使う） | accent |
     | 面の色（surface。人が上書きしたときだけ・文字が読めるときだけ） | surface |
     | 情報色（info）・成功/注意/エラー・主役色（淡/濃）・区切り線 | 渡さない（エンジンに役が無い・エンジンが作る） |
-    | 字体（fonts） | 渡さない（エンジンは字体ファイルの在りかが要る。既定の游ゴシックで組む） |
+    | 字体（fonts） | ここでは渡さない（`render/look.brand_font` が、字体ファイルの在りかが分かるときだけ font・font_files を足す） |
     """
     primary = _require_color(colors.get("primary"), "primary").upper()
     accent = _require_color(colors.get("accent"), "accent").upper()

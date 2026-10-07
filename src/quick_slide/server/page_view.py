@@ -268,6 +268,7 @@ def edit_capabilities(row: dict[str, Any], pages: list[dict[str, Any]], args: di
         "reorder_pages": cap("reorder_pages", structural, struct_reason),
         "duplicate_page": cap("duplicate_page", structural, struct_reason),
         "page_visibility": cap("page_visibility", structural, struct_reason),
-        "export": {"available": False, "label": labels["export"], "reason": NOT_READY_REASON},
+        "export": cap("export", has, pages_reason),
+        "rebuild": cap("rebuild", has, pages_reason),
         "generate": {"available": False, "label": labels["generate"], "reason": NOT_READY_REASON},
     }

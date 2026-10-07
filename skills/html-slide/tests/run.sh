@@ -134,6 +134,14 @@ fill "revise: 微修正は今の絵を土台に・--remake は添えない・前
 fill "描いた絵はキャッシュの区画（台本のフォルダごと）・assets/ はハードリンク・前の置き場（images/gen-）は写して使い元は残す（ADR 0014）" cache_area
 fill "スタイルの image_look・expects_images（visual は表紙に画像が無ければ警告）" style_image_look
 
+# --- Node のモジュールと Chrome の在りか（ADR 0016） ---
+browser() { run "$1" python3 "$DIR/test_browser.py" "$2"; }
+browser "在りかの順: 環境変数 → 設定 → Quick Slide の置き場 → 前からの置き場・環境変数と設定は無くても落ちない" order
+browser "どこにも無ければ入れる先（Quick Slide の置き場）を無いと言う・無い Chrome は渡さない" nothing_installed
+browser "Chrome は入れたフォルダの一番新しい版（数字で比べる）" newest_version
+browser "python3 browser.py は JSON 1 行" cli_json
+browser "足りなければ check・deck は描く前に rc=4・入れ方を言う・Codex を呼ばない" rc4_before_drawing
+
 echo
 echo "pass: $pass / fail: $fail"
 [ "$fail" -eq 0 ]

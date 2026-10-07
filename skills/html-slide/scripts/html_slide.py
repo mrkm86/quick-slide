@@ -31,6 +31,7 @@ HERE = Path(__file__).resolve().parent
 sys.dont_write_bytecode = True   # 置いた場所（配る物の中・ほかの環境からのリンク先）に __pycache__ を残さない
 sys.path.insert(0, str(HERE))
 
+import browser as B  # noqa: E402
 import cache as K  # noqa: E402
 import codex_run as X  # noqa: E402
 import deck  # noqa: E402
@@ -212,6 +213,8 @@ def cmd_revise(a) -> int:
     直した絵が使われる。prompt・画風・キャラを変えると鍵が変わり、描き直す（直しは消える）。
     """
     script = Path(a.script).expanduser().resolve()
+    if lacking_browser():              # 直したあと deck を組み直すので、描く前に確かめる
+        return 4
     try:
         slots = deck.image_slots(script, theme=a.theme, style=a.style, image_look=a.image_look)
     except deck.DeckError as e:
@@ -281,7 +284,19 @@ def cmd_revise(a) -> int:
 
 # --- 入口 --------------------------------------------------------------------------
 
+def lacking_browser() -> int:
+    """Chrome で HTML を開く道具（Node・puppeteer-core・Chrome）が足りなければ、描く前に rc=4 で止める（ADR 0016）。
+    先に Codex で絵を描いてから足りないと分かると、サブスクの枠を無駄に使う。"""
+    lack = B.missing()
+    if not lack:
+        return 0
+    print(f"NG: {'・'.join(lack)}。{B.SETUP_HINT}", file=sys.stderr)
+    return 4
+
+
 def cmd_check(a) -> int:
+    if lacking_browser():
+        return 4
     if a.script:
         with tempfile.TemporaryDirectory(prefix="html-slide-check-") as tmp:
             try:
@@ -301,11 +316,11 @@ def cmd_check(a) -> int:
 
 
 def _node(args: list[str], what: str) -> bool:
-    node = shutil.which("node")
+    node, _ = B.node()
     if not node:
-        print(f"NG: {what}には node が要る（見つからない）", file=sys.stderr)
+        print(f"NG: {what}には node が要る（見つからない）。{B.SETUP_HINT}", file=sys.stderr)
         return False
-    r = subprocess.run([node, str(SNAPSHOT), *args], capture_output=True, text=True, timeout=600)
+    r = subprocess.run([node, str(SNAPSHOT), *args], capture_output=True, text=True, timeout=600, env=B.child_env())
     if r.returncode != 0:
         print(f"NG: {what}を作れなかった: {r.stderr.strip()[:300]}", file=sys.stderr)
         return False
@@ -386,6 +401,8 @@ def cmd_deck(a) -> int:
         return 2
     if a.no_png:            # 前の口（--format で png・thumbs を外すのと同じ）
         fmts = tuple(f for f in fmts if f not in ("png", "thumbs"))
+    if lacking_browser():   # PPTX も PDF も画像も Chrome で組む。絵を描く前に確かめる
+        return 4
     out.mkdir(parents=True, exist_ok=True)
     made = {out.resolve() / n for n in ("deck.html", "deck.pptx", "deck.pdf", "deck-info.json", "build.json", "inspect.md")}
     if script in made:

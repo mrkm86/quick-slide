@@ -9,6 +9,7 @@
     FAKE_ENGINE_SLEEP   1 ページごとに待つ秒（既定 0.05）
     FAKE_ENGINE_LOG     呼ばれた引数を書くフォルダ（任意）
     FAKE_ENGINE_AUTH_RC auth（ピッチの描く前の確かめ）の終了コード（既定 0）
+    FAKE_ENGINE_SKIP    作らない出力（例 "pdf"。既定は deck.pptx・deck.pdf も書く。書き出しの試験が使う）
 """
 import json
 import os
@@ -71,6 +72,12 @@ def main(kind: str) -> int:
     rows = [{"no": i, "type": s.get("type"), "status": "generated" if i in pages else "failed"}
             for i, s in enumerate(slides, 1)]
     (out / ("build.json" if kind == "image" else "deck-info.json")).write_text(json.dumps({"slides": rows}))
+    skip = set(filter(None, os.environ.get("FAKE_ENGINE_SKIP", "").split(",")))
+    body = json.dumps([s.get("title") or s.get("type") for s in slides], ensure_ascii=False).encode("utf-8")
+    if "pptx" not in skip:
+        (out / "deck.pptx").write_bytes(b"PK\x03\x04 fake pptx " + body)
+    if "pdf" not in skip:
+        (out / "deck.pdf").write_bytes(b"%PDF-1.4 fake " + body)
     return rc
 
 

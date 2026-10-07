@@ -15,3 +15,9 @@ fonts:
 # cache_dir: ~/Library/Caches/quick-slide/html-slide
 # 合計の上限（MB）。超えたら古く使った区画から消す。0 は消さない。描いた絵は1枚約 2 MB
 # cache_max_mb: 1024
+
+# Node・puppeteer-core・Chrome（headless shell）の在りか（ADR 0016）。省けば Quick Slide の置き場
+# （<データの置き場>/engines/html-slide/node/node_modules・…/chrome/）→ ~/.cache/html-video/node_modules・~/.cache/puppeteer の順に探す
+# node_bin: /opt/homebrew/bin/node
+# node_modules: ~/.quick-slide/engines/html-slide/node/node_modules
+# chrome: ~/.quick-slide/engines/html-slide/chrome

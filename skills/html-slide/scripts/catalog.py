@@ -224,7 +224,12 @@ def build_catalog(out_dir, only: str | None = None, theme: str | None = None) ->
     png_dir = out_dir / "png"
     for old in png_dir.glob("slide-*.png"):
         old.unlink()
-    r = subprocess.run(["node", str(SKILL / "scripts" / "snapshot.mjs"), str(html), str(png_dir)], capture_output=True, text=True)
+    import browser as B
+    node, _ = B.node()
+    if not node or B.missing():
+        raise RuntimeError(f"{'・'.join(B.missing())}。{B.SETUP_HINT}")
+    r = subprocess.run([node, str(SKILL / "scripts" / "snapshot.mjs"), str(html), str(png_dir)], capture_output=True,
+                       text=True, env=B.child_env())
     if r.returncode != 0:
         raise RuntimeError(f"snapshot.mjs が失敗した:\n{r.stderr[-2000:]}")
     warn = [ln for ln in r.stdout.splitlines() if ln.startswith("警告")]

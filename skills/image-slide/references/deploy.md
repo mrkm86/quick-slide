@@ -1,6 +1,7 @@
 # 機体に置く手順（image-slide）
 
 macOS の機体に置く前提（字体のパス・キャッシュの置き場が macOS のもの）。html-slide と同じ扱い。
+Quick Slide から使うなら、`python3 <プラグイン>/skills/quick-slide/scripts/quick_slide_setup.py --doctor` が足りないもの（Python のパッケージ・`codex` CLI・ChatGPT のログイン）を言う。`codex` CLI とログインは利用者が入れる・する（全体に入れるため）。
 
 ## 依存
 

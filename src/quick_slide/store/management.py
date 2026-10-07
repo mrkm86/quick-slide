@@ -18,7 +18,8 @@ manifest と実ファイルを見て退避済みの asset を `trashed` にし�
 
 復元は manifest どおりに戻し、sha256 を検証してから `deleted_at=NULL` にする。
 完全削除（`purge_deck_from_trash`）はごみ箱の中身を**本当に消す**：そのデッキの行を 1 つ残らず消し、
-退避したファイルとデッキの置き場（`decks/<id>/`）まで消す。共有している asset は行もファイルも触らない。
+退避したファイルとデッキの置き場（`decks/<id>/`）と、エンジンのキャッシュのそのデッキの区画（`render/caches.py`）まで消す。
+共有している asset は行もファイルも触らない。ごみ箱へ移すときは区画を残す（戻したら描いた絵をそのまま使う）。
 
 描いた回のページの画像（`run_pages.asset_id`）はそのデッキの専有で、`views._ASSET_REFS_CTE` に入っている。
 台本・描いた回・仕事の行は `_PURGE_DELETES` が消す（足し忘れは外部キーの検査が止める）。
@@ -321,10 +322,14 @@ class DeckManagementMixin(StoreBase):
         数え上げると、画面に出した「空けられる容量」と実際に空く容量が静かに食い違う。
         ディレクトリはすべて**こちらが発番した id で指せるもの**に限る。
         """
+        from ..render.caches import deck_cache_areas
+
         dirs = [self.root.trash_dir / r["id"]
                 for r in self._all("SELECT id FROM deletion_tasks WHERE deck_id=?", (deck_id,))]
         # デッキの置き場（台本の版・描いた回の出力）
         dirs.append(self.root.deck_dir(deck_id))
+        # エンジンのキャッシュの区画のうち、持ち主がこのデッキの置き場の中のもの（P5。ごみ箱の間は残す）
+        dirs.extend(deck_cache_areas(self.root, deck_id))
         return self.deck_asset_usage(deck_id), dirs
 
     def purge_estimate(self, deck_id: str) -> dict[str, int]:
@@ -432,6 +437,7 @@ class DeckManagementMixin(StoreBase):
 # デッキ 1 つに属する行の**全て**。完全削除がここだけを見て消す（他に書き足さない）。
 # 書き忘れた表があれば commit 時の外部キー検査が落ち、何も消えないまま断る。
 _PURGE_DELETES: tuple[str, ...] = (
+    "DELETE FROM exports WHERE deck_id=:d",
     "DELETE FROM deck_heads WHERE deck_id=:d",
     "DELETE FROM run_pages WHERE run_id IN (SELECT id FROM runs WHERE deck_id=:d)",
     "DELETE FROM jobs WHERE deck_id=:d",

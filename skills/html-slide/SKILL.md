@@ -8,7 +8,7 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 台本（資料用の JSON）→ 型が HTML を組む → Chrome で位置を読む → python-pptx で PPTX。
 **文字・図形は PowerPoint の部品**（画像に焼かない）で、アニメーションは PowerPoint の `<p:timing>` を直接書く。
 
-> **ドキュメント**: 設計判断は [`docs/adr/`](docs/adr/)（0001 HTML の決まり・0002 字体・0003 名前・0004 ストーリーテンプレートを持たない・0005 スタイル・0006 テーマの色・0007 ロゴ・0008 ロゴの位置・0009 透かし・0010 handout は動きなし・0011 画像の枠を Codex で埋める・0012 出力は PPTX・PDF・ページの画像・サムネイル・0013 API で描く道は見送り・0014 描いた絵はキャッシュに置く・0015 置き場の根っこは ~/.quick-slide）、HTML の決まりは [`references/contract.md`](references/contract.md)、台本の仕様と画面の型は [`references/deck-format.md`](references/deck-format.md)、画像の枠の埋め方は [`references/images.md`](references/images.md)、部品 JSON は [`references/parts-format.md`](references/parts-format.md)、機体に置く手順は [`references/deploy.md`](references/deploy.md)。
+> **ドキュメント**: 設計判断は [`docs/adr/`](docs/adr/)（0001 HTML の決まり・0002 字体・0003 名前・0004 ストーリーテンプレートを持たない・0005 スタイル・0006 テーマの色・0007 ロゴ・0008 ロゴの位置・0009 透かし・0010 handout は動きなし・0011 画像の枠を Codex で埋める・0012 出力は PPTX・PDF・ページの画像・サムネイル・0013 API で描く道は見送り・0014 描いた絵はキャッシュに置く・0015 置き場の根っこは ~/.quick-slide・0016 Node のモジュールと Chrome の在りか）、HTML の決まりは [`references/contract.md`](references/contract.md)、台本の仕様と画面の型は [`references/deck-format.md`](references/deck-format.md)、画像の枠の埋め方は [`references/images.md`](references/images.md)、部品 JSON は [`references/parts-format.md`](references/parts-format.md)、機体に置く手順は [`references/deploy.md`](references/deploy.md)。
 > **過去に受けた指摘** → [`FEEDBACK.md`](FEEDBACK.md)。**着手前に読む。**
 > **テスト**: `bash tests/run.sh`
 > **出荷検品**: [`INSPECTION.md`](INSPECTION.md)（画面型）。検品役が読むのは `<出力先>/inspect.md`。
@@ -87,6 +87,7 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 | `scripts/from_video.py` | html-video の HTML（GSAP の時刻）→ 部品 |
 | `scripts/verify.py` | PPTX を開き直して、クリックとノートの照合・LibreOffice での読み取りの照合 |
 | `scripts/snapshot.mjs` | ページの画像を撮る・PDF に印刷する |
+| `scripts/browser.py` | Node・puppeteer-core・Chrome の在りか（ADR 0016。`python3 scripts/browser.py` で JSON） |
 | `scripts/outputs.py` | `--format` の読み方・サムネイル（image-slide と同じファイル） |
 | `templates/`・`themes/` | 資料の CSS と字体の読み込み ／ 色 |
 | `examples/` | 見本の台本（`sample-deck.json` 全型・`image-deck.json` 画像の型と置き方。どちらも架空の題材。`images/s01-image.jpg` は Codex（gpt-image-2）で描いた本物） |
@@ -97,4 +98,4 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 - **字体は游ゴシック（`Yu Gothic`）で測る**（[ADR 0002](docs/adr/0002-font-yu-gothic.md)）。PowerPoint 同梱のファイルを読むので、PowerPoint の無い機体では設定でパスを渡す
 - 許可リストの外の CSS（`transform`・`filter`・`clip-path`・`::before` の中身・背景画像）は `check` が止める。型を足すときもこの範囲で書く
 - SVG の曲線は折れ線に近似する（見た目は同じ。PowerPoint で曲線として直すのは難しい）
-- Chrome は html-video と同じ `~/.cache/puppeteer`、Node のモジュールは `~/.cache/html-video/node_modules` を使う（置き方は [`references/deploy.md`](references/deploy.md)）
+- Node のモジュール（puppeteer-core）と Chrome（headless shell）は `scripts/browser.py` が探す（環境変数 → 設定 → Quick Slide の置き場 `~/.quick-slide/engines/html-slide/` → 前からの置き場 `~/.cache/…`・[ADR 0016](docs/adr/0016-node-and-chrome-places.md)）。足りなければ描く前に rc=4。入れ方は [`references/deploy.md`](references/deploy.md)
