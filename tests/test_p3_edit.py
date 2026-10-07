@@ -329,6 +329,46 @@ class PitchEditTests(EditBase):
         self.assertEqual(rb["record"]["base"]["version"], ra["record"]["edit"]["script_version"])
         self.assert_screen_matches_pptx(deck)
 
+    def legacy_first_run(self, deck: str) -> dict:
+        """1 回目の回を P2（移行 0003 の前）の形にする: ページの中身と絵の sha256 が無い。"""
+        with self.fx.server.store_lock:
+            first = self.fx.store.runs_for_deck(deck)[-1]
+            self.fx.store.conn.execute("UPDATE run_pages SET content_sha256=NULL,picture_sha256=NULL WHERE run_id=?",
+                                       (first["id"],))
+            self.fx.store.conn.execute("UPDATE script_pages SET content_sha256=NULL WHERE script_id=?",
+                                       (first["script_id"],))
+        return first
+
+    def check_legacy_versions(self, deck: str) -> None:
+        for p in self.view(deck)["pages"]:
+            if p["key"] in ("p-why", "p-agenda"):
+                self.assertEqual([v["version"] for v in p["versions"]], [2, 1], p["key"])
+                self.assertEqual([v["revision_note"] for v in p["versions"]], ["見出しを短くして", None],
+                                 "指示の文は、その指示が向いたページの版にだけ付く")
+            else:
+                self.assertEqual([(v["version"], v["active"], v["revision_note"]) for v in p["versions"]],
+                                 [(1, True, None)], f"{p['key']}: 直していないページは版が 1 つ・指示も付かない")
+
+    def test_legacy_run_without_shas_does_not_add_versions(self) -> None:
+        deck = self.make_deck()
+        first = self.legacy_first_run(deck)
+        self.instruct(deck, [2, 4], "見出しを短くして")
+        self.assertEqual(self.wait(deck)["state"], "done")
+        self.check_legacy_versions(deck)
+        # その回の台本の版のファイルが読めなくても、画像のバイトが同じなら同じ姿とみなす
+        from quick_slide.server.page_view import LegacyContent, resolve_states
+
+        with self.fx.server.store_lock:
+            path = self.fx.store.script_path(self.fx.store.script(first["script_id"]))
+        path.rename(path.with_suffix(".gone"))
+        LegacyContent._memo.clear()
+        self.check_legacy_versions(deck)
+        rows = [{"asset_sha256": "x", "content_sha256": "c2", "picture_sha256": "p2"},
+                {"asset_sha256": "x", "content_sha256": None, "picture_sha256": None},
+                {"asset_sha256": "y", "content_sha256": None, "picture_sha256": None}]
+        self.assertEqual(resolve_states(rows, lambda r: None), [("c2", "p2"), ("c2", "p2"), ("asset:y", "asset:y")])
+        self.assertEqual(resolve_states(rows, lambda r: "c-old"), [("c2", "p2"), ("c-old", "p2"), ("c-old", "asset:y")])
+
     def test_a_gone_page_fails_with_a_clear_message(self) -> None:
         deck = self.make_deck()
         pages = self.view(deck)["pages"]

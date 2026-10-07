@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..render import workspace as W
-from ..scriptdoc import one_page
+from ..scriptdoc import one_page, screen_pages
 from .later import NOT_READY_REASON
 from .vocabulary import EDIT_MODE_LABELS, SOURCE_KIND_LABELS, page_display, run_page_display
 
@@ -28,18 +28,49 @@ def asset_url(asset_id: str | None) -> str | None:
     return None if asset_id is None else f"/api/assets/{asset_id}/file"
 
 
-def _state_key(row: dict[str, Any]) -> tuple[str, str]:
-    content = row.get("content_sha256") or ("asset:" + str(row.get("asset_sha256")))
-    picture = row.get("picture_sha256") or ("asset:" + str(row.get("asset_sha256")))
-    return content, picture
+def resolve_states(rows: list[dict[str, Any]], legacy_content: Any = None) -> list[tuple[str, str]]:
+    """各行（新しい回から）の「姿」の鍵（中身の sha256・絵の sha256）。
+
+    P2 の回（移行 0003 の前）の行には中身も絵の sha256 も無い。そのままでは、変わっていないページでも別の姿に
+    見えて版が 2 つになる（2026-10-07 の本物の通しで見つかった）。だから:
+    - 中身は、その回の台本の版のファイルから求める（`legacy_content(row)`。台本の版は書き換えないので確か）
+    - 絵は、すぐ新しい回の同じページと**ページの画像のバイトが同じなら同じ絵**とみなす（同じ台本・同じ設定なら
+      描き直してもバイトまで同じことは確かめてある。docs/P3-NOTES.md）。違えば、その画像のバイトを鍵にする
+    - 中身が求められないとき（台本のファイルが無い）も、画像のバイトが同じなら新しい回の中身を引き継ぐ
+    """
+    out: list[tuple[str, str]] = []
+    newer: dict[str, Any] | None = None
+    newer_key: tuple[str, str] | None = None
+    for row in rows:                       # 新しい回から
+        asset = "asset:" + str(row.get("asset_sha256"))
+        same_png = newer is not None and row.get("asset_sha256") and row.get("asset_sha256") == newer.get("asset_sha256")
+        content = row.get("content_sha256") or (legacy_content(row) if legacy_content else None)
+        if content is None:
+            content = newer_key[0] if same_png and newer_key else asset
+        picture = row.get("picture_sha256")
+        if picture is None:
+            picture = newer_key[1] if same_png and newer_key else asset
+        newer, newer_key = row, (content, picture)
+        out.append(newer_key)
+    return out
 
 
-def page_versions(rows: list[dict[str, Any]], shown_run_id: str | None, requests: dict[str, dict[str, Any]]
+def _made_here(made: dict[str, Any], page_id: str | None, first_of_page: bool) -> bool:
+    """この姿を作った頼みごとが、このページに向けたものか（指示の文・直し方はそのページの版にだけ出す）。"""
+    op = made.get("op")
+    if op == "revise":
+        return page_id in (made.get("pages") or []) or first_of_page   # 分けて増えたページも
+    if op == "insert":
+        return first_of_page
+    return False
+
+
+def page_versions(rows: list[dict[str, Any]], shown_run_id: str | None, requests: dict[str, dict[str, Any]],
+                  *, page_id: str | None = None, legacy_content: Any = None
                   ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """そのページの版（新しい姿から）と、見せる回の姿の版。`rows` は `page_history` のそのページの行（新しい回から）。"""
     groups: dict[tuple[str, str], dict[str, Any]] = {}
-    for row in rows:                      # 新しい回から
-        key = _state_key(row)
+    for row, key in zip(rows, resolve_states(rows, legacy_content)):   # 新しい回から
         g = groups.get(key)
         if g is None:
             groups[key] = g = {"newest": row, "oldest": row, "runs": []}
@@ -53,6 +84,8 @@ def page_versions(rows: list[dict[str, Any]], shown_run_id: str | None, requests
     for g in sorted(ordered, key=lambda g: -g["newest"]["number"]):
         rep = g["newest"]
         made = requests.get(g["oldest"]["run_id"]) or {}
+        if not _made_here(made, page_id, g["ordinal"] == 1):
+            made = {}
         has_image = rep.get("asset_state") == "ready" and rep.get("asset_id") is not None
         mode = made.get("edit_mode") if made.get("op") == "revise" else None
         out.append({
@@ -66,6 +99,31 @@ def page_versions(rows: list[dict[str, Any]], shown_run_id: str | None, requests
             "prompt_head": None, "origin_version_id": None,
         })
     return out, (None if active is None else next(v for v in out if v["active"]))
+
+
+class LegacyContent:
+    """P2 の回のページの中身の sha256 を、その回の台本の版のファイルから求める（台本の版は書き換えないので覚えておける）。"""
+
+    _memo: dict[str, dict[str, str]] = {}
+
+    def __init__(self, store: Any, args: dict[str, Any], keys: dict[str, str]) -> None:
+        self.store, self.args, self.keys = store, args, keys
+
+    def __call__(self, row: dict[str, Any]) -> str | None:
+        sid, key = row.get("script_id"), self.keys.get(row.get("page_id"))
+        if not sid or not key:
+            return None
+        table = self._memo.get(sid)
+        if table is None:
+            try:
+                data = self.store.load_script(self.store.script(sid))
+                table = {p["key"]: p["content_sha"] for p in screen_pages(self.args, data)}
+            except Exception:  # noqa: BLE001 - 読めない台本は求めない（画像のバイトで決める）
+                table = {}
+            if len(self._memo) > 2000:
+                self._memo.clear()
+            self._memo[sid] = table
+        return table.get(key)
 
 
 def _minor(mode: str, has_picture: bool) -> dict[str, Any]:
@@ -115,6 +173,7 @@ def pages_view(store: Any, deck_id: str, *, shown: dict[str, Any] | None, latest
     for row in store.page_history(deck_id):
         history.setdefault(row["page_id"], []).append(row)
     requests = store.run_requests(deck_id)
+    legacy = LegacyContent(store, shown["args"], {p["page_id"]: p["key"] for p in head_pages})
     targets = job_targets(jobs)
     working = bool(jobs)
     generated = _generated_pages(store, deck_id, shown) if mode == "presentation" else set()
@@ -123,7 +182,8 @@ def pages_view(store: Any, deck_id: str, *, shown: dict[str, Any] | None, latest
     for p in head_pages:
         pid = p["page_id"]
         row = shown_rows.get(pid)
-        versions, active = page_versions(history.get(pid, []), shown["id"], requests)
+        versions, active = page_versions(history.get(pid, []), shown["id"], requests, page_id=pid,
+                                         legacy_content=legacy)
         has_image = bool(row and row["state"] == "ready" and row.get("asset_id") and row.get("asset_state") == "ready")
         image_url = asset_url(row["asset_id"]) if has_image else None
         same = bool(row) and (row.get("content_sha256") is None or p.get("content_sha256") is None
