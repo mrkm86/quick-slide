@@ -22,9 +22,10 @@ ENV_BROWSER = "QUICK_SLIDE_BROWSER"
 # auto = 統合ブラウザ → 外部ブラウザ → URL 提示の 3 段 / external = 経路 1 を飛ばす / manual = 開かず URL だけ
 BROWSER_MODES = ("auto", "external", "manual")
 
-# 既定の bind 先。ここに無いものへ開くには、設定に**アドレスを書く**。
+# 既定の bind 先の代表的な書き方（画面に見せる一覧）。**ループバックかどうかの判定には使わない** —
+# 判定は `is_loopback_host` がアドレスの意味で行う（`0:0:0:0:0:0:0:1`・`127.0.0.2`・`::ffff:127.0.0.1` もループバック）。
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
-# 「ぜんぶの口」を意味するアドレス。どの網に出るかを人が選んだことにならないので、書かれても開かない。
+# 「ぜんぶの口」を意味するアドレスの代表的な書き方。判定は `is_wildcard_host`（`0:0::0` なども同じ扱い）。
 WILDCARD_HOSTS = ("0.0.0.0", "::")
 DEFAULT_PORT = 7801  # v1 と並べて動かさない（データの置き場も分ける）
 # 台本係の LLM。auto = 会話の出所（origin.runtime）に合わせ、分からなければ手元にある CLI（claude → codex の順）
@@ -77,9 +78,41 @@ def _existing_port(path: Path) -> int:
     return port if isinstance(port, int) and not isinstance(port, bool) else DEFAULT_PORT
 
 
+def _address(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """アドレスとして読めればその値。IPv4 を写した IPv6（`::ffff:a.b.c.d`）は中の IPv4 として読む。名前なら None。"""
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        return addr.ipv4_mapped
+    return addr
+
+
+def is_loopback_host(host: str) -> bool:
+    """この bind 先（や bind した結果のアドレス）がループバックか。**文字列の一致ではなくアドレスの意味で決める。**
+
+    `0:0:0:0:0:0:0:1`（= `::1`）・`127.0.0.2`・`::ffff:127.0.0.1` もループバック。名前は `localhost` だけを
+    ループバックとみなす（大文字小文字・末尾の `.` は問わない）。ループバックかどうかを決める場所は、ここ 1 か所に寄せる
+    （ほかの場所で文字列を見比べると、別の書き方で `host_names` の禁止をすり抜けられる）。
+    """
+    if not isinstance(host, str):
+        return False
+    if host.lower().rstrip(".") == "localhost":
+        return True
+    addr = _address(host)
+    return addr is not None and addr.is_loopback
+
+
+def is_wildcard_host(host: str) -> bool:
+    """「ぜんぶの口」（`0.0.0.0`・`::` とその別の書き方）か。"""
+    addr = _address(host) if isinstance(host, str) else None
+    return addr is not None and addr.is_unspecified
+
+
 def bind_scope(host: str) -> str:
     """この bind 先は、この機械の中だけか、外にも届くか（health がそのまま出す）。"""
-    return "loopback" if host in LOOPBACK_HOSTS else "network"
+    return "loopback" if is_loopback_host(host) else "network"
 
 
 def bind_refusal(host: str) -> str | None:
@@ -89,9 +122,9 @@ def bind_refusal(host: str) -> str | None:
     理由を言って止まる。どの網が安全かはアプリには分からないので、そこは判断しない。
     判断するのは 2 つだけ — 「ぜんぶの口」ではないこと、名前ではなくアドレスであること。
     """
-    if host in LOOPBACK_HOSTS:
+    if is_loopback_host(host):
         return None
-    if host in WILDCARD_HOSTS:
+    if is_wildcard_host(host):
         return (
             f"server.host={host!r} は「ぜんぶの口」を意味します。ここには開きません。"
             "どの網に出すのかを選んで、そのアドレスを書いてください"
@@ -174,7 +207,7 @@ class ServerSettings:
 
     @property
     def is_loopback(self) -> bool:
-        return self.host in LOOPBACK_HOSTS
+        return is_loopback_host(self.host)
 
     @property
     def display_host(self) -> str:

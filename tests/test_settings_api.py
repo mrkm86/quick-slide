@@ -18,6 +18,7 @@ from helpers import start_server
 from PIL import Image
 
 from quick_slide import logo as logo_rules
+from quick_slide import palette
 from quick_slide.server import settings_routes as routes
 
 
@@ -197,6 +198,88 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual((out["revision"], out["name"]), (2, "変更後"))
         # 色は保存時に算出一式のスナップショットになる
         self.assertIn("primary_dark", out["config"]["colors"])
+
+    # --- 編集画面が送らないキーを消さない（送られたキーが勝ち、送られなかったキーは持ち越す） ---
+    def screen_body(self, item, *, name, primary=None, accent=None, extra_colors=None):
+        """編集画面（web/app/settings.js の brandEditor）が組み直して送る形。fonts・semantic・gray は送らない。"""
+        colors = item["config"]["colors"]
+        c = {"schema_version": 1,
+             "colors": {"primary": primary or colors["primary"], "accent": accent or colors["accent"],
+                        "info": colors.get("info") or colors["semantic"]["info"], **(extra_colors or {})},
+             "logo": {"variant": "none", "placement": dict(self.catalog["logo_control"]["default"])},
+             "footer": {"text": "", "style": {"position": "footer_center"}}}
+        return {"name": name, "config": c, "assets": [], "expected_revision_id": item["current_revision_id"]}
+
+    def duplicate_preset(self):
+        """一覧の「複写」と同じ形（複写元の config をそのまま送る）。"""
+        preset = self.catalog["brands"][0]
+        return self.save({"name": "複写したブランド", "config": copy.deepcopy(preset["config"]),
+                          "assets": copy.deepcopy(preset["assets"])})["item"]
+
+    def test_renaming_on_the_edit_screen_keeps_fonts_and_custom_role_colors(self):
+        copied = self.duplicate_preset()
+        self.assertIn("fonts", copied["config"])
+        out = self.save(self.screen_body(copied, name="改名したブランド"), "/" + copied["id"])["item"]
+        self.assertEqual(out["name"], "改名したブランド")
+        self.assertEqual(out["config"]["fonts"], copied["config"]["fonts"], "画面が知らない字体の設定は持ち越す")
+        for role in ("success", "warning", "error"):
+            self.assertEqual(out["config"]["colors"]["semantic"][role], copied["config"]["colors"]["semantic"][role], role)
+        self.assertEqual(out["config"]["colors"]["gray"], copied["config"]["colors"]["gray"])
+        self.assertEqual(out["revision"], copied["revision"] + 1)
+
+    def test_custom_role_colors_survive_a_new_base_color_while_derived_ones_follow_it(self):
+        copied = self.duplicate_preset()
+        out = self.save(self.screen_body(copied, name="色を変えた", primary="#204a87"), "/" + copied["id"])["item"]
+        colors = out["config"]["colors"]
+        self.assertEqual(colors["primary"], "#204a87")
+        for role in ("success", "warning", "error"):
+            self.assertEqual(colors["semantic"][role], copied["config"]["colors"]["semantic"][role], role)
+        # 画面が扱う色（詳しく指定する 5 色）は送らなければ算出し直す（前の値を持ち越さない）
+        fresh = palette.derive("#204a87", copied["config"]["colors"]["accent"])["derived"]
+        for key in ("primary_light", "primary_dark", "border", "surface"):
+            self.assertEqual(colors[key], fresh[key], key)
+        self.assertNotEqual(colors["primary_dark"], copied["config"]["colors"]["primary_dark"])
+
+    def test_a_color_the_screen_manages_can_still_be_cleared(self):
+        copied = self.duplicate_preset()
+        with_border = self.save(self.screen_body(copied, name="罫線つき", extra_colors={"border": "#123456"}),
+                                "/" + copied["id"])["item"]
+        self.assertEqual(with_border["config"]["colors"]["border"], "#123456")
+        cleared = self.save(self.screen_body(with_border, name="罫線を戻した"), "/" + copied["id"])["item"]
+        derived = palette.derive(copied["config"]["colors"]["primary"], copied["config"]["colors"]["accent"])["derived"]
+        self.assertEqual(cleared["config"]["colors"]["border"], derived["border"], "チェックを外した色は算出に戻る")
+        self.assertEqual(cleared["config"]["fonts"], copied["config"]["fonts"])
+
+    def test_keys_that_are_sent_win(self):
+        copied = self.duplicate_preset()
+        body = self.screen_body(copied, name="字体を替えた")
+        fonts = copy.deepcopy(copied["config"]["fonts"])
+        fonts["heading"]["weight"] = 800
+        body["config"]["fonts"] = fonts
+        body["config"]["colors"]["gray"] = ["#000000", "#ffffff"]
+        out = self.save(body, "/" + copied["id"])["item"]
+        self.assertEqual(out["config"]["fonts"]["heading"]["weight"], 800)
+        self.assertEqual(out["config"]["colors"]["gray"], ["#000000", "#ffffff"])
+
+    def test_only_role_colors_a_person_chose_are_carried_over(self):
+        """前の改訂のうち、算出値と同じ役割は持ち越さない（基本色を変えたら一緒に算出し直す）。"""
+        previous_colors = palette.snapshot_colors({"primary": "#336699", "accent": "#aa5500",
+                                                   "semantic": {"success": "#0b6e2e"}})
+        previous = {"schema_version": 1, "colors": previous_colors,
+                    "fonts": copy.deepcopy(self.catalog["brand_default"]["fonts"]),
+                    "logo": {"variant": "none"}, "footer": {"text": ""}}
+        submitted = {"schema_version": 1, "colors": {"primary": "#884422", "accent": "#aa5500"},
+                     "logo": {"variant": "none"}, "footer": {"text": "下の文字"}}
+        merged = routes.merge_brand_config(previous, submitted)
+        self.assertEqual(merged["fonts"], previous["fonts"])
+        self.assertEqual(merged["footer"], {"text": "下の文字"})
+        saved = palette.snapshot_colors(merged["colors"])
+        fresh = palette.derive("#884422", "#aa5500")["derived"]
+        self.assertEqual(saved["semantic"]["success"], previous_colors["semantic"]["success"], "人が決めた色は残る")
+        self.assertEqual(saved["semantic"]["warning"], fresh["semantic"]["warning"], "算出値は新しい基本色に従う")
+        self.assertEqual(saved["semantic"]["info"], fresh["semantic"]["info"])
+        self.assertEqual(saved["gray"], fresh["gray"])
+        self.assertNotIn("gray", merged["colors"], "算出値どおりの gray は持ち越さない")
 
     def test_preset_edit_delete_rejected_even_with_invalid_body(self):
         preset = self.catalog["brands"][0]

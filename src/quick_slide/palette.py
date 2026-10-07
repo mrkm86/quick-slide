@@ -178,3 +178,33 @@ def snapshot_colors(colors: dict[str, Any]) -> dict[str, Any]:
         "accent": colors["accent"],
         **palette["derived"],
     }
+
+
+def custom_roles(colors: dict[str, Any]) -> dict[str, Any]:
+    """保存済みの ``colors``（スナップショット）のうち、算出では出ない＝人が決めた役割色だけを返す。
+
+    対象はブランドの編集画面が扱わない役割（``semantic`` の success / warning / error と ``gray``）。
+    スナップショットは算出値と上書き値を区別せずに持つので、同じ入力（基本色・強調色・情報色・平らな上書き）から
+    算出し直して、違うものだけを「人が決めた値」とみなす。算出値と同じものは返さない（基本色を変えたら算出し直す）。
+    戻り値は ``{"semantic": {...}, "gray": [...]}`` の部分集合。読めない形なら空。
+    """
+    if not isinstance(colors, dict):
+        return {}
+    semantic = colors.get("semantic") if isinstance(colors.get("semantic"), dict) else {}
+    info = colors.get("info") if "info" in colors else semantic.get("info")
+    flat = {key: colors[key] for key in _FLAT_OVERRIDES if key in colors and key != "gray"}
+    try:
+        baseline = derive(colors.get("primary"), colors.get("accent"), info=info, overrides=flat)["derived"]
+    except ValueError:
+        return {}
+    kept: dict[str, Any] = {}
+    custom_semantic = {
+        key: semantic[key] for key in ("success", "warning", "error")
+        if isinstance(semantic.get(key), str) and semantic[key].lower() != baseline["semantic"][key].lower()
+    }
+    if custom_semantic:
+        kept["semantic"] = custom_semantic
+    gray = colors.get("gray")
+    if isinstance(gray, list) and [str(g).lower() for g in gray] != [g.lower() for g in baseline["gray"]]:
+        kept["gray"] = list(gray)
+    return kept

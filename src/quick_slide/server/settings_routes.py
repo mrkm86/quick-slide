@@ -285,13 +285,57 @@ def preview_brand(app, req):
     return Response.json(200, brand_preview(app, b))
 
 
+# ブランドの編集画面が組み直して送る config のキー。ここに無いキー（`fonts` など）は画面が知らないので送られない。
+SCREEN_BRAND_KEYS = ("schema_version", "colors", "logo", "footer")
+
+
+def merge_brand_config(previous, submitted):
+    """改訂を足すときの config。**送られたキーが勝ち、送られなかったキーは前の改訂から持ち越す。**
+
+    画面は自分の扱うキーだけを組み直して送る（`SCREEN_BRAND_KEYS`）。送らなかったキーを「消せ」と読むと、
+    複写で引き継いだ字体（`fonts`）などが、名前を変えただけで消える。決め方:
+
+    - 上の段: 送られたキーはそのまま使う（`logo`・`footer` は中身ごと置き換え。中のキーはどれも画面が扱う）。
+      送られなかったキーは前の改訂の値を写す。画面から消せないキーは、画面から消せないままにする
+    - `colors` の中: 画面が扱う色（基本色・強調色・情報色・詳しく指定する 5 色）は**送られたものだけ**
+      （送らない＝「算出に戻す」なので持ち越さない）。画面が扱わない役割色（`semantic` の success / warning / error、
+      `gray`）は、前の改訂で**人が決めた値だけ**を持ち越す（`palette.custom_roles`。算出値は基本色に合わせて算出し直す）。
+      送られた側に同じ役割があれば送られた側が勝つ
+    - 形が違う（オブジェクトでない）ときは何もせずに返し、検査に断らせる
+    """
+    if not isinstance(previous, dict) or not isinstance(submitted, dict):
+        return submitted
+    merged = {key: copy.deepcopy(value) for key, value in previous.items() if key not in submitted}
+    merged.update(copy.deepcopy(submitted))
+    colors = merged.get("colors")
+    kept = palette.custom_roles(previous.get("colors"))
+    if not isinstance(colors, dict) or not kept:
+        return merged
+    if "gray" in kept and "gray" not in colors:
+        colors["gray"] = kept["gray"]
+    custom = kept.get("semantic") or {}
+    sent = colors.get("semantic") if isinstance(colors.get("semantic"), dict) else {}
+    if custom and set(custom) - set(sent):
+        # 検査は semantic の 4 役割を全部求める。持ち越さない役割は「いまの入力から算出した値」で埋める
+        # （算出値と同じなので、保存の算出で結果は変わらない）。情報色は画面の情報色に従う
+        try:
+            derived = palette.derive_from_colors({k: v for k, v in colors.items() if k != "semantic"} | (
+                {"semantic": sent} if sent else {}))["derived"]["semantic"]
+        except (ValueError, TypeError, AttributeError):
+            return merged
+        colors["semantic"] = {**derived, **custom, **sent}
+    return merged
+
+
 @boundary
 def save_brand(app, req):
     b = payload(req, ("name", "config", "assets", "expected_revision_id"))
     bid = req.params.get("setting_id")
     with app.store.transaction():
         if bid:
-            editable(app.store.brand(bid), b)
+            row = app.store.brand(bid)
+            editable(row, b)
+            b = {**b, "config": merge_brand_config(row["current_revision"]["config"], b.get("config"))}
         name = name_of(b)
         preview = brand_preview(app, b)
         config = copy.deepcopy(b["config"])

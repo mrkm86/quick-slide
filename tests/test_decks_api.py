@@ -6,13 +6,21 @@ P1 のデッキはページを持たない。画面が読む項目は全部そ�
 
 from __future__ import annotations
 
+import hashlib
 import unittest
 import uuid
+from unittest.mock import patch
 from urllib.parse import quote
 
-from helpers import start_server
+from helpers import make_deck, png_bytes, start_server, temp_dir
 
+from quick_slide.errors import StateError
+from quick_slide.paths import DataRoot
+from quick_slide.server.app import run_startup_sweep
 from quick_slide.server.later import NOT_READY_REASON
+from quick_slide.settings import Settings
+from quick_slide.store import Store
+from quick_slide.store import management
 
 # スライドの画面（web/app/deck.js）が `GET /api/decks/<id>` から読む項目
 DECK_SCREEN_KEYS = {"deck", "revision", "pages", "counts", "limit", "pending_inserts", "planning", "live",
@@ -202,6 +210,131 @@ class MutationTests(unittest.TestCase):
         self.assertEqual(r.status, 200, r)
         self.assertIn("ごみ箱を空にしました（1 件", r.json()["message"])
         self.assertEqual(self.fx.get("/api/trash").json()["capabilities"]["purge_all"]["available"], False)
+
+
+class _Crash(BaseException):
+    """サーバがそこで止まったことの代わり（後片付けの except Exception に拾われない）。"""
+
+
+class TrashInterruptedTests(unittest.TestCase):
+    """ごみ箱へ移す途中の失敗・停止で、隠れたまま戻せないスライドを作らない。"""
+
+    def setUp(self) -> None:
+        self.root = DataRoot(temp_dir(self) / "home")
+        self.store = self.open()
+        self.deck = make_deck(self.store, "消すスライド")
+        self.asset_rel, self.asset_id = self.attach_page_image(self.deck["id"])
+
+    def open(self, **kw) -> Store:
+        store = Store.open(self.root, settings=Settings(), **kw)
+        self.addCleanup(store.close)
+        return store
+
+    def reopen(self, **kw) -> Store:
+        self.store.close()
+        self.store = self.open(**kw)
+        return self.store
+
+    def attach_page_image(self, deck_id: str) -> tuple[str, str]:
+        """そのデッキだけが使うページの画像（描いた回のページ）を 1 枚置く。"""
+        data = png_bytes()
+        with self.store.transaction():
+            run = self.store.create_run(deck_id, args={"mode": "presentation"})
+            rel = f"assets/decks/{deck_id}/{run['id']}/slide-01.png"
+            path = self.root.root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+            asset = self.store.register_asset(relative_path=rel, media_type="image/png",
+                                              sha256=hashlib.sha256(data).hexdigest(), bytes_=len(data))
+            self.store.conn.execute("INSERT INTO run_pages(run_id,page_no,state,asset_id) VALUES(?,?,?,?)",
+                                    (run["id"], 1, "ready", asset["id"]))
+        return rel, asset["id"]
+
+    def assert_restorable_and_restore(self) -> None:
+        store = self.store
+        self.assertEqual([d["id"] for d in store.trashed_decks()], [self.deck["id"]], "ごみ箱に見えている")
+        store.restore_deck_from_trash(self.deck["id"])
+        self.assertIsNone(store.deck(self.deck["id"])["deleted_at"])
+        self.assertTrue((self.root.root / self.asset_rel).is_file(), "ファイルが元の場所に戻る")
+        self.assertEqual(store.asset(self.asset_id)["state"], "ready")
+        self.assertEqual(store.conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+
+    def test_a_manifest_that_cannot_be_written_leaves_the_deck_untouched(self) -> None:
+        with patch.object(management, "_write_json_atomic", side_effect=OSError("disk full")):
+            with self.assertRaisesRegex(StateError, "スライドはそのまま"):
+                self.store.delete_deck_to_trash(self.deck["id"])
+        self.assertIsNone(self.store.deck(self.deck["id"])["deleted_at"], "隠さない")
+        self.assertEqual(self.store.deletion_tasks_for_deck(self.deck["id"]), [])
+        self.assertTrue((self.root.root / self.asset_rel).is_file())
+        self.assertFalse(self.root.trash_dir.exists() and any(self.root.trash_dir.iterdir()), "書きかけを残さない")
+        # 直ったら普通に捨てて戻せる
+        self.store.delete_deck_to_trash(self.deck["id"])
+        self.assert_restorable_and_restore()
+
+    def test_a_refused_hide_cleans_up_the_manifest(self) -> None:
+        with patch.object(self.store, "soft_delete_deck", side_effect=StateError("同時に削除された")):
+            with self.assertRaises(StateError):
+                self.store.delete_deck_to_trash(self.deck["id"])
+        self.assertFalse(self.root.trash_dir.exists() and any(self.root.trash_dir.iterdir()))
+        self.assertIsNone(self.store.deck(self.deck["id"])["deleted_at"])
+
+    def test_stopping_after_files_moved_then_restarting_can_restore(self) -> None:
+        """退避は済んだが記録の前に止まった（タスクは pending のまま）。起こし直すと戻せる。"""
+        original = self.store.append_event
+
+        def stop_at_record(kind, payload, **kw):
+            if kind == "deck_trashed":
+                raise _Crash()
+            return original(kind, payload, **kw)
+
+        with patch.object(self.store, "append_event", side_effect=stop_at_record):
+            with self.assertRaises(_Crash):
+                self.store.delete_deck_to_trash(self.deck["id"])
+        self.assertEqual(self.store.deletion_tasks_for_deck(self.deck["id"])[0]["state"], "pending")
+        self.assertFalse((self.root.root / self.asset_rel).is_file(), "ファイルは退避の置き場へ動いている")
+        with self.assertRaises(StateError):
+            self.store.restore_deck_from_trash(self.deck["id"])   # 掃除の前は pending なので断る（動いている途中かもしれない）
+
+        store = self.reopen()
+        task = store.deletion_tasks_for_deck(self.deck["id"])[0]
+        self.assertEqual(task["state"], "failed", "起動時の掃除が戻せる形にする")
+        self.assertEqual(store.asset(self.asset_id)["state"], "trashed", "退避済みの画像は trashed")
+        self.assert_restorable_and_restore()
+
+    def test_stopping_before_any_file_moved_then_restarting_can_restore(self) -> None:
+        real_replace = management.os.replace
+
+        def stop_before_moving_files(src, dst):
+            if str(src).endswith(".png"):
+                raise _Crash()
+            return real_replace(src, dst)
+
+        with patch.object(management.os, "replace", side_effect=stop_before_moving_files):
+            with self.assertRaises(_Crash):
+                self.store.delete_deck_to_trash(self.deck["id"])
+        self.assertTrue((self.root.root / self.asset_rel).is_file())
+        store = self.reopen(startup_sweep=False)
+        summary = run_startup_sweep(store)
+        self.assertEqual(summary["deletions_recovered"], 1)
+        self.assertTrue(summary["ok"])
+        self.assertEqual(store.asset(self.asset_id)["state"], "ready", "動いていない画像は ready のまま")
+        self.assert_restorable_and_restore()
+
+    def test_a_pending_deletion_without_a_manifest_from_the_old_order_is_restorable(self) -> None:
+        """古い版は「隠す → manifest」の順だった。manifest の前に止まった削除も、起こし直せば戻せる。"""
+        self.store.soft_delete_deck(self.deck["id"], manifest_path=".trash/never-written/manifest.json")
+        store = self.reopen()
+        self.assertEqual(store.deletion_tasks_for_deck(self.deck["id"])[0]["state"], "failed")
+        self.assert_restorable_and_restore()
+
+    def test_a_missing_manifest_with_moved_files_is_still_refused(self) -> None:
+        """退避の置き場にファイルがあるのに manifest が無いなら、何かが欠けている。黙って戻さない。"""
+        self.store.delete_deck_to_trash(self.deck["id"])
+        task = self.store.deletion_tasks_for_deck(self.deck["id"])[0]
+        (self.root.root / task["manifest_path"]).unlink()
+        self.store.conn.execute("UPDATE deletion_tasks SET state='failed' WHERE id=?", (task["id"],))
+        with self.assertRaisesRegex(StateError, "manifest"):
+            self.store.restore_deck_from_trash(self.deck["id"])
 
 
 class NotReadyRoutesTests(unittest.TestCase):

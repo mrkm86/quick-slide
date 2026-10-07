@@ -66,8 +66,10 @@ class Store(
         return store
 
     def startup_sweep(self) -> dict[str, list[str]]:
-        """起動時の掃除: 期限切れ launch・前のサーバで途中だった仕事（失敗にする。作り直さない）。"""
-        return {"launches_expired": self.expire_launches(), "jobs_interrupted": self.fail_interrupted_jobs()}
+        """起動時の掃除: 期限切れ launch・前のサーバで途中だった仕事（失敗にする。作り直さない）・
+        ごみ箱へ移す途中で止まった削除（ごみ箱から戻せる形にする）。"""
+        return {"launches_expired": self.expire_launches(), "jobs_interrupted": self.fail_interrupted_jobs(),
+                "deletions_recovered": self.recover_interrupted_deletions()}
 
 
 __all__ = ["Store"]
