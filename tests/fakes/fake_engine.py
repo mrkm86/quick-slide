@@ -31,7 +31,7 @@ def main(kind: str) -> int:
         print("OK: ログイン済み" if rc == 0 else "NG: Codex にログインしていない", file=sys.stderr)
         return rc
     script = pathlib.Path(argv[argv.index("--script") + 1])
-    leaked = [k for k in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "AZURE_OPENAI_API_KEY")
+    leaked = [k for k in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AZURE_OPENAI_API_KEY")
               if k in os.environ]
     if leaked:
         print("NG: API キーが渡ってきた", file=sys.stderr)

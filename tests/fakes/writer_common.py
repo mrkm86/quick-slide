@@ -18,7 +18,7 @@ import pathlib
 import time
 import uuid
 
-API_KEY_VARS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "AZURE_OPENAI_API_KEY")
+API_KEY_VARS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AZURE_OPENAI_API_KEY")
 LOG = pathlib.Path(os.environ["FAKE_WRITER_LOG"])
 MODE = os.environ.get("FAKE_WRITER_MODE", "ok")
 

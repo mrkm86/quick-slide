@@ -14,7 +14,10 @@ from collections.abc import Mapping
 from pathlib import Path
 
 # 従量課金に切り替わるキー。値は読まない・出さない・渡さない
-API_KEY_VARS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "AZURE_OPENAI_API_KEY", "CODEX_API_KEY")
+API_KEY_VARS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AZURE_OPENAI_API_KEY", "CODEX_API_KEY")
+# OAuth のトークン（ANTHROPIC_AUTH_TOKEN・CLAUDE_CODE_OAUTH_TOKEN）は消さない。会話しているアプリが Claude Code を
+# このトークンでログインさせていることがあり（`claude auth status` が authMethod: oauth_token を返す）、消すと台本係の
+# `claude` がログインしていない扱いになる。台本係は、頼んできた会話と同じ認証で動く
 NESTED_SESSION_VARS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT",
                        "CODEX_THREAD_ID", "CODEX_SESSION_ID", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED")
 

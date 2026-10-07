@@ -45,8 +45,10 @@
 - **台本係の LLM**: 設定 `writer`（`auto` / `claude` / `codex`）。`auto` は会話の出所（`origin.runtime` の claude_code・codex）と同じもの、
   出所が分からなければ手元にあるもの（claude → codex）。**出所や設定で決まった CLI が無ければ、黙って替えずに止まり**、
   何を入れて何にログインするかを言う。実行ファイルは `QUICK_SLIDE_CLAUDE`・`QUICK_SLIDE_CODEX_TEXT` で差し替えられる
-- **サブスクだけ**: 台本係・エンジンの子プロセスには `OPENAI_API_KEY`・`ANTHROPIC_API_KEY`・`ANTHROPIC_AUTH_TOKEN`・
-  `AZURE_OPENAI_API_KEY`・`CODEX_API_KEY` を渡さない（`childenv.py`。入れ子の会話の印も消す）
+- **サブスクだけ**: 台本係・エンジンの子プロセスには `OPENAI_API_KEY`・`ANTHROPIC_API_KEY`・
+  `AZURE_OPENAI_API_KEY`・`CODEX_API_KEY` を渡さない（`childenv.py`。入れ子の会話の印も消す）。
+  OAuth のトークン（`ANTHROPIC_AUTH_TOKEN`・`CLAUDE_CODE_OAUTH_TOKEN`）は渡す。会話しているアプリが Claude Code を
+  このトークンでログインさせていることがあり、消すと台本係が「ログインしていない」で止まった（2026-10-07 の本物の通しで発覚）
 - **ページの同一性**は台本の各ページの `id`（両エンジンが受ける共通のキーで、描くことには使わない）。台本係に付けさせ、
   書き直すときは残すページの id を変えさせない。無い・形が違う・重なるときはエンジンに渡す前に `NG:` で返す。
   page_ids は (デッキ, id) で引くので、同じ id は同じページ
