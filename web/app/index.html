@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Quick Slide</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<!--
+  Quick Slide の画面（P6）。ホーム（/）・すべてのスライド（/slides）・縦スクロールの実況・編集画面（/slides/<id>）を
+  この 1 枚の HTML と素の JS で描く。ビルド無し・外部リソース無し（CSP: default-src 'self'）。
+  ウィンドウは 1 つ: 新しいウィンドウ・タブを開く API や属性は使わない（DESIGN §1.2）。
+  画面に出す状態名は API の display.label / status_label をそのまま使い、ここでは作らない（docs/DATA_MODEL.md §4.2）。
+-->
+<a class="skip" href="#view">本文へ</a>
+<header class="topbar">
+  <a class="topbar__brand" href="/" data-nav>Quick Slide</a>
+  <nav class="topnav" aria-label="画面">
+    <a href="/" data-nav data-route="home">ホーム</a>
+    <a href="/slides" data-nav data-route="list">スライド</a>
+  </nav>
+  <div class="topbar__right">
+    <template id="settings-icon">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9.5 3-.5 2-2 .9-1.9-.6-2.5 4.3 1.5 1.4v2l-1.5 1.4 2.5 4.3 1.9-.6 2 .9.5 2h5l.5-2 2-.9 1.9.6 2.5-4.3-1.5-1.4v-2l1.5-1.4-2.5-4.3-1.9.6-2-.9-.5-2Z"/><circle cx="12" cy="12" r="3"/></svg>
+    </template>
+  </div>
+</header>
+<div class="workspace-status">
+  <span id="server-state" class="muted small" aria-live="polite">サーバを確認しています…</span>
+  <div class="workspace-status__action">
+    <!-- 新しいスライドはボタンにしない（利用者の決定。入口は会話。docs/adr/0020 §7 追記）。
+         文言の正本は server/vocabulary.py の NEW_DECK_NOTICE（tests/p6/test_ui_static.py が一致を固定）。
+         ホーム・一覧（入口を探す画面）でだけ出す。デッキの画面は作っている最中なので出さない
+         （利用者の指摘、2026-09-14）。表示・非表示の切り替えは core.js の SS.render（el.hidden）。 -->
+    <span id="new-deck-notice" class="reason">新しいスライドは会話から作ります</span>
+  </div>
+</div>
+<main id="view" tabindex="-1" aria-live="polite"></main>
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+<script src="/static/core.js"></script>
+<script src="/static/home.js"></script>
+<script src="/static/deck.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

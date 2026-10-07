@@ -18,6 +18,7 @@
 | `.claude-plugin/`・`.codex-plugin/`・`.agents/plugins/` | プラグインのマニフェスト（Claude Code と Codex） |
 | `skills/html-slide/` | エンジン: 編集できて動く PPTX |
 | `skills/image-slide/` | エンジン: 画像生成で1枚ずつ描く資料 |
+| `src/quick_slide/`・`web/app/` | 常駐サーバと画面（作り直し中。段の進め方は `docs/DESIGN.md` §7、P1 の控えは `docs/P1-NOTES.md`） |
 
 エンジンは状態を持たず、ほかのスキルを呼ばない（素材はファイルで受ける）。
 
@@ -32,6 +33,7 @@
 ```bash
 bash skills/image-slide/tests/run.sh   # 本物の Codex は呼ばない
 bash skills/html-slide/tests/run.sh
+bash tests/run.sh                      # サーバと画面（本物のヘッドレス Chrome で画面を開く試験を含む）
 ```
 
 テストは使い捨ての `QUICK_SLIDE_HOME` とキャッシュで走り、実の置き場を読まない・書かない。

@@ -1,0 +1,954 @@
+/* Quick Slide 画面（P6）。
+   製品 UI の色をテーマトークンに集約。利用者のスライド・ブランドの配色とは独立。
+   ビルド無し・外部フォント無し（システムフォント）。単一ウィンドウ・狭幅（900px 未満）対応は末尾のメディアクエリ。 */
+
+:root {
+  --ink: #162033;
+  --muted: #68758a;
+  --line: #dde4ec;
+  --surface: #ffffff;
+  --canvas: #f5f7fa;
+  --brand: #0f766e;
+  --brand-soft: #dff7f2;
+  --danger: #b42318;
+  --danger-hover: #8f1c13;
+  --color-on-danger: #ffffff;
+  --warn: #b54708;
+  --brand-hover: #115e59;
+  --hero-bg: #edf8f5;
+  --hero-line: #a9d4cb;
+  --hero-mid: #79b9ad;
+  --color-bg: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--canvas);
+  --color-text: var(--ink);
+  --color-text-muted: var(--muted);
+  --color-border: var(--line);
+  --color-primary: var(--brand);
+  --color-accent: var(--brand-hover);
+  --color-on-primary: var(--surface);
+  --color-focus: var(--brand);
+  --color-success: var(--brand);
+  --color-warning: var(--warn);
+  --color-error: var(--danger);
+  --color-info: #3d5a73;
+  --color-success-soft: var(--brand-soft);
+  --color-warning-soft: #f1ead9;
+  --color-error-soft: #f2e0e0;
+  --color-info-soft: #e0e8ee;
+  --color-overlay: rgba(0, 0, 0, 0.45);
+  --font-body: Inter, "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+  --font-heading: var(--font-body);
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
+  --radius-1: 10px; --radius-2: 10px; --radius-3: 16px;
+  --shadow-1: 0 2px 6px rgba(22, 32, 51, 0.03);
+  --shadow-2: 0 8px 28px rgba(22, 32, 51, 0.10);
+  --topbar-h: 72px;
+  --instr-compact-h: 44px;
+  --thumbs-w: 248px;
+  --slide-max-w: 1040px;
+  --versions-w: 132px;   /* スライドの右に置く版の縦スタック */
+  /* カード 1 枚の器（スライド + 隙間 + 版スタック）。--slide-max-w がスライドの上限になる */
+  --stage-max-w: calc(var(--slide-max-w) + var(--space-3) + var(--versions-w));
+  --page-max-w: 1208px;  /* 本文の既定の上限（これまでの main の値） */
+  --deck-max-w: 1360px;  /* スライドの画面だけ広げる: 版スタックを足してもスライドを狭くしないため */
+  --motion-fast: 160ms;
+  --motion-pulse: 1.6s;
+  --motion-orbit: 2.4s;
+  --motion-bar: 2.2s;
+  --motion-spin: 0.9s;
+  --motion-drag: 120ms;   /* 掴んだ分身が出るまで・隙間の見た目が付くまで */
+  --motion-move: 1.2s;    /* 動かしたページの強調が消えるまで */
+  --motion-adopt: 1.4s;   /* 版を選んで答えを待っている間の脈 */
+}
+
+/* ---- 基本 ---- */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: 15px/1.6 var(--font-body);
+  overflow-x: hidden; /* 狭幅で横スクロールを起こさない（U5）。中身も minmax(0,1fr) と max-width で収める */
+}
+a { color: inherit; }
+h1, h2, h3 { font-family: var(--font-heading); margin: 0; line-height: 1.3; }
+h1 { font-size: 26px; font-weight: 700; }
+h2 { font-size: 18px; font-weight: 600; }
+h3 { font-size: 14px; font-weight: 600; color: var(--color-text-muted); }
+p { margin: 0; }
+img { max-width: 100%; height: auto; display: block; }
+pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: 13px/1.5 var(--font-mono); overflow-x: auto; }
+code { font-family: var(--font-mono); font-size: 0.92em; word-break: break-all; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.muted { color: var(--color-text-muted); }
+.small { font-size: 13px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip { position: absolute; left: -999px; top: 0; background: var(--color-surface); padding: var(--space-2); z-index: 100; }
+.skip:focus { left: var(--space-2); }
+
+/* ---- 上部バー ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  height: var(--topbar-h);
+  display: flex; align-items: center; gap: var(--space-5);
+  padding: 0 max(24px, calc((100vw - 1160px) / 2));
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+.topbar__brand { font-weight: 700; font-size: 18px; text-decoration: none; letter-spacing: -0.025em; white-space: nowrap; }
+.topnav { display: flex; gap: var(--space-2); margin-left: var(--space-5); }
+.topnav a { text-decoration: none; color: var(--muted); padding: 8px 16px; border-radius: 10px; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.topnav a:hover, .topnav a[aria-current="page"], .settings-link:hover, .settings-link[aria-current="page"] { background: var(--brand-soft); color: var(--brand); }
+.topbar__right { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); }
+.settings-link { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; color: var(--muted); }
+.icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.workspace-status { max-width: 1208px; margin: 0 auto; padding: 20px 24px 0; display: flex; align-items: center; gap: var(--space-4); }
+.workspace-status__action { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: var(--space-3); }
+.workspace-status .reason { font-size: 12px; }
+
+/* ---- ボタン・チップ・入力 ---- */
+.btn {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: 9px 14px; border-radius: var(--radius-2);
+  border: 1px solid var(--color-border); background: var(--color-surface); cursor: pointer;
+  line-height: 1.3;
+}
+.btn:hover:not(:disabled) { background: var(--color-surface-muted); }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+.btn--primary:disabled, .btn--primary[aria-disabled="true"] { background: transparent; color: var(--color-text-muted); border-color: var(--color-border); }
+.btn--primary { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); }
+.btn--primary:hover:not(:disabled) { background: var(--color-accent); border-color: var(--color-accent); }
+.btn--danger { background: var(--danger); color: var(--color-on-danger); border-color: var(--danger); }
+.btn--danger:hover:not(:disabled) { background: var(--danger-hover); border-color: var(--danger-hover); }
+.btn--ghost { border-color: transparent; background: transparent; }
+.btn--small { padding: 3px 8px; font-size: 13px; }
+.btn--icon { width: 32px; height: 32px; padding: 0; justify-content: center; font-size: 18px; line-height: 1; }
+/* `⋮`（U+22EE）は字の中でインクが下に寄っている。32px の枠で実測すると上 11.33px / 下 8.67px で、
+   **1.33px 下**にいた（2026-09-18、利用者「メニュー アイコンだけが 少し下寄りに見えます」）。
+   印そのものは ADR 0020 §3 の決定なので変えず、**この 1 文字ぶんのズレだけを戻す**。
+   下に 2px 足すと、中央寄せの基準になる箱が 1px 上がる（端末の画素に丸められるので実測で決めた）。
+   描いた印（SVG）は 0.33px で
+   ずれていないので、直す相手は「メニューを開く文字の印」だけに絞る。 */
+.btn--icon[aria-haspopup="menu"] { padding-bottom: 2px; }
+.chip {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: 1px 8px; border-radius: 999px; font-size: 12px; line-height: 1.7;
+  background: var(--color-surface-muted); color: var(--color-text-muted); border: 1px solid transparent;
+}
+.chip--status-draft { background: var(--color-surface-muted); }
+.chip--status-review { background: var(--color-info-soft); color: var(--color-info); }
+.chip--status-final { background: var(--color-success-soft); color: var(--color-success); }
+input[type="search"], input[type="text"], select, textarea {
+  padding: 9px 12px; border-radius: var(--radius-2);
+  border: 1px solid var(--color-border); background: var(--color-surface);
+}
+textarea { width: 100%; min-height: 64px; resize: vertical; }
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+fieldset:disabled input, fieldset:disabled textarea, fieldset:disabled select, fieldset:disabled button { opacity: 0.6; cursor: not-allowed; }
+
+/* ---- 通知・メニュー ---- */
+.toasts { position: fixed; left: 50%; bottom: var(--space-5); transform: translateX(-50%); display: flex; flex-direction: column; gap: var(--space-2); z-index: 60; max-width: min(560px, calc(100vw - 32px)); }
+.toast {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-4); border-radius: var(--radius-2);
+  background: var(--color-text); color: var(--color-bg); box-shadow: var(--shadow-2);
+}
+.toast--error { background: var(--color-error); color: var(--color-on-primary); }
+.toast .btn { border-color: currentColor; background: transparent; color: inherit; }
+.menu {
+  position: absolute; z-index: 50; min-width: 200px; margin: 0; padding: var(--space-1) 0; list-style: none;
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-2); box-shadow: var(--shadow-2);
+}
+/* 行の文字は上下の真ん中（2026-09-18、利用者の指示）。`display: block` だと行の高さが字の
+   行送りまかせになり、和文の字形のせいで上に寄って見えた。**flex で真ん中に置き、高さは自分で決める** */
+.menu button { display: flex; align-items: center; width: 100%; min-height: 34px; line-height: 1.3;
+  text-align: left; padding: 4px 14px; border: 0; background: transparent; cursor: pointer; }
+.menu button:hover:not(:disabled) { background: var(--color-surface-muted); }
+.menu button:disabled { opacity: 0.5; cursor: not-allowed; }
+.menu .menu__reason { padding: 2px 14px 6px; font-size: 12px; color: var(--color-text-muted); }
+.menu .menu__sep { border-top: 1px solid var(--color-border); margin: var(--space-1) 0; }
+.menu-anchor { position: relative; }
+.notice { padding: var(--space-3) var(--space-4); border-radius: var(--radius-2); border: 1px solid var(--color-border); background: var(--color-surface); }
+.notice--error { border-color: var(--color-error); color: var(--color-error); background: var(--color-error-soft); }
+.notice--info { border-color: var(--color-info); background: var(--color-info-soft); color: var(--color-info); }
+.notice--warn { border-color: var(--color-warning); background: var(--color-warning-soft); color: var(--color-warning); }
+/* 枠切れの帯（Codex の利用制限）。スライドに 1 つ、デッキ見出しの直下に置く */
+/* 全体の進み（上部の帯。件数はサーバの counts をそのまま出す。UI.md §6） */
+/* 企画の帯（待っている人に「いま何をしているか」を出す。UI.md §6）。
+   `display: grid` は素の `[hidden]` に勝つので、畳むときはここで畳み直す */
+.planning-band { margin: 0 0 var(--space-4); display: grid; gap: 2px; position: relative; overflow: hidden; }
+.planning-band[hidden] { display: none; }
+.planning-band p { margin: 0; }
+.planning-band__text { font-weight: 600; }
+/* 動いている間は「動きのある表現」を出す（静止した帯だと、進んでいるのか止まっているのか読めない）。
+   細い進行バーにしたのは、ページ枠が絵を作っている間の表現（回る光）と別のものにするため（UI.md §6 の表） */
+.planning-band--active { border-color: var(--color-info); }
+.planning-band--active::after {
+  content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: 20%;
+  background: var(--color-info); animation: ss-bar var(--motion-bar) ease-in-out infinite;
+}
+
+.progress-band { margin: 0 0 var(--space-4); display: grid; gap: 2px; }
+.progress-band p { margin: 0; }
+.progress-band__text { font-weight: 600; }
+.progress-band__groups { color: var(--color-text-muted); }
+
+/* 実況が続けられなくなったときの知らせ（黙って止まらない） */
+.live-notice { margin: 0 0 var(--space-4); display: grid; gap: var(--space-2); justify-items: start; }
+.live-notice p { margin: 0; }
+
+.limit-band { margin: 0 0 var(--space-4); display: grid; gap: var(--space-2); }
+/* 帯が出ないが再開はできる、という状態のボタン 1 つ（帯と同じ場所に出る。両方が出ることは無い） */
+.deck-resume { margin: 0 0 var(--space-4); display: flex; gap: var(--space-2); align-items: center; }
+.limit-band__text { font-weight: 600; margin: 0; }
+.limit-band p { margin: 0; }
+.limit-band .reason { color: var(--color-text-muted); }
+.reason { font-size: 13px; color: var(--color-text-muted); }
+
+/* ---- 画面共通 ---- */
+main { padding: var(--space-6) var(--space-5) 56px; max-width: var(--page-max-w); margin: 0 auto; }
+/* スライドの画面は本文が主役なので、そこだけ本文を広げる（上のバーは 1160px に合わせて中身を寄せて
+   いるので、左右の線がスライドの画面だけ揃わなくなる。細いバーより本文の幅を採る） */
+body[data-route="deck"] main { max-width: var(--deck-max-w); }
+.view-head { display: flex; align-items: baseline; gap: var(--space-4); margin-bottom: var(--space-5); flex-wrap: wrap; }
+.view-head .grow { flex: 1; }
+.empty { padding: var(--space-6); text-align: center; color: var(--color-text-muted); border: 1px dashed var(--color-border); border-radius: var(--radius-2); }
+
+/* ---- ホームのヒーロー（スライドの配色設定から独立した装飾）---- */
+.home-hero { display: grid; grid-template-columns: 1fr 1fr; align-items: center; min-height: 300px; margin-bottom: 40px; padding: 12px 32px 12px 48px; overflow: hidden; border: 1px solid var(--brand-soft); border-radius: 24px; background: var(--hero-bg); }
+.home-hero__copy { position: relative; z-index: 1; }
+.home-hero__eyebrow { color: var(--brand); font-size: 13px; font-weight: 600; letter-spacing: .08em; margin-bottom: 14px; }
+.home-hero h1 { font-size: clamp(36px, 4vw, 52px); letter-spacing: -.045em; line-height: 1.15; }
+.home-hero__description { margin-top: 20px; color: var(--muted); font-size: 14px; line-height: 1.9; }
+.home-hero__art { min-width: 0; }
+.home-hero__art svg { display: block; width: 100%; height: auto; }
+.hero-halo, .hero-panel { fill: var(--brand-soft); }
+.hero-guides { fill: var(--hero-bg); stroke: var(--hero-line); stroke-width: 1; stroke-linecap: round; }
+.hero-slide { fill: var(--surface); stroke: var(--hero-line); stroke-width: 1; }
+.hero-slide--back { fill: var(--brand-soft); }
+.hero-slide--middle { fill: var(--hero-bg); }
+.hero-shadow { fill: var(--brand); opacity: .07; }
+.hero-lines { fill: none; stroke: var(--hero-line); stroke-width: 4; stroke-linecap: round; }
+.hero-lines--strong { stroke: var(--brand); stroke-width: 6; }
+.hero-accent, .hero-dot { fill: var(--brand); }
+.hero-bar--light { fill: var(--hero-line); }
+.hero-bar--mid { fill: var(--hero-mid); }
+
+/* ---- カード（ホーム・一覧）---- */
+.section { margin-bottom: 36px; }
+.section__head { display: flex; align-items: baseline; gap: var(--space-3); margin-bottom: var(--space-4); }
+.section__link { color: var(--brand); text-decoration: none; font-weight: 600; }
+.section__link:hover { text-decoration: underline; }
+.section__head .grow { flex: 1; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: var(--space-5); }
+.pins { display: flex; gap: var(--space-4); overflow-x: auto; padding-bottom: var(--space-2); scroll-snap-type: x proximity; }
+.pins .card { flex: 0 0 272px; scroll-snap-align: start; }
+/* `overflow: hidden` は置かない。メニューのボタンがカードの下端にあり、
+   そこから開く popup を切ってしまう（行の形のカードは popup より背が低い）。
+   角の丸めはサムネ自身に持たせる（下の `.card__thumb` の border-radius） */
+.card {
+  position: relative;
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-3);
+  box-shadow: var(--shadow-1);
+  display: flex; flex-direction: column;
+}
+.card__thumb { aspect-ratio: 16 / 9; background: var(--color-surface-muted); display: grid; place-items: center; color: var(--color-text-muted); font-size: 13px; overflow: hidden;
+  border-radius: calc(var(--radius-3) - 1px) calc(var(--radius-3) - 1px) 0 0; }
+.card__thumb img { width: 100%; height: 100%; object-fit: cover; }
+.card__body { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); flex: 1; min-width: 0; }
+.card__title { font-weight: 600; font-size: 15px; line-height: 1.4; text-decoration: none; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* タイトルに下線を出さない（2026-09-11 利用者の指摘「onMouse のときにタイトルに下線が表示されるが、不要」）。
+   カード全体がリンクなので、指している合図は下の `.card--link:hover` の枠の色と影が担う。
+   タイトルだけに下線を引くと、カードの一部分だけがリンクだという嘘になる。
+   素のリンク（`.section__link`「スライドをすべて見る →」）の下線はそのまま残す */
+/* 更新日時と枚数の 1 行。2 行に割らない（溢れたら省略する） */
+.card__line { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card__meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); align-items: center; font-size: 12px; color: var(--color-text-muted); }
+/* 最下段の行: 左に日時と枚数、右端にメニューのボタン。カードの下端に寄せる */
+.card__foot { display: flex; align-items: center; gap: var(--space-2); margin-top: auto; min-width: 0; }
+.card__foot .card__line { flex: 1; min-width: 0; }
+/* カード全体をリンクにする（いわゆる stretched link）。<a> で <article> を包むと中のメニューの
+   ボタンがリンクの中に入って壊れるので、タイトルの <a> の擬似要素をカード全体まで広げる。
+   これで中クリック・リンクのコピー・キーボードの焦点（1 枚につき 1 つ）が保たれる。
+   メニューはこの覆いより手前（z-index）に出すので、そのまま押せる。 */
+.card--link .card__title::after { content: ""; position: absolute; inset: 0; z-index: 1; }
+.card--link:hover { border-color: var(--color-primary); box-shadow: var(--shadow-2); }
+.card--link:focus-within { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.card--link .card__title:focus-visible { outline: none; }  /* 焦点の枠はカード全体に出す（二重にしない） */
+/* サムネの上に重ねない（サムネが隠れるのがNG。2026-09-11 利用者の指摘）。
+   覆い（`.card--link .card__title::after`）より手前に置くのでそのまま押せる */
+.card__menu { position: relative; z-index: 2; flex: 0 0 auto; margin-left: auto; }
+.card--row { flex-direction: row; align-items: stretch; }
+.card--row .card__thumb { flex: 0 0 200px; aspect-ratio: 16 / 9;
+  border-radius: calc(var(--radius-3) - 1px) 0 0 calc(var(--radius-3) - 1px); }
+.card--row .card__body { padding: var(--space-4) var(--space-5); justify-content: center; }
+.card--row .card__foot { margin-top: 0; }
+/* 横並びの行では ⋮ を**日付の行から切り出して、カードの高さの真ん中**に置く
+   （2026-09-18、利用者の指摘「日付と同じセクションにアイコンがあるんじゃないか」。実際そうで、
+   日付の行の一員だったので下に寄って見えていた）。⋮ が指すのはカードの操作であって日付ではない。
+   `.card` は `position: relative` なので、そこを基準に右端へ置ける。横の位置は body の右余白
+   （`--space-5`）に合わせ、今までと同じ場所に見えるようにする。
+   2026-09-11 の「サムネの上に重ねない」は守っている（重なるのは右端の余白だけ）。
+   縦積みのカード（狭幅・ホーム）では今までどおり最下段の行の右端に残す。 */
+.card--row .card__menu { position: absolute; top: 50%; right: var(--space-5); transform: translateY(-50%); margin-left: 0; }
+.card--row .card__title { -webkit-line-clamp: 1; font-size: 16px; }
+.list { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4); }
+.toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: center; margin-bottom: var(--space-4); padding: var(--space-4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-3); }
+.toolbar input[type="search"] { min-width: 260px; flex: 1; }
+.toolbar label { display: inline-flex; align-items: center; gap: var(--space-1); font-size: 13px; color: var(--color-text-muted); }
+.pager { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-4); font-size: 13px; color: var(--color-text-muted); }
+
+/* ---- 縦スクロールの実況・編集画面（UI.md §6）---- */
+.deck-screen { max-width: none; }
+/* 見出しは 3 段（パンくず / タイトル + 書き出し / 状態・構成・ブランド）。2026-09-18 */
+.deck-head { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); }
+.deck-head .crumbs { font-size: 13px; margin: 0; }
+.deck-head .crumbs a { color: var(--color-text-muted); }
+.deck-title-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+/* タイトルは大きく。狭いときは折り返す（`min-width: 0` が無いと長い題で右端のボタンを押し出す） */
+.deck-title { flex: 1 1 320px; min-width: 0; display: flex; align-items: center; gap: var(--space-2); }
+.deck-title h1 { min-width: 0; font-size: 34px; letter-spacing: -.02em; }
+/* 鉛筆はタイトルに寄り添う。触れるまで控えめにし、キーボードで辿れる間は必ず見える */
+.deck-title-edit { color: var(--color-text-muted); opacity: .45; }
+.deck-title:hover .deck-title-edit, .deck-title-edit:focus-visible { opacity: 1; }
+/* その場の書き換え。h1 と同じ大きさにして、押した瞬間に字が飛び跳ねないようにする */
+.deck-title-input {
+  flex: 1 1 auto; min-width: 0; font: inherit; font-family: var(--font-heading);
+  font-size: 34px; font-weight: 700; letter-spacing: -.02em; line-height: 1.3;
+  color: var(--color-text); background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: var(--radius-1); padding: 0 6px;
+}
+.deck-title-input:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+.deck-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+.deck-meta { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+/* 書き出しの 2 つは並びの見た目を `⋮`（.btn--icon）に揃える。**色では分けない**
+   （2026-09-18、利用者「ぱっと見色の違いがわからない」。赤とオレンジを試して却下した）。
+   高さだけ `.btn--icon` と同じ 32px にし、横に並んだ 3 つの頭とおしりを合わせる */
+.btn--export { height: 32px; padding: 0 12px; }
+
+/* ごみ箱の見出し。左に「空けられる容量」と断り、右端に「空にする」。
+   狭いときは 2 段に折り返す（`min-width` を持たせない） */
+.trash-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.trash-head p { margin: 0; display: flex; gap: var(--space-3); flex-wrap: wrap; }
+.trash-head__actions { display: flex; align-items: center; gap: var(--space-2); }
+/* まだ使えない操作の理由はスライドに 1 か所（押せない部品ごとに同じ文を並べない） */
+.screen-reasons { margin: 0 0 var(--space-4); display: grid; gap: 2px; }
+.deck-body {
+  display: grid;
+  grid-template-columns: var(--thumbs-w) minmax(0, 1fr);
+  grid-template-areas: "thumbs instr" "thumbs pages";
+  column-gap: var(--space-5);
+  row-gap: var(--space-4);
+  align-items: start;
+}
+
+/* 左: サムネイル一覧（固定幅・独立スクロール） */
+.thumbs {
+  grid-area: thumbs;
+  position: sticky; top: calc(var(--topbar-h) + var(--space-3));
+  max-height: calc(100vh - var(--topbar-h) - var(--space-5));
+  overflow-y: auto; overflow-x: hidden;
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-3);
+  display: flex; flex-direction: column;
+}
+.thumbs__list { list-style: none; margin: 0; padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2); }
+.thumb {
+  position: relative;   /* 番号の札を絵の左上に重ねる */
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2); align-items: center;
+  width: 100%; padding: var(--space-1); border-radius: var(--radius-2); border: 2px solid transparent;
+  background: transparent; cursor: pointer; text-align: left;
+  /* 掴んで並べ替える面は**サムネ全体**（取っ手の印は置かない）。指の縦スクロールは残す:
+     指で動かすと器がスクロールして pointercancel になるので、タッチでの並べ替えは
+     ⋮ メニューの「前へ / 後へ」で行う（キーボードは Alt + 矢印）。指で列が動かないほうが損が大きい */
+  touch-action: pan-y;
+}
+.thumb:hover { background: var(--brand-soft); }
+.thumb--current { border-color: var(--color-primary); background: var(--brand-soft); }
+.thumb--hidden { opacity: .38; filter: grayscale(1); }
+/* ページ番号は角丸・地を塗りつぶし・数字を白抜きの札（利用者の指定）。色は既存のトークンだけを使う。
+   **絵の上には重ねない**（2026-09-18）。重ねていたのは欄を取らないためだったが、実測すると札は
+   190x107 の絵の左上 24x25 を覆っており、元のスライドに直すと約 240px 四方 — **見出しの頭**である。
+   サムネイルの仕事は「どのページか分かること」で、それを担っているのは見出しなので、隠すものが
+   悪すぎた。絵の左の欄へ出し、**絵は 1px も縮めず**にレールのほうを 220 → 248px 広げた
+   （右の広い側から 28px もらう）。狭い画面の横帯では以前から札だけを並べており、これで揃った */
+.thumb__num {
+  min-width: 20px; padding: 1px 5px; border-radius: 6px;
+  background: var(--color-text); color: var(--color-surface); border: 1px solid var(--color-surface);
+  box-shadow: var(--shadow-1);
+  font-size: 11px; line-height: 1.5; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums;
+}
+.thumb__pic { aspect-ratio: 16 / 9; background: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: var(--radius-1); overflow: hidden; }
+.thumb__pic img { width: 100%; height: 100%; object-fit: cover; }
+/* 掴んで動かす間、文字が選ばれたり縮小画像が「画像をドラッグ」で持ち去られたりしないように */
+.thumb { user-select: none; -webkit-user-select: none; }
+.thumb__pic img { -webkit-user-drag: none; }
+.thumb[aria-grabbed="true"] { cursor: grabbing; }
+/* 掴んでいる 1 枚。指の下でこれ自身が動き、そのまま落ちる場所に入る（＝どこに落ちるかが曖昧にならない）。
+   位置を要素に書き込む方法（分身を指に付ける）は、この画面の CSP が style-src を緩めていないので採れない */
+.thumb-slot { transition: transform var(--motion-drag) ease-out; }
+.thumb-slot .thumb {
+  background: var(--color-surface); cursor: grabbing;
+  outline: 2px solid var(--color-primary); outline-offset: 2px;
+  box-shadow: var(--shadow-2); transform: scale(1.03);
+}
+.thumb-slot .thumb__num { background: var(--color-primary); }
+/* 掴んでいる間はほかを薄くする。「いま持っている 1 枚」が
+   「いま見ているページ」の強調（.thumb--current）に紛れないように */
+.thumbs__list--dragging .thumb { cursor: grabbing; }
+.thumbs__list--dragging .thumb:not([aria-grabbed]) { opacity: 0.5; }
+.thumbs__list--dragging .thumb--current:not([aria-grabbed]) { border-color: transparent; background: transparent; }
+/* 動かした 1 枚を短く強調する（どれを動かしたかを見せる。位置は勝手に追わない） */
+.thumb--moved { animation: ss-moved var(--motion-move) ease-out; }
+@keyframes ss-moved { from { background: var(--brand-soft); box-shadow: inset 0 0 0 2px var(--color-primary); } to { background: transparent; box-shadow: none; } }
+.thumbs__reorder { padding: 0 var(--space-3) var(--space-2); display: flex; flex-direction: column; gap: 2px; }
+.thumbs__reorder p { margin: 0; }
+.thumbs__reorder p:empty { display: none; }
+
+/* 状態の印（色だけに頼らず形と文字も併用） */
+.mark {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+  font-size: 11px; line-height: 1; background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-muted);
+}
+.mark--ready { background: var(--color-success); border-color: var(--color-success); color: var(--color-on-primary); }
+.mark--failed, .mark--unknown { background: var(--color-error); border-color: var(--color-error); color: var(--color-on-primary); }
+.mark--cancelled { background: var(--color-surface-muted); }
+.mark--generating, .mark--adjusting { border-color: var(--color-info); color: var(--color-info); animation: ss-pulse var(--motion-pulse) ease-in-out infinite; }
+.mark--queued_slot, .mark--queued_rate_limit, .mark--retry_backoff, .mark--paused, .mark--unstarted { border-style: dashed; }
+
+/* 一番上: デッキ全体への指示（スクロールで 1 行に縮んで上に留まる） */
+.deck-instruction {
+  grid-area: instr;
+  position: sticky; top: calc(var(--topbar-h) + var(--space-3)); z-index: 10;
+  max-width: var(--stage-max-w);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-3);
+  box-shadow: var(--shadow-1);
+}
+.deck-instruction__bar {
+  display: flex; align-items: center; gap: var(--space-3);
+  min-height: var(--instr-compact-h); padding: 0 var(--space-4);
+  cursor: pointer; border: 0; background: transparent; width: 100%; text-align: left;
+}
+.deck-instruction__bar .target { font-weight: 600; }
+.deck-instruction__bar .reason { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deck-instruction__body { padding: 0 var(--space-4) var(--space-4); }
+.deck-instruction.is-compact:not(.is-open) .deck-instruction__body { display: none; }
+
+/* 右: スライドが縦に 1 列 */
+.pages { grid-area: pages; display: flex; flex-direction: column; gap: var(--space-6); max-width: var(--stage-max-w); min-width: 0; }
+.page {
+  scroll-margin-top: calc(var(--topbar-h) + var(--instr-compact-h) + var(--space-5));
+  padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-3); box-shadow: var(--shadow-1);
+}
+.page--collapsed .page__stage,
+.page--collapsed .editbox,
+.page--collapsed .versions__compare,
+.page--collapsed .compare,
+.page--collapsed .record-toggle,
+.page--collapsed .record { display: none; }
+.page--hidden .page__stage { opacity: .38; filter: grayscale(1); pointer-events: none; }
+.page--hidden .editbox,
+.page--hidden .versions__compare,
+.page--hidden .compare,
+.page--hidden .record-toggle,
+.page--hidden .record { display: none; }
+.page__head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); flex-wrap: wrap; }
+.page__num { font-weight: 700; color: var(--color-text-muted); min-width: 1.5em; }
+.page__title { font-weight: 700; color: var(--color-text-muted); }
+.page__hidden-mark {
+  display: inline-flex; color: var(--color-text-muted); opacity: .8;
+}
+.page__collapse { flex: 0 0 auto; color: var(--color-text-muted); }
+.page-icon { display: inline-flex; width: 18px; height: 18px; }
+.page-icon svg { display: block; width: 100%; height: 100%; }
+.page__head-spacer { flex: 1 1 auto; }
+.page__origin, .page__state, .page__ver { display: none; }
+/* 状態の印と状態名はヘッダに常設（絵が出ても消えない） */
+.page__state { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
+.page__state-label { font-size: 13px; color: var(--color-text-muted); }
+.page__ver { white-space: nowrap; }
+.page__origin,
+.page__state,
+.page__ver { display: none; }
+/* スライド（主役）と版の縦スタックを横に並べる。狭い画面では下に回る（末尾のメディアクエリ） */
+.page__stage {
+  display: grid;
+  grid-template-areas: "slide versions";
+  grid-template-columns: minmax(0, var(--slide-max-w)) var(--versions-w);
+  gap: var(--space-3);
+  align-items: start;
+}
+.page__stage .frame { grid-area: slide; }
+
+/* 版の縦スタック（スライドの右。新しいものが上）。**絵で見分けるのが本命**なので、
+   押せない間も絵は薄くしない（押せないことは cursor と理由の文で伝える） */
+.versions { grid-area: versions; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.versions__head { display: none; }
+.versions__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+/* 畳んだものは畳まれていること（flex の子は素の [hidden] に勝てる場面がある） */
+.versions__list li[hidden] { display: none; }
+.version {
+  display: grid; gap: 2px; width: 100%; padding: 3px; text-align: left;
+  background: transparent; border: 2px solid transparent; border-radius: var(--radius-2); cursor: pointer;
+}
+.version:hover:not(:disabled) { background: var(--brand-soft); }
+.version:disabled, .version[aria-disabled="true"] { cursor: not-allowed; }
+.version--active { border-color: var(--color-primary); background: var(--brand-soft); }
+.version__pic {
+  position: relative; aspect-ratio: 16 / 9; overflow: hidden;
+  background: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: var(--radius-1);
+  display: grid; place-items: center;
+}
+.version__pic img { width: 100%; height: 100%; object-fit: cover; }
+.version__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 2px var(--space-1); font-size: 11px; color: var(--color-text-muted); }
+.version__no { font-weight: 700; color: var(--color-text); }
+/* 印は色だけに頼らず、形（●）と文字も併用する（.mark と同じ作法） */
+.version__flag { padding: 0 5px; border-radius: 999px; font-size: 10px; line-height: 1.6; white-space: nowrap; }
+.version__flag--active { background: var(--color-primary); color: var(--color-on-primary); }
+.version__flag--newest { border: 1px solid var(--color-primary); color: var(--color-primary); }
+.version__state { font-size: 10px; line-height: 1.4; color: var(--color-text-muted); }
+/* 押せない理由は版の数だけ並べず、スタックの下に 1 行ずつ（同じ文は 1 回） */
+.versions__why-box { display: flex; flex-direction: column; gap: 2px; }
+.version__why { margin: 0; font-size: 11px; line-height: 1.4; color: var(--color-text-muted); }
+.versions__more { align-self: start; }
+/* 押して答えを待っている 1 枚。**絵は薄くしない**（絵で見分けるのが本命なので、待っていることは
+   輪郭の脈で見せる。`ss-pulse` は不透明度を動かすので、ここでは使わない）。
+   要素に見た目を書けない（CSP）ので、状態は属性で表す */
+.version[aria-busy="true"] { border-color: var(--color-info); animation: ss-adopting var(--motion-adopt) ease-in-out infinite; }
+@keyframes ss-adopting { 0%, 100% { border-color: var(--color-info); } 50% { border-color: var(--color-border); } }
+/* 押した結果（サーバの文）。空のときは場所を取らない */
+.versions__said { color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
+.versions__said:empty { display: none; }
+
+/* スライドの枠と状態の表現（UI.md §6「ページ枠の状態」） */
+.frame {
+  position: relative; aspect-ratio: 16 / 9; margin: 0;
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-2);
+  overflow: hidden; box-shadow: var(--shadow-1);
+}
+.frame img { width: 100%; height: 100%; object-fit: contain; background: var(--color-surface); animation: ss-fade-in 240ms ease-out; }
+.frame__empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); text-align: center; padding: var(--space-4); color: var(--color-text-muted); }
+.frame__label { font-weight: 600; color: var(--color-text); }
+.frame--queued_slot, .frame--queued_rate_limit, .frame--retry_backoff, .frame--paused, .frame--unstarted { border-style: dashed; background: var(--color-surface-muted); }
+.frame--failed, .frame--unknown { border: 2px solid var(--color-error); }
+.frame--failed .frame__label, .frame--unknown .frame__label { color: var(--color-error); }
+.frame--cancelled { background: var(--color-surface-muted); }
+.frame--generating { border-color: var(--color-info); }
+.frame--generating .frame__empty { animation: ss-pulse var(--motion-pulse) ease-in-out infinite; }
+.frame--generating::before {
+  content: ""; position: absolute; inset: -40%; z-index: 0;
+  background: conic-gradient(from 0deg, transparent 0 70%, var(--color-info) 85%, transparent 100%);
+  animation: ss-orbit var(--motion-orbit) linear infinite; opacity: 0.35; pointer-events: none;
+}
+.frame--generating .frame__empty { z-index: 1; background: var(--color-surface); inset: 3px; border-radius: var(--radius-1); }
+.frame--adjusting::after {
+  content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 40%;
+  background: var(--color-info); animation: ss-bar var(--motion-bar) ease-in-out infinite;
+}
+@keyframes ss-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes ss-orbit { to { transform: rotate(360deg); } }
+@keyframes ss-bar { 0% { left: 0; width: 20%; } 50% { width: 45%; } 100% { left: 100%; width: 20%; } }
+@keyframes ss-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* 編集ボックス（隙間に置く）。P6 では無効化し理由を示す（U7） */
+/* 隙間にページを足す（P11。ADR 0048）。**ページとページの間に常に居る**ので、いちばん小さく出す。
+   枠は持たず、字を小さく薄く出す。触れたときにだけはっきりする（2026-09-24、利用者の指示）。
+   **「＋」だけにはしない**: 一度そうして、何のボタンか分からないと指摘された。小さくするのは
+   字の大きさと枠であって、意味ではない。
+   **`[hidden]` を畳み直すのを忘れない**: `display: flex` は素の `[hidden]` に勝つので、
+   書かないと入力欄が最初から開いたままになる（このファイルの他の 5 か所と同じ理由） */
+.gap { display: flex; flex-direction: column; align-items: center;
+       margin: calc(var(--space-6) * -0.5) 0; min-height: 18px; justify-content: center; }
+.gap__add {
+  border: 0; background: none; cursor: pointer;
+  padding: 2px 8px; border-radius: 6px; line-height: 1.6;
+  color: var(--muted); font-size: 12px; opacity: 0.45;
+  transition: opacity 120ms ease, background-color 120ms ease;
+}
+.gap:hover .gap__add { opacity: 0.8; }
+.gap__add:hover, .gap__add:focus-visible { opacity: 1; background: var(--surface); }
+.gap__add[hidden] { display: none; }
+/* 中身は修正指示の欄（`.editbox`）と同じ部品でできている（2026-09-24、利用者
+   「個別ページの修正版みたいなレイアウトで」）。**ここで見た目を作り直さない**:
+   似せるために別の規則を書くと、片方だけ直したときにもう片方が取り残される。
+   ここに書くのは「隙間に浮かぶ札である」ことだけ——幅と余白と影 */
+.gap__form { width: 100%; max-width: 560px;
+  margin: var(--space-2) 0; padding: var(--space-3); background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius-3); box-shadow: var(--shadow-1, 0 2px 10px rgba(16,24,40,.08)); }
+.gap__form.editbox { margin-top: var(--space-2); }
+.gap__form[hidden] { display: none; }
+/* 送信は右端、やめるはその左（同上）。`.editbox__prompt-tools` は 3 列なので、
+   この 2 つは最後の 1 列にまとめて入れる */
+.gap__actions { display: flex; gap: var(--space-2); align-items: center;
+  padding-left: var(--space-3); border-left: 1px solid var(--color-border); }
+.gap--waiting { flex-direction: row; gap: var(--space-2); align-items: center; color: var(--muted); font-size: 13px; }
+.gap__spinner { width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--muted);
+  border-radius: 50%; animation: gap-spin var(--motion-spin) linear infinite; }
+@keyframes gap-spin { to { transform: rotate(360deg); } }
+
+.editbox {
+  margin-top: var(--space-3);
+  display: flex; flex-direction: column; gap: var(--space-2);
+}
+.editbox__row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.editbox__row .target { font-weight: 600; font-size: 13px; }
+.editbox__row .grow { flex: 1; }
+.editbox__prompt {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-1);
+  background: var(--color-bg);
+}
+.editbox__prompt:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+.editbox__prompt textarea {
+  display: block;
+  min-height: 88px;
+  max-height: 240px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  resize: vertical;
+  overflow-y: auto;
+  box-shadow: none;
+}
+.editbox__prompt-tools {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 48px;
+  padding: var(--space-1) var(--space-2);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+}
+.editbox__prompt-tools .grow { display: none; }
+.editbox__pick { flex: 0 0 auto; }
+/* 送れない欄は、見ただけで送れないと分かる形にする（押せない部品は押せなく見せる。U7） */
+.editbox fieldset:disabled textarea { background: var(--color-surface-muted); }
+.editbox .hint { font-size: 12px; color: var(--color-text-muted); }
+/* 貼り付け・ドラッグ&ドロップの案内は、書いている間と落とそうとしている間だけ見せる。
+   常に出すと 10 ページのスライドで同じ 1 文が 11 回並ぶ（実ブラウザで撮って分かった） */
+.editbox__note { display: none; margin: 0; color: var(--color-text-muted); }
+.editbox:focus-within .editbox__note, .editbox--drop .editbox__note { display: block; }
+.editbox--drop { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); }
+.editbox__file { display: none; }
+.editbox__attach { row-gap: var(--space-2); }
+.editbox__chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.editbox__chips:empty { display: none; }
+.attach { display: inline-flex; align-items: center; gap: var(--space-1); padding: 2px; border: 1px solid var(--color-border); border-radius: var(--radius-1); background: var(--color-bg); max-width: 260px; }
+.attach__pic { width: 48px; height: 48px; object-fit: cover; border-radius: 2px; }
+.attach__state, .attach__why { padding: 0 var(--space-1); color: var(--color-text-muted); }
+.attach__why { color: var(--color-error); overflow-wrap: anywhere; }
+.attach[aria-busy="true"] { border-color: var(--color-info); animation: ss-adopting var(--motion-adopt) ease-in-out infinite; }
+.attach[data-failed] { border-color: var(--color-error); }
+.editbox__remake {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--color-border);
+  cursor: pointer;
+}
+.editbox__prompt-tools > .btn:last-child {
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--color-border);
+}
+.editbox__remake input { width: auto; margin: 0; }
+.editbox__remake input:disabled { cursor: not-allowed; }
+.editbox__forced { color: var(--color-text-muted); }
+.editbox__why { margin: 0; color: var(--color-error); }
+.editbox__why:empty { display: none; }
+/* 「まだ何も書いていない」だけの行は、その欄に入るまで出さない（同じ1文がカードの数だけ並ぶのを避ける）。
+   間違えているとき（長すぎ・枚数超過）の行は焦点が無くても出る */
+.editbox__why--quiet { display: none; }
+/* 送った答え（サーバの文）と、断られた理由。回収の口のボタンもここに出る */
+.editbox__said { display: grid; gap: var(--space-2); justify-items: start; }
+.editbox__said:empty { display: none; }
+.editbox__said p { margin: 0; color: var(--color-text-muted); }
+.editbox__said p.editbox__refused { color: var(--color-error); }
+
+/* ▸このページの記録（その場に展開。起きたことの記録をここへ畳む） */
+.record-toggle { margin-top: var(--space-2); }
+.record { margin-top: var(--space-2); padding: var(--space-4); background: var(--color-surface-muted); border-radius: var(--radius-2); display: grid; gap: var(--space-4); }
+/* 畳んだものは畳まれていること。`display: grid` は素の `[hidden]` に勝つので、ここで畳み直す
+   （これが無いと「▸」のまま中身が出たままになる。要望の「情報が多い」の正体はこれだった） */
+.record[hidden] { display: none; }
+.record dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-4); margin: 0; }
+.record dt { color: var(--color-text-muted); font-size: 13px; }
+.record dd { margin: 0; min-width: 0; }
+.record table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.record th, .record td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--color-border); vertical-align: top; }
+.record th { color: var(--color-text-muted); font-weight: 500; }
+.record .table-wrap { overflow-x: auto; }
+.record .prompt { max-height: 240px; overflow: auto; padding: var(--space-2); background: var(--color-surface-muted); border-radius: var(--radius-1); }
+/* 見比べる（使用中の版と選んだ 1 枚を左右に）。入口は版スタックの中、器はスライドの下で
+   カードの幅いっぱいを使う。`display: grid` は素の [hidden] に勝つので畳み直す */
+.compare { margin-top: var(--space-2); display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-2); background: var(--color-surface); box-shadow: var(--shadow-1); }
+.compare[hidden] { display: none; }
+.compare__pick { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.compare__choice[aria-pressed="true"] { border-color: var(--color-primary); background: var(--brand-soft); }
+.compare__pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.compare__side { margin: 0; display: grid; gap: var(--space-1); min-width: 0; }
+.compare__side img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border: 1px solid var(--color-border); border-radius: var(--radius-1); background: var(--color-surface-muted); }
+.compare figcaption { display: grid; gap: 2px; font-size: 12px; color: var(--color-text-muted); }
+.compare__no { font-weight: 700; color: var(--color-text); }
+.compare__note { overflow-wrap: anywhere; }
+.compare-box { display: grid; gap: var(--space-2); }
+.compare-bar { display: flex; justify-content: flex-end; margin-top: var(--space-2); }
+.versions__compare { text-align: left; white-space: normal; }
+
+/* 画像コピーの代替（ADR 0014 §2。隠さず、順に） */
+.copy-fallback { margin-top: var(--space-2); padding: var(--space-3) var(--space-4); }
+.copy-fallback ol { margin: var(--space-1) 0 0; padding-left: 1.4em; }
+.copy-fallback code { user-select: all; }
+
+
+/* ---- prefers-reduced-motion: 動きは消さず、振幅を小さく・遅くする（UI.md §6） ---- */
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-pulse: 3.2s; --motion-orbit: 6s; --motion-bar: 5s; --motion-fast: 0ms;
+          --motion-drag: 320ms; --motion-move: 3s; --motion-adopt: 3.6s;
+          --motion-spin: 3.2s; }
+  @keyframes ss-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } }
+  .frame--generating::before { opacity: 0.18; }
+  .frame img { animation-duration: 0ms; }
+  html { scroll-behavior: auto; }
+}
+
+/* ---- 狭い画面（900px 未満）: サムネ一覧を横 1 行の帯に（UI.md §6「狭い画面」） ---- */
+@media (max-width: 899px) {
+  main { padding: var(--space-5); }
+  .topbar { gap: var(--space-3); }
+  .topnav { margin-left: 0; }
+  .workspace-status { align-items: flex-start; }
+  .workspace-status__action { max-width: 75%; }
+  .home-hero { min-height: 260px; padding: 24px; grid-template-columns: 1.1fr 1fr; }
+  .home-hero__description { max-width: 24em; }
+  .deck-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "instr" "thumbs" "pages";
+    row-gap: var(--space-3);
+  }
+  .deck-instruction { max-width: none; }
+  .thumbs {
+    position: sticky; top: calc(var(--topbar-h) + var(--space-3) + var(--instr-compact-h) + var(--space-2));
+    max-height: none; overflow-x: auto; overflow-y: hidden;
+    flex-direction: row; align-items: center; z-index: 9;
+  }
+  .thumbs__list { flex-direction: row; padding: var(--space-1) var(--space-2); }
+  .thumb { grid-template-columns: auto; width: auto; padding: 6px 10px; touch-action: pan-x; }
+  .thumbs__reorder { padding: var(--space-2) var(--space-3); white-space: nowrap; border-left: 1px solid var(--color-border); }
+  /* まだ何も言っていないときは仕切りごと出さない（横帯の右端に 1px の縦線だけが残るのを避ける） */
+  .thumbs__reorder:not(:has(p:not(:empty))) { display: none; }
+  /* 横帯では**絵を出さない**（18px に縮めた絵は読めない）。番号の札だけを並べ、重ねずに置く */
+  .thumb__pic { display: none; }
+  .pages { max-width: none; }
+  /* 版スタックはスライドの下へ回す（左のサムネ一覧が横帯になる作法に揃える） */
+  .page__stage { grid-template-areas: "slide" "versions"; grid-template-columns: minmax(0, 1fr); }
+  /* 横帯にしても**版の絵は消さない**。ページは番号と状態で見分けられるが、
+     版は絵しか見分ける手がかりが無い（v2 と v3 の違いは絵の違いである） */
+  .versions__list { flex-direction: row; overflow-x: auto; padding-bottom: var(--space-1); }
+  .versions__list li { flex: 0 0 132px; }
+  .page { scroll-margin-top: calc(var(--topbar-h) + var(--instr-compact-h) + 52px + var(--space-5)); }
+  .compare__pair { grid-template-columns: 1fr; }
+  .cards { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  .card--row .card__thumb { flex-basis: 180px; }
+  .toolbar input[type="search"] { min-width: 0; width: 100%; }
+}
+
+@media (max-width: 599px) {
+  .topbar { padding: 0 16px; gap: 8px; }
+  .topbar__brand { font-size: 16px; }
+  .topnav { gap: 2px; }
+  .topnav a { padding: 8px 10px; font-size: 13px; }
+  main { padding: 24px 16px; }
+  .workspace-status { padding: 16px 16px 0; flex-wrap: wrap; gap: 8px; }
+  .workspace-status__action { max-width: none; width: 100%; }
+  .workspace-status__action .reason { margin-right: auto; }
+  .home-hero { grid-template-columns: minmax(0, 1fr); padding: 28px 24px 4px; margin-bottom: 32px; }
+  .home-hero__art { width: 100%; max-width: 340px; justify-self: center; }
+  .home-hero h1 { font-size: 40px; }
+  .home-hero__description { margin-top: 16px; }
+  .section__head { flex-wrap: wrap; gap: 8px; }
+  .cards { grid-template-columns: minmax(0, 1fr); }
+  .card--row { flex-direction: column; }
+  .card--row .card__thumb { flex: none;
+    border-radius: calc(var(--radius-3) - 1px) calc(var(--radius-3) - 1px) 0 0; }
+  .toolbar input[type="search"] { flex-basis: 100%; }
+}
+
+/* P5 settings: colors are theme tokens, dimensions below are UI layout only. */
+.settings-page { max-width: 1400px; margin: auto; padding: var(--space-5); }
+.settings-tabs { display: flex; gap: var(--space-2); margin: var(--space-4) 0; border-bottom: 1px solid var(--color-border); }
+.settings-tabs a { padding: var(--space-2) var(--space-3); text-decoration: none; color: var(--color-text-muted); border-bottom: 2px solid transparent; }
+.settings-tabs a[aria-current="page"] { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 700; }
+.settings-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: var(--space-6); align-items: start; }
+.settings-list { position: sticky; top: 90px; max-height: calc(100vh - 110px); overflow: auto; }
+.settings-list h2 { font-size: 1rem; margin-top: 1.5rem; }
+.setting-list-item { display: block; width: 100%; margin: .4rem 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.settings-editor { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-2); padding: var(--space-5); min-width: 0; }
+.settings-editor fieldset, .settings-list fieldset { border: 0; padding: 0; margin: 1rem 0; min-width: 0; }
+.settings-editor h2 { margin-top: 1.5rem; font-size: 1.15rem; }
+.style-section-title { margin: var(--space-5) 0 var(--space-2); padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border); font-size: 1rem; }
+.style-field-help { margin-top: calc(-1 * var(--space-2)); }
+.style-dials { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.pattern-picker { margin-top: var(--space-5) !important; padding-top: var(--space-4) !important; border-top: 1px solid var(--color-border) !important; }
+.pattern-picker legend { padding: 0; font-weight: 700; }
+.pattern-picker__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+.pattern-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.pattern-picker__status { display: flex; flex-wrap: wrap; gap: 0 var(--space-3); margin: 0 0 var(--space-3); }
+.pattern-picker__status p { margin: 0; }
+.pattern-choice { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2); align-items: start; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-1); cursor: pointer; }
+.pattern-choice:has(input:checked) { border-color: var(--color-primary); background: var(--color-surface-muted); }
+.pattern-choice input { width: auto; margin: .2em 0 0; }
+.pattern-choice__copy { display: grid; gap: var(--space-1); min-width: 0; }
+.pattern-choice__use { color: var(--color-text-muted); font-size: .82rem; line-height: 1.45; }
+.setting-field { display: grid; gap: .4rem; margin: .8rem 0; min-width: 0; font-size: .9rem; }
+.setting-field input, .setting-field select, .setting-field textarea { width: 100%; min-width: 0; padding: .55rem; border: 1px solid var(--color-border); border-radius: var(--radius-1); color: var(--color-text); background: var(--color-bg); font: inherit; }
+.setting-field input[type=color] { height: 42px; padding: .2rem; }
+/* 色見本は正方形にとどめ、残りの幅はすべて 16 進コード欄に渡す。
+   欄は 7ch を下回らないので #RRGGBB が切れない。 */
+.color-field__controls { --swatch-size: 2.2em; display: grid; grid-template-columns: var(--swatch-size) minmax(7ch, 1fr); gap: var(--space-2); align-items: center; }
+.color-field__controls input[type=color] { width: var(--swatch-size); height: var(--swatch-size); padding: 2px; }
+.color-field__controls input[type=text] { font-variant-numeric: tabular-nums; }
+/* 「情報色（任意）」など任意指定の色欄: チェックボックスと項目名は同じ行に並べる。
+   .setting-field の input への width:100% がチェックボックスにも効いて行が折れていた。 */
+.color-field > label { display: flex; align-items: center; gap: .4em; margin: 0; cursor: pointer; }
+.color-field input[type=checkbox] { flex: none; width: auto; min-width: 0; height: auto; padding: 0; border: 0; background: none; }
+.setting-field textarea { resize: vertical; }
+.setting-grid, .logo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.logo-slot { border: 1px dashed var(--color-border); border-radius: var(--radius-1); padding: .8rem; min-width: 0; }
+.logo-original { width: 100%; height: 72px; object-fit: contain; background: repeating-conic-gradient(var(--color-surface) 0% 25%, var(--color-border) 0% 50%) 50% / 16px 16px; }
+.logo-original[hidden] { display: none; }
+.settings-actions { display: flex; gap: .8rem; flex-wrap: wrap; margin-top: 1.5rem; }
+.danger-zone { margin-top: var(--space-6); padding: var(--space-4); border: 1px solid var(--danger); border-radius: var(--radius-2); display: grid; gap: var(--space-3); }
+.swatches { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
+.swatches span { border-bottom: 12px solid var(--color-border); font-size: .75rem; padding: .25rem; }
+.setting-field--optional label { display: flex; align-items: center; gap: .4rem; cursor: pointer; }
+.setting-field--optional input[type=checkbox] { width: auto; height: auto; padding: 0; border: none; background: none; }
+
+/* 「この機械」の画面（/settings/server。ADR 0049） */
+.setting-panel { max-width: 46rem; }
+.setting-choices { display: grid; gap: var(--space-2); }
+.setting-choice { display: flex; align-items: flex-start; gap: .6rem; padding: .7rem .8rem; border: 1px solid var(--color-border); border-radius: var(--radius-1); cursor: pointer; }
+/* 既定の .setting-field input は width:100%。ラジオには効かせない（チェックボックスと同じ扱い） */
+.setting-choice input[type=radio] { width: auto; height: auto; margin-top: .2rem; padding: 0; border: none; background: none; }
+.setting-choice > span { display: grid; gap: .15rem; }
+.setting-choice:has(input:checked) { border-color: var(--color-primary); }
+/* **`[hidden]` を畳み直す**: `display: grid` は素の `[hidden]` に勝つ */
+.setting-away { display: grid; gap: .2rem; margin-top: var(--space-3); }
+.setting-away[hidden] { display: none; }
+.setting-actions { display: flex; gap: var(--space-2); margin-top: var(--space-4); }
+.preserve-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
+.settings-editor details { border-top: 1px solid var(--color-border); margin-top: 1.5rem; padding-top: 1rem; }
+@media (max-width: 899px) { .settings-layout { grid-template-columns: 1fr; } .settings-list { position: static; max-height: none; } .settings-page { padding: 1rem; } }
+@media (max-width: 899px) { .pattern-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 699px) { .style-dials, .pattern-grid { grid-template-columns: 1fr; } }
+@media (max-width: 500px) { .logo-grid, .setting-grid { grid-template-columns: 1fr; } .settings-editor { padding: 1rem; } }
+
+/* ---- 設定: 一覧（/settings）と編集（/settings/brands/<id>）---- */
+.settings-page--wide { max-width: none; }
+.settings-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-4) 0; }
+.setting-rows { display: grid; gap: var(--space-2); }
+.setting-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-2); }
+.setting-row__name { flex: 1 1 auto; min-width: 0; font-weight: 700; color: var(--color-text); text-decoration: none; overflow-wrap: anywhere; }
+.setting-row__name:hover { color: var(--color-primary); }
+.setting-row__swatches { display: inline-flex; gap: var(--space-1); }
+.setting-row__swatch { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--color-border); }
+
+/* 編集画面の見出しはその場で書き換える入力欄（保存は「保存する」で 1 回だけ） */
+.brand-editor__head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
+.brand-editor__back { color: var(--color-text-muted); text-decoration: none; white-space: nowrap; }
+.brand-editor__back:hover { color: var(--color-primary); }
+.title-editor { display: flex; align-items: center; gap: var(--space-2); flex: 1 1 auto; min-width: 0; }
+.title-input { width: 100%; min-width: 0; min-height: 34px; border: 1px solid transparent; background: transparent; border-radius: var(--radius-1); padding: 3px 8px; font: inherit; font-size: 21px; line-height: 1.3; font-weight: 700; color: var(--color-text); }
+.title-input:hover, .title-input:focus { border-color: var(--color-border); background: var(--color-surface); outline: none; }
+.title-save-state { min-width: 52px; }
+.brand-editor__body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: var(--space-6); align-items: start; }
+.brand-editor__preview { position: sticky; top: calc(var(--topbar-h) + var(--space-3)); align-self: start; min-width: 0; display: grid; gap: var(--space-2); }
+.brand-editor__preview-title { margin: 0; font-size: 1rem; }
+.brand-editor__rail { min-width: 0; display: grid; gap: var(--space-2); align-content: start; }
+.brand-editor__rail fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.brand-editor__rail h2 { font-size: 1rem; margin: var(--space-4) 0 0; }
+.brand-editor__rail details { border-top: 1px solid var(--color-border); margin-top: var(--space-4); padding-top: var(--space-3); }
+.brand-editor__rail .settings-actions { align-items: center; }
+.sample-notes { display: grid; gap: var(--space-1); }
+
+/* ---- 配色カルーセル: 手動送りのみ。送りに動きは付けない（常に即座に切り替える）---- */
+.carousel { display: grid; gap: var(--space-2); }
+.carousel:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 4px; }
+.carousel__stage { --sample-base: var(--color-surface); --sample-primary-dark: var(--color-primary); --sample-primary-light: var(--color-surface-muted); min-width: 0; }
+.carousel__controls { display: flex; align-items: center; gap: var(--space-2); }
+.carousel__dots { display: flex; gap: 2px; }
+.carousel__dot { border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 5px 6px; border-radius: var(--radius-1); }
+.carousel__dot:hover { background: var(--color-surface-muted); }
+.carousel__dot--on { color: var(--color-primary); }
+.carousel__counter { margin-left: auto; }
+.carousel__caption { margin: 0; }
+
+/* 見本（16:9）。色は preview 応答の値を JS が custom property に入れる */
+.sample { --sample-footer-bottom: .6em; --sample-footer-room: 2em; position: relative; aspect-ratio: 16 / 9; overflow: hidden; display: flex; flex-direction: column; gap: clamp(5px, 1vw, 12px); padding: clamp(12px, 3vw, 34px); padding-bottom: calc(clamp(12px, 3vw, 34px) + var(--sample-footer-room)); border: 1px solid var(--color-border); border-radius: var(--radius-1); background: var(--sample-base); color: var(--color-text); font-size: clamp(9px, 1.3vw, 17px); }
+.sample--cover { padding: 0 0 var(--sample-footer-room); gap: 0; }
+.sample__band { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: flex-end; gap: .3em; padding: clamp(12px, 3vw, 34px); background: var(--color-primary); color: var(--sample-base); }
+.sample__eyebrow { margin: 0; font-size: .7em; }
+.sample__title { margin: 0; font-size: 1.5em; color: inherit; }
+.sample__lede { margin: 0; padding: .9em clamp(12px, 3vw, 34px); font-size: .72em; color: var(--color-text-muted); }
+/* フッタ文字（設定されていれば全ページに入る）。焼き込みは固定座標で行われるので、見本も固定座標で置く:
+   中身の量で位置が動く見本は実際の出力と食い違う。4 枚すべてが同じ --sample-footer-bottom を参照し、
+   枚ごとの上書きは置かない（表紙も他の 3 枚と同じ高さ）。中身との重なりは .sample の下パディングで避ける。 */
+.sample__footer { position: absolute; left: 0; right: 0; bottom: var(--sample-footer-bottom); margin: 0; text-align: center; font-size: .58em; color: var(--color-text-muted); }
+.sample__reserved { position: absolute; border: 1px dashed var(--color-info); border-radius: 2px; opacity: .6; }
+.sample__logo { position: absolute; object-fit: contain; }
+.sample__lost { position: absolute; left: 0; right: 0; bottom: calc(var(--sample-footer-bottom) + var(--sample-footer-room)); margin: 0; text-align: center; font-size: .58em; color: var(--color-error); }
+.sample__heading { margin: 0; font-size: 1.25em; color: var(--color-primary); }
+.sample__body { margin: 0; font-size: .72em; color: var(--color-text-muted); }
+.sample__rule { width: 100%; margin: .2em 0; border: 0; border-top: 1px solid var(--color-border); }
+.sample__list { margin: 0; padding-left: 1.3em; font-size: .74em; line-height: 1.9; }
+.sample__chart { display: flex; align-items: flex-end; gap: .6em; flex: 1 1 auto; min-height: 3em; padding: 0 .2em; border-bottom: 1px solid var(--color-border); }
+.sample__bar { flex: 1 1 0; min-width: 1em; border-radius: .2em .2em 0 0; }
+.sample__legend { display: flex; flex-wrap: wrap; gap: .9em; font-size: .62em; }
+.sample__key { display: inline-flex; align-items: center; gap: .35em; }
+.sample__swatch { width: .9em; height: .9em; border-radius: 2px; }
+.sample__focus { padding: .5em .8em; border-left: .3em solid var(--color-accent); border-radius: 0 var(--radius-1) var(--radius-1) 0; background: var(--color-surface); }
+.sample__focus-title { margin: 0; font-size: .68em; font-weight: 700; color: var(--color-accent); }
+.sample__focus-body { margin: .15em 0 0; font-size: .62em; color: var(--color-text-muted); }
+.sample__states { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8em 1.2em; flex: 1 1 auto; align-content: center; }
+.sample__state { display: grid; gap: .3em; align-content: start; min-width: 0; }
+.sample__state-name { margin: 0; font-size: .56em; font-weight: 700; color: var(--color-text-muted); }
+.sample__bubble { position: relative; width: fit-content; margin: 0 0 .4em; padding: .45em .75em; font-size: .62em; border-radius: 1em; background: var(--color-success); color: var(--sample-base); }
+.sample__bubble::after { content: ""; position: absolute; left: 1.1em; bottom: -.3em; width: .7em; height: .7em; background: var(--color-success); clip-path: polygon(0 0, 100% 0, 0 100%); }
+.sample__note { margin: 0; padding-left: .6em; font-size: .62em; color: var(--color-text); border-left: .25em solid var(--color-warning); }
+.sample__banner { margin: 0; padding: .4em .7em; font-size: .62em; font-weight: 700; border-radius: .2em; background: var(--color-error); color: var(--sample-base); }
+.sample__info { padding: .4em .7em; font-size: .62em; border: 1px solid var(--color-info); border-radius: var(--radius-1); background: var(--sample-base); color: var(--color-info); }
+
+/* ロゴの位置: 四隅を 2x2 で選ぶ。ミニ 16:9 の破線枠は、サーバが隅ごとに返す予約枠をそのまま描いたもの */
+.corner-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin-bottom: var(--space-2); }
+.corner-choice { display: grid; gap: var(--space-1); justify-items: center; padding: var(--space-2); font: inherit; font-size: 13px; color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-1); cursor: pointer; }
+.corner-choice--on { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); }
+.corner-choice__mini { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 2px; }
+.corner-choice__mark { position: absolute; border: 1px dashed var(--color-info); border-radius: 1px; }
+.corner-choice--on .corner-choice__mark { border-color: var(--color-primary); background: var(--color-primary); }
+.corner-choice__label { white-space: nowrap; }
+
+/* 1 項目のモーダル（改名・複製・新規作成）。同じウィンドウ内に出す */
+.modal-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: var(--space-5); background: var(--color-overlay); }
+.modal { width: min(480px, 100%); padding: var(--space-5); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-3); box-shadow: var(--shadow-2); }
+.modal h3 { margin: 0 0 var(--space-3); }
+.modal-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-4); }
+
+@media (max-width: 899px) {
+  .brand-editor__body { grid-template-columns: minmax(0, 1fr); }
+  .brand-editor__preview { position: static; align-self: stretch; }
+}
+@media (max-width: 599px) {
+  .setting-row { flex-wrap: wrap; }
+  .brand-editor__head { flex-wrap: wrap; }
+  .sample__states { grid-template-columns: minmax(0, 1fr); }
+}

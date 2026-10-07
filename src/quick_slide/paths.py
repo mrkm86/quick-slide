@@ -1,0 +1,120 @@
+"""データ置き場（サーバの置き場はここ 1 か所で決める）。
+
+既定は `~/.quick-slide/`。環境変数 `QUICK_SLIDE_HOME` で差し替える（テストは一時ディレクトリ）。
+エンジン（`skills/*/scripts/places.py`）と同じ根っこを同じ規則で読む。エンジンが使う
+`<home>/engines/<スキル>/` はエンジンの持ち物なので、ここでは作らない・触らない。
+コードの cwd に依存せず、常に絶対パスで扱う。
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+ENV_HOME = "QUICK_SLIDE_HOME"
+DEFAULT_HOME = Path.home() / ".quick-slide"
+
+# リポ同梱の静的ファイル（静的配信ルート）。データ置き場とは別で、config/ と db/ はこの下に無い。
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WEB_APP_DIR = REPO_ROOT / "web" / "app"
+
+
+@dataclass(frozen=True)
+class DataRoot:
+    root: Path
+
+    @classmethod
+    def resolve(cls, explicit: str | os.PathLike[str] | None = None) -> "DataRoot":
+        if explicit is not None:
+            return cls(Path(explicit).expanduser().resolve())
+        env = os.environ.get(ENV_HOME)
+        if env:
+            return cls(Path(env).expanduser().resolve())
+        return cls(DEFAULT_HOME.expanduser().resolve())
+
+    # --- 固定のサブディレクトリ / ファイル ---
+    @property
+    def config_dir(self) -> Path:
+        return self.root / "config"
+
+    @property
+    def settings_path(self) -> Path:
+        return self.config_dir / "settings.json"
+
+    @property
+    def hmac_key_path(self) -> Path:
+        return self.config_dir / "hmac.key"
+
+    @property
+    def db_dir(self) -> Path:
+        return self.root / "db"
+
+    @property
+    def db_path(self) -> Path:
+        return self.db_dir / "quick-slide.db"
+
+    @property
+    def db_backup_dir(self) -> Path:
+        return self.db_dir / "backups"
+
+    @property
+    def assets_dir(self) -> Path:
+        return self.root / "assets"
+
+    @property
+    def decks_dir(self) -> Path:
+        """デッキごとの置き場（台本の版・描いた回）。中身を作るのは P2 以降。"""
+        return self.root / "decks"
+
+    def deck_dir(self, deck_id: str) -> Path:
+        return self.decks_dir / deck_id
+
+    @property
+    def runtime_dir(self) -> Path:
+        return self.root / "runtime"
+
+    @property
+    def uploads_dir(self) -> Path:
+        return self.runtime_dir / "uploads"
+
+    # --- 常駐サーバ（`runtime/server.json`） ---
+    @property
+    def server_json_path(self) -> Path:
+        return self.runtime_dir / "server.json"
+
+    @property
+    def server_lock_path(self) -> Path:
+        return self.runtime_dir / "server.lock"
+
+    @property
+    def server_log_path(self) -> Path:
+        return self.runtime_dir / "server.log"
+
+    @property
+    def server_stdio_path(self) -> Path:
+        """`start`（デタッチ起動）した子プロセスの stdout/stderr の行き先。"""
+        return self.runtime_dir / "server.out"
+
+    @property
+    def trash_dir(self) -> Path:
+        return self.root / ".trash"
+
+    def ensure(self) -> "DataRoot":
+        """必要なディレクトリを作る。`config/` は 0700（秘匿物が置かれる）。`engines/` は作らない。"""
+        for d in (
+            self.root,
+            self.db_dir,
+            self.assets_dir,
+            self.decks_dir,
+            self.runtime_dir,
+            self.uploads_dir,
+            self.trash_dir,
+        ):
+            d.mkdir(parents=True, exist_ok=True)
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(self.config_dir, 0o700)
+        except OSError:
+            pass
+        return self

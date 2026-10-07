@@ -1,0 +1,397 @@
+"""設定の API（ブランド・スタイル・この機械）。ファイルの配信は `static.AssetFiles` を通す。
+
+P1 ではブランドとスタイルを v1 と同じ形で保存・見本表示する。エンジンの引数へ写すのは P4。
+画面が読むがまだ中身の無い値（ロゴの予約枠・使うパターンの目録）は互換の仮の値を返す（`catalog` を参照）。
+"""
+from __future__ import annotations
+
+import copy
+import hashlib
+import io
+import logging
+import os
+import tempfile
+import warnings
+from functools import wraps
+
+from PIL import Image, UnidentifiedImageError
+
+from .. import logo as logo_rules
+from .. import palette
+from ..errors import NotFoundError, StateError, ValidationError
+from ..ids import PRESET_STYLE_STANDARD_ID, is_uuid
+from ..settings import LOOPBACK_HOSTS, Settings, bind_scope, save_server_section
+from ..store.brands import VARIANT_TO_ROLE, validate_brand_config
+from ..store.presets import PRESET_BRAND_CONFIG
+from ..store.styles import CANVAS_SIZES, LAYOUT_PATTERNS, STYLE_DIAL_OPTIONS, TONES, validate_style_config
+from .app import Response
+from .errors import ApiError
+
+log = logging.getLogger("quick_slide.server.settings")
+
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+MAX_IMAGE_PIXELS = 25_000_000
+IMAGE_TYPES = {"PNG": (".png", "image/png"), "JPEG": (".jpg", "image/jpeg"), "WEBP": (".webp", "image/webp")}
+STYLE_FIELDS = ("emphasis_prompt", "tone", "typeface", "density", "visual_ratio",
+                "allowed_layouts", "style_recipe", "margins", "canvas")
+CAPABILITIES = {
+    "format": {"available": False, "label": "書式を登録", "reason": "書式（ページ番号・透かし・フッタ）の設定は、エンジンに設定をつないでから提供します。"},
+    # 「元の文書」は**入力に渡す文書**で、我々の成果物（画面では「スライド」）ではない。
+    # ここを「スライド」にすると意味が逆になるので、成果物と混ざらない言い方にする。
+    "infer": {"available": False, "label": "元の文書から色・字体を読み取る", "reason": "元の文書からの読み取りはまだ使えません。色と字体を下の欄で指定してください。"},
+    "apply": {"available": False, "label": "既存のスライドに適用", "reason": "既存のスライドへの適用は、画像を作り直す機能の公開後に使えます。保存だけでは既存のスライドは変わりません。"},
+}
+
+
+def boundary(fn):
+    @wraps(fn)
+    def wrapped(app, req):
+        try:
+            with app.store_lock:
+                return fn(app, req)
+        except NotFoundError:
+            raise ApiError(404, "setting_not_found", "設定または画像が見つかりません。一覧を読み直して選び直してください。") from None
+        except logo_rules.LogoError:
+            raise ApiError(400, "logo_position", "ロゴの位置の指定が不正です。「既定に戻す」を押して確認してください。") from None
+        except ValidationError as exc:
+            # Store diagnostics contain internal keys; never echo them or caller values.
+            msg = str(exc)
+            # 二種類を書き分ける:
+            #  (a) 画面(web/app)が実際に出している入力欄に対応する不正 — 利用者が直せる。項目名を含めた文にする。
+            #  (b) それ以外（schema_version・未知のキー・fonts・margins・canvas・style.id/revision/name/origin など、
+            #      画面からは正常な操作では起こらないはずの形） — 呼び出し側（画面）の不具合であり、利用者の入力の
+            #      問題ではない。入力を疑わせる文言にせず、詳細はサーバのログにだけ残す。
+            if any(k in msg for k in ("colors.primary_light", "colors.primary_dark", "colors.border", "colors.surface", "colors.base")):
+                hint = "詳しく指定する色（拡張設定）は # と6桁の色番号で入力してください。"
+            elif "colors.primary" in msg:
+                hint = "基本色は # と6桁の色番号で入力してください。"
+            elif "colors.accent" in msg:
+                hint = "強調色は # と6桁の色番号で入力してください。"
+            elif "colors.info" in msg:
+                hint = "情報色は # と6桁の色番号で入力してください。"
+            elif "allowed_layouts" in msg:
+                hint = "使うパターンを1つ以上選んでください。"
+            elif "emphasis_prompt" in msg:
+                hint = "誰に向けて、どう書くかを入力してください。"
+            elif "環境依存" in msg or "持てません" in msg:
+                hint = "スタイルにはファイルの場所やブランド固有の参照を書かず、文章だけで説明してください。"
+            elif "ロゴ variant" in msg or "logo.variant" in msg:
+                hint = "使用するロゴの画像を登録してください。使わない場合は「なし」を選んでください。"
+            elif "footer.text" in msg:
+                hint = "中央下に入れる文字は文字列で入力してください。"
+            elif "tone" in msg:
+                hint = "文章の調子は硬め・標準・柔らかめから選んでください。"
+            elif any(key in msg for key in ("typeface", "density", "visual_ratio")):
+                hint = "絵のことは、画面に表示された選択肢から選んでください。"
+            else:
+                # 利用者が直せるものではない（画面の不具合の疑い）。生の診断は応答に出さずログにだけ残す。
+                log.warning("設定の検証で、画面の通常操作では起こらないはずの形の要求を検出しました: %s", msg)
+                hint = "設定を保存できませんでした。画面を再読み込みしてやり直してください。"
+            raise ApiError(400, "invalid_setting", hint) from None
+        except StateError:
+            raise ApiError(409, "setting_unavailable", "この設定は変更できません。一覧を読み直して選び直してください。") from None
+        except (TypeError, KeyError, ValueError, AttributeError, RecursionError):
+            raise ApiError(400, "invalid_setting", "入力の形式が正しくありません。一覧から開き直し、項目を入力し直してください。") from None
+    return wrapped
+
+
+def payload(req, keys):
+    b = req.json_object()
+    if set(b) - set(keys):
+        raise ApiError(400, "unknown_field", "対応していない項目が含まれています。画面を開き直して入力し直してください。")
+    return b
+
+
+def name_of(b):
+    n = b.get("name")
+    if not isinstance(n, str) or not n.strip() or len(n) > 200:
+        raise ApiError(400, "name_required", "名前を1〜200文字で入力してください。")
+    return n.strip()
+
+
+def editable(row, b):
+    if row.get("kind") == "preset":
+        raise ApiError(409, "preset_read_only", "製品に付属する設定は編集・削除できません。複写して自分用の設定を作ってください。")
+    if row["deleted_at"]:
+        raise ApiError(409, "setting_deleted", "削除された設定です。一覧から別の設定を選んでください。")
+    if b.get("expected_revision_id") != row["current_revision_id"]:
+        raise ApiError(409, "setting_changed", "別の画面で設定が更新されています。入力内容を控えてから一覧を読み直してください。")
+
+
+def decode_image(data):
+    if not data or len(data) > MAX_IMAGE_BYTES:
+        raise ApiError(413, "image_size_limit", "画像は空でない10 MiB以下のファイルを選んでください。")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as im:
+                kind, size = im.format, im.size
+                if kind not in IMAGE_TYPES:
+                    raise ApiError(400, "image_type", "PNG・JPEG・WebPの画像を選んでください。SVGはPNGに書き出してから選んでください。")
+                if size[0] * size[1] > MAX_IMAGE_PIXELS:
+                    raise ApiError(413, "image_pixel_limit", "画像の画素数が多すぎます。2500万画素以下に縮小して選び直してください。")
+                if getattr(im, "n_frames", 1) != 1:
+                    raise ApiError(400, "image_animation", "動く画像は使えません。1枚のPNG画像として書き出してください。")
+                if im.getexif().get(274, 1) != 1:
+                    raise ApiError(400, "image_orientation", "回転情報のある画像です。正しい向きでPNGに書き出して選び直してください。")
+            with Image.open(io.BytesIO(data)) as im:
+                im.verify()
+            with Image.open(io.BytesIO(data)) as im:
+                im.load()
+        return kind, size
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise ApiError(413, "image_pixel_limit", "画像の画素数が多すぎます。2500万画素以下に縮小して選び直してください。") from None
+    except (OSError, ValueError, SyntaxError, UnidentifiedImageError):
+        raise ApiError(400, "image_invalid", "画像の内容を読み取れません。画像を開けることを確認し、PNG・JPEG・WebPで保存し直してください。") from None
+
+
+def image_row(app, aid):
+    if not is_uuid(aid):
+        raise ApiError(400, "image_required", "ロゴ画像を選び直してください。使わない場合は「なし」を選んでください。")
+    row = app.store.asset(aid)
+    resolved = app.assets.resolve(row)
+    data = resolved.read() if resolved else None
+    if data is None or hashlib.sha256(data).hexdigest() != row["sha256"]:
+        raise ApiError(400, "image_unavailable", "登録画像が見つからないか内容が変わっています。画像を選び直してください。")
+    kind, size = decode_image(data)
+    if size != (row["width"], row["height"]) or IMAGE_TYPES[kind][1] != row["media_type"]:
+        raise ApiError(400, "image_unavailable", "画像の登録情報と内容が一致しません。画像を選び直してください。")
+    return row
+
+
+def public_image(row):
+    return {"asset_id": row["id"], "url": f'/api/assets/{row["id"]}/file',
+            "width": row["width"], "height": row["height"], "bytes": row["bytes"], "media_type": row["media_type"]}
+
+
+@boundary
+def upload(app, req):
+    data = req.body
+    kind, size = decode_image(data)
+    aid = app.store.new_id()
+    ext, media = IMAGE_TYPES[kind]
+    # Only fresh UUID directories; no caller filenames. Reject linked parent directories.
+    root = app.root.root
+    for parent in (root / "runtime", root / "runtime" / "uploads", root / "assets"):
+        if parent.is_symlink() or os.path.realpath(parent) != str(parent):
+            raise ApiError(409, "upload_storage", "画像の保存先を確認できません。保存先の設定を管理者に確認してください。")
+        parent.mkdir(exist_ok=True)
+    directory = root / "assets" / aid
+    directory.mkdir()
+    destination = directory / ("original" + ext)
+    temp = None
+    try:
+        fd, temp = tempfile.mkstemp(dir=root / "runtime" / "uploads")
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp, destination)
+        with app.store.transaction():
+            app.store.register_asset(relative_path=str(destination.relative_to(root)), media_type=media,
+                                     sha256=hashlib.sha256(data).hexdigest(), bytes_=len(data),
+                                     width=size[0], height=size[1], asset_id=aid)
+        return Response.json(201, public_image(image_row(app, aid)))
+    except Exception:
+        if temp and os.path.exists(temp):
+            os.unlink(temp)
+        # Keep a committed file; rollback leaves no DB reference and can be removed.
+        try:
+            app.store.asset(aid)
+        except NotFoundError:
+            destination.unlink(missing_ok=True)
+            directory.rmdir()
+        raise
+
+
+def brand_preview(app, b):
+    """見本に要る値: 配色（`palette`）・ロゴの位置（`logo_xywh`）・フッタ文字。
+
+    v1 の画面が読む形（`canvas` / `clean_area` / `logo_xywh` / `image_url` / `warnings` / `copyright` / `palette`）を保つ。
+    **`clean_area` はいつも null**（v2 ではロゴの予約枠を持たない。置き場所はエンジンが描くときに決める）。
+    ロゴの位置はエンジンの既定の寸法を写した見本で、実際の位置ではない。
+    """
+    config = b.get("config")
+    assets = b.get("assets", [])
+    if not isinstance(assets, list) or len(assets) > 20:
+        raise ApiError(400, "invalid_setting", "画像は20枚以内で登録してください。")
+    for a in assets:
+        if not isinstance(a, dict) or set(a) - {"asset_id", "role", "label"}:
+            raise ApiError(400, "invalid_setting", "画像を選び直してください。")
+    validate_brand_config(config, assets)
+    colors = palette.derive_from_colors(config["colors"])
+    rows = {a["asset_id"]: image_row(app, a["asset_id"]) for a in assets}
+    logo = config["logo"]
+    corner = logo_rules.validate_placement(logo.get("placement"))[logo_rules.PLACEMENT_KEY]
+    result = {"canvas": list(logo_rules.CANVAS), "clean_area": None, "logo_xywh": None, "warnings": [], "image_url": None}
+    if logo["variant"] != "none":
+        a = next(a for a in assets if a["role"] == VARIANT_TO_ROLE[logo["variant"]])
+        row = rows[a["asset_id"]]
+        box = logo_rules.preview_box((row["width"], row["height"]), corner)
+        result.update(logo_xywh=box["logo_xywh"], warnings=box["warnings"], image_url=public_image(row)["url"])
+    result["copyright"] = {"text": config["footer"]["text"], "status": "not_checked",
+                           "message": "フッタの文字は保存されます。実際の文字の置き方は、描いたページで確認してください。"}
+    result["palette"] = colors
+    return result
+
+
+def public_setting(app, row, kind):
+    rev = row["current_revision"]
+    result = {k: row[k] for k in ("id", "name", "kind", "current_revision_id")}
+    result.update({"revision": rev["revision"], "config": rev["config"], "capabilities": {
+        action: {"available": row["kind"] != "preset", "label": label,
+                 "reason": "製品に付属する設定は編集・削除できません。複写して使ってください。" if row["kind"] == "preset" else ""}
+        for action, label in (("edit", "編集"), ("delete", "削除"))}})
+    if kind == "brands":
+        result["assets"] = [{k: a[k] for k in ("asset_id", "role", "label")} for a in rev["assets"]]
+    else:
+        result["origin"] = rev["config"].get("origin")
+        origin_id = row.get("origin_style_id")
+        result["origin_name"] = app.store.style(origin_id)["name"] if origin_id else None
+    return result
+
+
+@boundary
+def catalog(app, req):
+    groups = {}
+    for kind, list_fn, get_fn in (("brands", app.store.list_brands, app.store.brand), ("styles", app.store.list_styles, app.store.style)):
+        groups[kind] = [public_setting(app, get_fn(r["id"]), kind) for r in list_fn()]
+    # ロゴの角はエンジンの --logo-position と同じ 3 つ（右下・左下・右上）。v1 の予約枠（clean_area）と
+    # 枠の上下限（bounds）は持たない（画面は無ければ描かない。bounds は空で返す）
+    # 使うパターンの目録は P4 でエンジンの型の一覧に替える。それまでは「おまかせ」の 1 つ（store/styles.py）
+    patterns = [{"value": key, "label": value["label"], "use": value["use"]} for key, value in LAYOUT_PATTERNS.items()]
+    return Response.json(200, {**groups, "counts": {k: len(v) for k, v in groups.items()},
+        "brand_default": copy.deepcopy(PRESET_BRAND_CONFIG),
+        "logo_control": {"key": logo_rules.PLACEMENT_KEY, "corners": logo_rules.corner_choices(),
+                         "default": dict(logo_rules.DEFAULT_PLACEMENT), "bounds": {}, "canvas": list(logo_rules.CANVAS)},
+        "tones": [{"value": t, "label": l} for t, l in zip(TONES, ("硬め", "標準", "柔らかめ"), strict=True)],
+        "style_dials": {key: [{"value": value, "label": label} for value, label in options]
+                        for key, options in STYLE_DIAL_OPTIONS.items()},
+        "style_default_id": PRESET_STYLE_STANDARD_ID,
+        "layout_patterns": patterns,
+        "canvas_sizes": sorted(CANVAS_SIZES), "capabilities": CAPABILITIES,
+        "server": server_block(app)})
+
+
+@boundary
+def list_styles(app, req):
+    return Response.json(200, {"styles": [public_setting(app, app.store.style(row["id"]), "styles")
+                                          for row in app.store.list_styles()]})
+
+
+@boundary
+def preview_brand(app, req):
+    b = payload(req, ("config", "assets"))
+    return Response.json(200, brand_preview(app, b))
+
+
+@boundary
+def save_brand(app, req):
+    b = payload(req, ("name", "config", "assets", "expected_revision_id"))
+    bid = req.params.get("setting_id")
+    with app.store.transaction():
+        if bid:
+            editable(app.store.brand(bid), b)
+        name = name_of(b)
+        preview = brand_preview(app, b)
+        config = copy.deepcopy(b["config"])
+        config["colors"] = palette.snapshot_colors(config["colors"])
+        assets = b.get("assets", [])
+        if bid:
+            app.store.rename_brand(bid, name)
+            app.store.add_brand_revision(bid, config, assets=assets)
+        else:
+            bid = app.store.create_brand(name, config, assets=assets)["id"]
+        out = public_setting(app, app.store.brand(bid), "brands")
+    return Response.json(200 if req.params else 201, {"item": out, "preview": preview, "verified": True})
+
+
+def style_config(app, b, *, copying=False):
+    tid = b.get("source_id") if copying else b.get("id")
+    row = app.store.style(tid)
+    if row["deleted_at"]:
+        raise ApiError(409, "setting_deleted", "複写元が削除されています。一覧を読み直してください。")
+    if copying and b.get("expected_revision_id") != row["current_revision_id"]:
+        raise ApiError(409, "setting_changed", "複写元が更新されています。一覧を読み直してから複写してください。")
+    config = copy.deepcopy(row["current_revision"]["config"])
+    changes = b.get("config")
+    if not isinstance(changes, dict) or set(changes) - set(STYLE_FIELDS):
+        raise ApiError(400, "unknown_field", "スタイルは画面に表示された文章・作風・パターンの項目だけを指定してください。")
+    config.update(changes)
+    config["name"] = name_of(b)
+    validate_style_config(config, expected_id=row["id"], expected_revision=config["revision"], expected_name=config["name"])
+    return row, config
+
+
+@boundary
+def preview_style(app, req):
+    b = payload(req, ("id", "source_id", "name", "config", "expected_revision_id"))
+    _, config = style_config(app, b, copying=bool(b.get("source_id")))
+    return Response.json(200, {"config": config, "message": "保存する文章の方針と作風の確認です。AI画像の見栄えは生成後に確認してください。"})
+
+
+@boundary
+def save_style(app, req):
+    b = payload(req, ("source_id", "name", "config", "expected_revision_id"))
+    tid = req.params.get("setting_id")
+    with app.store.transaction():
+        if tid:
+            editable(app.store.style(tid), b)
+        row, config = style_config(app, {**b, "id": tid}, copying=not tid)
+        # 余白・画面の大きさは v2 では省略できる（書いてあるものだけ写す）
+        fields = {k: config[k] for k in STYLE_FIELDS if k in config}
+        if tid:
+            app.store.save_style_settings(tid, config["name"], fields)
+        else:
+            tid = app.store.create_style_copy(row["id"], config["name"], overrides=fields)["id"]
+        out = public_setting(app, app.store.style(tid), "styles")
+    return Response.json(200 if req.params else 201, {"item": out, "verified": True})
+
+
+@boundary
+def delete_setting(app, req):
+    b = payload(req, ("expected_revision_id",))
+    kind = "brands" if req.path.startswith("/api/settings/brands/") else "styles"
+    get_fn = app.store.brand if kind == "brands" else app.store.style
+    delete_fn = app.store.delete_brand if kind == "brands" else app.store.delete_style
+    with app.store.transaction():
+        row = get_fn(req.params["setting_id"])
+        editable(row, b)
+        delete_fn(row["id"])
+        deleted = get_fn(row["id"])["deleted_at"] is not None
+    return Response.json(200, {"deleted": deleted})
+
+
+# ---- この機械の口 ----
+# 画面が見せるのは「いまファイルに書いてある値」で、`app.settings` の写しではない。
+# 保存しても動いているサーバの bind は変わらないので、両方を出して食い違いを見せる。
+
+def server_block(app):
+    cfg = Settings.load(app.root.settings_path).server
+    return {
+        "host": cfg.host,
+        "host_names": list(cfg.host_names),
+        "port": cfg.port,
+        "bind_scope": bind_scope(cfg.host),
+        "running_host": app.host,
+        "restart_required": cfg.host != app.host or list(cfg.host_names) != list(app.settings.server.host_names),
+        "loopback_hosts": list(LOOPBACK_HOSTS),
+    }
+
+
+@boundary
+def save_server(app, req):
+    b = payload(req, ("host", "host_names"))
+    host = b.get("host")
+    if not isinstance(host, str) or not host.strip():
+        raise ApiError(400, "bad_bind_address", "この機械のどのアドレスで待つかを書いてください。")
+    names_raw = b.get("host_names") or []
+    if isinstance(names_raw, str) or not isinstance(names_raw, list):
+        raise ApiError(400, "bad_host_names", "名前は一行に一つずつ書いてください。")
+    names = [n.strip() for n in names_raw if isinstance(n, str) and n.strip()]
+    try:
+        save_server_section(app.root.settings_path, host=host.strip(), host_names=names)
+    except ValidationError as exc:
+        # ここの文言は利用者に向けて書いてある（どこに開くかは利用者が決める）。そのまま見せる。
+        raise ApiError(400, "bad_bind_address", str(exc)) from None
+    return Response.json(200, {"server": server_block(app), "verified": True})
