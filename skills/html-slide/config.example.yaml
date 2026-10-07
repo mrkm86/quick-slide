@@ -1,0 +1,17 @@
+# html-slide の設定の雛形。実体はデータの置き場（既定 ~/.quick-slide/）の engines/html-slide/config.yaml に置く（機体ごとに違う値）。
+# 環境変数 HTML_SLIDE_CONFIG で別の場所を直に指せる
+# 無ければ既定値で動く。
+
+# 出力先（--out を省いたとき）。<out>/<台本の名前>/ に deck.pptx などが出る
+out: ~/.quick-slide/engines/html-slide/output
+
+# Chrome で文字を測るときの字体ファイル（ADR 0002）。PowerPoint for Mac 同梱の Windows 版游ゴシック
+fonts:
+  "Yu Gothic":
+    regular: /Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts/YuGothR.ttc
+    bold: /Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts/YuGothB.ttc
+
+# 描いた絵の置き場（キャッシュ・ADR 0014）。省けば ~/Library/Caches/quick-slide/html-slide/（環境変数 HTML_SLIDE_CACHE が優先）
+# cache_dir: ~/Library/Caches/quick-slide/html-slide
+# 合計の上限（MB）。超えたら古く使った区画から消す。0 は消さない。描いた絵は1枚約 2 MB
+# cache_max_mb: 1024

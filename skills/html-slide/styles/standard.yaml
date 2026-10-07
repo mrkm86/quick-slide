@@ -1,0 +1,5 @@
+# 組み込みのスタイル standard（既定）。今までの html-slide の見た目そのもの（ADR 0005）
+# 何も足さない（変化形は型の既定のまま）。名前は image-slide とそろえる。書式は scripts/deck_style.py の冒頭
+name: standard
+description: 説明・報告・社内資料向け。文字と図を整理して並べる（表紙は右に写真、写真は全面）
+image_look: illustration        # Codex で描く画像の枠の画風（ADR 0011）。説明・報告ではやわらかいイラストに

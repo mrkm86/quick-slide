@@ -1,0 +1,28 @@
+<!doctype html>
+<!-- 描き出し係のテスト用: 決まり違反入りの HTML（transform・文字のはみ出し・::before の content・section の外・
+     ノートの［クリック］のずれ）。check がどれも rc=2 の違反として拾うこと -->
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      section[data-slide] { position: relative; width: 1920px; height: 1080px; overflow: hidden; background-color: #ffffff;
+        font-family: "Hiragino Sans", sans-serif; line-height: 1.5; }
+      aside.notes { display: none; }
+      .tilt { position: absolute; left: 100px; top: 100px; font-size: 48px; transform: rotate(-4deg); }
+      .narrow { position: absolute; left: 100px; top: 300px; width: 200px; height: 60px; font-size: 40px; white-space: nowrap; }
+      .deco { position: absolute; left: 100px; top: 500px; font-size: 40px; }
+      .deco::before { content: "★"; color: #e8457d; }
+      .far { position: absolute; left: 1800px; top: 700px; width: 400px; height: 100px; background-color: #2f63b8; }
+    </style>
+  </head>
+  <body>
+    <section data-slide>
+      <div class="tilt" id="tilt">傾けた見出し</div>
+      <div class="narrow" id="narrow">箱より長い文字がはみ出す</div>
+      <div class="deco" id="deco">飾りの付いた文字</div>
+      <div class="far" id="far" data-step="1"></div>
+      <aside class="notes">［クリック］が2つ［クリック］ある。</aside>
+    </section>
+  </body>
+</html>

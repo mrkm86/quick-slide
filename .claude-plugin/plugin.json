@@ -1,0 +1,20 @@
+{
+  "name": "quick-slide",
+  "version": "2.0.0",
+  "description": "台本（資料用の JSON）から16:9の日本語スライドを作るQuick Slide。編集できて動く PPTX（html-slide）と、画像生成で1枚ずつ描く資料（image-slide）。",
+  "author": {
+    "name": "Quick Slide"
+  },
+  "keywords": [
+    "slides",
+    "quick-slide",
+    "presentation",
+    "pptx",
+    "スライド",
+    "資料",
+    "プレゼン",
+    "パワポ",
+    "16:9",
+    "japanese"
+  ]
+}

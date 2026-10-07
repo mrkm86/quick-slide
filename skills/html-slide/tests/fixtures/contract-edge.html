@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- 描き出し係のテスト用: Codex のレビュー（r1）で出た境目の入力。1枚目は重ね順と order、2枚目は文字（折り返しの空白・
+     隠れた inline・位置指定の tspan・inline の data-step）、3枚目は section 自身の禁止 CSS -->
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      section[data-slide] { position: relative; width: 1920px; height: 1080px; overflow: hidden; background-color: #ffffff;
+        font-family: "Hiragino Sans", sans-serif; line-height: 1.5; color: #222222; }
+      aside.notes { display: none; }
+      .abs { position: absolute; }
+      #s3 { background-image: url("photo.png"); }
+      #s3::before { content: "飾り"; }
+    </style>
+  </head>
+  <body>
+    <section data-slide id="s1">
+      <div id="front" class="abs" style="left: 100px; top: 100px; width: 300px; height: 200px; background-color: #ff0000; z-index: 2"></div>
+      <div id="back" class="abs" style="left: 150px; top: 150px; width: 300px; height: 200px; background-color: #0000ff"></div>
+      <div class="abs" style="left: 100px; top: 500px; display: flex; gap: 20px; font-size: 40px">
+        <div id="reordered" style="order: 2">後</div>
+        <div>先</div>
+      </div>
+      <!-- 重ね順の文脈を作らない包み（position だけ）の中の z-index は rc=2。文脈を作る包み（position と z-index）の中は通す -->
+      <div id="plain-wrap" class="abs" style="left: 800px; top: 100px; width: 300px; height: 300px">
+        <div id="z-in-plain" class="abs" style="left: 0; top: 0; width: 100px; height: 100px; background-color: #00aa00; z-index: 100"></div>
+      </div>
+      <div id="ctx-wrap" class="abs" style="left: 1200px; top: 100px; width: 300px; height: 300px; z-index: 1">
+        <div id="z-in-ctx" class="abs" style="left: 0; top: 0; width: 100px; height: 100px; background-color: #aa00aa; z-index: 5"></div>
+      </div>
+    </section>
+
+    <section data-slide id="s2">
+      <p id="wrap" class="abs" style="left: 100px; top: 100px; width: 230px; font-size: 40px">Hello world again</p>
+      <p id="balanced" class="abs" style="left: 500px; top: 100px; width: 230px; font-size: 40px; text-wrap: balance">Hello world again</p>
+      <p id="hidden" class="abs" style="left: 100px; top: 500px; font-size: 40px">見える<span style="visibility: hidden">隠す</span><span style="opacity: 0">消す</span><span style="opacity: 0.5">半分</span></p>
+      <svg class="abs" style="left: 900px; top: 100px" width="400" height="200">
+        <text x="10" y="40" font-size="30" fill="#222222">Hello<tspan x="10" dy="40">World</tspan> tail</text>
+      </svg>
+      <p id="clear" class="abs" style="left: 100px; top: 650px; font-size: 40px">見える<span style="color: transparent">透明</span></p>
+      <p id="all-clear" class="abs" style="left: 600px; top: 650px; font-size: 40px; color: transparent">ぜんぶ透明</p>
+      <h2 id="inline-step" class="abs" style="left: 100px; top: 800px; font-size: 40px">A<span data-step="1">B</span></h2>
+    </section>
+
+    <section data-slide id="s3">
+      <p class="abs" style="left: 100px; top: 100px; font-size: 40px">背景画像と疑似要素</p>
+    </section>
+  </body>
+</html>

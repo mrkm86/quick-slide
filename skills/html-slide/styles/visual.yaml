@@ -1,0 +1,23 @@
+# 組み込みのスタイル visual。ビジュアル寄り。プレゼン・ピッチ向け（ADR 0005）
+# 画像が要る変化形は、そのページに画像があるときだけ効く（無ければ型の既定のまま）
+name: visual
+description: ビジュアル寄り。プレゼン・ピッチ向けで、表紙・章扉は全面写真、写真は大きく、画像を主役に見せる
+defaults:
+  cover: {layout: hero}
+  section: {layout: hero}
+  photo: {layout: full}
+  quote: {layout: full}
+  bullets: {side: right, split: 1/2}
+  gallery: {layout: collage}
+image_look: photo               # Codex で描く画像の枠の画風（ADR 0011）。ピッチでは写真風に
+expects_images: [cover, section, closing]   # 画像を置くのが基本の型。image が無ければ警告する
+motion:
+  fx: fade
+  transition: morph
+look:                           # 見た目の調子（文字の大きさ・余白は変えない）
+  background: tint              # 地に強調色をうっすら
+  surface: white                # カード・比較の列・KPI は白に影
+  radius: round                 # 箱の角を大きく丸める
+  band: bar                     # 中身の型の上端に全幅の帯
+  emphasis: strong              # 強調する箱は強調色のベタ塗りに白い文字
+  statement: panel              # 主張の1枚は強調色の全面に白い文字

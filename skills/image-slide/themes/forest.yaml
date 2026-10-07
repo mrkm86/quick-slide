@@ -1,0 +1,5 @@
+# 深緑の見本。白の地・墨に近い緑の文字・深緑のアクセント
+background: "#ffffff"
+ink: "#1d2a26"
+primary: "#1f6b4a"
+font: "Yu Gothic"

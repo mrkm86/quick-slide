@@ -1,0 +1,38 @@
+{
+  "name": "quick-slide",
+  "version": "2.0.0",
+  "description": "台本（資料用の JSON）から16:9の日本語スライドを作るQuick Slide。編集できて動く PPTX（html-slide）と、画像生成で1枚ずつ描く資料（image-slide）。",
+  "author": {
+    "name": "Quick Slide"
+  },
+  "keywords": [
+    "slides",
+    "quick-slide",
+    "presentation",
+    "pptx",
+    "スライド",
+    "資料",
+    "プレゼン",
+    "パワポ",
+    "16:9",
+    "japanese",
+    "productivity"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Quick Slide",
+    "shortDescription": "台本から16:9の日本語スライド（資料・プレゼン・パワポ）を作る",
+    "longDescription": "Quick Slide は、台本（資料用の JSON）から16:9の日本語スライドを作るプラグインです。html-slide は文字も図形も PowerPoint の部品として組んだ、あとから直せて動く PPTX を作ります。image-slide は同じ台本を画像生成で1枚ずつ丸ごと描いた資料にします。どちらも PDF・ページごとの画像・サムネイル一覧を出せます。",
+    "developerName": "Quick Slide",
+    "category": "Productivity",
+    "capabilities": [
+      "台本から編集できて動く PPTX を作る（html-slide）",
+      "同じ台本を画像生成で1枚ずつ描いた資料にする（image-slide）",
+      "PDF・ページごとの画像・サムネイル一覧を出す"
+    ],
+    "defaultPrompt": [
+      "この内容を html-slide でスライドにして。",
+      "この台本を image-slide で絵の資料にして。"
+    ]
+  }
+}

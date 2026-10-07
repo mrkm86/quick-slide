@@ -1,0 +1,14 @@
+{
+  "name": "quick-slide",
+  "description": "Quick Slide を配る場所。台本から16:9の日本語スライドを作る。",
+  "owner": {
+    "name": "Quick Slide"
+  },
+  "plugins": [
+    {
+      "name": "quick-slide",
+      "source": "./",
+      "description": "台本から16:9の日本語スライド（資料・プレゼン・パワポ）を作るQuick Slide。"
+    }
+  ]
+}

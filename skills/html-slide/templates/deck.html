@@ -1,0 +1,276 @@
+<!doctype html>
+<!-- html-slide の資料の雛形。二重波かっこの差し込み口は scripts/deck.py が埋める
+     色はテーマ（themes/*.yaml → deck.py が作る CSS 変数）、字体ファイルは設定の fonts から入る。色をここに直接書かない
+     使ってよい CSS は references/contract.md の許可リストの中だけ（transform・filter・clip-path・::before の content・背景画像は使わない） -->
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>{{TITLE}}</title>
+    <style>
+      {{FONT_FACES}}
+      :root { {{THEME}} }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background-color: #8a8f99; }
+      section[data-slide] {
+        position: relative; width: 1920px; height: 1080px; overflow: hidden;
+        background-color: var(--bg); color: var(--ink);
+        font-family: {{FONT_FAMILY}}; font-weight: 400; line-height: 1.5;
+      }
+      aside.notes { display: none; }
+      em { font-style: normal; color: var(--accent-text); }
+      .center { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .row { display: flex; align-items: stretch; }
+      .bold { font-weight: 700; }
+      .muted { color: var(--muted); }
+      .accent { color: var(--accent-text); }
+      .on-accent { color: var(--on-accent); }
+      .primary { color: var(--primary-text); }
+      .on-primary { color: var(--on-primary); }
+
+      /* 画面をまたいで残すもの（data-keep）: 上の帯・下の文字・ページ番号 */
+      .band { position: absolute; left: 120px; top: 0; width: 160px; height: 10px; background-color: var(--primary); }
+      .footer, .pageno { position: absolute; top: 1006px; font-size: 22px; line-height: 1.4; color: var(--muted); }
+      .footer { left: 120px; width: 1300px; }
+      .pageno { left: 900px; width: 120px; text-align: center; }   /* 中央下（ロゴは角に置くので重ならない・ADR 0008） */
+      /* 透かし（--watermark）。全ページの中央下の端・固定の薄いグレー。数字は deck.py の WATERMARK_*（ADR 0009） */
+      .watermark { position: absolute; left: 0; top: 1054px; width: 1920px; font-size: 16px; line-height: 1; font-weight: 400;
+                   text-align: center; white-space: nowrap; color: #9ca3af; }
+      /* ロゴ（--logo）と、その後ろのロゴと同じ大きさの地。位置と大きさは deck.py が書く */
+      .logo-plate { position: absolute; background-color: var(--bg); }
+      .logo { position: absolute; }
+
+      /* 見出し（すべての中身の型の左上） */
+      .head { position: absolute; left: 120px; top: 80px; width: 1680px; display: flex; flex-direction: column; }
+      .kicker { font-size: 28px; line-height: 1.4; font-weight: 700; color: var(--primary-text); margin-bottom: 12px; }
+      .headline { font-size: 60px; line-height: 1.35; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      /* balance は文節を割ることがある（「全部／署」）。そのときは台本の文字に改行（\n）を入れて切れ目を決める（<br> になる） */
+      .sub { font-size: 30px; line-height: 1.5; color: var(--muted); margin-top: 14px; word-break: auto-phrase; }
+      .source { position: absolute; left: 120px; font-size: 22px; line-height: 1.4; color: var(--muted); }
+
+      /* 表紙 */
+      .cover-text { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .cover-label { font-size: 30px; line-height: 1.4; font-weight: 700; color: var(--primary-text); margin-bottom: 28px; }
+      .cover-title { line-height: 1.3; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      .cover-rule { width: 120px; height: 8px; background-color: var(--primary); margin: 44px 0 36px; }
+      .cover-subtitle { font-size: 36px; line-height: 1.5; color: var(--muted); word-break: auto-phrase; }
+      .cover-meta { position: absolute; display: flex; flex-direction: column; }
+      .cover-meta div { font-size: 28px; line-height: 1.5; color: var(--ink); }
+      .photo { position: absolute; object-fit: cover; }
+      /* 全面の表紙（layout: hero）の題の下の幕 */
+      .veil { position: absolute; background-color: var(--veil); }
+      .veil-edge { position: absolute; }
+      /* 暗い幕（tone: dark）の上の文字 */
+      .on-dark .cover-title, .on-dark .cover-subtitle, .on-dark div, .on-dark .sec-title, .on-dark .sec-subtitle { color: #ffffff; }
+      .on-dark em { color: var(--accent-on-dark); }
+      .on-dark .cover-label, .on-dark .sec-label, .on-dark .sec-no { color: var(--primary-on-dark); }
+      .on-dark .cover-rule { background-color: var(--primary-on-dark); }
+      /* 写真の並び・図・カードの写真 */
+      .gal-item { position: absolute; display: flex; flex-direction: column; }
+      .gal-img { object-fit: cover; border-radius: 12px; }
+      .gal-cap { font-size: 26px; line-height: 1.5; color: var(--muted); margin-top: 14px; word-break: auto-phrase; }
+      .figure-img { position: absolute; object-fit: contain; }
+      .fig-cap { position: absolute; font-size: 26px; line-height: 1.5; color: var(--muted); text-align: center; }
+      .card-img { object-fit: cover; border-radius: 10px; margin-bottom: 28px; flex: none; }
+      .quote.on-dark .quote-text, .quote.on-dark .quote-name, .quote.on-dark .quote-role, .quote.on-dark .kicker { color: #ffffff; }
+      .quote.on-dark .qmark { color: var(--primary-on-dark); }
+      /* 注釈つきの画像の番号の丸印 */
+      .mk-dot { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 28px;
+                background-color: var(--primary-strong); color: var(--on-primary); border: 4px solid #ffffff;
+                font-size: 26px; line-height: 1; font-weight: 700; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25); }
+      /* 画像が無いときの仮の枠（--placeholder・下書き用） */
+      .img-ph { position: absolute; display: flex; align-items: center; justify-content: center; padding: 12px;
+                background-color: var(--line); border: 3px dashed var(--bar); overflow: hidden; }
+      .img-ph div { line-height: 1.5; color: var(--ink); text-align: center; word-break: auto-phrase; }
+
+      /* 目次 */
+      .agenda { position: absolute; display: flex; flex-direction: column; }
+      .agenda-row { display: flex; align-items: center; border-bottom: 2px solid var(--line); }
+      .agenda-no { width: 120px; flex: none; font-size: 44px; line-height: 1.4; font-weight: 700; color: var(--primary-text); }
+      .agenda-title { flex: 1; font-size: 44px; line-height: 1.4; font-weight: 700; }
+      .agenda-note { flex: none; font-size: 30px; line-height: 1.4; color: var(--muted); text-align: right; }
+      .agenda-row.dim .agenda-title, .agenda-row.dim .agenda-no { color: var(--muted); font-weight: 400; }
+      .agenda-row.on { background-color: var(--primary-soft); }
+
+      /* 章扉 */
+      .sec-panel { position: absolute; left: 0; top: 0; height: 1080px; background-color: var(--primary-strong); }
+      .sec-label { font-size: 30px; line-height: 1.4; font-weight: 700; }
+      .sec-no { font-size: 200px; line-height: 1.1; font-weight: 700; }
+      .sec-text { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .sec-title { line-height: 1.3; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      .sec-subtitle { font-size: 34px; line-height: 1.5; color: var(--muted); margin-top: 28px; word-break: auto-phrase; }
+
+      /* 主張 */
+      .stmt { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .stmt-bar { position: absolute; width: 12px; background-color: var(--primary); }
+      .stmt-text { line-height: 1.4; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      .stmt-body { font-size: 34px; line-height: 1.6; color: var(--muted); margin-top: 40px; word-break: auto-phrase; }
+
+      /* 大きな数字 */
+      .bn-main { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .bn-row { display: flex; align-items: baseline; }
+      .bn-value { line-height: 1.1; font-weight: 700; color: var(--primary-text); }
+      .bn-unit { line-height: 1.1; font-weight: 700; color: var(--primary-text); margin-left: 12px; }
+      .bn-label { font-size: 38px; line-height: 1.45; font-weight: 700; margin-top: 24px; word-break: auto-phrase; }
+      .bn-side { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .bn-item { border-top: 2px solid var(--line); padding: 28px 0; }
+      .bn-item-value { font-size: 56px; line-height: 1.2; font-weight: 700; }
+      .bn-item-text { font-size: 28px; line-height: 1.5; color: var(--muted); margin-top: 6px; word-break: auto-phrase; }
+
+      /* カード */
+      .card { display: flex; flex-direction: column; flex: none; min-height: 400px; background-color: var(--surface); border-radius: 16px; padding: 48px 44px; }
+      .card.hl { background-color: var(--accent-soft); border: 3px solid var(--accent); }
+      .card-bar { width: 56px; height: 8px; background-color: var(--primary); margin-bottom: 28px; }
+      .card.hl .card-bar { background-color: var(--accent); }
+      .card-label { font-size: 28px; line-height: 1.4; font-weight: 700; color: var(--primary-text); margin-bottom: 10px; }
+      .card-title { font-size: 44px; line-height: 1.4; font-weight: 700; margin-bottom: 20px; word-break: auto-phrase; }
+      .card-body { font-size: 32px; line-height: 1.6; word-break: auto-phrase; }
+
+      /* 矢羽根 */
+      .flow-item { position: relative; flex: none; }
+      .flow-head { position: relative; }
+      .flow-head svg { position: absolute; left: 0; top: 0; }
+      .flow-label { position: absolute; top: 0; display: flex; align-items: center; justify-content: center; font-size: 34px; line-height: 1.3; font-weight: 700; }
+      .flow-text { display: flex; flex-direction: column; margin-top: 32px; }
+      .flow-title { font-size: 40px; line-height: 1.4; font-weight: 700; margin-bottom: 14px; word-break: auto-phrase; }
+      .flow-body { font-size: 30px; line-height: 1.6; color: var(--ink); word-break: auto-phrase; }
+
+      /* 比較 */
+      .cmp { display: flex; flex-direction: column; flex: none; min-height: 420px; border-radius: 16px; padding: 48px 52px; background-color: var(--surface); }
+      .cmp.hl { background-color: var(--accent-soft); border: 3px solid var(--accent); }
+      .cmp-chip { align-self: flex-start; font-size: 30px; line-height: 1.4; font-weight: 700; padding: 6px 22px; border-radius: 8px; background-color: var(--line); color: var(--ink); margin-bottom: 24px; }
+      .cmp.hl .cmp-chip { background-color: var(--accent-strong); color: var(--on-accent); }
+      .cmp-title { font-size: 46px; line-height: 1.4; font-weight: 700; margin-bottom: 22px; word-break: auto-phrase; }
+      .cmp-point { display: flex; align-items: flex-start; margin-top: 18px; }
+      .cmp-dot { flex: none; width: 16px; height: 16px; border-radius: 8px; background-color: var(--muted); margin: 19px 22px 0 0; }
+      .cmp.hl .cmp-dot { background-color: var(--accent); }
+      .cmp-text { font-size: 34px; line-height: 1.55; word-break: auto-phrase; }
+      .cmp-gap { flex: none; display: flex; align-items: center; justify-content: center; }
+
+      /* 棒グラフ */
+      .bar-group { position: absolute; display: flex; flex-direction: column; align-items: center; }
+      .bar-value { font-size: 36px; line-height: 1.3; font-weight: 700; margin-bottom: 12px; white-space: nowrap; }
+      .bar { border-radius: 6px 6px 0 0; background-color: var(--bar); }
+      .bar.hl { background-color: var(--accent); }
+      .bar-label { position: absolute; font-size: 28px; line-height: 1.4; text-align: center; color: var(--ink); }
+      .bar-label.hl { font-weight: 700; color: var(--accent-text); }
+      .baseline { position: absolute; height: 3px; background-color: var(--ink); }
+      .bar-unit { position: absolute; font-size: 24px; line-height: 1.4; color: var(--muted); }
+      .callout { position: absolute; display: flex; flex-direction: column; justify-content: center; background-color: var(--accent-soft); border-radius: 16px; padding: 48px 44px; }
+      .callout-value { line-height: 1.15; font-weight: 700; color: var(--accent-text); }
+      .callout-text { font-size: 30px; line-height: 1.55; margin-top: 18px; word-break: auto-phrase; }
+
+      /* 表 */
+      .table { position: absolute; display: flex; flex-direction: column; }
+      .tr { display: flex; border-bottom: 2px solid var(--line); }
+      .tr.th { background-color: var(--surface); border-bottom: 3px solid var(--ink); }
+      .td { display: flex; align-items: center; padding: 0 24px; }
+      .td div { line-height: 1.4; }
+      .tr.th .td div { font-weight: 700; }
+      .td.hl { background-color: var(--accent-soft); }
+      .tr.th .td.hl { background-color: var(--accent-strong); }
+      .tr.th .td.hl div { color: var(--on-accent); }
+
+      /* 写真 */
+      .scrim { position: absolute; display: flex; flex-direction: column; background-color: var(--scrim); border-radius: 12px; padding: 48px 56px; }
+      .scrim .headline { color: #ffffff; }
+      .scrim .sub { color: #ffffff; }
+      .scrim em { color: var(--accent-on-dark); }
+      .photo-text { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .caption { position: absolute; font-size: 22px; line-height: 1.4; color: var(--muted); }
+
+      /* 引用 */
+      .qmark { font-size: 200px; line-height: 1.2; margin: -30px 0 -80px -12px; font-weight: 700; color: var(--primary-text); }
+      .quote { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .quote-text { line-height: 1.55; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      .quote-by { display: flex; align-items: baseline; margin-top: 48px; }
+      .quote-name { font-size: 34px; line-height: 1.4; font-weight: 700; }
+      .quote-role { font-size: 28px; line-height: 1.4; color: var(--muted); margin-left: 24px; }
+
+      /* 箇条書き・締めの一覧 */
+      .list { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .li { display: flex; align-items: flex-start; }
+      .li-mark { flex: none; width: 18px; height: 18px; background-color: var(--primary); margin-right: 34px; }
+      .li-no { flex: none; width: 68px; height: 68px; border-radius: 34px; background-color: var(--primary-strong); color: var(--on-primary);
+               display: flex; align-items: center; justify-content: center; font-size: 32px; line-height: 1; font-weight: 700; margin-right: 36px; }
+      .li-text { display: flex; flex-direction: column; flex: 1; }
+      .li-title { font-size: 44px; line-height: 1.45; font-weight: 700; word-break: auto-phrase; }
+      .li-body { font-size: 30px; line-height: 1.6; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
+      .side-img { position: absolute; object-fit: cover; border-radius: 16px; }
+      .contact { display: flex; flex-direction: column; justify-content: center; background-color: var(--primary-strong); border-radius: 16px; padding: 56px 52px; }
+      .contact-label { font-size: 26px; line-height: 1.4; font-weight: 700; color: var(--on-primary); margin-bottom: 24px; }
+      .contact div.contact-line { font-size: 30px; line-height: 1.6; color: var(--on-primary); }
+      .contact div.contact-strong { font-size: 38px; line-height: 1.5; font-weight: 700; color: var(--on-primary); margin-bottom: 8px; }
+
+      /* 年表 */
+      .tl-line { position: absolute; height: 6px; background-color: var(--line); }
+      .tl-item { position: absolute; display: flex; flex-direction: column; }
+      .tl-dot { width: 32px; height: 32px; border-radius: 16px; background-color: var(--bg); border: 6px solid var(--bar); }
+      .tl-item.hl .tl-dot { background-color: var(--accent); border: 6px solid var(--accent); }
+      .tl-when { font-size: 34px; line-height: 1.4; font-weight: 700; color: var(--muted); }
+      .tl-item.hl .tl-when { color: var(--accent-text); }
+      .tl-title { font-size: 40px; line-height: 1.45; font-weight: 700; margin-top: 34px; word-break: auto-phrase; }
+      .tl-body { font-size: 30px; line-height: 1.6; color: var(--muted); margin-top: 10px; word-break: auto-phrase; }
+      /* 要約（結論＋根拠） */
+      .sum-col { display: flex; flex-direction: column; flex: none; }
+      .sum-bar { width: 100%; height: 6px; background-color: var(--primary); }
+      .sum-no { font-size: 28px; line-height: 1.4; font-weight: 700; color: var(--primary-text); margin-top: 22px; }
+      .sum-value { line-height: 1.2; font-weight: 700; margin-top: 8px; }
+      .sum-title { font-size: 40px; line-height: 1.45; font-weight: 700; margin-top: 10px; word-break: auto-phrase; }
+      .sum-body { font-size: 30px; line-height: 1.6; color: var(--muted); margin-top: 14px; word-break: auto-phrase; }
+
+      /* 指標の並び */
+      .kpi { display: flex; flex-direction: column; flex: none; background-color: var(--surface); border-radius: 16px; padding: 48px 44px; }
+      .kpi.hl { background-color: var(--accent-soft); border: 3px solid var(--accent); }
+      .kpi-label { font-size: 30px; line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .kpi-value { line-height: 1.15; font-weight: 700; }
+      .kpi-unit { line-height: 1.15; font-weight: 700; margin-left: 10px; }
+      .kpi.hl .kpi-value, .kpi.hl .kpi-unit { color: var(--accent-text); }
+      .kpi-delta { font-size: 30px; line-height: 1.4; font-weight: 700; margin-top: 20px; }
+      .kpi-note { font-size: 24px; line-height: 1.5; color: var(--muted); margin-top: 10px; word-break: auto-phrase; }
+
+      /* 折れ線 */
+      .grid-line { position: absolute; background-color: var(--line); }
+      .tick { position: absolute; font-size: 24px; line-height: 1.5; color: var(--muted); text-align: right; }
+      .line-svg { position: absolute; overflow: visible; }
+      .pt-value { position: absolute; font-size: 28px; line-height: 1.3; font-weight: 700; text-align: center; white-space: nowrap; }
+      .legend { position: absolute; display: flex; justify-content: flex-end; }
+      .legend-item { display: flex; align-items: center; margin-left: 40px; }
+      .legend-swatch { width: 44px; height: 8px; border-radius: 4px; margin-right: 14px; }
+      .legend-name { font-size: 26px; line-height: 1.4; }
+
+      /* 体制・人 */
+      .member { display: flex; flex-direction: column; align-items: center; flex: none; }
+      .face { object-fit: cover; }
+      .face-ini { display: flex; align-items: center; justify-content: center; line-height: 1; font-weight: 700;
+                  background-color: var(--tint); color: var(--primary-text); }
+      .member-name { font-size: 38px; line-height: 1.4; font-weight: 700; margin-top: 26px; text-align: center; }
+      .member-role { font-size: 28px; line-height: 1.4; font-weight: 700; color: var(--primary-text); margin-top: 4px; text-align: center; }
+      .member-note { font-size: 26px; line-height: 1.55; color: var(--muted); margin-top: 12px; text-align: center; word-break: auto-phrase; }
+
+      /* 2×2 */
+      .mx-focus { position: absolute; background-color: var(--accent-soft); }
+      .mx-frame { position: absolute; border: 2px solid var(--line); }
+      .mx-axis { position: absolute; background-color: var(--bar); }
+      .mx-quad { position: absolute; display: flex; flex-direction: column; }
+      .mx-qtitle { font-size: 30px; line-height: 1.4; font-weight: 700; color: var(--muted); }
+      .mx-qtitle.accent { color: var(--accent-text); }
+      .mx-qbody { font-size: 24px; line-height: 1.5; color: var(--muted); margin-top: 4px; }
+      .mx-ylab { position: absolute; display: flex; flex-direction: column; align-items: flex-end; }
+      .mx-ylab div { font-size: 26px; line-height: 1.4; color: var(--muted); text-align: right; }
+      .mx-ylab div.bold { font-weight: 700; color: var(--ink); }
+      .mx-xlab { position: absolute; font-size: 26px; line-height: 1.4; color: var(--muted); }
+      .mx-xlab.bold { font-weight: 700; color: var(--ink); }
+      .mx-item { position: absolute; }
+      .mx-dot { position: absolute; border-radius: 15px; background-color: var(--ink); }
+      .mx-dot.hl { background-color: var(--accent); }
+      .mx-label { position: absolute; line-height: 1.4; font-weight: 700; white-space: nowrap; }
+      .mx-label.accent { color: var(--accent-text); }
+      .callout-title { font-size: 40px; line-height: 1.4; font-weight: 700; color: var(--accent-text); word-break: auto-phrase; }
+      /* スタイルの見た目の調子（look・ADR 0005 追記）。deck.py が差し込む。standard は空 */
+      {{LOOK}}
+    </style>
+  </head>
+  <body>
+{{SLIDES}}
+  </body>
+</html>

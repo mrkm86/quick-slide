@@ -1,0 +1,22 @@
+# カスタムスタイルの雛形（html-slide・ADR 0005）。写して自分の置き場で書き換え、
+#   html_slide.py deck --script … --style <このファイル>
+# で渡す。html-slide のスタイルは決まった項目の値だけを持つ（文章は読まない）。知らないキー・値は rc=2。
+#   - defaults: 型ごとの変化形の既定。台本に書いてあれば台本が勝つ。画像が要る変化形は画像があるページだけに効く
+#   - motion: 並びの出方（fx）と切り替え（transition）の既定
+# 使える型と変化形と値は scripts/deck_style.py の VARIANTS。色と字体はテーマ（--theme）で渡す
+name: my-style
+description: 写真を左半分に置き、ポンと出る資料          # 任意。選ぶ人向けの補足
+defaults:
+  cover: {layout: hero, text_side: right, tone: dark}
+  photo: {layout: left, split: 1/2}
+  bullets: {side: left, split: 2/5}
+motion:
+  fx: pop
+  transition: fade
+look:                             # 見た目の調子（文字の大きさ・余白は変えない）。項目と値は scripts/deck_style.py の LOOK
+  background: plain               # plain / tint
+  surface: line                   # soft / white / primary / line
+  radius: square                  # default / square / round
+  band: none                      # small / bar / none
+  emphasis: strong                # default / strong
+  statement: plain                # plain / panel
