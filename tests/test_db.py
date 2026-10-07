@@ -5,10 +5,11 @@ from __future__ import annotations
 import shutil
 import sqlite3
 import unittest
+from pathlib import Path
 
 from helpers import make_deck, open_store, temp_dir
 
-from quick_slide.db.connection import connect
+from quick_slide.db.connection import Transaction, connect
 from quick_slide.db.migrate import LATEST_VERSION, MIGRATIONS_DIR, migrate, status
 from quick_slide.enums import DECK_MODES, EVENT_KINDS
 from quick_slide.errors import StartupError, ValidationError
@@ -70,9 +71,167 @@ class MigrationTests(unittest.TestCase):
         with self.assertRaises(StartupError):
             migrate(conn)
 
+    # --- 履歴と版の食い違い（改変を確かめられない DB を「最新」とみなさない） ---
+    def _migrated(self) -> sqlite3.Connection:
+        conn = connect(temp_dir(self) / "x.db")
+        self.addCleanup(conn.close)
+        migrate(conn)
+        return conn
+
+    def test_a_missing_history_row_is_refused(self) -> None:
+        conn = self._migrated()
+        conn.execute("DELETE FROM schema_migrations WHERE version=1")
+        with self.assertRaisesRegex(StartupError, "履歴に無い版 \\[1\\]"):
+            migrate(conn)
+        self.assertFalse(status(conn).up_to_date)
+
+    def test_all_history_rows_missing_is_refused(self) -> None:
+        conn = self._migrated()
+        conn.execute("DELETE FROM schema_migrations")
+        with self.assertRaises(StartupError):
+            migrate(conn)
+        self.assertFalse(status(conn).up_to_date)
+
+    def test_a_missing_history_table_is_refused_and_not_recreated(self) -> None:
+        conn = self._migrated()
+        conn.execute("DROP TABLE schema_migrations")
+        with self.assertRaisesRegex(StartupError, "履歴（schema_migrations）がありません"):
+            migrate(conn)
+        has_table = conn.execute("SELECT 1 FROM sqlite_master WHERE name='schema_migrations'").fetchone()
+        self.assertIsNone(has_table, "拒否するときに空の履歴の表を作らない（作ると次は通ってしまう）")
+
+    def test_history_ahead_of_the_version_is_refused(self) -> None:
+        conn = self._migrated()
+        conn.execute(f"PRAGMA user_version = {LATEST_VERSION - 1}")
+        with self.assertRaisesRegex(StartupError, "版より先の履歴"):
+            migrate(conn)
+
+    def test_history_on_a_version_zero_db_is_refused(self) -> None:
+        conn = self._migrated()
+        conn.execute("PRAGMA user_version = 0")
+        with self.assertRaises(StartupError):
+            migrate(conn)
+
+    def test_a_renamed_history_row_is_refused(self) -> None:
+        conn = self._migrated()
+        conn.execute("UPDATE schema_migrations SET name='something_else' WHERE version=1")
+        with self.assertRaises(StartupError):
+            migrate(conn)
+
+    def test_a_consistent_db_still_passes(self) -> None:
+        conn = self._migrated()
+        st = migrate(conn)
+        self.assertTrue(st.up_to_date)
+        self.assertEqual([a["version"] for a in st.applied], list(range(1, LATEST_VERSION + 1)))
+
+    # --- 外部キーを切る移行は、確定の前に参照を検査する ---
+    def _with_extra_migration(self, body: str) -> tuple[sqlite3.Connection, Path]:
+        tmp = temp_dir(self)
+        migrations = tmp / "migrations"
+        shutil.copytree(MIGRATIONS_DIR, migrations, ignore=shutil.ignore_patterns("__pycache__", "*.py"))
+        conn = connect(tmp / "x.db")
+        self.addCleanup(conn.close)
+        migrate(conn, directory=migrations)
+        conn.execute("INSERT INTO tags(id,name) VALUES('tag-1','一つ目')")
+        conn.execute("INSERT INTO tags(id,name) VALUES('tag-2','二つ目')")
+        version = LATEST_VERSION + 1
+        (migrations / f"{version:04d}_test_rebuild.sql").write_text(body, encoding="utf-8")
+        return conn, migrations
+
+    def test_a_foreign_keys_off_migration_with_dangling_rows_is_rolled_back(self) -> None:
+        """表を作り替えて参照先を写し忘れた、という移行。外部キーを切っているので文は全部通ってしまう。"""
+        conn, migrations = self._with_extra_migration(
+            "-- requires_foreign_keys_off\n"
+            "CREATE TABLE test_notes(id TEXT PRIMARY KEY, tag_id TEXT NOT NULL REFERENCES tags(id));\n"
+            "INSERT INTO test_notes VALUES('n-1','tag-1');\n"
+            "INSERT INTO test_notes VALUES('n-2','tag-2');\n"
+            "CREATE TABLE tags_new(id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE);\n"
+            "INSERT INTO tags_new SELECT id,name FROM tags WHERE id='tag-1';\n"   # tag-2 を写し忘れる
+            "DROP TABLE tags;\n"
+            "ALTER TABLE tags_new RENAME TO tags;\n"
+        )
+        with self.assertRaisesRegex(StartupError, "参照先の無い行"):
+            migrate(conn, directory=migrations)
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], LATEST_VERSION, "版は進まない")
+        self.assertIsNone(conn.execute("SELECT 1 FROM schema_migrations WHERE version=?", (LATEST_VERSION + 1,)).fetchone())
+        self.assertIsNone(conn.execute("SELECT 1 FROM sqlite_master WHERE name IN ('test_notes','tags_new')").fetchone())
+        self.assertEqual([r[0] for r in conn.execute("SELECT id FROM tags ORDER BY id")], ["tag-1", "tag-2"],
+                         "作り替えの前の表に戻る")
+        self.assertFalse(conn.in_transaction)
+        self.assertEqual(conn.execute("PRAGMA foreign_keys").fetchone()[0], 1, "外部キーは必ず戻す")
+        self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+
+    def test_a_foreign_keys_off_migration_that_keeps_references_is_applied(self) -> None:
+        conn, migrations = self._with_extra_migration(
+            "-- requires_foreign_keys_off\n"
+            "CREATE TABLE test_notes(id TEXT PRIMARY KEY, tag_id TEXT NOT NULL REFERENCES tags(id));\n"
+            "INSERT INTO test_notes VALUES('n-1','tag-1');\n"
+            "CREATE TABLE tags_new(id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE);\n"
+            "INSERT INTO tags_new SELECT id,name FROM tags;\n"
+            "DROP TABLE tags;\n"
+            "ALTER TABLE tags_new RENAME TO tags;\n"
+        )
+        st = migrate(conn, directory=migrations)
+        self.assertTrue(st.up_to_date)
+        self.assertEqual(st.user_version, LATEST_VERSION + 1)
+        self.assertEqual(conn.execute("PRAGMA foreign_keys").fetchone()[0], 1)
+
     def test_the_v1_db_file_name_is_not_used(self) -> None:
         store = open_store(self)
         self.assertFalse((store.root.db_dir / "studio.sqlite3").exists())
+
+
+class TransactionTests(unittest.TestCase):
+    """トランザクションの境界。COMMIT そのものが失敗しても、接続に開いたトランザクションを残さない。"""
+
+    def _broken_brand(self, store: Store) -> None:
+        """遅延外部キー（brands.current_revision_id）に違反する行。文の実行では通り、COMMIT で落ちる。"""
+        now = store.now()
+        store.conn.execute(
+            "INSERT INTO brands(id,name,current_revision_id,kind,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+            ("broken-brand", "壊れたブランド", "no-such-revision", "user", now, now),
+        )
+
+    def _committed_tags(self, store: Store) -> list[str]:
+        """別の接続から読む（同じ接続だと未確定の行も見えてしまう）。"""
+        other = connect(store.root.db_path)
+        try:
+            return [r[0] for r in other.execute("SELECT name FROM tags ORDER BY name")]
+        finally:
+            other.close()
+
+    def test_a_failed_commit_is_rolled_back_and_the_next_operation_commits(self) -> None:
+        store = open_store(self)
+        with self.assertRaises(sqlite3.IntegrityError):
+            with store.transaction():
+                self._broken_brand(store)
+                store.conn.execute("INSERT INTO tags(id,name) VALUES('t-lost','消えるはずのタグ')")
+        self.assertFalse(store.conn.in_transaction, "COMMIT に失敗したら巻き戻して閉じる")
+        self.assertIsNone(store._one("SELECT id FROM brands WHERE id='broken-brand'"))
+        # 次の独立した操作は、入れ子ではなく自分で BEGIN して確定する
+        with store.transaction() as tx:
+            self.assertTrue(tx._outermost)
+            store.conn.execute("INSERT INTO tags(id,name) VALUES('t-kept','残るタグ')")
+        self.assertFalse(store.conn.in_transaction)
+        self.assertEqual(self._committed_tags(store), ["残るタグ"])
+
+    def test_an_error_inside_rolls_back_without_hiding_the_error(self) -> None:
+        store = open_store(self)
+        with self.assertRaises(ValueError):
+            with store.transaction():
+                store.conn.execute("INSERT INTO tags(id,name) VALUES('t-x','途中のタグ')")
+                raise ValueError("途中で失敗")
+        self.assertFalse(store.conn.in_transaction)
+        self.assertEqual(self._committed_tags(store), [])
+
+    def test_rollback_after_sqlite_already_closed_the_transaction_keeps_the_original_error(self) -> None:
+        """SQLite が先に巻き戻した後でも、ROLLBACK の失敗で元の例外を隠さない。"""
+        store = open_store(self)
+        with self.assertRaises(KeyError):
+            with Transaction(store.conn):
+                store.conn.execute("ROLLBACK")   # SQLite 側で閉じた状態を作る
+                raise KeyError("元の例外")
+        self.assertFalse(store.conn.in_transaction)
 
 
 class DeckModeTests(unittest.TestCase):

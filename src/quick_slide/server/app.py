@@ -44,7 +44,7 @@ from ..errors import NotFoundError, QuickSlideError, StartupError, StateError
 from ..ids import is_uuid, new_id
 from ..paths import WEB_APP_DIR, DataRoot
 from ..security.tokens import hash_token
-from ..settings import LOOPBACK_HOSTS, Settings, bind_refusal, bind_scope
+from ..settings import Settings, bind_refusal, bind_scope, is_loopback_host
 from ..store import Store
 from ..worker.pool import WorkerPool
 from ..worker.tools import Tools
@@ -195,12 +195,19 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 def allowed_hosts(host: str, port: int, names: Sequence[str] = ()) -> set[str]:
     """`Host:` ヘッダで名乗ってよい宛先（I9）。ここを通らない要求は 421 で断る。
 
-    ループバックは常に許す。ループバック以外に bind したときだけ、そのアドレスと、設定に書かれた名前を足す。
+    ループバックは常に許す。bind したアドレスそのもの（書かれた形と正規の形）も許す（アドレスは DNS で付け替えられない）。
+    設定に書かれた名前を足すのは、**ループバック以外に** bind したときだけ。ループバックかどうかは
+    `is_loopback_host` がアドレスの意味で決める（`0:0:0:0:0:0:0:1` のような別の書き方で名前を足させない）。
     名前を足せるのは設定が明示したものだけで、勝手に DNS を引いたりはしない（設定と実態を食い違わせない）。
     """
     hosts = ["127.0.0.1", "localhost", "[::1]"]
-    if host not in LOOPBACK_HOSTS:
+    if host.lower().rstrip(".") != "localhost":
         hosts.append(http_host(host))
+        try:
+            hosts.append(http_host(str(ipaddress.ip_address(host))))
+        except ValueError:
+            pass
+    if not is_loopback_host(host):
         hosts.extend(names)
     return {f"{h.lower()}:{port}" for h in hosts}
 
@@ -284,13 +291,10 @@ class QuickSlideServer:
                     "別のポートへ勝手に切り替えることはしません"
                 ) from exc
             bound_ip = self._httpd.server_address[0]
-            try:
-                is_loopback = ipaddress.ip_address(bound_ip.split("%")[0]).is_loopback
-            except ValueError:
-                is_loopback = False
+            is_loopback = is_loopback_host(bound_ip.split("%")[0])
             # ループバックを頼んだのに外へ開いていたら止める。書かれたアドレスへ開くとき（設定の「この機械」）は
             # 外へ開くのが頼まれたことなので止めない（v1 はここで必ず止め、画面で保存した口が起動できなかった）
-            if self.host in LOOPBACK_HOSTS and not is_loopback:
+            if is_loopback_host(self.host) and not is_loopback:
                 raise StartupError(f"bind 結果がループバックではありません（{bound_ip}）。起動を中止します")
             self.store = Store.open(self.root, settings=self.settings, clock=self.clock, startup_sweep=False)
             self.sweep_summary = run_startup_sweep(self.store)
@@ -305,7 +309,7 @@ class QuickSlideServer:
                 instance_id=self.instance_id, pid=os.getpid(), started_at=self.started_at, host=self.host,
                 port=self.bound_port, url=self.url, session_token=self.session_token, version=__version__,
             ))
-            if self.host not in LOOPBACK_HOSTS:
+            if not is_loopback_host(self.host):
                 log.warning("この機械の外に開いています host=%s。Quick Slide に鍵は無いので、"
                             "この網から届く端末は誰でもスライドを読み・消し・画像の枠を使えます", self.host)
             log.info("起動 instance=%s pid=%d url=%s sweep=%s", self.instance_id, os.getpid(), self.url,
@@ -834,14 +838,16 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
 def run_startup_sweep(store: Store) -> dict[str, Any]:
     """アクセス層の掃除を 1 つずつ実行する。1 つが失敗しても他は続け、失敗とスキップを件数で報告する。
 
-    期限切れの起動（launch）と、前のサーバで「走っている」まま残った仕事（失敗にする。勝手に作り直さない）。
+    期限切れの起動（launch）と、前のサーバで「走っている」まま残った仕事（失敗にする。勝手に作り直さない）と、
+    ごみ箱へ移す途中で止まった削除（ごみ箱から戻せる形にする）。
     """
-    summary: dict[str, Any] = {"launches_expired": None, "jobs_interrupted": None, "skipped_items": 0, "problems": [],
-                               "failed_sweeps": []}
+    summary: dict[str, Any] = {"launches_expired": None, "jobs_interrupted": None, "deletions_recovered": None,
+                               "skipped_items": 0, "problems": [], "failed_sweeps": []}
     problems: list[dict[str, Any]] = []
     sweeps: tuple[tuple[str, Callable[[], list[str]]], ...] = (
         ("launches_expired", store.expire_launches),
         ("jobs_interrupted", store.fail_interrupted_jobs),
+        ("deletions_recovered", store.recover_interrupted_deletions),
     )
     for name, fn in sweeps:
         try:

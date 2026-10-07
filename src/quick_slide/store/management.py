@@ -4,11 +4,17 @@
 ここで **events と対にする**（状態更新とイベントを同じトランザクションで）。
 
 削除の方式:
-1. `decks.deleted_at` と `deletion_tasks` 行を同時 commit（即時非表示）
-2. 復元 manifest を `.trash/<deletion-id>/manifest.json` に**確定してから**
+1. 復元 manifest を `.trash/<deletion-id>/manifest.json` に**先に確定する**。書けなければ何も変えずに断る
+   （デッキは見えたまま。先に隠してから書けないと、戻す手がかりの無い「隠れたデッキ」が残る）
+2. `decks.deleted_at` と `deletion_tasks` 行（`pending`）を同時 commit（即時非表示）。失敗したら 1 の manifest を片付ける
 3. **専有ファイルだけ**を `.trash/<deletion-id>/...` へ退避する（`os.replace`。同じファイルシステム内の移動で、
    1 バイトも複製・削除しない）。他デッキ・ブランドから参照されている asset は触らない
 4. 退避した asset 行を `trashed` にし、タスクを `trashed` にして `deck_trashed` イベントを書く
+
+2〜4 の途中でサーバが止まると、タスクは `pending` のまま残る。起動時の掃除（`recover_interrupted_deletions`）が
+manifest と実ファイルを見て退避済みの asset を `trashed` にし、タスクを `failed`（ごみ箱から戻せる）にする。
+`pending` は manifest がある状態でしか作られない（1 が先）。古い版が残した manifest の無い `pending` は、
+ファイルを 1 つも動かしていない（動かすのは manifest の後）ので、退避の置き場が無ければ復元はデッキを戻すだけにする。
 
 復元は manifest どおりに戻し、sha256 を検証してから `deleted_at=NULL` にする。
 完全削除（`purge_deck_from_trash`）はごみ箱の中身を**本当に消す**：そのデッキの行を 1 つ残らず消し、
@@ -68,6 +74,18 @@ def _dir_bytes(path: Path) -> int:
         except OSError:
             continue  # 数えられないものは 0 として扱う（見積りのために失敗しない）
     return total
+
+
+def _discard_new_trash_dir(path: Path) -> None:
+    """この削除のために作った `.trash/<deletion-id>/`（中身は manifest だけ）を片付ける。片付けられなくても例外にしない。"""
+    shutil.rmtree(path, ignore_errors=True)
+
+
+def _holds_moved_files(trash_dir: Path) -> bool:
+    """退避の置き場に、manifest の書きかけ以外のファイルがあるか（＝何かを動かした跡があるか）。"""
+    if not trash_dir.exists():
+        return False
+    return any(p.name != "manifest.json.tmp" for p in trash_dir.rglob("*") if not p.is_dir())
 
 
 def _rmdir_if_empty(path: Path) -> None:
@@ -133,10 +151,7 @@ class DeckManagementMixin(StoreBase):
         exclusive = [a for a in usage if not a["shared"]]
         shared = [a for a in usage if a["shared"]]
 
-        # 1. 即時非表示（deleted_at + deletion_tasks を同時 commit。既存メソッド）
-        self.soft_delete_deck(deck_id, manifest_path=manifest_rel, deletion_id=tid)
-
-        # 2. 復元 manifest を先に確定する
+        # 1. 復元 manifest を先に確定する（隠す前。書けなければ何も変えずに断る）
         manifest: dict[str, Any] = {
             "schema_version": MANIFEST_SCHEMA_VERSION,
             "deletion_id": tid,
@@ -153,7 +168,19 @@ class DeckManagementMixin(StoreBase):
                            for a in shared],
             },
         }
-        _write_json_atomic(self.root.root / manifest_rel, manifest)
+        try:
+            _write_json_atomic(self.root.root / manifest_rel, manifest)
+        except OSError:
+            _discard_new_trash_dir(trash_dir)
+            raise StateError("ごみ箱へ移すための記録を書けませんでした。スライドはそのままです。"
+                             "空き容量を確かめて、もう一度お試しください") from None
+
+        # 2. 即時非表示（deleted_at + deletion_tasks を同時 commit。既存メソッド）。断られたら manifest を片付ける
+        try:
+            self.soft_delete_deck(deck_id, manifest_path=manifest_rel, deletion_id=tid)
+        except BaseException:
+            _discard_new_trash_dir(trash_dir)
+            raise
 
         # 3. 専有ファイルだけ退避（同一ファイルシステム内の rename。共有 asset は触らない）
         moved: list[str] = []
@@ -201,6 +228,13 @@ class DeckManagementMixin(StoreBase):
         manifest_path = self.root.root / task["manifest_path"]
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            # 古い版は「隠す → manifest を書く」の順だったので、manifest を書く前に止まった削除が残りうる。
+            # そのときはファイルを 1 つも動かしていない（動かすのは manifest の後）。退避の置き場そのものが
+            # 無いときに限って、デッキを戻すだけにする（置き場があるのに manifest が無いなら、何かが欠けている）
+            if task["state"] != "failed" or _holds_moved_files(manifest_path.parent):
+                raise StateError("復元 manifest を読めません") from None
+            manifest = {"assets": {"exclusive": []}}
         except (OSError, ValueError):
             raise StateError("復元 manifest を読めません") from None
         trash_dir = manifest_path.parent
@@ -234,6 +268,50 @@ class DeckManagementMixin(StoreBase):
             self.append_event("deck_restored", {"deck_id": deck_id, "deletion_task_id": task["id"], "restored": len(restored)},
                               deck_id=deck_id)
             return self.deck(deck_id)
+
+    # --- 起動時の掃除: 途中で止まった削除 ---
+    def recover_interrupted_deletions(self) -> list[str]:
+        """ごみ箱へ移す途中で止まった削除（`pending`・`running`）を、ごみ箱から戻せる形（`failed`）にする。
+
+        前のサーバが「隠した」あと「記録した」前に止まると、タスクは `pending` のまま残り、復元は断られ、
+        デッキは隠れたままになる。ここで manifest と実ファイルを見て、退避の置き場へ動いていた asset を `trashed` にし
+        （配信は取れないと言う）、タスクを `failed` にする。ファイルは動かさない（戻すのは利用者が復元を押したとき）。
+        戻り値は直したタスクの id。
+        """
+        fixed: list[str] = []
+        rows = self._all("SELECT t.id,t.deck_id,t.manifest_path FROM deletion_tasks t JOIN decks d ON d.id=t.deck_id"
+                         " WHERE t.state IN ('pending','running') AND d.deleted_at IS NOT NULL"
+                         " ORDER BY t.created_at,t.rowid")
+        for task in rows:
+            manifest_path = self.root.root / task["manifest_path"]
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                assets = manifest.get("assets", {})
+                exclusive = list(assets.get("exclusive", []))
+                shared_kept = len(assets.get("shared", []))
+            except (OSError, ValueError, AttributeError):
+                exclusive, shared_kept = [], 0
+            with self.transaction():
+                moved = 0
+                for a in exclusive:
+                    try:
+                        in_trash = (manifest_path.parent / a["relative_path"]).is_file()
+                        at_home = (self.root.root / a["relative_path"]).is_file()
+                    except (KeyError, TypeError, OSError):
+                        continue
+                    if in_trash and not at_home and self._one("SELECT 1 FROM assets WHERE id=?", (a.get("asset_id"),)):
+                        self.set_asset_state(a["asset_id"], "trashed")
+                        moved += 1
+                n = self._exec("UPDATE deletion_tasks SET state='failed' WHERE id=? AND state IN ('pending','running')",
+                               (task["id"],))
+                if n != 1:
+                    continue
+                self.append_event("deck_trashed", {
+                    "deck_id": task["deck_id"], "deletion_task_id": task["id"], "state": "failed", "moved": moved,
+                    "shared_kept": shared_kept, "missing": 0, "error_class": "interrupted",
+                }, deck_id=task["deck_id"])
+            fixed.append(task["id"])
+        return fixed
 
     # --- 完全削除 ---
     def _purge_targets(self, deck_id: str) -> tuple[list[dict[str, Any]], list[Path]]:

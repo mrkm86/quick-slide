@@ -32,6 +32,10 @@ class Transaction:
 
     例外で抜けたら最外殻が ROLLBACK する。内側で捕まえて続けることは想定しない
     （途中失敗は全部 rollback）。
+
+    **COMMIT そのものが失敗したときも ROLLBACK する**（遅延外部キーの違反は COMMIT のときに出る）。
+    巻き戻さないと接続にトランザクションが開いたまま残り、同じ接続の次の「独立した」操作が入れ子と
+    みなされて、いつまでも確定しない。抜けるときは、最外殻なら必ずトランザクションを閉じている。
     """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -48,10 +52,24 @@ class Transaction:
         if not self._outermost:
             return False
         if exc_type is None:
-            self.conn.execute("COMMIT")
+            try:
+                self.conn.execute("COMMIT")
+            except BaseException:
+                self._rollback_quietly()
+                raise
         else:
-            self.conn.execute("ROLLBACK")
+            self._rollback_quietly()
         return False
+
+    def _rollback_quietly(self) -> None:
+        """開いていれば巻き戻す。SQLite が先に巻き戻していることもある（容量不足など）ので、閉じていれば何もしない。
+        巻き戻しの失敗で元の例外を隠さない。"""
+        if not self.conn.in_transaction:
+            return
+        try:
+            self.conn.execute("ROLLBACK")
+        except sqlite3.Error:
+            pass
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:

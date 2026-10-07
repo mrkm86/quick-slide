@@ -636,7 +636,7 @@
   // ---- この機械の口（/settings/server。ADR 0049）----
   function serverScreen(root, catalog) {
     var state = catalog.server;
-    var shut = state.loopback_hosts.indexOf(state.host) >= 0;
+    var shut = state.bind_scope === "loopback";   // ループバックかはサーバがアドレスの意味で決めた値を使う
     var errors = h("div", { class: "setting-errors", role: "alert" });
     var dirty = false;
 
