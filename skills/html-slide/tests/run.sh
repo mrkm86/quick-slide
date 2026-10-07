@@ -7,6 +7,7 @@
 #   - 字体は PowerPoint 同梱の游ゴシックを読む（PowerPoint が入っている機体で走らせる）
 #   - 失敗したら即座に非ゼロで落ちる
 set -uo pipefail
+export PYTHONDONTWRITEBYTECODE=1   # スキルの中に __pycache__ を残さない（配る物・リンク先）
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export FIXTURES="$DIR/fixtures"

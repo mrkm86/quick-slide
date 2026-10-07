@@ -7,6 +7,7 @@
 #   - 受け口が html-slide とずれていないか（型・キー・テーマ）を html-slide の定義と見比べる
 #   - 失敗したら非ゼロで落ちる
 set -uo pipefail
+export PYTHONDONTWRITEBYTECODE=1   # スキルの中に __pycache__ を残さない（配る物・リンク先）
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 chmod +x "$DIR/fake_codex.py"

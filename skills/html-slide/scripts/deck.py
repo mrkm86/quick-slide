@@ -22,6 +22,7 @@ import shutil
 import sys
 import urllib.parse
 
+sys.dont_write_bytecode = True   # 置いた場所（配る物の中・ほかの環境からのリンク先）に __pycache__ を残さない
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import cache as K  # noqa: E402
 import deck_style as DS  # noqa: E402

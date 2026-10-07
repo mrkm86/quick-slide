@@ -15,6 +15,7 @@ import pathlib
 import subprocess
 import sys
 
+sys.dont_write_bytecode = True   # 置いた場所（配る物の中・ほかの環境からのリンク先）に __pycache__ を残さない
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import deck  # noqa: E402
 import deck_types as T  # noqa: E402
