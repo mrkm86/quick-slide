@@ -110,7 +110,7 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(view["revision"]["id"], run["id"])
         self.assertEqual((view["live"]["working"], view["planning"]["message"]), (False, None))
         self.assertFalse(view["limit"]["stopped"])
-        self.assertEqual(view["capabilities"]["reorder_pages"]["reason"], "v2 ではまだ使えません（P3 以降）")
+        self.assertTrue(view["capabilities"]["reorder_pages"]["available"], "ページができたら並べ替えられる（P3）")
         prog = fx.get(f"/api/decks/{body['deck_id']}/progress").json()
         self.assertEqual(prog["pages"], view["pages"])
         self.assertEqual(prog["revision_id"], run["id"])
@@ -138,8 +138,10 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(deck_call["kind"], "image")
         self.assertEqual(argv[argv.index("--style") + 1], "standard")
         self.assertEqual(argv[argv.index("--format") + 1], "pptx,pdf,png,thumbs")
-        with fx.server.store_lock:
-            self.assertEqual(Path(argv[argv.index("--out") + 1]), fx.root.run_dir(body["deck_id"], run["id"]))
+        # エンジンはデッキの作業フォルダに描き（P3。キャッシュの区画を回をまたいで使うため）、回のフォルダへ控える
+        self.assertEqual(Path(argv[argv.index("--out") + 1]), fx.root.work_dir(body["deck_id"]))
+        self.assertEqual(Path(argv[argv.index("--script") + 1]), fx.root.engine_script_path(body["deck_id"]))
+        self.assertTrue((fx.root.run_dir(body["deck_id"], run["id"]) / "slides" / "slide-01.png").is_file())
 
     def test_infographic_is_one_page(self) -> None:
         fx, _ = self.start(engine_env={"FAKE_ENGINE_PAGES": "1"})
@@ -213,8 +215,9 @@ class FlowTests(unittest.TestCase):
         self.assertEqual((rec["script"]["version"], rec["script"]["sha256"]), (script["version"], script["sha256"]))
         self.assertEqual(rec["engine"]["skill"], "html-slide")
         self.assertEqual(len(rec["engine"]["sha256"]), 64)
-        self.assertIn("--style", rec["argv"])
-        self.assertEqual(rec["argv"][rec["argv"].index("--style") + 1], "visual")
+        argv = rec["argv"][0]   # 回で呼んだエンジンのコマンドの並び（P3: deck のあとに revise が続くことがある）
+        self.assertIn("--style", argv)
+        self.assertEqual(argv[argv.index("--style") + 1], "visual")
         self.assertEqual(run["engine_result"]["rc"], 0, "エンジンの終わり方も控える")
 
     def test_pitch_checks_the_codex_login_before_writing(self) -> None:

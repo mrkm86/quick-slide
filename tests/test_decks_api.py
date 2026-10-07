@@ -90,8 +90,12 @@ class ReadApiTests(unittest.TestCase):
                 self.assertEqual(set(cap), {"available", "label", "reason"}, key)
                 self.assertFalse(cap["available"], key)
                 self.assertTrue(cap["reason"], key)
-            for key in ("deck_instruction", "page_instruction", "regenerate", "adopt_version", "export", "resume"):
-                self.assertEqual(caps[key]["reason"], NOT_READY_REASON, key)
+            # 直す口は P3 からある。ページが無いうちは「ページが無い」と言う。書き出しは P5 まで「まだ」
+            for key in ("deck_instruction", "page_instruction", "pages_instruction", "regenerate", "adopt_version",
+                        "insert_page", "reorder_pages", "duplicate_page", "page_visibility"):
+                self.assertEqual(caps[key]["reason"], "まだページがありません。ページができるまでお待ちください。", key)
+            self.assertEqual(caps["export"]["reason"], NOT_READY_REASON)
+            self.assertEqual(caps["resume"]["reason"], "描き直すものはありません。")
 
     def test_progress_has_every_key_the_screen_reads(self) -> None:
         data = self.fx.get(f"/api/decks/{self.talk['id']}/progress").json()
@@ -338,7 +342,8 @@ class TrashInterruptedTests(unittest.TestCase):
 
 
 class NotReadyRoutesTests(unittest.TestCase):
-    """P3 以降の口は残し、v1 と同じエラーの形で「まだ使えない」と答える。成功したふりをしない。"""
+    """まだ無い口（ページの削除・書き出し P5・v1 の企画の口）は残し、v1 と同じエラーの形で「まだ使えない」と答える。
+    成功したふりをしない。P3 で作った直す口は、ページの無いデッキには「ページが無い」と断る。"""
 
     def setUp(self) -> None:
         self.fx = start_server(self)
@@ -346,11 +351,9 @@ class NotReadyRoutesTests(unittest.TestCase):
 
     def test_every_later_route_answers_not_ready(self) -> None:
         d, s = self.deck["id"], str(uuid.uuid4())
-        posts = ["/api/conversations/deck", f"/api/decks/{d}/pages/reorder", f"/api/decks/{d}/pages/insert",
-                 f"/api/decks/{d}/pages/{s}/duplicate", f"/api/decks/{d}/pages/{s}/remove",
-                 f"/api/decks/{d}/pages/{s}/visibility", f"/api/decks/{d}/exports", f"/api/decks/{d}/adopt",
-                 f"/api/decks/{d}/instructions", f"/api/decks/{d}/instructions/{s}/generate",
-                 f"/api/decks/{d}/plans/{s}/approve", f"/api/decks/{d}/generate", f"/api/decks/{d}/resume"]
+        posts = [f"/api/decks/{d}/pages/{s}/remove", f"/api/decks/{d}/exports",
+                 f"/api/decks/{d}/instructions/{s}/generate", f"/api/decks/{d}/plans/{s}/approve",
+                 f"/api/decks/{d}/generate"]
         gets = [f"/api/decks/{d}/plan", f"/api/exports/{s}/file"]
         for path in posts:
             r = self.fx.post(path, {"text": "x"})
@@ -359,8 +362,21 @@ class NotReadyRoutesTests(unittest.TestCase):
         for path in gets:
             r = self.fx.get(path)
             self.assertEqual((r.status, r.error_code), (503, "not_ready_in_v2"), path)
+        # P3 の直す口は、ページの無いデッキには 409（ページが無い）と断る
+        for path, body in ((f"/api/decks/{d}/instructions", {"scope": "page", "slide_id": s, "text": "x"}),
+                           (f"/api/decks/{d}/pages/insert", {"after_slide_id": None, "text": "x"}),
+                           (f"/api/decks/{d}/pages/reorder", {"slide_ids": []}),
+                           (f"/api/decks/{d}/pages/{s}/duplicate", {}),
+                           (f"/api/decks/{d}/pages/{s}/visibility", {"hidden": True}),
+                           (f"/api/decks/{d}/adopt", {"choices": {s: s}})):
+            r = self.fx.post(path, body)
+            self.assertEqual((r.status, r.error_code), (409, "no_pages"), path)
+        r = self.fx.post(f"/api/decks/{d}/resume", {})
+        self.assertEqual((r.status, r.error_code), (409, "nothing_to_resume"))
         # 断ったあとも何も変わっていない
         self.assertEqual(self.fx.get("/api/decks").json()["total"], 1)
+        with self.fx.server.store_lock:
+            self.assertEqual(self.fx.store._scalar("SELECT COUNT(*) FROM jobs"), 0)
 
 
 if __name__ == "__main__":

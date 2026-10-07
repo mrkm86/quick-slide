@@ -753,6 +753,7 @@ def _two_uuid_route(prefix: str, name1: str, middle: str, name2: str, suffix: st
 
 # デッキ・設定の API（別モジュール）。Request / Response を参照するのでここで遅延 import する（循環回避）
 from . import deck_routes as _deck_routes  # noqa: E402
+from . import edit_routes as _edit_routes  # noqa: E402
 from . import intake_routes as _intake_routes  # noqa: E402
 from . import later as _later  # noqa: E402
 from . import settings_routes as _settings_routes  # noqa: E402
@@ -796,7 +797,7 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
      QuickSlideServer._route_trashed_asset_file),
     (frozenset({"POST"}), _exact("/api/trash/purge"), _deck_routes.route_trash_purge),
     # 会話に結びついたスライドを引く（P3。読み取りだが POST: 会話識別子を URL に載せない）
-    (frozenset({"POST"}), _exact("/api/conversations/deck"), _not_ready),
+    (frozenset({"POST"}), _exact("/api/conversations/deck"), _edit_routes.route_conversation_deck),
     (frozenset({"GET"}), _exact("/api/decks/home"), _deck_routes.route_home),
     (frozenset({"GET"}), _exact("/api/decks"), _deck_routes.route_list),
     (frozenset({"GET"}), _uuid_route("/api/decks/", "deck_id"), _deck_routes.route_deck),
@@ -808,21 +809,25 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/delete"), _deck_routes.route_delete),
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/restore"), _deck_routes.route_restore),
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/purge"), _deck_routes.route_purge),
-    # --- ページの操作・修正指示・描き直し・書き出し（P3〜P5）。口は残し、「まだ使えない」と答える ---
-    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/pages/reorder"), _not_ready),
-    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/pages/insert"), _not_ready),
-    (frozenset({"POST"}), _two_uuid_route("/api/decks/", "deck_id", "/pages/", "slide_id", "/duplicate"), _not_ready),
+    # --- 直す・版から戻す・ページの操作（P3。server/edit_routes.py） ---
+    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/pages/reorder"), _edit_routes.route_reorder),
+    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/pages/insert"), _edit_routes.route_insert),
+    (frozenset({"POST"}), _two_uuid_route("/api/decks/", "deck_id", "/pages/", "slide_id", "/duplicate"),
+     _edit_routes.route_duplicate),
+    (frozenset({"POST"}), _two_uuid_route("/api/decks/", "deck_id", "/pages/", "slide_id", "/visibility"),
+     _edit_routes.route_visibility),
+    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/adopt"), _edit_routes.route_adopt),
+    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/instructions"), _edit_routes.route_instructions),
+    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/resume"), _edit_routes.route_resume),
+    (frozenset({"GET"}), _two_uuid_route("/api/decks/", "deck_id", "/jobs/", "job_id"), _edit_routes.route_job),
+    # --- まだ無い口（ページの削除・書き出し P5・v1 の企画の口）。口は残し、「まだ使えない」と答える ---
     (frozenset({"POST"}), _two_uuid_route("/api/decks/", "deck_id", "/pages/", "slide_id", "/remove"), _not_ready),
-    (frozenset({"POST"}), _two_uuid_route("/api/decks/", "deck_id", "/pages/", "slide_id", "/visibility"), _not_ready),
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/exports"), _not_ready),
-    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/adopt"), _not_ready),
-    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/instructions"), _not_ready),
     (frozenset({"POST"}), _two_uuid_route("/api/decks/", "deck_id", "/instructions/", "instruction_id", "/generate"),
      _not_ready),
     (frozenset({"GET"}), _uuid_route("/api/decks/", "deck_id", "/plan"), _not_ready),
     (frozenset({"POST"}), _two_uuid_route("/api/decks/", "deck_id", "/plans/", "plan_id", "/approve"), _not_ready),
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/generate"), _not_ready),
-    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/resume"), _not_ready),
     # --- 画面（同じ index.html。画面側が pathname で振り分ける） ---
     (frozenset({"GET"}), _exact("/"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _exact("/slides"), QuickSlideServer._route_index),            # 一覧画面

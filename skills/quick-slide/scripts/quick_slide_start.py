@@ -12,6 +12,12 @@
 画面の開き方は 3 段（`--ensure-launch`）: 会話しているアプリが内蔵ブラウザで URL を開く → 開いた合図（attach）が
 サーバに届くのを待つ → 来なければ外部ブラウザで開く → それでも来なければ URL を案内する。URL はいつも会話に残す。
 
+P3:
+- `--outline-fixed`: 原稿は会話で合意した構成（`## N. 見出し`）。台本係はページ割り（枚数・順番・各ページの主張）を守る
+- `--wait`: 描き終える（か失敗する）まで待ち、ページの見出しを JSON に入れて返す（`--wait-timeout` 秒まで）
+- `--revise [--deck <ID>] [--pages 7,8] --note "…" [--remake] [--attach <画像>]…`: 会話から直す。スライドを省けば
+  この会話から作った一番新しいスライド。`--pages` を省けばスライド全体への指示
+
 **実体（サーバのコード）の探し方**: `--repo` → 環境変数 `QUICK_SLIDE_REPO` → このスキルを載せたプラグインの根
 （`skills/quick-slide/scripts/` から 3 つ上）。指されているのに実体が無ければ、黙って次へ落ちずにその場で止まる。
 
@@ -31,6 +37,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import webbrowser
 from pathlib import Path
 from typing import Any
@@ -63,6 +70,7 @@ RUNTIME_HINT_ENV: tuple[tuple[str, str], ...] = (
     ("CODEX_SANDBOX", "codex"),
 )
 
+WAIT_POLL_SECONDS = 1.5
 NOT_YET_MESSAGE = "{what}は、この版の Quick Slide ではまだできません。スライドの画面か、新しいスライドとして頼んでください。"
 SANDBOX_BLOCKED_MESSAGE = (
     "Quick Slide のサーバに接続できません。いま動いている環境が、手元（127.0.0.1）への通信を塞いでいます。"
@@ -207,11 +215,15 @@ def read_record(home: Path) -> dict[str, Any]:
 # --- 2. HTTP -------------------------------------------------------------
 
 def request(record: dict[str, Any], method: str, path: str, body: dict[str, Any] | None = None,
-            *, session: bool = False, timeout: float = 60.0) -> tuple[int, Any]:
+            *, session: bool = False, timeout: float = 60.0, raw_body: bytes | None = None) -> tuple[int, Any]:
     host, port = str(record["host"]), int(record["port"])
     headers = {"Host": f"[{host}]:{port}" if ":" in host else f"{host}:{port}", "Accept": "application/json"}
     raw = b""
-    if body is not None:
+    if raw_body is not None:
+        raw = raw_body
+        headers["Content-Type"] = "application/octet-stream"
+        headers["Content-Length"] = str(len(raw))
+    elif body is not None:
         raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json"
         headers["Content-Length"] = str(len(raw))
@@ -309,9 +321,15 @@ def build_payload(args: argparse.Namespace) -> tuple[dict[str, Any], str | None]
         if value:
             attrs[name] = value
     if args.pages is not None:
-        attrs["page_count"] = args.pages
+        try:
+            attrs["page_count"] = int(args.pages)
+        except ValueError:
+            raise Failure("pages_invalid", "--pages は新しく作るときは枚数（整数）です。直すページは --revise と一緒に渡してください。",
+                          EXIT_INPUT) from None
     if args.no_images:
         attrs["images"] = False
+    if args.outline_fixed:
+        attrs["outline_fixed"] = True
     payload: dict[str, Any] = {"schema_version": 1, "origin": origin, "manuscript": manuscript, "deck_attributes": attrs}
     if args.title:
         payload["title_hint"] = args.title
@@ -330,6 +348,59 @@ def payload_summary(payload: dict[str, Any], key_source: str | None) -> dict[str
         "origin": {"kind": payload["origin"]["kind"], "runtime": payload["origin"]["runtime"],
                    "conversation_key_present": "conversation_key" in payload["origin"],
                    "conversation_key_source": key_source},
+    }
+
+
+def deck_url(record: dict[str, Any], deck_id: str) -> str:
+    """スライドの画面の URL（起動のトークンは付けない。会話に残しておけば何度でも開ける）。"""
+    return f"{str(record['url']).rstrip('/')}/slides/{deck_id}"
+
+
+def parse_positions(spec: str) -> list[int]:
+    """「7,8」「7-9」「7・8」→ [7, 8, 9]。"""
+    out: list[int] = []
+    for part in spec.replace("・", ",").replace("、", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            if "-" in part:
+                lo, hi = (int(x) for x in part.split("-", 1))
+                out.extend(range(lo, hi + 1))
+            else:
+                out.append(int(part))
+        except ValueError:
+            raise Failure("pages_invalid", "--pages はページの番号を「7,8」や「7-9」のように書いてください。", EXIT_INPUT) from None
+    if not out:
+        raise Failure("pages_invalid", "--pages に直すページの番号を書いてください。", EXIT_INPUT)
+    return sorted(set(out))
+
+
+def wait_job(record: dict[str, Any], deck_id: str, job_id: str, timeout: float) -> dict[str, Any]:
+    """仕事が終わるまで待つ。終わった答え（ページの見出し・提案）を返す。時間切れは Failure（URL は付ける）。"""
+    deadline = time.monotonic() + timeout
+    while True:
+        status, body = request(record, "GET", f"/api/decks/{deck_id}/jobs/{job_id}", timeout=30.0)
+        if status != 200 or not isinstance(body, dict):
+            raise api_failure(status, body)
+        if body.get("finished"):
+            return body
+        if time.monotonic() >= deadline:
+            raise Failure("wait_timeout", "まだ終わっていません（待つのをやめました）。画面で進みを見られます。", EXIT_FAILED,
+                          deck_id=deck_id, job_id=job_id, url=deck_url(record, deck_id))
+        time.sleep(WAIT_POLL_SECONDS)
+
+
+def finished_fields(done: dict[str, Any]) -> dict[str, Any]:
+    """待ち終えた答えから、会話に返すもの（ページの見出しを 1 行ずつ・提案）。"""
+    run = done.get("run") or {}
+    return {
+        "result": "done" if done.get("ok") else "failed",
+        "result_message": run.get("message"),
+        "pages": [{"no": p["no"], "title": p["title"], **({"hidden": True} if p.get("hidden") else {})}
+                  for p in done.get("pages") or []],
+        "summary": done.get("summary"),
+        "suggestions": [{"page": s.get("position"), "text": s.get("text")} for s in done.get("suggestions") or []],
     }
 
 
@@ -376,15 +447,89 @@ def cmd_where(args: argparse.Namespace, home: Path) -> int:
     return EXIT_OK if r["repo"] else EXIT_STARTUP
 
 
+def upload(record: dict[str, Any], path: str) -> str:
+    try:
+        data = Path(path).expanduser().read_bytes()
+    except OSError:
+        raise Failure("file_unreadable", "添える画像のファイルを読めませんでした。", EXIT_INPUT) from None
+    status, body = request(record, "POST", "/api/settings/images", session=True, raw_body=data, timeout=120.0)
+    if status != 201 or not isinstance(body, dict):
+        raise api_failure(status, body)
+    return str(body["asset_id"])
+
+
+def cmd_revise(repo: Path, home: Path, args: argparse.Namespace) -> int:
+    """会話から直す: ページを指定して指示を送る（台本係が台本の差し替えか絵の直しかを振り分ける）。"""
+    note = args.note or ""
+    if args.note_file:
+        note = read_text_file(args.note_file, "指示")
+    if not note.strip() and not args.attach:
+        raise Failure("note_required", "直す指示がありません。--note に何をどう直すかを書いてください。", EXIT_INPUT)
+    positions = parse_positions(args.pages) if args.pages else None
+    runtime, key, _ = detect_conversation()
+    if args.runtime:
+        runtime = args.runtime
+    if args.conversation_key:
+        key = args.conversation_key
+    ensure_server(repo, home, args.server_timeout)
+    record = read_record(home)
+    deck_id = args.deck
+    if not deck_id:
+        if key is None:
+            raise Failure("deck_required", "どのスライドを直すか分かりません。--deck にスライドの ID を渡してください。", EXIT_INPUT)
+        status, body = request(record, "POST", "/api/conversations/deck",
+                               {"origin": {"runtime": runtime, "conversation_key": key}}, session=True)
+        if status != 200 or not isinstance(body, dict):
+            raise api_failure(status, body)
+        deck_id = body["deck"]["id"]
+    del key
+    status, view = request(record, "GET", f"/api/decks/{deck_id}")
+    if status != 200 or not isinstance(view, dict):
+        raise api_failure(status, view)
+    pages = view.get("pages") or []
+    if not pages:
+        raise Failure("no_pages", "このスライドにはまだページがありません。できるまで待ってから直してください。", EXIT_INPUT,
+                      deck_id=deck_id, url=deck_url(record, deck_id))
+    body: dict[str, Any] = {"text": note, "edit_mode": "remake" if args.remake else "minor", "source": "conversation"}
+    if runtime in ("claude_code", "codex"):
+        body["origin_runtime"] = runtime
+    if positions:
+        bad = [n for n in positions if not 1 <= n <= len(pages)]
+        if bad:
+            raise Failure("pages_invalid", f"このスライドは {len(pages)} ページです（指定: {', '.join(map(str, bad))}）。",
+                          EXIT_INPUT, deck_id=deck_id, url=deck_url(record, deck_id))
+        body.update(scope="pages", slide_ids=[pages[n - 1]["slide_id"] for n in positions])
+    else:
+        body.update(scope="deck", confirm_pages=len(pages))
+    body["attachments"] = [{"asset_id": upload(record, a), "input_method": "file"} for a in args.attach or []]
+    status, r = request(record, "POST", f"/api/decks/{deck_id}/instructions", body, session=True)
+    if status != 200 or not isinstance(r, dict):
+        raise api_failure(status, r)
+    out: dict[str, Any] = {"status": "revising", "deck_id": deck_id, "job_id": r.get("job_id"),
+                           "url": deck_url(record, deck_id), "target_pages": positions or "all",
+                           "queued": bool(r.get("queued")), "message": r.get("message")}
+    if args.wait:
+        done = wait_job(record, deck_id, r["job_id"], args.wait_timeout)
+        out.update(status="revised" if done.get("ok") else "revise_failed", **finished_fields(done))
+        if not done.get("ok"):
+            emit(out)
+            return EXIT_FAILED
+    emit(out)
+    return EXIT_OK
+
+
 def run(args: argparse.Namespace) -> int:
     home = data_root(args.home)
     if args.where:
         return cmd_where(args, home)
-    for flag, what in ((args.revise, "会話からの修正（--revise）"), (args.append_to_deck, "既存のスライドへの追加（--append-to-deck）"),
-                       (args.attach, "画像の添付（--attach）"), (args.transcript_file, "会話抜粋（--transcript-file）")):
+    for flag, what in ((args.append_to_deck, "既存のスライドへの追加（--append-to-deck）"),
+                       (args.attach and not args.revise, "新しく作るときの画像の添付（--attach。--revise と一緒なら使える）"),
+                       (args.transcript_file, "会話抜粋（--transcript-file）")):
         if flag:
             raise Failure("not_ready_in_v2", NOT_YET_MESSAGE.format(what=what), EXIT_INPUT)
     repo = repo_root(args.repo)
+    if args.revise:
+        return cmd_revise(repo, home, args)
     if args.ensure_launch:
         return cmd_ensure_launch(repo, home, args)
     payload, key_source = build_payload(args)
@@ -402,13 +547,24 @@ def run(args: argparse.Namespace) -> int:
     mode = browser_mode(record)
     should_open = False if (args.no_open or mode == "manual") else (args.open_browser or mode == "external")
     opened = bool(webbrowser.open(body["url"])) if should_open else False
-    emit({
+    out = {
         "status": "ready", "url": body["url"], "deck_id": body.get("deck_id"), "deck_title": body.get("deck_title"),
         "mode": body.get("mode"), "style": body.get("style"), "resolution": body.get("resolution"),
         "intake_id": body.get("intake_id"), "launch_id": body.get("launch_id"), "job_id": body.get("job_id"),
         "message": conversation_message(body), "opened": opened, "browser_mode": mode, "server": server,
-        "payload": payload_summary(payload, key_source),
-    })
+        "payload": payload_summary(payload, key_source), "deck_url": deck_url(record, body["deck_id"]),
+    }
+    if args.wait and body.get("job_id"):
+        done = wait_job(record, body["deck_id"], body["job_id"], args.wait_timeout)
+        out.update(finished_fields(done))
+        if done.get("ok"):
+            out["message"] = f"「{out['deck_title']}」を {len([p for p in out['pages'] if not p.get('hidden')])} ページで作りました。"
+        else:
+            out["status"] = "failed"
+            out["message"] = (done.get("run") or {}).get("message") or "作れませんでした。"
+            emit(out)
+            return EXIT_FAILED
+    emit(out)
     return EXIT_OK
 
 
@@ -425,7 +581,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--purpose", help="目的")
     p.add_argument("--audience", help="想定の読み手")
     p.add_argument("--style-note", help="作風の一言")
-    p.add_argument("--pages", type=int, help="希望の枚数")
+    p.add_argument("--pages", help="新しく作るとき: 希望の枚数。--revise のとき: 直すページの番号（7,8 や 7-9）")
+    p.add_argument("--outline-fixed", action="store_true",
+                   help="原稿は会話で合意した構成（`## N. 見出し` が 1 ページ）。台本係は枚数・順番・各ページの主張を変えない")
+    p.add_argument("--wait", action="store_true", help="描き終える（か失敗する）まで待ち、ページの見出しを返す")
+    p.add_argument("--wait-timeout", type=float, default=900.0, help="--wait で待つ秒数（既定 900）")
+    p.add_argument("--revise", action="store_true", help="会話から直す（--pages・--note。スライドは --deck か、この会話の最新）")
+    p.add_argument("--deck", help="--revise で直すスライドの ID（省けばこの会話から作った一番新しいスライド）")
+    p.add_argument("--note", help="--revise の指示（何をどう直すか）")
+    p.add_argument("--note-file", help="--revise の指示をファイルで渡す（長いとき）")
+    p.add_argument("--remake", action="store_true", help="--revise で絵を直すとき、今の絵を土台にせず作り直す")
+    p.add_argument("--attach", action="append", help="--revise に添える画像（何度でも）")
     p.add_argument("--brand-id", help="ブランドの UUID（設定の画面で登録したもの）")
     p.add_argument("--conversation-key", help="会話の識別子を明示する（既定は環境変数から。定数は渡さない）")
     p.add_argument("--runtime", choices=("claude_code", "codex", "browser", "cli", "other"),
@@ -442,9 +608,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--repo", help=f"実体のあるリポジトリ（この実行だけ。{ENV_REPO} より優先）")
     p.add_argument("--server-timeout", type=float, default=30.0, help="サーバの起動を待つ秒数")
     # この版ではまだできないこと（呼ばれたら「まだできない」とはっきり答える）
-    p.add_argument("--revise", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--append-to-deck", help=argparse.SUPPRESS)
-    p.add_argument("--attach", action="append", help=argparse.SUPPRESS)
     p.add_argument("--transcript-file", help=argparse.SUPPRESS)
     return p
 

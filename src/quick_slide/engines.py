@@ -55,6 +55,26 @@ class Engine:
         return [python, str(self.entry_path(skills_dir)), "deck", "--script", str(script), "--out", str(out),
                 *self.style_args(args), "--format", FORMATS, *self.deck_extra]
 
+    def revise_command(self, python: str, skills_dir: Path, script: Path, out: Path, args: dict[str, Any], *,
+                       page: int, note: str, remake: bool = False, slot: str | None = None,
+                       attach: list[Path] | None = None) -> list[str]:
+        """絵だけを直す（`revise`）。deck と同じ引数に、直すページと指示を足す。両エンジンとも、直したら
+        PPTX・PDF・ページの画像・サムネイルまで組み直す（image-slide は `finish`、html-slide は `cmd_deck` を呼ぶ）。
+
+        - image-slide: そのページの絵（キャッシュの区画の `slide-NN.png`）だけを描く。既定は微修正（今の絵を土台に）
+        - html-slide: そのページの生成の枠 1 つ（`--slot`。枠が 1 つなら省ける）だけを描く
+        直す前の絵は、どちらもキャッシュの区画の `history/` に残る（戻すのは Quick Slide の版スタックがする）。
+        """
+        cmd = [python, str(self.entry_path(skills_dir)), "revise", "--script", str(script), "--out", str(out),
+               *self.style_args(args), "--format", FORMATS, *self.deck_extra, "--page", str(page), "--note", note]
+        if slot and self.mode == "presentation":
+            cmd += ["--slot", slot]
+        if remake:
+            cmd.append("--remake")
+        for p in attach or []:
+            cmd += ["--attach", str(p)]
+        return cmd
+
     def auth_command(self, python: str, skills_dir: Path) -> list[str] | None:
         """描く前の確かめ（仕事ごとに 1 回）。ピッチは全ページを Codex で描くので `auth` で ChatGPT のログインを見る。
         プレゼンは画像の枠があるときだけ Codex を使い、要るかどうかはエンジンが決める（`deck` の rc=4 で分かる）。"""

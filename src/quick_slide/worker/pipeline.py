@@ -1,38 +1,41 @@
 """仕事 1 つ（原稿から 1 冊）: 確かめる → 台本係が書く → エンジンの検査 → （NG なら直させる。上限あり）→
-描き係が描く → 取り込む。
+描き係が描く → 控える → 取り込む。描く・控える・取り込むところ（`render_and_import`）は直す仕事（`edit.py`）も使う。
 
 台帳（store）に触るときは必ずサーバの錠（`store_lock`）を取る。錠を持ったまま子プロセスを待たない
 （画面の読み取りを止めないため）。各段の状態は `runs` に書き、画面はそれを `planning.message` として読む。
+
+**エンジンはデッキの作業フォルダ（`work/`）に描き、終わった回を `runs/<回>/` へ控える**（P3。理由は
+`render/workspace.py`）。台本はいまの台本から非表示のページを抜いて `scripts/engine.json` に書いて渡す。
 """
 
 from __future__ import annotations
 
 import logging
-import re
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from ..childenv import child_env
 from ..engines import Engine, engine_for, engine_marker
 from ..paths import DataRoot
+from ..render import workspace as W
 from ..render.runner import RenderOutcome, check_prerequisites, check_script, render_deck
+from ..scriptdoc import (
+    engine_view,
+    one_page,
+    outline_headings,
+    output_pages,
+    page_id_problems,
+    screen_pages,
+)
 from ..settings import Settings
 from ..writer.backends import WriterFailed, ask, choose_backend
 from ..writer.prompt import ContractMissing, build_prompt
 from .tools import Tools
 
 log = logging.getLogger("quick_slide.worker")
-
-# 台本のページから「見出し」と「本文」を取り出すときに読み飛ばすキー（話す台本・動き・描き方の注文・画像の枠）
-_NOT_CONTENT = {"type", "talk", "transition", "steps", "fx", "id", "role", "image", "_visual", "_characters", "_layout",
-                "layout", "split", "side", "text_side", "tone", "fit", "widths", "focus", "accent", "highlight",
-                "current", "arrow", "value_labels", "min", "max", "x", "y", "trend", "initials", "path", "prompt", "alt"}
-
-
-# 台本の各ページの `id`（両エンジンが受ける共通のキー。描くことには使わない）。ページの同一性に使う
-PAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 
 
 @dataclass
@@ -49,70 +52,25 @@ class Context:
             return fn(*args, **kwargs)
 
 
-def headline_of(spec: dict[str, Any]) -> str:
-    """そのページの見出し（エンジンの `label_of`・`headline_of` と同じ選び方）。"""
-    for k in ("headline", "title", "quote"):
-        v = spec.get(k)
-        if isinstance(v, str) and v.strip():
-            return v.replace("**", "").replace("\n", " ").strip()
-    if spec.get("value"):
-        return f"{spec['value']}{spec.get('unit') or ''}"
-    return str(spec.get("type") or "")
+@dataclass
+class RenderPlan:
+    """1 回の描き方。`deck` を流すか・どのページの絵を直すか（revise）・区画に置く絵（版から戻す・複製）。"""
+    deck: bool = True
+    revise: list[dict[str, Any]] = field(default_factory=list)   # {"key", "slot", "note", "remake", "attach": [Path]}
+    seeds: dict[str, tuple[Path, Path | None]] = field(default_factory=dict)   # ピッチ: ページの id → 戻す絵
+    aliases: dict[str, str] = field(default_factory=dict)                       # ピッチ: 複製の id → 元の id
+    restore_presentation: list[tuple[Path, str]] = field(default_factory=list)  # プレゼン: (控えの回, ページの id)
 
-
-def body_of(spec: dict[str, Any]) -> str:
-    """画面の「このページの記録」に出す、そのページの文字（話す台本・画像の指示は入れない）。"""
-    lines: list[str] = []
-
-    def walk(value: Any, key: str | None = None) -> None:
-        if key is not None and key in _NOT_CONTENT:
-            return
-        if isinstance(value, str):
-            text = value.replace("**", "").strip()
-            if text:
-                lines.append(text)
-        elif isinstance(value, (int, float)) and not isinstance(value, bool):
-            lines.append(str(value))
-        elif isinstance(value, list):
-            for v in value:
-                walk(v)
-        elif isinstance(value, dict):
-            for k, v in value.items():
-                walk(v, k)
-
-    for k, v in spec.items():
-        walk(v, k)
-    return "\n".join(lines)[:4000]
-
-
-def output_pages(engine: Engine, args: dict[str, Any], script: dict[str, Any]) -> list[dict[str, Any]]:
-    """描いた回のページ（エンジンが出す `slides/slide-NN.png` の数だけ）。infographic は全ページを 1 枚に描く。"""
-    slides = [s for s in script["slides"] if isinstance(s, dict)]
-    if engine.mode == "pitch" and args.get("style") == "infographic":
-        title = str(script.get("title") or (headline_of(slides[0]) if slides else ""))
-        return [{"no": 1, "key": "infographic", "type": "infographic", "title": title.replace("**", ""),
-                 "body": "\n\n".join(headline_of(s) for s in slides)}]
-    return [{"no": i, "key": str(s["id"]), "type": str(s.get("type") or ""), "title": headline_of(s), "body": body_of(s)}
-            for i, s in enumerate(slides, 1)]
+    def record(self) -> dict[str, Any]:
+        return {"deck": self.deck, "revise": [{k: (str(v) if isinstance(v, Path) else v) for k, v in r.items()
+                                               if k != "attach"} | {"attach": len(r.get("attach") or [])}
+                                              for r in self.revise],
+                "seeds": sorted(self.seeds), "aliases": dict(self.aliases),
+                "restore_presentation": [k for _, k in self.restore_presentation]}
 
 
 def _writer_progress(round_no: int, rounds: int, backend: str, phase: str) -> dict[str, Any]:
     return {"phase": phase, "round": round_no, "max_rounds": rounds, "writer": backend}
-
-
-def page_id_problems(slides: list[dict[str, Any]]) -> list[str]:
-    """台本の各ページの `id`（ページの同一性）。無い・形が違う・重なる → `NG:` の行（台本係に直させる）。"""
-    problems: list[str] = []
-    seen: dict[str, int] = {}
-    for no, spec in enumerate(slides, 1):
-        pid = spec.get("id")
-        if not isinstance(pid, str) or not PAGE_ID_RE.match(pid):
-            problems.append(f"NG: {no}枚目: id が無いか形が違う（英小文字・数字・ハイフンで 40 字以内。例 \"cover\"・\"p-why\"）")
-        elif pid in seen:
-            problems.append(f"NG: {no}枚目: id \"{pid}\" が {seen[pid]}枚目と重なっている（資料の中で重ならない id にする）")
-        else:
-            seen[pid] = no
-    return problems
 
 
 def make(ctx: Context, job: dict[str, Any]) -> str:
@@ -123,72 +81,174 @@ def make(ctx: Context, job: dict[str, Any]) -> str:
     """
     store = ctx.store
     run = ctx.call(store.run, job["run_id"])
-    deck_id, run_id = run["deck_id"], run["id"]
+    run_id = run["id"]
     engine = engine_for(run["mode"])
-    args = run["args"]
-    run_dir = ctx.root.run_dir(deck_id, run_id)
-    home = ctx.root.root
+    run_dir = ctx.root.run_dir(run["deck_id"], run_id)
     resume = job.get("resume_from")
 
     def fail(message: str, kind: str, rc: int | None = None) -> str:
         ctx.call(store.fail_run, run_id, message=message, failure_kind=kind, rc=rc)
         return "failed"
 
-    if resume != "import":
+    if resume == "import":
+        return import_recorded(ctx, run)
+    if resume is None:
         # 描く前の確かめ（仕事ごとに 1 回。ピッチは Codex のログイン。書く前に見るので、描けないのに台本係の枠を使わない）
-        pre = check_prerequisites(engine, tools=ctx.tools, home=home, cwd=run_dir, stop=ctx.stop)
+        pre = check_prerequisites(engine, tools=ctx.tools, home=ctx.root.root, cwd=run_dir, stop=ctx.stop)
         ctx.call(store.set_run_record, run_id, {"prerequisites": {"checked": pre.rc is not None, "rc": pre.rc}})
         if not pre.ok:
             return fail(pre.message or "", pre.failure_kind or "engine", pre.rc)
-
-    if resume is None:
         accepted = write_script(ctx, job, run)
         if isinstance(accepted, str):
             return accepted
         script, data = accepted
-        pages = output_pages(engine, args, data)
+        ctx.call(store.accept_script, script["id"], screen_pages(run["args"], data))
         ctx.call(store.set_run_record, run_id, {"script": {"id": script["id"], "version": script["version"],
                                                            "sha256": script["sha256"]}})
+        return render_and_import(ctx, run, script, data, RenderPlan())
+    # resume == "render": 台本は検査済み。描くところから（エンジンは描き終えた絵をキャッシュから使い回す）
+    script = ctx.call(store.script, run["script_id"])
+    log.info("run %s: 途中から続ける（%s）", run_id, resume)
+    return render_and_import(ctx, run, script, ctx.call(store.load_script, script), RenderPlan(), start=False)
+
+
+def import_recorded(ctx: Context, run: dict[str, Any]) -> str:
+    """エンジンが終わったあとで止まった回を、控えた終わり方から取り込む。"""
+    rec = ctx.call(ctx.store.engine_result, run["id"])
+    if rec is None:
+        ctx.call(ctx.store.fail_run, run["id"], message="取り込む結果の控えがありません。もう一度頼んでください。",
+                 failure_kind="internal")
+        return "failed"
+    outcome = RenderOutcome.from_record(rec)
+    ctx.call(ctx.store.finish_run, run["id"], state=outcome.state, rc=outcome.rc, message=outcome.message,
+             failure_kind=outcome.failure_kind, pages=outcome.pages)
+    return outcome.state
+
+
+def known_pitch_area(ctx: Context, deck_id: str, work: Path) -> Path | None:
+    """作業フォルダの区画（image-slide）。記録から読み、まだ無ければ前に知った区画と同じ根っこに求める。"""
+    layout = W.read_layout(work)
+    if isinstance(layout.get("cache"), str):
+        return Path(layout["cache"])
+    cache = W.engine_record("pitch", work).get("cache")
+    if isinstance(cache, str):
+        return Path(cache)
+    for r in ctx.call(ctx.store.runs_for_deck, deck_id):
+        cache = W.engine_record("pitch", ctx.root.run_dir(deck_id, r["id"])).get("cache")
+        if isinstance(cache, str):
+            return W.pitch_area_for(work, cache)
+    return None
+
+
+def _pitch_fallback(ctx: Context, deck_id: str) -> Callable[[str], tuple[Path, Path | None] | None]:
+    """そのページの一番新しい控えの絵（隠していたページを戻したとき・P2 の回から引き継ぐとき）。"""
+    rows = ctx.call(ctx.store.page_history, deck_id)
+    keys = {}
+    for r in rows:
+        key = ctx.call(ctx.store.page_key_of, r["page_id"]) if r["page_id"] else None
+        if key:
+            keys.setdefault(key, []).append((ctx.root.run_dir(deck_id, r["run_id"]), r["page_no"]))
+
+    def find(key: str) -> tuple[Path, Path | None] | None:
+        for run_dir, no in keys.get(key, []):
+            got = W.pitch_picture(run_dir, key, legacy_no=no)
+            if got is not None:
+                return got
+        return None
+
+    return find
+
+
+def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any], data: dict[str, Any],
+                      plan: RenderPlan, *, start: bool = True, message: str | None = None) -> str:
+    """いまの台本（`data`）をエンジンで描き（deck と revise）、描いた回のフォルダへ控え、ページの絵を取り込む。"""
+    store = ctx.store
+    deck_id, run_id = run["deck_id"], run["id"]
+    engine = engine_for(run["mode"])
+    args = run["args"]
+    home = ctx.root.root
+    work = ctx.root.work_dir(deck_id)
+    run_dir = ctx.root.run_dir(deck_id, run_id)
+    work.mkdir(parents=True, exist_ok=True)
+    pages = output_pages(args, data)
+    if start:
         ctx.call(store.start_rendering, run_id, script["id"], pages,
                  {"phase": "rendering", "step": "starting", "done": 0, "total": len(pages)})
     else:
-        script = ctx.call(store.script, run["script_id"])
-        log.info("run %s: 途中から続ける（%s）", run_id, resume)
-
-    if resume != "import":
-        page_count = ctx.call(lambda: len(store.run_pages(run_id)))
-        script_path = ctx.call(store.script_path, script)
         ctx.call(store.set_run_state, run_id, "rendering",
-                 progress={"phase": "rendering", "step": "starting", "done": 0, "total": page_count})
-        ctx.call(store.set_run_record, run_id, {
-            "engine": engine_marker(ctx.tools.skills_dir, engine),
-            "argv": engine.deck_command(ctx.tools.python, ctx.tools.skills_dir, script_path, run_dir, args),
-        })
+                 progress={"phase": "rendering", "step": "starting", "done": 0, "total": len(pages)})
+    script_path = W.write_engine_script(ctx.root.engine_script_path(deck_id), engine_view(data))
 
-        def on_change(snapshot: dict[str, Any], marks: dict[int, str]) -> None:
-            with ctx.lock:
-                for no, state in marks.items():
-                    store.mark_run_page(run_id, no, state)
-                store.set_run_state(run_id, "rendering", progress=snapshot)
+    placed: dict[str, str] = {}
+    if engine.mode == "pitch" and not one_page(args):
+        placed = W.arrange_pitch_cache(work, [p["key"] for p in pages], area=known_pitch_area(ctx, deck_id, work),
+                                       seeds=plan.seeds, aliases=plan.aliases, fallback=_pitch_fallback(ctx, deck_id))
+    restored = 0
+    for old_dir, key in plan.restore_presentation:
+        restored += W.restore_presentation_pictures(old_dir, key)
 
-        outcome = render_deck(engine, tools=ctx.tools, home=home, script=script_path, out=run_dir, args=args,
-                              page_count=page_count, timeout=ctx.settings.worker.render_timeout_seconds,
-                              stop=ctx.stop, on_change=on_change)
-        if outcome.failure_kind == "stopped":
-            return fail(outcome.message or "", "stopped", outcome.rc)
-        # エンジンは終わった。終わり方を控えてから取り込む（取り込みの途中で止まっても、ここから続く）
-        ctx.call(store.enter_importing, run_id, outcome.to_record())
-    else:
-        rec = ctx.call(store.engine_result, run_id)
-        if rec is None:
-            return fail("取り込む結果の控えがありません。もう一度会話から頼んでください。", "internal")
-        outcome = RenderOutcome.from_record(rec)
+    position = {p["key"]: p["no"] for p in pages}
+    commands: list[tuple[str, list[str]]] = []
+    if plan.deck or not plan.revise:
+        commands.append(("engine", engine.deck_command(ctx.tools.python, ctx.tools.skills_dir, script_path, work, args)))
+    for i, r in enumerate(plan.revise, 1):
+        if r["key"] not in position:
+            ctx.call(store.fail_run, run_id, message="直すページが描くページの中にありません（非表示にしたページは直せません）。",
+                     failure_kind="edit")
+            return "failed"
+        commands.append((f"revise-{i}", engine.revise_command(
+            ctx.tools.python, ctx.tools.skills_dir, script_path, work, args, page=position[r["key"]],
+            note=r.get("note") or "", remake=bool(r.get("remake")), slot=r.get("slot"), attach=r.get("attach"))))
+    ctx.call(store.set_run_record, run_id, {
+        "engine": engine_marker(ctx.tools.skills_dir, engine),
+        "argv": [c for _, c in commands], "work": str(work), "engine_script": str(script_path),
+        "plan": plan.record(), "cache_placed": placed, "pictures_restored": restored,
+    })
 
+    def on_change(snapshot: dict[str, Any], marks: dict[int, str]) -> None:
+        with ctx.lock:
+            for no, state in marks.items():
+                store.mark_run_page(run_id, no, state)
+            store.set_run_state(run_id, "rendering", progress=snapshot)
+
+    outcome: RenderOutcome | None = None
+    for name, cmd in commands:
+        W.clear_outputs(work)
+        outcome = render_deck(engine, tools=ctx.tools, home=home, script=script_path, out=work, args=args,
+                              page_count=len(pages), timeout=ctx.settings.worker.render_timeout_seconds,
+                              stop=ctx.stop, on_change=on_change, command=cmd, log_dir=run_dir, log_name=name)
+        if engine.mode == "pitch" and not one_page(args):
+            cache = W.engine_record("pitch", work).get("cache")
+            if isinstance(cache, str):
+                W.write_layout(work, [p["key"] for p in pages], cache)
+        elif engine.mode == "presentation":
+            W.write_layout(work, [p["key"] for p in pages], W.engine_record("presentation", work).get("cache"))
+        if outcome.state != "done":
+            break
+    assert outcome is not None
+    if outcome.failure_kind == "stopped":
+        ctx.call(store.fail_run, run_id, message=outcome.message or "", failure_kind="stopped", rc=outcome.rc)
+        return "failed"
+    # 控える（ハードリンク）。取り込むのは控えの絵。エンジンの終わり方を控えてから取り込む
+    snap = W.snapshot(engine.mode, work, run_dir, pages) if outcome.state == "done" else {}
+    for no, info in outcome.pages.items():
+        s = snap.get(no) or {}
+        info["file"] = s.get("file") if info.get("file") else None
+        info["picture_sha"] = s.get("picture_sha")
+    if message and outcome.state == "done":
+        outcome.message = (outcome.message + " " if outcome.message else "") + message
+    ctx.call(store.enter_importing, run_id, outcome.to_record())
     ctx.call(store.finish_run, run_id, state=outcome.state, rc=outcome.rc, message=outcome.message,
              failure_kind=outcome.failure_kind, pages=outcome.pages)
     log.info("run %s: %s rc=%s pages=%d", run_id, outcome.state, outcome.rc,
              sum(1 for p in outcome.pages.values() if p.get("file")))
     return outcome.state
+
+
+def check_candidate(ctx: Context, engine: Engine, run: dict[str, Any], data: dict[str, Any]):
+    """台本の候補をエンジンの `check` に通す（非表示のページを抜いた形で）。CheckResult を返す。"""
+    path = W.write_engine_script(ctx.root.engine_script_path(run["deck_id"]), engine_view(data))
+    return check_script(engine, tools=ctx.tools, home=ctx.root.root, script=path, args=run["args"], stop=ctx.stop)
 
 
 def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
@@ -197,10 +257,13 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
     intake = ctx.call(store.intake, job["intake_id"])
     deck_id, run_id = run["deck_id"], run["id"]
     engine = engine_for(run["mode"])
-    args = run["args"]
+    args = dict(run["args"])
     run_dir = ctx.root.run_dir(deck_id, run_id)
     home = ctx.root.root
     rounds = ctx.settings.worker.max_check_rounds
+    outline = outline_headings(intake["manuscript"]) if args.get("outline_fixed") else []
+    if outline and not args.get("page_count"):
+        args["page_count"] = len(outline)
 
     def fail(message: str, kind: str, rc: int | None = None) -> str:
         ctx.call(store.fail_run, run_id, message=message, failure_kind=kind, rc=rc)
@@ -218,6 +281,7 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
         "writer_setting": ctx.settings.writer, "writer": backend, "writer_reason": why, "max_check_rounds": rounds,
         "style": args.get("style"), "image_look": args.get("image_look"), "images": args.get("images"),
         "page_count": args.get("page_count"), "style_note": args.get("style_note") or None,
+        "outline_fixed": bool(args.get("outline_fixed")), "outline_pages": len(outline) or None,
         # ブランド（テーマ・ロゴ）は P4 でエンジンへ渡す。いまはエンジンの既定
         "theme": None, "logo": None, "logo_position": None,
     }})
@@ -248,16 +312,20 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
         if not isinstance(slides, list) or not slides or not all(isinstance(s, dict) for s in slides):
             previous, problems = data, ["NG: slides（ページのオブジェクトの配列）が無いか空"]
             continue
+        for s in slides:
+            s.pop("_hidden", None)   # 非表示は画面が決める（台本係は書かない）
         script = ctx.call(store.save_script, deck_id, data, written_by="writer", writer_backend=backend,
                           intake_id=intake["id"], run_id=run_id, round_no=round_no)
         ctx.call(store.set_run_state, run_id, "checking", progress=_writer_progress(round_no, rounds, backend, "checking"))
         own = page_id_problems(slides)
+        if outline and len(slides) != len(outline):
+            own.append(f"NG: 構成は {len(outline)} ページ（`## N.` の見出しの数）なのに、台本は {len(slides)} ページ。"
+                       "構成のページ割りどおり、見出し 1 つを 1 ページにして、順番も変えずに書き直す")
         if own:
             ctx.call(store.set_script_check, script["id"], 2, own)
             previous, problems = data, own
             continue
-        result = check_script(engine, tools=ctx.tools, home=home, script=ctx.call(store.script_path, script),
-                              args=args, stop=ctx.stop)
+        result = check_candidate(ctx, engine, run, data)
         ctx.call(store.set_script_check, script["id"], -1 if result.rc is None else result.rc,
                  result.problems + result.warnings)
         if result.stopped:

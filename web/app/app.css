@@ -436,6 +436,9 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .deck-instruction__bar .reason { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .deck-instruction__body { padding: 0 var(--space-4) var(--space-4); }
 .deck-instruction.is-compact:not(.is-open) .deck-instruction__body { display: none; }
+/* 選んだ数ページへの指示（P3）。全体の指示と同じ器の中に出すので、縮んでいても選んだら見える */
+.deck-instruction__pages { padding: var(--space-3) var(--space-4) var(--space-4); border-top: 1px solid var(--color-border); }
+.deck-instruction__pages[hidden] { display: none; }
 
 /* 右: スライドが縦に 1 列 */
 .pages { grid-area: pages; display: flex; flex-direction: column; gap: var(--space-6); max-width: var(--stage-max-w); min-width: 0; }
@@ -457,6 +460,10 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .page--hidden .record-toggle,
 .page--hidden .record { display: none; }
 .page__head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); flex-wrap: wrap; }
+/* ページを選ぶ（P3）。番号の左に小さく置く */
+.page__select { display: inline-flex; align-items: center; cursor: pointer; }
+.page__select-box { width: 16px; height: 16px; margin: 0; accent-color: var(--color-primary); cursor: pointer; }
+.page__select-box:disabled { cursor: not-allowed; }
 .page__num { font-weight: 700; color: var(--color-text-muted); min-width: 1.5em; }
 .page__title { font-weight: 700; color: var(--color-text-muted); }
 .page__hidden-mark {

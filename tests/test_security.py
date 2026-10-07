@@ -178,7 +178,7 @@ class NoTracebackTests(unittest.TestCase):
         self.assertNotIn("ValidationError", r.body.decode("utf-8"))
 
     def test_not_ready_routes_answer_in_the_error_shape_and_log_no_error(self) -> None:
-        r = self.fx.post("/api/conversations/deck", {"origin": {"kind": "conversation", "runtime": "other"}})
+        r = self.fx.post(f"/api/decks/{uuid.uuid4()}/exports", {"format": "pdf"})
         self.assertEqual(r.status, 503)
         err = r.json()["error"]
         self.assertEqual(err["code"], "not_ready_in_v2")

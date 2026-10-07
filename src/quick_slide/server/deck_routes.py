@@ -20,11 +20,12 @@
 - `POST /api/trash/purge`         ごみ箱を空にする
 
 画面が表示する状態は**すべてここが DB から読んだもの**。画像は asset ID の URL だけを返し、パスは返さない。
-まだ無い操作（直す・版の採用・ページの操作・書き出し）は `capabilities` に「使えない」と理由を載せ、画面はそれを
-見て無効化する。
+まだ無い操作（書き出し）は `capabilities` に「使えない」と理由を載せ、画面はそれを見て無効化する。
+直す・版から戻す・ページの操作（P3）は `server/edit_routes.py`。
 
-ページは「見せる回」（`store.shown_run`。台本ができている一番新しい描いた回）のページ。台本係・描き係が
-いま何をしているかは `planning.message`、まだ働いているかは `live.working`（仕事が待っているか動いている間は真）。
+ページの並びはデッキのいまの台本、絵は「見せる回」（描き終えた一番新しい回）のもの（`server/page_view.py`）。
+台本係・描き係がいま何をしているかは `planning.message`、まだ働いているかは `live.working`
+（仕事が待っているか動いている間は真）。
 画面の実況は `last_event_seq` が動いたときだけ描き直す（ワーカーは状態が変わるたびに出来事を書く）。
 """
 
@@ -38,10 +39,7 @@ from ..store.management import WORKING_PURGE_REASON
 from .errors import RELOAD_AND_RETRY_MESSAGE, ApiError
 from .later import NOT_READY_REASON
 from .vocabulary import (
-    EDIT_MODE_LABELS,
     GROUP_LABELS,
-    MINOR_NEEDS_A_PICTURE_REASON,
-    SOURCE_KIND_LABELS,
     PURGE_ALL_LABEL,
     PURGE_WORDS,
     deck_mode_label,
@@ -52,7 +50,6 @@ from .vocabulary import (
     purge_all_confirm_label,
     purge_all_done_message,
     reclaimable_label,
-    run_page_display,
     size_label,
     vocabulary,
 )
@@ -73,6 +70,11 @@ PURGE_LABEL = "完全に削除"
 INSERT_PAGE_LABEL = "ページを追加"
 REORDER_LABEL = "並べ替え"
 RESUME_LABEL = "生成を再開"
+# スライドの画面の操作の語（`capabilities[*].label`）
+SCREEN_LABELS = {"page_instruction": "送信", "pages_instruction": "選んだページに送る", "deck_instruction": "送信",
+                 "regenerate": "作り直す", "adopt_version": ADOPT_LABEL, "insert_page": INSERT_PAGE_LABEL,
+                 "reorder_pages": REORDER_LABEL, "duplicate_page": "このページを複製",
+                 "page_visibility": "表示・非表示", "export": EXPORT_LABEL, "generate": "画像を生成"}
 
 # `label` は画面のボタン文言（画面側に書かず、ここから渡す）
 CAPABILITIES: dict[str, Any] = {
@@ -96,25 +98,19 @@ def _not_ready(label: str) -> dict[str, Any]:
     return {"available": False, "label": label, "reason": NOT_READY_REASON}
 
 
-def deck_capabilities(row: dict[str, Any], *, has_pages: bool = False) -> dict[str, Any]:
+def deck_capabilities(row: dict[str, Any], *, pages: list[dict[str, Any]] | None = None,
+                      args: dict[str, Any] | None = None, resume: dict[str, Any] | None = None) -> dict[str, Any]:
     """**スライドの画面に返る `capabilities` の正本。** 静的な表の上に、スライドの画面での答えを重ねる。
 
-    直す・版の採用・書き出しはまだ「まだ使えない」（理由は 1 文にそろえ、画面には 1 行だけ出る）。
-    並べ替えと差し込みは「ページが無い」が先に効く（ページが無ければ押せないので、そちらを言う）。
+    直す・版から戻す・ページの操作は、ページがあれば使える（仕事が走っていても受け付けて順に並べる）。
+    書き出しは P5 まで「まだ使えない」。差し込み・並べ替えは「ページが無い」が先に効く。
     """
-    pages_reason = NOT_READY_REASON if has_pages else NO_PAGES_REASON
+    from .page_view import edit_capabilities
+
     return {
         **CAPABILITIES,
-        "generate": _not_ready("画像を生成"),
-        "page_instruction": _not_ready("送信"),
-        "deck_instruction": _not_ready("送信"),
-        "regenerate": _not_ready("作り直す"),
-        "adopt_version": _not_ready(ADOPT_LABEL),
-        "export": _not_ready(EXPORT_LABEL),
-        "resume": _not_ready(RESUME_LABEL),
-        "reorder_pages": {"available": False, "label": REORDER_LABEL, "reason": pages_reason},
-        # 使えないときは画面がボタンごと消す（隙間に「ここに足せます」を出さない）
-        "insert_page": {"available": False, "label": INSERT_PAGE_LABEL, "reason": pages_reason},
+        **edit_capabilities(row, pages or [], args or {}, labels=SCREEN_LABELS),
+        "resume": resume or _not_ready(RESUME_LABEL),
     }
 
 
@@ -232,12 +228,28 @@ STOPPED_KINDS = {"auth": "auth", "dependency": "missing", "writer_auth": "auth",
                  "writer_missing": "missing"}
 
 
-def limit_state(row: dict[str, Any], latest: dict[str, Any] | None = None) -> dict[str, Any]:
+RESUME_NOTHING_REASON = "描き直すものはありません。"
+RESUME_WORKING_REASON = "いま作っています。終わるまでお待ちください。"
+
+
+def resume_capability(store, deck_id: str, latest: dict[str, Any] | None, shown: dict[str, Any] | None) -> dict[str, Any]:
+    """再開（いまの台本で描き直す）: 一番新しい回が失敗していて、いまの台本があるときだけ押せる。"""
+    if store.deck_working(deck_id):
+        return {"available": False, "label": RESUME_LABEL, "reason": RESUME_WORKING_REASON}
+    head = store.head_script(deck_id)
+    behind = head is not None and (shown is None or shown.get("script_id") != head["id"])
+    if head is not None and latest is not None and (latest["state"] == "failed" or behind):
+        return {"available": True, "label": RESUME_LABEL, "reason": None}
+    return {"available": False, "label": RESUME_LABEL, "reason": RESUME_NOTHING_REASON}
+
+
+def limit_state(row: dict[str, Any], latest: dict[str, Any] | None = None,
+                resume: dict[str, Any] | None = None) -> dict[str, Any]:
     """止まっている帯（ログイン切れ・枠切れ）の答え。形は v1 の画面が読むものと同じ
     （`stopped` / `reached` / `message` / `hint_at` / `resume`）。
 
     一番新しい描いた回が、ログイン切れ（エンジンの rc=4・台本係の CLI）か枠切れで終わったときだけ帯を出す。
-    再開（続きから描く）は P3 なので押せない。文は回が残した 1 文（どうすればよいかを言う）をそのまま出す。
+    再開（いまの台本で描き直す。P3）は `resume_capability`。文は回が残した 1 文（どうすればよいかを言う）をそのまま出す。
     """
     stopped = latest is not None and latest["state"] == "failed" and latest.get("failure_kind") in STOPPED_KINDS
     return {
@@ -247,7 +259,7 @@ def limit_state(row: dict[str, Any], latest: dict[str, Any] | None = None) -> di
         "since": latest.get("ended_at") if stopped else None,
         "retry_not_before": None, "hint_at": None, "hint_source": None, "hint_source_label": None,
         "message": latest.get("message") if stopped else None, "remaining": 0,
-        "resume": {"available": False, "label": RESUME_LABEL, "reason": NOT_READY_REASON},
+        "resume": resume or {"available": False, "label": RESUME_LABEL, "reason": NOT_READY_REASON},
     }
 
 
@@ -276,63 +288,25 @@ def live_state(store, deck_id: str) -> dict[str, Any]:
     return {"working": True, "reason": "working"} if store.deck_working(deck_id) else dict(LIVE_IDLE)
 
 
-def _minor_capability() -> dict[str, Any]:
-    # 絵を直す（微修正）は P3。いまは「絵を土台に直せない」と同じ形で断る（画面は作り直しに固定する）
-    return {"available": False, "label": EDIT_MODE_LABELS["minor"], "reason": MINOR_NEEDS_A_PICTURE_REASON}
-
-
-def page_public(run: dict[str, Any], p: dict[str, Any]) -> dict[str, Any]:
-    """見せる回の 1 ページを、画面が読む形にする（v1 の `_page_public` と同じ項目）。"""
-    has_image = p["state"] == "ready" and p.get("asset_id") is not None and p.get("asset_state") == "ready"
-    display = run_page_display(p["state"], run["state"], has_image=has_image)
-    if p["warnings"] and display["key"] == "failed":
-        display = {**display, "reason": p["warnings"][0]}
-    image_url = asset_url(p["asset_id"]) if has_image else None
-    version = {
-        "id": run["id"], "version": run["number"], "state": p["state"], "display": display, "item": None,
-        "source_kind": "generated", "source_kind_label": SOURCE_KIND_LABELS["generated"], "active": True,
-        "created_at": run["created_at"], "image_url": image_url, "image_missing": p["state"] == "ready" and not has_image,
-        "not_adoptable_reason": None if image_url else (display.get("reason") or display["label"]),
-        "revision_note": None, "edit_mode": None, "edit_mode_label": None, "prompt_head": None, "origin_version_id": None,
-    }
-    return {
-        "can_minor": _minor_capability(),
-        "position": p["page_no"],
-        "hidden": False,
-        "slide_id": p["page_id"],
-        "version_id": run["id"],
-        "version": run["number"],
-        "title": p["title"],
-        "type": p["type"],
-        "intent": None,
-        "source_text": None,
-        "body": p["body"],
-        "prompt_text": None,
-        "warnings": p["warnings"],
-        "source_kind": "generated",
-        "source_kind_label": SOURCE_KIND_LABELS["generated"],
-        "version_state": p["state"],
-        "image_url": image_url,
-        "display": display,
-        "item": None,
-        "attempts": [],
-        "versions": [version],
-    }
-
-
 def deck_view(store, deck_id: str) -> dict[str, Any]:
     """スライドの画面と実況の両方が読む材料（同じ式を 2 か所に書かない）。錠を取ってから呼ぶ。"""
+    from .page_view import pages_view, pending_inserts
+
     row = _live_deck_row(store, deck_id)
     shown = store.shown_run(deck_id)
     latest = store.latest_run(deck_id)
-    pages = [page_public(shown, p) for p in store.run_pages(shown["id"])] if shown else []
+    jobs = store.open_jobs(deck_id)
+    pages = pages_view(store, deck_id, shown=shown, latest=latest, jobs=jobs)
     revision = None if shown is None else {"id": shown["id"], "revision": shown["number"], "reason": "run",
                                            "created_at": shown["created_at"]}
+    resume = resume_capability(store, deck_id, latest, shown)
     return {
         "row": row, "pages": pages, "revision": revision,
         "planning": planning_state(latest), "live": live_state(store, deck_id),
-        "limit": limit_state(row, latest), "seq": store.last_event_seq(deck_id),
-        "capabilities": deck_capabilities(row, has_pages=bool(pages)),
+        "limit": limit_state(row, latest, resume), "seq": store.last_event_seq(deck_id),
+        "pending_inserts": pending_inserts(store, jobs),
+        "capabilities": deck_capabilities(row, pages=pages, args=(shown or latest or {}).get("args") or {},
+                                          resume=resume),
     }
 
 
@@ -425,7 +399,7 @@ def route_deck(server: "QuickSlideServer", req: "Request") -> "Response":
         "counts": _counts(view["pages"]),
         "batch": None,
         "limit": view["limit"],
-        "pending_inserts": [],
+        "pending_inserts": view["pending_inserts"],
         "planning": view["planning"],
         "live": view["live"],
         "last_event_seq": view["seq"],
@@ -452,7 +426,7 @@ def route_progress(server: "QuickSlideServer", req: "Request") -> "Response":
         "live": view["live"],
         "pages": view["pages"],
         "counts": _counts(view["pages"]),
-        "pending_inserts": [],
+        "pending_inserts": view["pending_inserts"],
         "capabilities": view["capabilities"],
     })
 

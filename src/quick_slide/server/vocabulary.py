@@ -115,6 +115,11 @@ INSTRUCTION_WORDS: dict[str, str] = {
     "attachment_uploading": "画像を確認しています…",
     "remake_description": "今の絵を参考にしません。いくら指示しても変わらないときに使います。",
     "remake_without_source": "元の画像を使わずに生成し直す",
+    # 選んだ数ページに 1 つの指示（P3）。`{pages}` は画面が番号を入れる（「7・8」）
+    "select_label": "このページを選ぶ",
+    "pages_target": "選んだページ（{pages}）",
+    "pages_placeholder": "選んだページに効かせたいことを書いてください（例: 7・8枚目の見出しを短く、数字を大きく）",
+    "selection_clear": "選ぶのをやめる",
 }
 
 # 書き出しで選べる形式の表示名

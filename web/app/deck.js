@@ -144,7 +144,7 @@
   // `title`（サーバの reason）は部品ごとに付いたままなので、指した先を探さなくても分かる。
   // `pause` と `regenerate_failed` はここに無い: **画面にその部品がもう無い**ので
   // （2026-09-11、利用者の決定で左のサムネ列から降ろした）、指す先の無い理由を出さない
-  var REASON_KEYS = ["deck_instruction", "page_instruction", "regenerate", "adopt_version", "export"];
+  var REASON_KEYS = ["deck_instruction", "page_instruction", "pages_instruction", "regenerate", "adopt_version", "export"];
 
   function screenReasons(caps) {
     // **同じ文は 1 行だけ。**7 つの操作の理由は、いまは 3 文しかない（多くが同じ 1 文）
@@ -311,7 +311,8 @@
     var words = instructionWords();
     var limits = instructionLimits();
     var textLimit = limits.text || 0;
-    var capKey = opts.deck ? "deck_instruction" : "page_instruction";
+    // どの口の可否を読むか（1 ページ・スライド全体・選んだ数ページ。P3 で選んだ数ページを足した）
+    var capKey = opts.capKey || (opts.deck ? "deck_instruction" : "page_instruction");
     var c = SS.cap(caps, capKey);
     // 「今の絵を土台にして直せるか」はサーバが決める（`pages[].can_minor`）。**画面は状態から導かない。**
     // 絵の無いページでは土台が無いので、**チェックを入れた状態に固定して理由を添える**
@@ -320,7 +321,7 @@
     var fieldId = "instruct-" + (++nextFieldId);
 
     var ta = h("textarea", { id: fieldId, "aria-label": target + " " + words.section_label,
-      placeholder: opts.deck ? words.deck_placeholder : words.page_placeholder });
+      placeholder: opts.placeholder || (opts.deck ? words.deck_placeholder : words.page_placeholder) });
     // 3 つの経路（貼り付け・ドラッグ&ドロップ・ファイルから選ぶ）を**どれも隠したメニューに落とさない**
     var att = attachArea({ locked: function () { return locked(); }, onChange: function () { sync(); } });
     var chips = att.chips, file = att.file, pick = att.pick, note = att.note;
@@ -338,7 +339,7 @@
       remake, h("span", { text: words.remake_without_source || modes.remake || "" }),
       canMinor.available ? null : h("span", { class: "editbox__forced small", text: canMinor.reason }));
     var fs = h("fieldset", { disabled: !c.available, "aria-describedby": opts.reasonId || null },
-      opts.deck ? h("div", { class: "editbox__row" }, h("span", { class: "target", text: target })) : null,
+      opts.deck || opts.capKey ? h("div", { class: "editbox__row" }, h("span", { class: "target", text: target })) : null,
       h("div", { class: "editbox__prompt" }, ta,
         h("div", { class: "editbox__prompt-tools" }, pick, remakeLabel,
           h("span", { class: "grow" }), send)),
@@ -428,7 +429,35 @@
     box.appendChild(h("div", { class: "deck-instruction__body" },
       editbox(caps, "デッキ全体", { deck: true, reasonId: reasonIds && reasonIds.deck_instruction,
         canMinor: opts.canMinor, onSubmit: opts.onSubmit })));
+    // 選んだ数ページに 1 つの指示（P3）。**選んでいる間だけ出す**（同じ器の中なので、スクロールしても見える）
+    if (opts.pagesBox) { box.appendChild(opts.pagesBox); }
     return box;
+  }
+
+  // ---- 選んだ数ページへの指示（P3）----
+  // 各ページのカードの「選ぶ」で印を付け、ここに 1 つ指示を書くと、選んだページだけを直す。
+  // 器は 1 つだけ作り、選び方が変わったら見出しの番号と出し入れだけを当て直す（書きかけの文を消さない）
+  function pagesInstruction(caps, reasonIds, opts) {
+    var words = instructionWords();
+    var label = h("span", { class: "target" });
+    var clear = h("button", { class: "btn btn--small btn--ghost pages-instruction__clear", type: "button",
+      text: words.selection_clear || "" });
+    clear.addEventListener("click", function () { if (opts.onClear) { opts.onClear(); } });
+    var box = editbox(caps, "", { capKey: "pages_instruction", reasonId: reasonIds && reasonIds.pages_instruction,
+      placeholder: words.pages_placeholder, canMinor: { available: true, reason: null }, onSubmit: opts.onSubmit });
+    var head = box.querySelector(".editbox__row");
+    if (head) { SS.clear(head).appendChild(label); head.appendChild(h("span", { class: "grow" })); head.appendChild(clear); }
+    var wrap = h("div", { class: "deck-instruction__pages", hidden: true, role: "region",
+      "aria-label": (words.pages_target || "").replace("{pages}", "") }, box);
+    wrap.__set = function (positions) {
+      var text = (words.pages_target || "{pages}").replace("{pages}", positions.join("・"));
+      if (label.textContent !== text) { label.textContent = text; }
+      var ta = box.querySelector("textarea");
+      if (ta) { ta.setAttribute("aria-label", text + " " + (words.section_label || "")); }
+      wrap.hidden = !positions.length;
+    };
+    wrap.__box = box;
+    return wrap;
   }
 
   // ---- 画像のコピー（Clipboard API → 3 段の代替。ADR 0014 §2）----
@@ -861,9 +890,12 @@
           var a = h("a", { href: page.image_url, download: "slide-" + pos + ".png" }); document.body.appendChild(a); a.click(); a.remove(); recordCopy("save", true, null);
         } },
         "-",
-        { label: "このページを複製", onSelect: function () { ctx.duplicatePage(page.slide_id); } },
+        { label: "このページを複製", disabled: !SS.cap(ctx.caps, "duplicate_page").available,
+          reason: SS.cap(ctx.caps, "duplicate_page").reason, onSelect: function () { ctx.duplicatePage(page.slide_id); } },
         { label: page.hidden ? "このページを表示にする" : "このページを非表示にする", danger: !page.hidden,
-          disabled: !page.hidden && ctx.visibleCount() <= 1, reason: "最後の 1 ページは非表示にできません", onSelect: function () {
+          disabled: !SS.cap(ctx.caps, "page_visibility").available || (!page.hidden && ctx.visibleCount() <= 1),
+          reason: SS.cap(ctx.caps, "page_visibility").available ? "最後の 1 ページは非表示にできません"
+            : SS.cap(ctx.caps, "page_visibility").reason, onSelect: function () {
           ctx.setPageHidden(page.slide_id, !page.hidden);
         } }
       ]);
@@ -885,7 +917,15 @@
       collapseButton.replaceChildren(pageIcon(collapsed ? "panel-bottom-close" : "panel-top-close"));
     });
 
+    // 選ぶ（P3: 選んだ数ページに 1 つの指示）。押せるかは指示の口と同じ答え（`pages_instruction`）
+    var pick = h("input", { type: "checkbox", class: "page__select-box", dataset: { slide: page.slide_id },
+      "aria-label": "ページ " + page.position + " " + (instructionWords().select_label || ""),
+      disabled: !SS.cap(caps, "pages_instruction").available });
+    pick.checked = !!(ctx.isSelected && ctx.isSelected(page.slide_id));
+    pick.addEventListener("change", function () { if (ctx.toggleSelect) { ctx.toggleSelect(page.slide_id, pick.checked); } });
+    var pickLabel = h("label", { class: "page__select", title: instructionWords().select_label || "" }, pick);
     article.appendChild(h("header", { class: "page__head" },
+      pickLabel,
       h("span", { class: "page__num", text: String(page.position) }),
       h("span", { class: "page__title", text: page.title || "" }),
       page.hidden ? h("span", { class: "page__hidden-mark", "aria-label": "非表示", title: "非表示" }, pageIcon("eye-off")) : null,
@@ -1201,6 +1241,12 @@
     if (frame.className !== cls) { frame.className = cls; }
     var pos = pctx.positionOf(page.slide_id);
     frame.setAttribute("aria-label", "ページ " + pos + "（" + d.label + "）");
+    // 見出しは直しで変わる（P3。台本を差し替えた直し）。同じ節点に当てる
+    if ((page.title || "") !== n.title) {
+      n.title = page.title || "";
+      var head = n.article.querySelector(".page__title");
+      if (head) { head.textContent = n.title; }
+    }
     // ヘッダの状態は常設なので、実況でもここを追う（絵が出たら印だけ消える、をなくした代わり）
     if (n.headKey !== d.key + "|" + d.label) {
       var state = n.article.querySelector(".page__state");
@@ -1535,8 +1581,27 @@
       var body = h("div", { class: "deck-body" });
       var aside = thumbsAside(data.pages, caps, ctx);
       body.appendChild(aside);
+      // ---- 選んだ数ページ（P3）。選んだ印は画面だけが持つ（読み込み直すと外れる）----
+      var selected = [];
+      ctx.isSelected = function (sid) { return selected.indexOf(sid) >= 0; };
+      var pagesBox = pagesInstruction(caps, reasons.ids, {
+        onSubmit: function (box, btn) { ctx.submitPages(box, btn); },
+        onClear: function () { ctx.clearSelection(); } });
+      var paintSelection = function () {
+        selected = selected.filter(function (sid) { return order.indexOf(sid) >= 0; });
+        var positions = selected.map(function (sid) { return ctx.positionOf(sid); }).sort(function (a, b) { return a - b; });
+        pagesBox.__set(positions);
+        screen.querySelectorAll(".page__select-box").forEach(function (b) { b.checked = selected.indexOf(b.dataset.slide) >= 0; });
+      };
+      ctx.toggleSelect = function (sid, on) {
+        var i = selected.indexOf(sid);
+        if (on && i < 0) { selected.push(sid); }
+        if (!on && i >= 0) { selected.splice(i, 1); }
+        paintSelection();
+      };
+      ctx.clearSelection = function () { selected = []; paintSelection(); };
       var instr = deckInstruction(caps, reasons.ids, { canMinor: deckCanMinor(data.pages),
-        onSubmit: function (box, btn) { ctx.submitDeck(box, btn); } });
+        onSubmit: function (box, btn) { ctx.submitDeck(box, btn); }, pagesBox: pagesBox });
       body.appendChild(instr);
       var pagesEl = h("section", { class: "pages", "aria-label": "ページ" });
       if (!data.pages.length) {
@@ -1738,7 +1803,11 @@
           var canMinor = card ? minor[card.dataset.slide] : (freshPages ? deckCanMinor(freshPages) : null);
           box.__caps(SS.cap(freshCaps, key), canMinor || null, next.ids[key]);
         };
-        setBox(instr.querySelector(".editbox"), "deck_instruction");
+        setBox(instr.querySelector(".deck-instruction__body .editbox"), "deck_instruction");
+        // 選んだ数ページの欄は、絵を土台にするかをページごとに台本係とエンジンが決めるので、チェックを固定しない
+        pagesBox.__box.__caps(SS.cap(freshCaps, "pages_instruction"), { available: true, reason: null }, next.ids.pages_instruction);
+        var canPick = SS.cap(freshCaps, "pages_instruction").available;
+        screen.querySelectorAll(".page__select-box").forEach(function (b) { b.disabled = !canPick; });
         Object.keys(nodes).forEach(function (sid) {
           setBox(nodes[sid].article.querySelector(".editbox"), "page_instruction");
         });
@@ -1752,7 +1821,8 @@
           lockVersion = fresh.deck.lock_version;
           seenRevision(fresh.revision ? fresh.revision.id : null);
           var known = fresh.pages.length === order.length && fresh.pages.every(function (p) { return nodes[p.slide_id]; });
-          if (!known) { notify("revision", REVISION_CHANGED); return; }   // ページ集合が変わった: 勝手に直さない
+          // ページの集合が変わった（差し込み・複製・分割…）。書きかけが無ければ描き直す。あれば知らせるだけ
+          if (!known) { if (nothingIsBeingTyped()) { reload(); } else { notify("revision", REVISION_CHANGED); } return; }
           // **可否を先に当ててから絵を当てる。** 空枠の中の「作り直す」は `paintPage` が作るので、
           // 順番が逆だと 1 回ぶん古い答えのボタンが残る
           paintCaps(fresh.capabilities || {}, fresh.pages);
@@ -1799,6 +1869,7 @@
       var statusEl = aside.querySelector(".thumbs__status");
       var whyEl = aside.querySelector(".thumbs__why");
       var saving = false, queued = null;
+      var waitingOrder = null;   // 自分の並べ替えが描き終えるのを待っている並び
       var say = function (text, why) {
         statusEl.textContent = text || "";
         whyEl.textContent = why || "";
@@ -1863,6 +1934,7 @@
           // 「ほかの場所で構成が変わりました」を**自分に対して**誤報する
           seenRevision(r.revision_id);
           confirmed = r.pages.map(function (p) { return p.slide_id; });
+          waitingOrder = confirmed.slice();   // 描き終えるまで、実況の古い並びで戻さない（P3: 並べ替えも仕事になった）
           paintBand(pband, r.counts);
           if (queued) { order = queued; queued = null; applyOrder(order); send(); return; }
           order = confirmed.slice();
@@ -1982,7 +2054,7 @@
         });
         return b;
       };
-      var postInstruction = function (box, btn, body) {
+      var postInstruction = function (box, btn, body, onDone) {
         if (box.dataset.sending === "1") { return; }
         box.dataset.sending = "1";
         btn.disabled = true;
@@ -1993,6 +2065,8 @@
           box.dataset.sending = "";
           btn.removeAttribute("aria-busy");
           clearBox(box);   // 受け付けられた。**ここで初めて**書いた文と添付を消す
+          seenRevision(r.revision_id);   // 直しは新しい描いた回になる。自分の操作を「ほかの場所で」と言わない
+          if (onDone) { onDone(r); }
           said.appendChild(h("p", { text: r.message || "" }));
           if (r.started) {
             // 候補版の進みは実況が持ってくる。読み直しは 1 回だけ（以降は 2 秒ごとの取り直しに任せる）
@@ -2019,6 +2093,13 @@
         postInstruction(box, btn, { scope: "page", slide_id: slideId, edit_mode: read.edit_mode,
           text: read.text, attachments: read.attachments, lock_version: lockVersion,
           expected_base_version_id: n ? n.article.dataset.version : null });
+      };
+      ctx.submitPages = function (box, btn) {
+        var read = readBox(box);
+        var ids = order.filter(function (sid) { return selected.indexOf(sid) >= 0; });
+        if (!ids.length) { return; }
+        postInstruction(box, btn, { scope: "pages", slide_ids: ids, edit_mode: read.edit_mode, text: read.text,
+          attachments: read.attachments, lock_version: lockVersion }, function () { ctx.clearSelection(); });
       };
       ctx.submitDeck = function (box, btn) {
         var read = readBox(box);
@@ -2140,6 +2221,18 @@
           if (!grew) { grew = true; reload(); }
           return;
         }
+        // **並び・ページの集合が変わった**（P3: 差し込み・複製・分割・非表示・並べ替えは仕事が終わってから変わる）。
+        // 自分の並べ替えが描き終えるまでは待つ（実況の古い並びで戻さない）。それ以外は、書きかけが無ければ
+        // 描き直し、あれば知らせるだけにする（書いた文を黙って消さない）
+        var ids = prog.pages.map(function (p) { return p.slide_id; });
+        if (waitingOrder && ids.join("|") === waitingOrder.join("|")) { waitingOrder = null; }
+        var settling = !!waitingOrder && busy(prog);
+        if (!settling && !saving && !queued && ids.join("|") !== order.join("|")) {
+          waitingOrder = null;
+          if (nothingIsBeingTyped()) { reload(); return; }
+          notify("revision", REVISION_CHANGED);
+          return;
+        }
         // **可否を先に当ててから絵を当てる。** 空枠の中の「作り直す」は `paintPage` が作るので、
         // 順番が逆だと 1 回ぶん古い答えのボタンが残る（`refresh()` と同じ順序）
         if (capsMoved(prog)) { paintCaps(prog.capabilities, prog.pages); }
@@ -2161,11 +2254,9 @@
           notify("insert", insertWords().landed || REVISION_CHANGED);
           return;
         }
-        // 送る前に飛んでいた答えが後から届くと、自分が作った 1 つ前の構成版が載っている。
-        // 自分の操作を「ほかの場所で変わりました」と誤報しない
-        if (revisionId && prog.revision_id && prog.revision_id !== revisionId && !ownRevisions[prog.revision_id]) {
-          notify("revision", REVISION_CHANGED);
-        }
+        // P3: 直すたびに新しい描いた回（`revision_id`）になる。会話から直したときも中身は実況が当てるので、
+        // 回が変わっただけでは知らせない（並びが変わったときは上で描き直す）
+        if (prog.revision_id) { seenRevision(prog.revision_id); }
       };
       // 実況の設定は名前を付けて持つ（送信で画像づくりが始まったら、同じ設定で乗せ直す）
       watchCfg = { deckId: deckId, guard: guard, screen: screen, seq: data.last_event_seq,

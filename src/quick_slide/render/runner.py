@@ -1,8 +1,9 @@
-"""エンジンを子プロセスで呼ぶ: 台本の検査（`check`）と、描いて書き出す（`deck`）。
+"""エンジンを子プロセスで呼ぶ: 台本の検査（`check`）と、描いて書き出す（`deck`）・1 枚の絵を直す（`revise`）。
 
-`deck` の `--out` は描いた回のフォルダ（`decks/<デッキ>/runs/<回>/`）そのもの。両エンジンとも `--out` の直下に
+`--out` はデッキごとに 1 つの作業フォルダ（`decks/<デッキ>/work/`。P3 から）。両エンジンとも `--out` の直下に
 `slides/slide-NN.png`・`deck.pptx`・`deck.pdf`・`thumbs.png` と、`deck-info.json`（html-slide）か
-`build.json`（image-slide）を書く（台本の名前のフォルダは足さない）。
+`build.json`（image-slide）を書く（台本の名前のフォルダは足さない）。終わったら描き係が描いた回のフォルダへ
+控える（`render/workspace.snapshot`）。エンジンの標準出力・標準エラーは描いた回のフォルダに書く。
 
 進みはエンジンの標準エラーの行から拾う（エンジンは変えない）:
 
@@ -178,12 +179,17 @@ class RenderOutcome:
 
 def render_deck(engine: Engine, *, tools: Tools, home: Path, script: Path, out: Path, args: dict[str, Any],
                 page_count: int, timeout: float, stop: threading.Event | None = None,
-                on_change: Callable[[dict[str, Any], dict[int, str]], None] | None = None) -> RenderOutcome:
+                on_change: Callable[[dict[str, Any], dict[int, str]], None] | None = None,
+                command: list[str] | None = None, log_dir: Path | None = None, log_name: str = "engine") -> RenderOutcome:
+    """エンジンを 1 回呼ぶ（既定は `deck`。`command` で `revise` も）。`pages[n].file` は `out` の中の絵。"""
     out.mkdir(parents=True, exist_ok=True)
+    log_dir = log_dir or out
+    log_dir.mkdir(parents=True, exist_ok=True)
     progress = RenderProgress(engine, page_count, on_change)
-    cmd = engine.deck_command(tools.python, tools.skills_dir, script, out, args)
+    cmd = command or engine.deck_command(tools.python, tools.skills_dir, script, out, args)
     r = run_process(cmd, cwd=out, env=child_env(home=home, extra=tools.extra_env), timeout=timeout, stop=stop,
-                    on_line=progress.feed, stdout_path=out / "engine-stdout.txt", stderr_path=out / "engine-stderr.txt")
+                    on_line=progress.feed, stdout_path=log_dir / f"{log_name}-stdout.txt",
+                    stderr_path=log_dir / f"{log_name}-stderr.txt")
     pages: dict[int, dict[str, Any]] = {}
     built = _engine_record(engine, out)
     for no in range(1, page_count + 1):

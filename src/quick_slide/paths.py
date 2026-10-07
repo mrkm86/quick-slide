@@ -77,8 +77,23 @@ class DataRoot:
         return self.deck_dir(deck_id) / "scripts"
 
     def run_dir(self, deck_id: str, run_id: str) -> Path:
-        """描いた回の出力（エンジンの `--out`）。台本係の控え（`writer/`）もここに置く。"""
+        """描いた回の控え（P3 から）。エンジンは `work_dir` に描き、終わった回の出力をここへハードリンクで写す
+        （回は不変の控え。画面と書き出しはここを読む）。台本係の控え（`writer/`）とエンジンのログもここに置く。"""
         return self.deck_dir(deck_id) / "runs" / run_id
+
+    def work_dir(self, deck_id: str) -> Path:
+        """エンジンの `--out`（デッキごとに 1 つで動かない）。image-slide は描いた絵のキャッシュの区画を `--out` で
+        引くので、回ごとに新しいフォルダへ描くと毎回全ページを描き直す（P3 で直した）。"""
+        return self.deck_dir(deck_id) / "work"
+
+    def engine_script_path(self, deck_id: str) -> Path:
+        """エンジンに渡す台本（いまの台本から非表示のページを抜いたもの）。台本の版と同じフォルダに置く:
+        html-slide は描いた絵のキャッシュの区画を台本のフォルダで引くので、版が変わっても同じ区画を使う。"""
+        return self.scripts_dir(deck_id) / "engine.json"
+
+    def attachments_dir(self, deck_id: str) -> Path:
+        """直しに添えた画像の写し（台本の `path` は台本のフォルダからの相対 `attachments/<名前>` で書く）。"""
+        return self.scripts_dir(deck_id) / "attachments"
 
     def page_asset_rel(self, deck_id: str, run_id: str, page_no: int) -> str:
         """描いた回のページの画像を資産として配る置き場（`assets/` の下・データ置き場からの相対）。

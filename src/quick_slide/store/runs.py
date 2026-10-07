@@ -25,13 +25,23 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ..enums import JOB_STATES, RUN_ACTIVE_STATES, RUN_PAGE_STATES, RUN_STATES, SCRIPT_WRITTEN_BY, WRITER_BACKENDS, require
+from ..enums import (
+    JOB_KINDS,
+    JOB_STATES,
+    RUN_ACTIVE_STATES,
+    RUN_PAGE_STATES,
+    RUN_STATES,
+    SCRIPT_WRITTEN_BY,
+    WRITER_BACKENDS,
+    require,
+)
 from ..errors import StateError, ValidationError
 from .base import StoreBase, dump_json, load_json
 
 # 起動したときに「走っている」まま残っていた仕事（前のサーバが途中で止まった）に付ける文
 INTERRUPTED_MESSAGE = "台本を書いている途中でサーバが止まったため、中断しました。もう一度会話から頼んでください。"
 GAVE_UP_MESSAGE = "サーバが何度も途中で止まったため、作るのをやめました。もう一度会話から頼んでください。"
+EDIT_INTERRUPTED_MESSAGE = "直している途中でサーバが止まったため、中断しました。もう一度頼んでください。"
 # 続きから戻すのは、この回数まで（止まり続ける仕事を延々と回さない）
 MAX_JOB_ATTEMPTS = 3
 
@@ -53,12 +63,15 @@ class RunsMixin(StoreBase):
             (rid, deck_id, number, mode, engine_for(mode).skill, dump_json(args), "queued", out_rel, now, now))
         return self.run(rid)
 
-    def create_job(self, deck_id: str, *, run_id: str, intake_id: str | None, kind: str = "make") -> dict[str, Any]:
+    def create_job(self, deck_id: str, *, run_id: str, intake_id: str | None, kind: str = "make",
+                   request: dict[str, Any] | None = None) -> dict[str, Any]:
         self._require_tx()
+        require(kind, JOB_KINDS, "jobs.kind")
         jid = self.new_id()
-        self._exec("INSERT INTO jobs(id,deck_id,kind,run_id,intake_id,state,created_at) VALUES(?,?,?,?,?,?,?)",
-                   (jid, deck_id, kind, run_id, intake_id, "queued", self.now()))
-        return self._get("jobs", jid)
+        self._exec("INSERT INTO jobs(id,deck_id,kind,run_id,intake_id,request_json,state,created_at)"
+                   " VALUES(?,?,?,?,?,?,?,?)",
+                   (jid, deck_id, kind, run_id, intake_id, dump_json(request or {}), "queued", self.now()))
+        return self.job(jid)
 
     # --- 参照 ---
     def run(self, run_id: str) -> dict[str, Any]:
@@ -70,7 +83,9 @@ class RunsMixin(StoreBase):
         return row
 
     def job(self, job_id: str) -> dict[str, Any]:
-        return self._get("jobs", job_id)
+        row = self._get("jobs", job_id)
+        row["request"] = load_json(row.pop("request_json")) or {}
+        return row
 
     def script(self, script_id: str) -> dict[str, Any]:
         row = self._get("scripts", script_id)
@@ -79,6 +94,58 @@ class RunsMixin(StoreBase):
 
     def script_path(self, script_row: dict[str, Any]) -> Path:
         return self.root.root / script_row["path"]
+
+    # --- いまの台本（P3）---
+    def head_script(self, deck_id: str) -> dict[str, Any] | None:
+        """デッキのいまの台本（画面のページと、次の直しの元）。無ければ None（まだ検査に通った台本が無い）。"""
+        sid = self._scalar("SELECT script_id FROM deck_heads WHERE deck_id=?", (deck_id,))
+        return None if sid is None else self.script(sid)
+
+    def load_script(self, script_row: dict[str, Any]) -> dict[str, Any]:
+        return json.loads(self.script_path(script_row).read_text(encoding="utf-8"))
+
+    def script_pages(self, script_id: str) -> list[dict[str, Any]]:
+        """台本の版のページ（画面に出す並び。非表示も入る）。key は台本の `id`。"""
+        rows = self._all(
+            "SELECT sp.page_no,sp.page_id,p.key,sp.type,sp.title,sp.body,sp.content_sha256,sp.hidden"
+            " FROM script_pages sp JOIN page_ids p ON p.id=sp.page_id WHERE sp.script_id=? ORDER BY sp.page_no",
+            (script_id,))
+        for r in rows:
+            r["hidden"] = bool(r["hidden"])
+        return rows
+
+    def page_id_for(self, deck_id: str, key: str) -> str | None:
+        return self._scalar("SELECT id FROM page_ids WHERE deck_id=? AND key=?", (deck_id, key))
+
+    def _page_id(self, deck_id: str, key: str, now: str) -> str:
+        pid = self._scalar("SELECT id FROM page_ids WHERE deck_id=? AND key=?", (deck_id, key))
+        if pid is None:
+            pid = self.new_id()
+            self._exec("INSERT INTO page_ids(id,deck_id,key,created_at) VALUES(?,?,?,?)", (pid, deck_id, key, now))
+        return pid
+
+    def accept_script(self, script_id: str, pages: list[dict[str, Any]]) -> None:
+        """検査に通った台本の版を、デッキのいまの台本にする。ページ（同一性・見出し・中身の sha256・非表示）を書く。
+
+        `pages` は `scriptdoc.screen_pages` の形。同じ版をもう一度受けても行は重ねない（いまの台本にするだけ）。
+        """
+        with self.transaction():
+            script = self.script(script_id)
+            deck_id = script["deck_id"]
+            now = self.now()
+            have = self._scalar("SELECT COUNT(*) FROM script_pages WHERE script_id=?", (script_id,))
+            if not have:
+                for p in pages:
+                    pid = self._page_id(deck_id, p["key"], now)
+                    self._exec("INSERT INTO script_pages(script_id,page_no,page_id,type,title,body,content_sha256,hidden)"
+                               " VALUES(?,?,?,?,?,?,?,?)",
+                               (script_id, p["no"], pid, p["type"], p["title"], p["body"], p.get("content_sha"),
+                                1 if p.get("hidden") else 0))
+            self._exec("INSERT INTO deck_heads(deck_id,script_id,updated_at) VALUES(?,?,?)"
+                       " ON CONFLICT(deck_id) DO UPDATE SET script_id=excluded.script_id,updated_at=excluded.updated_at",
+                       (deck_id, script_id, now))
+            self.append_event("script_accepted", {"script_id": script_id, "version": script["version"],
+                                                  "pages": len(pages)}, deck_id=deck_id)
 
     def runs_for_deck(self, deck_id: str) -> list[dict[str, Any]]:
         rows = self._all("SELECT id FROM runs WHERE deck_id=? ORDER BY number DESC", (deck_id,))
@@ -104,14 +171,17 @@ class RunsMixin(StoreBase):
         return None if rid is None else self.run(rid)
 
     def run_pages(self, run_id: str) -> list[dict[str, Any]]:
-        """回のページ（台本の番号順）。見出し・型・本文は台本のページから、状態と絵は回の結果から。"""
+        """回のページ（描いた順。非表示のページは描かないので入らない）。見出し・型・本文は台本のページから、
+        状態と絵は回の結果から。ページは台本のページの同一性（page_id）で結ぶ。"""
         rows = self._all(
-            "SELECT sp.page_no,sp.page_id,sp.type,sp.title,sp.body,rp.state,rp.asset_id,rp.warnings_json,"
-            "  a.state AS asset_state"
-            " FROM runs r JOIN script_pages sp ON sp.script_id=r.script_id"
-            " LEFT JOIN run_pages rp ON rp.run_id=r.id AND rp.page_no=sp.page_no"
+            "SELECT rp.page_no,rp.page_id,p.key,COALESCE(sp.type,'') AS type,COALESCE(sp.title,'') AS title,"
+            "  COALESCE(sp.body,'') AS body,rp.state,rp.asset_id,rp.warnings_json,a.state AS asset_state,"
+            "  a.sha256 AS asset_sha256,rp.content_sha256,rp.picture_sha256"
+            " FROM run_pages rp JOIN runs r ON r.id=rp.run_id"
+            " LEFT JOIN page_ids p ON p.id=rp.page_id"
+            " LEFT JOIN script_pages sp ON sp.script_id=r.script_id AND sp.page_id=rp.page_id"
             " LEFT JOIN assets a ON a.id=rp.asset_id"
-            " WHERE r.id=? ORDER BY sp.page_no", (run_id,))
+            " WHERE rp.run_id=? ORDER BY rp.page_no", (run_id,))
         for r in rows:
             r["warnings"] = load_json(r.pop("warnings_json")) if r["warnings_json"] is not None else []
         return rows
@@ -129,11 +199,17 @@ class RunsMixin(StoreBase):
 
     # --- ワーカー: 仕事を取る・終える ---
     def claim_job(self, worker: str) -> dict[str, Any] | None:
-        """待っている仕事を 1 つ取る（古い順）。**削除済みのデッキの仕事は取らずに失敗にする。**"""
+        """待っている仕事を 1 つ取る（古い順）。**削除済みのデッキの仕事は取らずに失敗にする。**
+
+        **1 冊に走る仕事は 1 つだけ**（P3）: 同じデッキの仕事が走っている間は、そのデッキの次の仕事を取らない。
+        次の仕事は、前の仕事が終わったあとのいまの台本から始める（ページは id で指すので、前の直しの上に重なる）。
+        """
         with self.transaction():
             while True:
                 row = self._one("SELECT j.*,d.deleted_at FROM jobs j JOIN decks d ON d.id=j.deck_id"
-                                " WHERE j.state='queued' ORDER BY j.created_at,j.rowid LIMIT 1")
+                                " WHERE j.state='queued' AND NOT EXISTS (SELECT 1 FROM jobs k WHERE k.deck_id=j.deck_id"
+                                "  AND k.state='running')"
+                                " ORDER BY j.created_at,j.rowid LIMIT 1")
                 if row is None:
                     return None
                 now = self.now()
@@ -177,11 +253,16 @@ class RunsMixin(StoreBase):
         """
         out: dict[str, list[str]] = {"requeued": [], "failed": []}
         with self.transaction():
-            rows = self._all("SELECT id,run_id,deck_id,attempts FROM jobs WHERE state='running'")
+            rows = self._all("SELECT id,run_id,deck_id,attempts,kind FROM jobs WHERE state='running'")
             now = self.now()
             for r in rows:
                 run = self._get("runs", r["run_id"])
                 stage = {"rendering": "render", "importing": "import"}.get(run["state"])
+                # 絵を直す（エンジンの revise）途中で止まった直しは続けない。続きから描き直すと、利用者の知らない
+                # ところでもう一度絵を描く（サブスクの枠を使う）うえ、直しが入ったかどうかを黙って決めることになる
+                plan = (load_json(run["record_json"]) or {}).get("plan") or {}
+                if stage == "render" and r["kind"] == "edit" and plan.get("revise"):
+                    stage = None
                 if stage is not None and r["attempts"] < MAX_JOB_ATTEMPTS:
                     self._exec("UPDATE jobs SET state='queued',resume_from=?,worker=NULL WHERE id=?", (stage, r["id"]))
                     if stage == "render":
@@ -193,7 +274,8 @@ class RunsMixin(StoreBase):
                     continue
                 self._finish_job_row(r["id"], "failed", "interrupted", now)
                 if run["state"] in RUN_ACTIVE_STATES:
-                    message = GAVE_UP_MESSAGE if stage is not None else INTERRUPTED_MESSAGE
+                    message = GAVE_UP_MESSAGE if stage is not None else (
+                        EDIT_INTERRUPTED_MESSAGE if r["kind"] == "edit" else INTERRUPTED_MESSAGE)
                     self._end_run(r["run_id"], "failed", message=message, failure_kind="interrupted")
                 out["failed"].append(r["id"])
         return out
@@ -286,8 +368,9 @@ class RunsMixin(StoreBase):
             require(writer_backend, WRITER_BACKENDS, "scripts.writer_backend")
         if not isinstance(data, dict) or not isinstance(data.get("slides"), list):
             raise ValidationError("台本は slides を持つオブジェクト")
-        text = json.dumps(data, ensure_ascii=False, indent=1) + "\n"
-        raw = text.encode("utf-8")
+        from ..scriptdoc import dumps
+
+        raw = dumps(data)
         with self.transaction():
             version = int(self._scalar("SELECT COALESCE(MAX(version),0)+1 FROM scripts WHERE deck_id=?", (deck_id,)))
             rel = f"decks/{deck_id}/scripts/{version}.json"
@@ -314,9 +397,8 @@ class RunsMixin(StoreBase):
 
     def start_rendering(self, run_id: str, script_id: str, pages: list[dict[str, Any]],
                         progress: dict[str, Any]) -> None:
-        """検査に通った台本を回に結び、ページ（同一性・見出し）と「描いている途中」の行を作る。
-
-        ページの同一性は台本の `id`（`pages[].key`）で引く。同じデッキで前に使った `id` なら同じ page_ids の行。
+        """検査に通った台本（`accept_script` 済み）を回に結び、描くページ（`scriptdoc.output_pages`）の
+        「描いている途中」の行を作る。ページの同一性は台本の `id`（`pages[].key`）で引く。
         """
         with self.transaction():
             run = self.run(run_id)
@@ -327,15 +409,9 @@ class RunsMixin(StoreBase):
                 raise StateError("終わった回には台本を結べません")
             now = self.now()
             for p in pages:
-                pid = self._scalar("SELECT id FROM page_ids WHERE deck_id=? AND key=?", (run["deck_id"], p["key"]))
-                if pid is None:
-                    pid = self.new_id()
-                    self._exec("INSERT INTO page_ids(id,deck_id,key,created_at) VALUES(?,?,?,?)",
-                               (pid, run["deck_id"], p["key"], now))
-                self._exec("INSERT INTO script_pages(script_id,page_no,page_id,type,title,body) VALUES(?,?,?,?,?,?)",
-                           (script_id, p["no"], pid, p["type"], p["title"], p["body"]))
-                self._exec("INSERT INTO run_pages(run_id,page_no,page_id,state) VALUES(?,?,?,'pending')",
-                           (run_id, p["no"], pid))
+                pid = self._page_id(run["deck_id"], p["key"], now)
+                self._exec("INSERT INTO run_pages(run_id,page_no,page_id,state,content_sha256) VALUES(?,?,?,'pending',?)",
+                           (run_id, p["no"], pid, p.get("content_sha")))
             self._exec("UPDATE runs SET script_id=?,state='rendering',progress_json=?,updated_at=? WHERE id=?",
                        (script_id, dump_json(progress), now, run_id))
             self.append_event("run_updated", {"run_id": run_id, "state": "rendering", "script_id": script_id,
@@ -343,17 +419,39 @@ class RunsMixin(StoreBase):
 
     def finish_run(self, run_id: str, *, state: str, rc: int | None, message: str | None,
                    failure_kind: str | None, pages: dict[int, dict[str, Any]]) -> None:
-        """描き終えた回の結果を書く。`pages` は {番号: {"file": 画像のパスか None, "warnings": [...]}}。
+        """描き終えた回の結果を書く。`pages` は {番号: {"file": 画像のパスか None, "warnings": [...],
+        "picture_sha": 絵の sha256（版スタックの鍵。`render/workspace.snapshot`）}}。
 
         画像は `assets/decks/<デッキ>/<回>/slide-NN.png` にハードリンクで張ってから資産の行にする
         （配信は assets/ の下だけ。エンジンの出力フォルダは配信しない）。
+
+        **同じページ（page_id）の前の回の絵と中身（バイト）が同じなら、前の資産をそのまま使う**（P3: 直していない
+        ページの絵の URL を変えない。画面が読み直さない）。照らすのは**同じページの**絵だけ: 別のページがたまたま同じ
+        バイトの絵（複製したページ・同じ姿のページ）でも、その資産は使わない（使うとページの絵の URL が別のページの
+        資産へ飛び、直していないページの絵が「替わった」ことになる。2026-10-07 の不安定な試験の原因）。
+        同じ台本・同じ設定で描き直したページの絵がバイトまで同じことは、両エンジンで確かめた（`docs/P3-NOTES.md`）。
         """
         require(state, ("done", "failed"), "runs.state")
         run = self.run(run_id)
+        page_of = {r["page_no"]: r["page_id"] for r in self._all(
+            "SELECT page_no,page_id FROM run_pages WHERE run_id=?", (run_id,))}
         staged: dict[int, tuple[str, str, int, int | None, int | None]] = {}
+        reused: dict[int, str] = {}
         for no, info in pages.items():
             src = info.get("file")
             if not src:
+                continue
+            try:
+                sha = _file_sha(Path(src))
+            except OSError:
+                continue
+            same = None if page_of.get(no) is None else self._scalar(
+                "SELECT a.id FROM run_pages rp JOIN runs r ON r.id=rp.run_id JOIN assets a ON a.id=rp.asset_id"
+                " WHERE r.deck_id=? AND rp.page_id=? AND rp.run_id!=? AND a.sha256=? AND a.state='ready'"
+                " ORDER BY r.number DESC LIMIT 1",
+                (run["deck_id"], page_of[no], run_id, sha))
+            if same is not None and (self.root.root / self._get("assets", same)["relative_path"]).is_file():
+                reused[no] = same
                 continue
             rel = self.root.page_asset_rel(run["deck_id"], run_id, no)
             dst = self.root.root / rel
@@ -376,17 +474,31 @@ class RunsMixin(StoreBase):
                 raise StateError("この回はもう終わっています")
             for no, info in pages.items():
                 warnings = [str(w)[:300] for w in (info.get("warnings") or [])][:20]
-                if no in staged:
+                if no in reused:
+                    asset = self._get("assets", reused[no])
+                    self._exec("UPDATE run_pages SET state='ready',asset_id=?,warnings_json=?,picture_sha256=?"
+                               " WHERE run_id=? AND page_no=?",
+                               (asset["id"], dump_json(warnings), info.get("picture_sha") or asset["sha256"], run_id, no))
+                elif no in staged:
                     rel, sha, size, w, h = staged[no]
                     asset = self.register_asset(relative_path=rel, media_type="image/png", sha256=sha, bytes_=size,
                                                 width=w, height=h)
-                    self._exec("UPDATE run_pages SET state='ready',asset_id=?,warnings_json=? WHERE run_id=? AND page_no=?",
-                               (asset["id"], dump_json(warnings), run_id, no))
+                    self._exec("UPDATE run_pages SET state='ready',asset_id=?,warnings_json=?,picture_sha256=?"
+                               " WHERE run_id=? AND page_no=?",
+                               (asset["id"], dump_json(warnings), info.get("picture_sha") or sha, run_id, no))
                 else:
                     self._exec("UPDATE run_pages SET state='failed',warnings_json=? WHERE run_id=? AND page_no=?",
                                (dump_json(warnings), run_id, no))
             self._end_run(run_id, state, message=message, failure_kind=failure_kind, rc=rc)
             self._exec("UPDATE decks SET updated_at=? WHERE id=?", (self.now(), run["deck_id"]))
+
+
+def _file_sha(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _png_size(data: bytes) -> tuple[int | None, int | None]:

@@ -1,4 +1,5 @@
-"""サーバの中のワーカー（スレッドの組）。仕事の台帳から取り、`pipeline.make` を流す。
+"""サーバの中のワーカー（スレッドの組）。仕事の台帳から取り、`pipeline.make`（原稿から 1 冊）か
+`edit.edit`（直す。P3）を流す。1 冊に走る仕事は 1 つだけ（台帳の `claim_job` が同じデッキの仕事を重ねない）。
 
 決めたこと（理由は `docs/P2-NOTES.md`）:
 
@@ -21,6 +22,7 @@ from typing import Any
 
 from ..paths import DataRoot
 from ..settings import Settings
+from .edit import edit
 from .pipeline import Context, make
 from .tools import Tools
 
@@ -109,7 +111,7 @@ class WorkerPool:
         state = "failed"
         error_class = None
         try:
-            state = make(ctx, job)
+            state = edit(ctx, job) if job.get("kind") == "edit" else make(ctx, job)
         except Exception as exc:  # noqa: BLE001 - 1 つの仕事の失敗でスレッドを止めない
             self.errors += 1
             error_class = exc.__class__.__name__

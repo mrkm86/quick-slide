@@ -2,7 +2,8 @@
 
 payload の形は v1 と同じ（`schema_version`・`origin{kind,runtime,conversation_key}`・`manuscript`・`title_hint`・
 `deck_attributes`・`attachments`・`append_to_deck_id`・`force_new_deck`）。v2 で足したのは
-`deck_attributes` の `mode`（presentation / pitch）・`style`（エンジンのスタイル）・`image_look`・`images`。
+`deck_attributes` の `mode`（presentation / pitch）・`style`（エンジンのスタイル）・`image_look`・`images`、P3 で
+`outline_fixed`（原稿は会話で合意した構成。台本係はページ割りを守る）。
 
 秘匿の契約（v1 と同じ）:
 - `origin.conversation_key` の生値はこのモジュールのローカル変数にだけ存在し、HMAC 化したら捨てる
@@ -37,7 +38,7 @@ PAYLOAD_KEYS = {"schema_version", "origin", "title_hint", "manuscript", "transcr
                 "attachments", "append_to_deck_id", "force_new_deck"}
 ORIGIN_KEYS = {"kind", "runtime", "conversation_key"}
 DECK_ATTRIBUTE_KEYS = {"purpose", "audience", "style_note", "page_count", "brand_id", "mode", "style", "image_look",
-                       "images", "style_id", "format_id", "format_values", "format_options"}
+                       "images", "outline_fixed", "style_id", "format_id", "format_values", "format_options"}
 # 形は v1 のまま残し、v2 ではまだ受けない項目（値が入っていたら断る）
 NOT_READY_ATTRIBUTES = ("style_id", "format_id", "format_values", "format_options")
 MAX_PAGE_COUNT = 40
@@ -142,6 +143,7 @@ class IntakesMixin(StoreBase):
             "images": attrs["images"], "page_count": attrs.get("page_count"),
             "purpose": attrs.get("purpose") or "", "audience": attrs.get("audience") or "",
             "style_note": attrs.get("style_note") or "", "origin_runtime": origin_runtime,
+            "outline_fixed": bool(attrs.get("outline_fixed")),
         }
 
     # --- 検査 ---
@@ -189,14 +191,14 @@ class IntakesMixin(StoreBase):
         force_new = payload.get("force_new_deck", False)
         if not isinstance(force_new, bool):
             raise ValidationError("intake.force_new_deck は真偽値")
-        attrs = self._validate_attributes(payload.get("deck_attributes"))
+        attrs = self._validate_attributes(payload.get("deck_attributes"), manuscript=manuscript)
         out = dict(payload)
         out["deck_attributes"] = attrs
         out["attachments"] = []
         out["force_new_deck"] = force_new
         return out
 
-    def _validate_attributes(self, raw: Any) -> dict[str, Any]:
+    def _validate_attributes(self, raw: Any, *, manuscript: str = "") -> dict[str, Any]:
         cfg = self.settings.intake
         attrs = {} if raw is None else raw
         if not isinstance(attrs, dict):
@@ -230,13 +232,26 @@ class IntakesMixin(StoreBase):
         images = out.get("images", True)
         if not isinstance(images, bool):
             raise ValidationError("deck_attributes.images は真偽値（画像の枠を置くか）")
+        outline_fixed = out.get("outline_fixed", False)
+        if not isinstance(outline_fixed, bool):
+            raise ValidationError("deck_attributes.outline_fixed は真偽値（原稿は合意した構成か）")
+        if outline_fixed:
+            from ..scriptdoc import outline_headings
+
+            heads = outline_headings(manuscript)
+            if not heads:
+                raise ValidationError("構成を固定するときは、原稿にページごとの見出し（`## 1. 見出し`）を書いてください")
+            if [n for n, _ in heads] != list(range(1, len(heads) + 1)):
+                raise ValidationError("構成の見出しの番号は 1 から順に書いてください（`## 1.`・`## 2.` …）")
+            if len(heads) > MAX_PAGE_COUNT:
+                raise ValidationError(f"構成のページは {MAX_PAGE_COUNT} 枚までです")
         pc = out.get("page_count")
         if pc is not None and (isinstance(pc, bool) or not isinstance(pc, int) or not (1 <= pc <= MAX_PAGE_COUNT)):
             raise ValidationError(f"deck_attributes.page_count は 1〜{MAX_PAGE_COUNT} の整数")
         brand_id = out.get("brand_id")
         if brand_id is not None and not isinstance(brand_id, str):
             raise ValidationError("deck_attributes.brand_id は文字列")
-        out.update(mode=mode, style=style, image_look=look, images=images)
+        out.update(mode=mode, style=style, image_look=look, images=images, outline_fixed=outline_fixed)
         return out
 
     def _intake_brand_revision(self, brand_id: str | None) -> str:

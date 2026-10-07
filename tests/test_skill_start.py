@@ -86,13 +86,66 @@ class SkillStartTests(unittest.TestCase):
 
     def test_not_yet_options_and_input_errors(self) -> None:
         rc, out, _, _ = self.start("--revise")
+        self.assertEqual((rc, out["code"]), (2, "note_required"))
+        rc, out, _, _ = self.start("--manuscript-file", str(self.manuscript), "--attach", str(self.manuscript))
         self.assertEqual((rc, out["code"]), (2, "not_ready_in_v2"))
         self.assertIn("まだできません", out["message"])
+        rc, out, _, _ = self.start("--revise", "--note", "x", "--pages", "7,a")
+        self.assertEqual((rc, out["code"]), (2, "pages_invalid"))
         rc, out, _, _ = self.start("--manuscript-file", str(self.manuscript), "--mode", "presentation", "--style", "infographic")
         self.assertEqual((rc, out["code"]), (2, "style_invalid"))
         rc, out, _, _ = self.start("--title", "原稿なし")
         self.assertEqual((rc, out["code"]), (2, "manuscript_required"))
         self.assertFalse((self.home / "runtime" / "server.json").exists(), "入力の誤りではサーバを起こさない")
+
+    def test_outline_fixed_and_wait_returns_the_page_headlines(self) -> None:
+        outline = self.tmp / "outline.md"
+        outline.write_text("# 会議を半分にする（架空）\n\n## 1. 会議を半分にする\n- 3か月の試行の提案\n画像: なし\n\n"
+                           "## 2. 会議の4割は何も決めずに終わっている\n- 回答240人（架空）\n画像: なし\n\n"
+                           "## 3. まず2チームで試します\n- 来月から\n画像: 明るい会議室\n", encoding="utf-8")
+        rc, out, stdout, stderr = self.start("--manuscript-file", str(outline), "--title", "会議を半分にする",
+                                             "--mode", "pitch", "--runtime", "claude_code", "--outline-fixed",
+                                             "--wait", "--wait-timeout", "120", "--no-open")
+        self.assertEqual(rc, 0, (out, stderr))
+        self.assertEqual(len(stdout.strip().splitlines()), 1)
+        self.assertEqual(out["result"], "done")
+        self.assertEqual([p["title"] for p in out["pages"]],
+                         ["会議を半分にする", "会議の4割は何も決めずに終わっている", "まず2チームで試します"])
+        self.assertTrue(out["payload"]["deck_attributes"]["outline_fixed"])
+        self.assertIn("3 ページで作りました", out["message"])
+        self.assertIn(f"/slides/{out['deck_id']}", out["url"])
+        calls = [json.loads(p.read_text()) for p in sorted((self.tmp / "writer-calls").glob("*.json"))]
+        self.assertTrue(calls[0]["outline"], "台本係に「構成を守る」を言った")
+
+    def test_revise_pages_7_8_with_wait_from_the_same_conversation(self) -> None:
+        env = {**self.env, "FAKE_WRITER_PAGES": "10"}
+        key = ["--conversation-key", "conversation-key-for-the-revise-test-0123"]  # gitleaks:allow（試験用のダミーの会話キー）
+        rc, out, _, stderr = self.start("--manuscript-file", str(self.manuscript), "--mode", "pitch",
+                                        "--runtime", "claude_code", *key, "--wait", "--no-open", env=env)
+        self.assertEqual((rc, out.get("result")), (0, "done"), (out, stderr))
+        self.assertEqual(len(out["pages"]), 10)
+        before = {p["no"]: p["title"] for p in out["pages"]}
+        rc, rev, stdout, stderr = self.start("--revise", "--pages", "7,8", "--note", "見出しを短くして", "--wait",
+                                             "--runtime", "claude_code", *key, env=env)
+        self.assertEqual(rc, 0, (rev, stderr))
+        self.assertEqual(len(stdout.strip().splitlines()), 1)
+        self.assertEqual((rev["status"], rev["deck_id"], rev["target_pages"]), ("revised", out["deck_id"], [7, 8]))
+        self.assertEqual(rev["url"].rsplit("/", 1)[-1], out["deck_id"], "URL はいつも返す")
+        after = {p["no"]: p["title"] for p in rev["pages"]}
+        self.assertEqual(after[7], before[7] + "（直し）")
+        self.assertEqual(after[8], before[8] + "（直し）")
+        self.assertEqual({n: t for n, t in after.items() if n not in (7, 8)},
+                         {n: t for n, t in before.items() if n not in (7, 8)})
+        self.assertEqual(rev["suggestions"], [{"page": 6, "text": "前のページの見出しも短くするとよい（架空）"}])
+        self.assertNotIn("見出しを短くして", stderr)
+        # スライドを指定して、全体への指示（--pages を省く）
+        rc, rev, _, stderr = self.start("--revise", "--deck", out["deck_id"], "--note", "そのままでよい", "--wait",
+                                        "--runtime", "claude_code", env=env)
+        self.assertEqual((rc, rev["status"], rev["target_pages"]), (0, "revised", "all"), (rev, stderr))
+        # 範囲の外
+        rc, rev, _, _ = self.start("--revise", "--deck", out["deck_id"], "--pages", "11", "--note", "x", env=env)
+        self.assertEqual((rc, rev["code"]), (2, "pages_invalid"))
+        self.assertIn("/slides/", rev["url"])
 
     def test_where_and_repo_override(self) -> None:
         rc, out, _, _ = self.start("--where")
