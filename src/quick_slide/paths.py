@@ -130,6 +130,20 @@ class DataRoot:
         return self.runtime_dir / "server.out"
 
     @property
+    def last_good_listen_path(self) -> Path:
+        """いま動いている（＝起動できた）待ち受けの控え。再起動して新しい設定で起動できなければ、これに戻す。"""
+        return self.runtime_dir / "last-good-listen.json"
+
+    @property
+    def restart_result_path(self) -> Path:
+        """最後の再起動の結果（新しい設定で起動できたか・前の設定に戻したか・その理由）。画面が health 経由で読む。"""
+        return self.runtime_dir / "restart.json"
+
+    def run_settings_dir(self, deck_id: str, run_id: str) -> Path:
+        """描いた回に渡した設定の控え（ブランドから作ったテーマの YAML など）。エンジンにはこのファイルを渡す。"""
+        return self.run_dir(deck_id, run_id) / "settings"
+
+    @property
     def trash_dir(self) -> Path:
         return self.root / ".trash"
 

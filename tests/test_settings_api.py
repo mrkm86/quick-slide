@@ -10,10 +10,11 @@ from __future__ import annotations
 import copy
 import io
 import json
+import re
 import unittest
 from unittest.mock import patch
 
-from helpers import start_server
+from helpers import REPO, start_server
 
 from PIL import Image
 
@@ -27,6 +28,13 @@ def png(size=(800, 140), kind="PNG"):
     Image.new("RGB", size, (30, 60, 90)).save(out, format=kind)
     return out.getvalue()
 
+
+
+# 人が決めた役割色（成功・注意・エラー・情報と灰色の段）。画面が送らないので、保存のたびに持ち越されること
+CUSTOM_ROLE_COLORS = {
+    "semantic": {"success": "#3b6b45", "warning": "#8a6d2f", "error": "#8b3a3a", "info": "#3d5a73"},
+    "gray": ["#111111", "#333333", "#555555", "#777777", "#999999", "#bbbbbb", "#dddddd", "#f5f5f5"],
+}
 
 class SettingsApiTests(unittest.TestCase):
     def setUp(self):
@@ -70,7 +78,7 @@ class SettingsApiTests(unittest.TestCase):
             self.assertIn(key, self.catalog, key)
         for key in ("brands", "styles"):
             self.assertEqual(len(self.catalog[key]), self.catalog["counts"][key])
-        self.assertEqual(self.catalog["counts"], {"brands": 1, "styles": 2})
+        self.assertEqual(self.catalog["counts"], {"brands": 1, "styles": 3})
         self.assertEqual(set(self.catalog["style_dials"]), {"typeface", "density", "visual_ratio"})
         self.assertIn("format", self.catalog["capabilities"])
 
@@ -83,8 +91,14 @@ class SettingsApiTests(unittest.TestCase):
         self.assertTrue(all("clean_area" not in c for c in control["corners"]))
         self.assertEqual(control["canvas"], [1920, 1080])
 
-    def test_layout_patterns_is_the_single_placeholder_until_engine_types(self):
-        self.assertEqual([p["value"] for p in self.catalog["layout_patterns"]], ["auto"])
+    def test_layout_patterns_are_auto_then_the_engine_types(self):
+        values = [p["value"] for p in self.catalog["layout_patterns"]]
+        self.assertEqual(values[0], "auto")
+        deck_format = (REPO / "skills/html-slide/references/deck-format.md").read_text(encoding="utf-8")
+        table = deck_format[deck_format.index("## 型の一覧"):deck_format.index("## 型ごとのキー")]
+        self.assertEqual(values[1:], re.findall(r"^\| `([a-z-]+)` \|", table, re.M), "エンジンの型の一覧と同じ並び")
+        self.assertEqual(len(values), 24)
+        self.assertTrue(all(p["label"] for p in self.catalog["layout_patterns"]))
         for s in self.catalog["styles"]:
             self.assertEqual(s["config"]["allowed_layouts"], ["auto"])
 
@@ -211,10 +225,14 @@ class SettingsApiTests(unittest.TestCase):
         return {"name": name, "config": c, "assets": [], "expected_revision_id": item["current_revision_id"]}
 
     def duplicate_preset(self):
-        """一覧の「複写」と同じ形（複写元の config をそのまま送る）。"""
+        """一覧の「複写」と同じ形（複写元の config をそのまま送る）。複写元は、字体と人が決めた役割色を持つブランド
+        （付属のブランドは P4 から算出だけの色なので、持ち越しを確かめるのに使えない）。"""
         preset = self.catalog["brands"][0]
-        return self.save({"name": "複写したブランド", "config": copy.deepcopy(preset["config"]),
-                          "assets": copy.deepcopy(preset["assets"])})["item"]
+        config = copy.deepcopy(preset["config"])
+        config["colors"].update(CUSTOM_ROLE_COLORS)
+        source = self.save({"name": "複写元", "config": config, "assets": copy.deepcopy(preset["assets"])})["item"]
+        return self.save({"name": "複写したブランド", "config": copy.deepcopy(source["config"]),
+                          "assets": copy.deepcopy(source["assets"])})["item"]
 
     def test_renaming_on_the_edit_screen_keeps_fonts_and_custom_role_colors(self):
         copied = self.duplicate_preset()

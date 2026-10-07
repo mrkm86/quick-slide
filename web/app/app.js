@@ -36,8 +36,10 @@
   var params = new URLSearchParams(location.search);
   var launchId = params.get("launch");
   var token = params.get("token");
-  if (token) {
+  var restartedId = params.get("restarted");   // 画面の「再起動」で開き直した（core.js の SS.restartServer）
+  if (token || restartedId) {
     params.delete("token");
+    params.delete("restarted");
     var rest = params.toString();
     history.replaceState(null, "", location.pathname + (rest ? "?" + rest : ""));
   }
@@ -47,6 +49,18 @@
   fetch("/api/health").then(function (r) { return r.json(); }).then(function (j) {
     var el = document.getElementById("server-state");
     el.textContent = j && j.ok ? "サーバ稼働中" : "サーバの応答はありますが、保存先に問題があります";
+    // 再起動の結果（前の設定に戻したなら、その理由を残る通知で）
+    var last = j && j.restart;
+    if (restartedId && last && last.restart_id === restartedId) {
+      if (last.fallback && last.message) { SS.toast(last.message, { kind: "error", sticky: true }); }
+      else { SS.toast("再起動しました。"); }
+    }
+    // 待ち受けの設定が動いているサーバと食い違う（画面で保存した・手で直した）→ どの画面からも「この機械」へ行ける
+    if (j && j.settings && j.settings.restart_required && location.pathname !== "/settings/server") {
+      var link = SS.h("a", { class: "restart-link", href: "/settings/server", "data-nav": true,
+        text: "設定を効かせるには再起動が必要です" });
+      el.parentNode.insertBefore(link, el.nextSibling);
+    }
   }).catch(function () { document.getElementById("server-state").textContent = "サーバに接続できません"; });
 
   // attach（launch トークンは 1 回で消費される。結果は通知で伝え、拒否されたときの文面はサーバの日本語をそのまま出す）

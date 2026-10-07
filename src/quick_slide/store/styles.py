@@ -1,14 +1,23 @@
 """スライドスタイル。自己完結 JSON、preset 編集拒否、複写だけで新規作成。
 
-P4 でこの設定をエンジンのスタイル（standard・visual・infographic・カスタム）・画風・一言へ写す。
-「使うパターン」（`allowed_layouts`）は P4 でエンジンの型の一覧（html-slide の catalog）に替える。
-それまでは `LAYOUT_PATTERNS` の 1 つ（おまかせ）だけを持つ。"""
+エンジンへの写し方（P4。描く回のたびに `render/look.py` が読む）:
+
+| キー | エンジン・台本係 |
+|---|---|
+| `engine_style` `{presentation, pitch}` | エンジンの `--style`（プレゼン: standard・visual／ピッチ: visual・standard・infographic） |
+| `image_look` | `--image-look`（photo・illustration・handdrawn。省けばエンジンのスタイルの既定） |
+| `style_note` | ピッチの `--style-note`（作風の一言）。プレゼンは台本係への書き方の注文に添える |
+| `emphasis_prompt`・`tone` | 台本係への書き方の方針 |
+| `allowed_layouts` | 台本係が使ってよい型（`["auto"]` はおまかせ＝全部。型の目録は `contenttypes.py`） |
+
+`engine_style` を書いていない古いスタイルは、モードの既定（プレゼン standard・ピッチ visual）。"""
 
 from __future__ import annotations
 
 import re
 from typing import Any
 
+from .. import contenttypes
 from ..enums import require
 from ..errors import NotFoundError, StateError, ValidationError
 from ..ids import is_uuid
@@ -27,13 +36,17 @@ STYLE_DIAL_OPTIONS = {
     "visual_ratio": VISUAL_RATIO_OPTIONS,
 }
 CANVAS_SIZES = {(1920, 1080), (3840, 2160)}
-# 「使うパターン」の目録（P1 の仮置き）。型を選ぶのは台本係で、ここは「任せる」の 1 つだけ。
-LAYOUT_PATTERNS: dict[str, dict[str, str]] = {
-    "auto": {"label": "おまかせ", "use": "ページの型は台本を書くときに選びます。"},
-}
+# 「使うパターン」の「おまかせ」（型の目録そのものはエンジンの文書から読む: contenttypes.engine_types）
+AUTO_PATTERN = {"value": contenttypes.AUTO, "label": "おまかせ（すべて）", "use": "ページの型は台本を書くときに選びます。"}
+# エンジンのスタイル（モードごと）と画風。値の正本はエンジン（engines.ENGINES・engines.IMAGE_LOOKS）
+ENGINE_STYLES = {"presentation": ("standard", "visual"), "pitch": ("visual", "standard", "infographic")}
+IMAGE_LOOK_CHOICES = ("photo", "illustration", "handdrawn")
+MAX_STYLE_NOTE_CHARS = 400
+# 画面から変えられるキー（保存の口が受ける）
+EDITABLE_KEYS = ("emphasis_prompt", "tone", "typeface", "density", "visual_ratio", "allowed_layouts", "style_recipe",
+                 "margins", "canvas", "engine_style", "image_look", "style_note")
 STYLE_KEYS = {
-    "schema_version", "id", "revision", "name", "origin", "emphasis_prompt",
-    "tone", "typeface", "density", "visual_ratio", "allowed_layouts", "style_recipe", "margins", "canvas",
+    "schema_version", "id", "revision", "name", "origin", *EDITABLE_KEYS,
 }
 _ENV_DEPENDENT_RE = re.compile(r"(^|[\s\"'(])(/Users/|/home/|~/|[A-Za-z]:\\\\|file://)")
 
@@ -86,9 +99,22 @@ def validate_style_config(config: dict[str, Any], *, expected_id: str, expected_
         raise ValidationError("style.allowed_layouts は非空の文字列配列")
     if len(set(layouts)) != len(layouts):
         raise ValidationError("style.allowed_layouts に重複があります")
-    unknown_layouts = sorted(set(layouts) - set(LAYOUT_PATTERNS))
-    if unknown_layouts:
-        raise ValidationError("style.allowed_layouts に製品目録に無いキーがあります: " + ", ".join(unknown_layouts))
+    bad = contenttypes.problems(layouts)
+    if bad:
+        raise ValidationError("style.allowed_layouts: " + bad[0])
+    if "engine_style" in config:
+        es = config["engine_style"]
+        if not isinstance(es, dict):
+            raise ValidationError("style.engine_style は {presentation, pitch} のオブジェクト")
+        reject_unknown_keys(es, set(ENGINE_STYLES), "style.engine_style")
+        for mode, value in es.items():
+            require(value, ENGINE_STYLES[mode], f"style.engine_style.{mode}")
+    if config.get("image_look") is not None:
+        require(config["image_look"], IMAGE_LOOK_CHOICES, "style.image_look")
+    if "style_note" in config:
+        require_str(config, "style_note", "style", allow_empty=True)
+        if len(config["style_note"]) > MAX_STYLE_NOTE_CHARS or "\n" in config["style_note"]:
+            raise ValidationError(f"style.style_note は {MAX_STYLE_NOTE_CHARS} 字以内の 1 行")
     # 余白と画面の大きさは省略できる（エンジンが決める）。書いてあるときだけ形を見る
     if "margins" in config:
         margins = config["margins"]
@@ -119,8 +145,7 @@ class StylesMixin(StoreBase):
                 raise StateError("このスタイルは編集できません")
             if not isinstance(name, str) or not name.strip():
                 raise ValidationError("名前を入力してください")
-            reject_unknown_keys(changes, {"emphasis_prompt", "tone", "typeface", "density", "visual_ratio",
-                                          "allowed_layouts", "style_recipe", "margins", "canvas"}, "changes")
+            reject_unknown_keys(changes, set(EDITABLE_KEYS), "changes")
             config = dict(row["current_revision"]["config"])
             config.update(changes)
             config.update(name=name, revision=row["current_revision"]["revision"] + 1)
@@ -132,8 +157,7 @@ class StylesMixin(StoreBase):
         if not name or not name.strip():
             raise ValidationError("styles.name は空にできない")
         overrides = overrides or {}
-        reject_unknown_keys(overrides, {"emphasis_prompt", "tone", "typeface", "density", "visual_ratio",
-                                        "allowed_layouts", "style_recipe", "margins", "canvas"}, "overrides")
+        reject_unknown_keys(overrides, set(EDITABLE_KEYS), "overrides")
         with self.transaction():
             origin = self._get("styles", origin_style_id)
             if origin["deleted_at"] is not None:

@@ -187,7 +187,10 @@ def answer_for(kind: str, prompt: str) -> tuple[str | None, str | None]:
            has_contract="# 台本の決まり" in prompt and "deck-format.md" in prompt,
            has_pitch_contract="image-slide/references/intake.md" in prompt,
            has_manuscript="<<<原稿ここから" in prompt, retry="# 前の台本は検査で止まりました" in prompt,
-           ng=[ln for ln in prompt.splitlines() if ln.startswith("- NG")], chars=len(prompt))
+           ng=[ln for ln in prompt.splitlines() if ln.startswith("- NG")], chars=len(prompt),
+           # 設定のスタイルから来た書き方の注文（P4）
+           style_lines=[ln for ln in prompt.splitlines()
+                        if ln.startswith(("- 使ってよい型", "- 書き方の方針", "- 文章の調子", "- 作風の一言", "- スタイル: "))])
     if leaked_keys():
         return None, "keys"
     if MODE == "auth":

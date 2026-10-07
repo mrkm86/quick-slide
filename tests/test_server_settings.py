@@ -90,8 +90,18 @@ class TheMachineDoorScreenTests(unittest.TestCase):
         self.assertEqual((r.status, r.json()["error"]["code"]), (400, "bad_bind_address"))
 
     def test_an_unknown_field_is_refused(self) -> None:
-        r = self.fx.post("/api/settings/server", {"host": "127.0.0.1", "port": 9999})
+        r = self.fx.post("/api/settings/server", {"host": "127.0.0.1", "tls": True})
         self.assertEqual(r.status, 400)
+
+    def test_the_port_can_be_written_and_a_bad_one_is_refused(self) -> None:
+        r = self.fx.post("/api/settings/server", {"host": "127.0.0.1", "host_names": [], "port": 9999})
+        self.assertEqual(r.status, 200, r.body)
+        self.assertEqual(self.written()["server"]["port"], 9999)
+        self.assertEqual(self.block()["port"], 9999)
+        for bad in (80, 70000, "9999", True):
+            r = self.fx.post("/api/settings/server", {"host": "127.0.0.1", "port": bad})
+            self.assertEqual((r.status, r.json()["error"]["code"]), (400, "bad_port"), bad)
+        self.assertEqual(self.written()["server"]["port"], 9999)
 
     # --- 壊さない ---
 

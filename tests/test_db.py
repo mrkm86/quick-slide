@@ -13,7 +13,12 @@ from quick_slide.db.connection import Transaction, connect
 from quick_slide.db.migrate import LATEST_VERSION, MIGRATIONS_DIR, migrate, status
 from quick_slide.enums import DECK_MODES, EVENT_KINDS
 from quick_slide.errors import StartupError, ValidationError
-from quick_slide.ids import PRESET_BRAND_ID, PRESET_STYLE_STANDARD_ID, PRESET_STYLE_VISUAL_ID
+from quick_slide.ids import (
+    PRESET_BRAND_ID,
+    PRESET_STYLE_INFOGRAPHIC_ID,
+    PRESET_STYLE_STANDARD_ID,
+    PRESET_STYLE_VISUAL_ID,
+)
 from quick_slide.paths import DataRoot
 from quick_slide.settings import Settings
 from quick_slide.store import Store
@@ -49,7 +54,8 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(second.preset_brand_revision_id(), brand_rev, "製品の内容が同じなら改訂を足さない")
         self.assertEqual(second.ensure_presets(), {"brand_created": False, "brand_updated": False,
                                                    "styles_created": [], "styles_updated": []})
-        self.assertEqual({s["id"] for s in second.list_styles()}, {PRESET_STYLE_STANDARD_ID, PRESET_STYLE_VISUAL_ID})
+        self.assertEqual({s["id"] for s in second.list_styles()},
+                         {PRESET_STYLE_STANDARD_ID, PRESET_STYLE_VISUAL_ID, PRESET_STYLE_INFOGRAPHIC_ID})
         self.assertEqual([b["id"] for b in second.list_brands()], [PRESET_BRAND_ID])
 
     def test_a_tampered_migration_is_refused(self) -> None:

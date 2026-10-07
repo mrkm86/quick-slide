@@ -35,25 +35,46 @@ class Engine:
     deck_extra: tuple[str, ...] = ()
     takes_style_note: bool = False
     needs_codex_auth: bool = False
+    takes_logo_white: bool = False
+    # 検査（check）もロゴ・透かしを受けるか（image-slide はロゴの有無で描く指示の帯が変わるので、検査にも渡す）
+    check_takes_brand: bool = False
     label: str = ""
 
     def entry_path(self, skills_dir: Path) -> Path:
         return skills_dir / self.skill / self.entry
 
     def style_args(self, args: dict[str, Any]) -> list[str]:
+        """スタイル・画風・一言・テーマ（ブランドの配色。P4 の回は `args.look.theme`）。"""
         out = ["--style", str(args.get("style") or self.default_style)]
         if args.get("image_look"):
             out += ["--image-look", str(args["image_look"])]
         if self.takes_style_note and args.get("style_note"):
             out += ["--style-note", str(args["style_note"])]
+        look = args.get("look") or {}
+        if look.get("theme"):
+            out += ["--theme", str(look["theme"])]
+        return out
+
+    def brand_args(self, args: dict[str, Any]) -> list[str]:
+        """ロゴ・ロゴの角・白いロゴ（ピッチ）・透かし（P4 の回は `args.look`）。フッタとページ番号は台本に入れる。"""
+        look = args.get("look") or {}
+        out: list[str] = []
+        if look.get("logo"):
+            out += ["--logo", str(look["logo"]), "--logo-position", str(look.get("logo_position") or "bottom-right")]
+            if self.takes_logo_white and look.get("logo_white"):
+                out += ["--logo-white", str(look["logo_white"])]
+        if look.get("watermark"):
+            out += ["--watermark", str(look["watermark"])]
         return out
 
     def check_command(self, python: str, skills_dir: Path, script: Path, args: dict[str, Any]) -> list[str]:
-        return [python, str(self.entry_path(skills_dir)), "check", "--script", str(script), *self.style_args(args)]
+        extra = self.brand_args(args) if self.check_takes_brand else []
+        return [python, str(self.entry_path(skills_dir)), "check", "--script", str(script), *self.style_args(args),
+                *extra]
 
     def deck_command(self, python: str, skills_dir: Path, script: Path, out: Path, args: dict[str, Any]) -> list[str]:
         return [python, str(self.entry_path(skills_dir)), "deck", "--script", str(script), "--out", str(out),
-                *self.style_args(args), "--format", FORMATS, *self.deck_extra]
+                *self.style_args(args), *self.brand_args(args), "--format", FORMATS, *self.deck_extra]
 
     def revise_command(self, python: str, skills_dir: Path, script: Path, out: Path, args: dict[str, Any], *,
                        page: int, note: str, remake: bool = False, slot: str | None = None,
@@ -66,7 +87,8 @@ class Engine:
         直す前の絵は、どちらもキャッシュの区画の `history/` に残る（戻すのは Quick Slide の版スタックがする）。
         """
         cmd = [python, str(self.entry_path(skills_dir)), "revise", "--script", str(script), "--out", str(out),
-               *self.style_args(args), "--format", FORMATS, *self.deck_extra, "--page", str(page), "--note", note]
+               *self.style_args(args), *self.brand_args(args), "--format", FORMATS, *self.deck_extra,
+               "--page", str(page), "--note", note]
         if slot and self.mode == "presentation":
             cmd += ["--slot", slot]
         if remake:
@@ -95,7 +117,8 @@ ENGINES: dict[str, Engine] = {
         mode="pitch", skill="image-slide", entry="scripts/image_slide.py",
         styles=("visual", "standard", "infographic"), default_style="visual",
         contract_docs=("html-slide/references/deck-format.md", "image-slide/references/intake.md"),
-        takes_style_note=True, needs_codex_auth=True, label="ピッチ（1 枚ずつ画像生成で描く）"),
+        takes_style_note=True, needs_codex_auth=True, takes_logo_white=True, check_takes_brand=True,
+        label="ピッチ（1 枚ずつ画像生成で描く）"),
 }
 
 

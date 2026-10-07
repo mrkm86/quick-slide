@@ -56,6 +56,8 @@ def _root(args: argparse.Namespace) -> DataRoot:
 def cmd_serve(args: argparse.Namespace) -> int:
     root = _root(args)
     _configure_logging(root, to_stderr=not args.quiet)
+    if args.after_pid is not None:
+        return _serve_after_restart(root, args)
     try:
         settings = Settings.load(root.settings_path)
         server = QuickSlideServer(root, settings=settings, host=args.host, port=args.port, static_root=args.static_root)
@@ -63,11 +65,45 @@ def cmd_serve(args: argparse.Namespace) -> int:
     except QuickSlideError as exc:
         _print_json({"ok": False, "code": exc.__class__.__name__, "message": str(exc)})
         return exc.exit_code
+    server.restartable = True   # 常駐の serve だけが画面の「再起動」を受ける
     _print_json({"ok": True, "serving": True, "url": server.url, "pid": os.getpid(), "instance_id": server.instance_id})
+    server.run_after_start()
+    return 0
+
+
+def _serve_after_restart(root: DataRoot, args: argparse.Namespace) -> int:
+    """画面の「再起動」が起こした後継。前のプロセスが終わるのを待ち、新しい設定で起動する（だめなら前の設定で）。"""
+    from . import restart as R
+
+    if not R.wait_for_exit(args.after_pid):
+        log.error("前のサーバ（pid %d）が終わらないので、再起動をやめます", args.after_pid)
+        R.write_result(root, {"restart_id": args.restart_id, "ok": False, "fallback": False, "url": None,
+                              "message": "前のサーバが止まらなかったので、再起動をやめました。"})
+        return 3
+    last = R.read_last_good(root)
+
+    def make(settings: Settings) -> QuickSlideServer:
+        # 待ち受けが前と同じなら、前のプロセスがポートを手放すまで少し待つ（違う待ち受けは 1 回で決める）
+        same = last is not None and {"host": settings.server.host, "port": settings.server.port,
+                                     "host_names": list(settings.server.host_names)} == last
+        deadline = time.monotonic() + (R.PORT_FREE_WAIT_SECONDS if same else 0)
+        while True:
+            server = QuickSlideServer(root, settings=settings, static_root=args.static_root)
+            try:
+                return server.start()
+            except QuickSlideError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.25)
+
     try:
-        server.run_after_start()
-    finally:
-        pass
+        server = R.start_after_restart(root, args.restart_id or "", make)
+    except SystemExit as exc:
+        return int(exc.code or 3)
+    server.restartable = True
+    _print_json({"ok": True, "serving": True, "url": server.url, "pid": os.getpid(), "instance_id": server.instance_id,
+                 "restart_id": args.restart_id})
+    server.run_after_start()
     return 0
 
 
@@ -276,6 +312,10 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--port", type=int, default=None, help="ポート（設定 server.port を上書き。0 は自動割当）")
         sp.add_argument("--static-root", default=None, type=Path, help=argparse.SUPPRESS)
         sp.add_argument("--quiet", action="store_true", help="stderr にログを出さない")
+        if name == "serve":
+            # 画面の「再起動」が後継を起こすときだけ使う（前のプロセスが終わるのを待ち、だめなら前の設定に戻す）
+            sp.add_argument("--after-pid", type=int, default=None, help=argparse.SUPPRESS)
+            sp.add_argument("--restart-id", default=None, help=argparse.SUPPRESS)
     sub.add_parser("stop")
     sub.add_parser("status")
     launch = sub.add_parser("launch", help="ブラウザの起こし（3段経路）")

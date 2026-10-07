@@ -150,6 +150,19 @@ class DecksMixin(StoreBase):
             self.append_event("deck_updated", {"deck_id": deck_id, "fields": ["axes"]}, deck_id=deck_id)
             return self.deck(deck_id)
 
+    def follow_deck_settings(self, deck_id: str, *, brand_revision_id: str, style_revision_id: str) -> bool:
+        """描く回を始めるとき、デッキが指すブランド・スタイルの改訂をいまの改訂へ進める（P4。設定を変えたら次に描く回から
+        効く）。`lock_version` は上げない（利用者の編集と重ならない・画面の「別の画面で変わった」を出さない）。
+        変えたら True。"""
+        with self.transaction():
+            d = self._get("decks", deck_id)
+            if (d["brand_revision_id"], d["style_revision_id"]) == (brand_revision_id, style_revision_id):
+                return False
+            self._exec("UPDATE decks SET brand_revision_id=?,style_revision_id=? WHERE id=?",
+                       (brand_revision_id, style_revision_id, deck_id))
+            self.append_event("deck_updated", {"deck_id": deck_id, "fields": ["axes"], "by": "run"}, deck_id=deck_id)
+            return True
+
     def set_pinned(self, deck_id: str, pinned: bool, *, expected_lock_version: int | None = None) -> None:
         with self.transaction():
             self._require_live_deck(deck_id)

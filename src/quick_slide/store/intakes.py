@@ -3,7 +3,12 @@
 payload の形は v1 と同じ（`schema_version`・`origin{kind,runtime,conversation_key}`・`manuscript`・`title_hint`・
 `deck_attributes`・`attachments`・`append_to_deck_id`・`force_new_deck`）。v2 で足したのは
 `deck_attributes` の `mode`（presentation / pitch）・`style`（エンジンのスタイル）・`image_look`・`images`、P3 で
-`outline_fixed`（原稿は会話で合意した構成。台本係はページ割りを守る）。
+`outline_fixed`（原稿は会話で合意した構成。台本係はページ割りを守る）、P4 で `style_id`（設定のスタイル）。
+
+ブランド・スタイルの決め方（P4）: `brand_id` → 設定の既定 → 利用者のブランド（最新）→ 既定。`style_id` → 会話が言った
+`style` にあたる付属スタイル → モードの既定（プレゼン standard・ピッチ visual）。会話が `style`・`image_look`・
+`style_note` を言ったら、それは描く回の `overrides` に入り、設定のスタイルより勝つ（`style` は `style_id` と一緒に
+言ったときだけ。`style` だけなら、それにあたる付属スタイルを選ぶので overrides に入れない）。
 
 秘匿の契約（v1 と同じ）:
 - `origin.conversation_key` の生値はこのモジュールのローカル変数にだけ存在し、HMAC 化したら捨てる
@@ -27,7 +32,7 @@ from typing import Any
 from ..engines import ENGINES, IMAGE_LOOKS
 from ..enums import ORIGIN_KINDS, ORIGIN_RUNTIMES, require
 from ..errors import QuickSlideError, StateError, ValidationError
-from ..ids import PRESET_BRAND_ID, PRESET_STYLE_STANDARD_ID, PRESET_STYLE_VISUAL_ID
+from ..ids import PRESET_BRAND_ID
 from ..security.hmac_key import conversation_hash
 from ..security.secret_scan import find_secret_like
 from .base import StoreBase, assert_no_forbidden_keys, dump_json, load_json, reject_unknown_keys
@@ -39,8 +44,8 @@ PAYLOAD_KEYS = {"schema_version", "origin", "title_hint", "manuscript", "transcr
 ORIGIN_KEYS = {"kind", "runtime", "conversation_key"}
 DECK_ATTRIBUTE_KEYS = {"purpose", "audience", "style_note", "page_count", "brand_id", "mode", "style", "image_look",
                        "images", "outline_fixed", "style_id", "format_id", "format_values", "format_options"}
-# 形は v1 のまま残し、v2 ではまだ受けない項目（値が入っていたら断る）
-NOT_READY_ATTRIBUTES = ("style_id", "format_id", "format_values", "format_options")
+# 形は v1 のまま残し、v2 ではまだ受けない項目（値が入っていたら断る）。書式はブランドの中に持つ（P4）
+NOT_READY_ATTRIBUTES = ("format_id", "format_values", "format_options")
 MAX_PAGE_COUNT = 40
 RESEND_WINDOW_SECONDS = 10 * 60
 MAX_TEXT_ATTRIBUTE_CHARS = 2000
@@ -82,8 +87,7 @@ class IntakesMixin(StoreBase):
             deck = self.create_deck(
                 title, mode=attrs["mode"],
                 brand_revision_id=self._intake_brand_revision(attrs.get("brand_id")),
-                style_revision_id=self.preset_style_revision_id(
-                    PRESET_STYLE_VISUAL_ID if attrs["style"] in ("visual", "infographic") else PRESET_STYLE_STANDARD_ID),
+                style_revision_id=self._intake_style_revision(attrs),
                 purpose=attrs.get("purpose") or "", audience=attrs.get("audience") or "",
             )
             deck_id = deck["id"]
@@ -138,12 +142,15 @@ class IntakesMixin(StoreBase):
     @staticmethod
     def run_args_from_attributes(attrs: dict[str, Any], *, origin_runtime: str) -> dict[str, Any]:
         """描いた回に残す「何をどう頼まれたか」（台本係とエンジンに渡す引数の元）。原稿は入れない。"""
+        overrides = {k: attrs[k] for k in ("image_look", "style_note") if attrs.get(k)}
+        if attrs.get("style_id") and attrs.get("style_said"):
+            overrides["style"] = attrs["style"]
         return {
             "mode": attrs["mode"], "style": attrs["style"], "image_look": attrs.get("image_look"),
             "images": attrs["images"], "page_count": attrs.get("page_count"),
             "purpose": attrs.get("purpose") or "", "audience": attrs.get("audience") or "",
             "style_note": attrs.get("style_note") or "", "origin_runtime": origin_runtime,
-            "outline_fixed": bool(attrs.get("outline_fixed")),
+            "outline_fixed": bool(attrs.get("outline_fixed")), "overrides": overrides,
         }
 
     # --- 検査 ---
@@ -223,6 +230,7 @@ class IntakesMixin(StoreBase):
         if mode not in ENGINES:
             raise ValidationError("deck_attributes.mode は presentation（編集できて動く PPTX）か pitch（1枚ずつ絵で描く）")
         engine = ENGINES[mode]
+        said = bool(out.get("style"))
         style = out.get("style") or engine.default_style
         if style not in engine.styles:
             raise ValidationError(f"deck_attributes.style はこのモードでは {' / '.join(engine.styles)} のいずれか")
@@ -251,8 +259,25 @@ class IntakesMixin(StoreBase):
         brand_id = out.get("brand_id")
         if brand_id is not None and not isinstance(brand_id, str):
             raise ValidationError("deck_attributes.brand_id は文字列")
-        out.update(mode=mode, style=style, image_look=look, images=images, outline_fixed=outline_fixed)
+        style_id = out.get("style_id")
+        if style_id in ("", "auto"):
+            style_id = None
+        if style_id is not None and not isinstance(style_id, str):
+            raise ValidationError("deck_attributes.style_id は文字列")
+        out.update(mode=mode, style=style, image_look=look, images=images, outline_fixed=outline_fixed,
+                   style_id=style_id, style_said=said)
         return out
+
+    def _intake_style_revision(self, attrs: dict[str, Any]) -> str:
+        """`style_id` → 会話が言った `style` にあたる付属スタイル → モードの既定のスタイル（付属）。"""
+        from .presets import preset_style_for
+
+        if attrs.get("style_id"):
+            row = self._one("SELECT current_revision_id FROM styles WHERE id=? AND deleted_at IS NULL", (attrs["style_id"],))
+            if row is None:
+                raise ValidationError("deck_attributes.style_id のスタイルが見つかりません")
+            return row["current_revision_id"]
+        return self.preset_style_revision_id(preset_style_for(attrs["mode"], attrs["style"]))
 
     def _intake_brand_revision(self, brand_id: str | None) -> str:
         """明示の brand_id → 設定の既定 → 利用者のブランド（最新）→ 既定（無彩色）。P4 で描く回に効かせる。"""

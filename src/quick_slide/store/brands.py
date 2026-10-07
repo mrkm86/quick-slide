@@ -1,7 +1,11 @@
 """ブランドキット。改訂は不変。preset は製品更新以外で改訂・削除できない。
 
 logo.placement の形と角の語彙は logo.py が正本。ここには持たない。
-P4 でこの設定をエンジンのテーマ（色）・`--logo`・`--logo-position`・台本の `footer` へ写す。"""
+描く回のたびに、この設定をエンジンのテーマ（色。`palette.engine_theme`）・`--logo`・`--logo-white`・`--logo-position`・
+台本の `footer`・`page_numbers`・`--watermark` へ写す（`render/look.py`）。
+
+書式（ページ番号・透かし）はブランドの中の `format` に持つ（P4。フッタの文字はもともとブランドの `footer`）。
+書式だけの表と改訂は作らない（ブランドの改訂がそのまま「どの書式で描いたか」の控えになる）。"""
 
 from __future__ import annotations
 
@@ -20,6 +24,9 @@ from .base import (
     require_str,
 )
 
+MAX_WATERMARK_CHARS = 60
+MAX_FOOTER_CHARS = 120
+
 VARIANT_TO_ROLE = {
     "normal": "logo_normal",
     "white": "logo_white",
@@ -32,7 +39,7 @@ def validate_brand_config(config: dict[str, Any], assets: list[dict[str, Any]]) 
     """設定 JSON と改訂内 asset の整合を検証する。"""
     if not isinstance(config, dict):
         raise ValidationError("brand config はオブジェクト")
-    reject_unknown_keys(config, {"schema_version", "colors", "fonts", "logo", "footer"}, "brand")
+    reject_unknown_keys(config, {"schema_version", "colors", "fonts", "logo", "footer", "format"}, "brand")
     if config.get("schema_version") != 1:
         raise ValidationError("brand.schema_version は 1")
 
@@ -111,6 +118,20 @@ def validate_brand_config(config: dict[str, Any], assets: list[dict[str, Any]]) 
     if isinstance(footer.get("style"), dict) and footer["style"].get("position") is not None:
         require(footer["style"]["position"], ("footer_left", "footer_center", "footer_right"), "brand.footer.style.position")
 
+    if "format" in config:
+        fmt = config["format"]
+        if not isinstance(fmt, dict):
+            raise ValidationError("brand.format はオブジェクト")
+        reject_unknown_keys(fmt, {"page_numbers", "watermark"}, "brand.format")
+        if "page_numbers" in fmt and not isinstance(fmt["page_numbers"], bool):
+            raise ValidationError("brand.format.page_numbers は真偽値")
+        if "watermark" in fmt:
+            wm = require_str(fmt, "watermark", "brand.format", allow_empty=True)
+            if len(wm) > MAX_WATERMARK_CHARS or "\n" in wm:
+                raise ValidationError(f"brand.format.watermark は {MAX_WATERMARK_CHARS} 字以内の 1 行")
+    if len(config["footer"]["text"]) > MAX_FOOTER_CHARS or "\n" in config["footer"]["text"]:
+        raise ValidationError(f"brand.footer.text は {MAX_FOOTER_CHARS} 字以内の 1 行")
+
     # asset 側の整合
     roles = [a["role"] for a in assets]
     for a in assets:
@@ -120,6 +141,25 @@ def validate_brand_config(config: dict[str, Any], assets: list[dict[str, Any]]) 
             raise ValidationError(f"brand_assets: {r} は改訂内で最大 1 個")
     if variant != "none" and VARIANT_TO_ROLE[variant] not in roles:
         raise ValidationError("選択したロゴ variant に対応する role の asset が登録されていません（自動で別ロゴに置換しない）")
+
+
+def merge_brand_assets(previous: list[dict[str, Any]], submitted: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """改訂を足すときの画像。**送られた画像が勝ち、送られなかった役割（ロゴ以外）は前の改訂から持ち越す。**
+
+    編集画面が扱うのはロゴ（`LOGO_ROLES`）だけ。ロゴの役割は送られたものがすべて（送らない＝外した）。
+    ロゴでない役割（`optional`・`source`）は画面が送らないので、前の改訂のものを持ち越す（P1 のレビューの指摘。
+    前は画面がロゴだけを送り、ほかの役割の画像が保存のたびに消えていた）。
+    """
+    if not isinstance(submitted, list):
+        return submitted
+    sent_roles = {a.get("role") for a in submitted if isinstance(a, dict)}
+    out = [dict(a) for a in submitted]
+    for a in previous or []:
+        role = a.get("role")
+        if role in LOGO_ROLES or role in sent_roles:
+            continue
+        out.append({"asset_id": a["asset_id"], "role": role, "label": a.get("label", "")})
+    return out
 
 
 class BrandsMixin(StoreBase):

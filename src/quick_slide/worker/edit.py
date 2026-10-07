@@ -25,6 +25,7 @@ from typing import Any
 
 from ..childenv import child_env
 from ..engines import engine_for
+from ..render import look as LOOK
 from ..render import workspace as W
 from ..render.runner import check_prerequisites
 from ..scriptdoc import (
@@ -43,7 +44,15 @@ from ..scriptdoc import (
 from ..writer.backends import WriterFailed, ask, choose_backend
 from ..writer.patch import apply_revision, insert_after, parse_insert, parse_revision
 from ..writer.prompt import ContractMissing, build_insert_prompt, build_revision_prompt
-from .pipeline import Context, RenderPlan, _writer_progress, check_candidate, import_recorded, render_and_import
+from .pipeline import (
+    Context,
+    RenderPlan,
+    _writer_progress,
+    check_candidate,
+    import_recorded,
+    render_and_import,
+    settle_look,
+)
 
 log = logging.getLogger("quick_slide.worker")
 
@@ -74,10 +83,13 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
     run = ctx.call(store.run, job["run_id"])
     deck_id, run_id = run["deck_id"], run["id"]
     engine = engine_for(run["mode"])
-    args = run["args"]
     req = job.get("request") or {}
     op = req.get("op")
     resume = job.get("resume_from")
+    if resume is None:
+        # 設定（ブランド・スタイル・書式）はこの回から効く。全ページを 1 枚に描くかは前の回のまま（P4）
+        settle_look(ctx, run, previous_style=run["args"].get("style"))
+    args = run["args"]
 
     def fail(message: str, kind: str, rc: int | None = None) -> str:
         ctx.call(store.fail_run, run_id, message=message, failure_kind=kind, rc=rc)
@@ -276,7 +288,10 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
                              intake_id=None, run_id=run_id, round_no=round_no,
                              instruction=(req.get("text") or None))
         ctx.call(store.set_run_state, run_id, "checking", progress=_writer_progress(round_no, rounds, backend, "checking"))
-        ids = page_id_problems(slides_of(result.data))
+        before = {str(x.get("id")): dumps(x) for x in slides_of(data)}
+        changed = {str(x.get("id")) for x in slides_of(result.data) if before.get(str(x.get("id"))) != dumps(x)}
+        ids = page_id_problems(slides_of(result.data)) + LOOK.type_problems(
+            slides_of(result.data), run["args"], only=changed)
         if ids:
             ctx.call(store.set_script_check, candidate["id"], 2, ids)
             previous, problems = answer, ids
@@ -289,6 +304,8 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
         if checked.rc == 0:
             result.candidate = candidate
             return result
+        if checked.rc == 2 and LOOK.theme_refused(checked.problems):
+            return fail(LOOK.BRAND_COLOR_MESSAGE, "brand", checked.rc)
         if checked.rc == 2:
             previous = answer
             problems = _engine_problems(checked.problems or ["NG: 検査で止まった（理由の行が取れなかった）"], result.data)

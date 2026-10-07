@@ -5,7 +5,9 @@
   "use strict";
   var SS = window.SS, h = SS.h;
   var clone = function (value) { return JSON.parse(JSON.stringify(value)); };
-  var styleKeys = ["emphasis_prompt", "tone", "typeface", "density", "visual_ratio", "allowed_layouts", "style_recipe", "margins", "canvas"];
+  var styleKeys = ["emphasis_prompt", "tone", "typeface", "density", "visual_ratio", "allowed_layouts", "style_recipe", "margins", "canvas",
+    "engine_style", "image_look", "style_note"];
+  var LOGO_ROLE = { normal: "logo_normal", white: "logo_white", transparent: "logo_transparent", symbol: "logo_symbol" };
   var nextInput = 0;
   SS.settingsLeave = null;
 
@@ -91,14 +93,28 @@
 
   function sample(kind, label) { return h("div", { class: "sample sample--" + kind, "aria-label": label }); }
 
-  // フッタ文字（brand の footer.text）は設定されていれば全ページの下部中央に入る。見本も 4 枚すべてに同じように置く。
+  // 下の部品（フッタ・ページ番号・透かし）。位置は preview 応答の chrome（エンジンの既定の寸法の写し）を canvas で割るだけ。
+  // フッタは中身のページの左下（ロゴが左下ならロゴの右）、ページ番号は中央下、透かしは中央下の端。
   function footerLine(p) {
-    if (!p.copyright || !p.copyright.text) { return null; }
-    return text("p", p.copyright.text, "sample__footer");
+    if (!p.canvas || !p.chrome) { return null; }
+    var parts = [];
+    if (p.chrome.footer && p.copyright && p.copyright.text) {
+      var foot = text("p", p.copyright.text, "sample__footer sample__chrome");
+      place(foot, rectRatio(p.chrome.footer, p.canvas)); parts.push(foot);
+    }
+    if (p.chrome.page_number) {
+      var no = text("p", "3", "sample__pageno sample__chrome");
+      place(no, rectRatio(p.chrome.page_number, p.canvas)); parts.push(no);
+    }
+    if (p.chrome.watermark && p.format && p.format.watermark) {
+      var wm = text("p", p.format.watermark, "sample__watermark sample__chrome");
+      place(wm, rectRatio(p.chrome.watermark, p.canvas)); parts.push(wm);
+    }
+    return parts.length ? parts : null;
   }
 
-  // ロゴは全ページの同じ場所（予約枠）に固定で焼き込まれる。フッタ文字と同じく、見本も 4 枚すべてに
-  // 同じ座標で重ねる。座標は preview 応答の clean_area / logo_xywh を canvas で割った値だけを使う。
+  // ロゴは選んだ角に入る（ふさがっていれば描くときにエンジンが別の角へ逃がす。見本は選んだ角の姿）。
+  // 座標は preview 応答の logo_xywh を canvas で割った値だけを使う（v2 では予約枠 clean_area はいつも null）。
   function logoOverlay(p, withFrame) {
     if (!p.canvas) { return null; }
     var parts = [];
@@ -188,7 +204,7 @@
   }
 
   var SAMPLE_SLIDES = [
-    { caption: "この見本は、主役色を大きな面で使ったときの印象と、ロゴの実際の位置・予約枠を確かめるためのものです。", build: coverSample },
+    { caption: "この見本は、主役色を大きな面で使ったときの印象と、ロゴ・フッタ・ページ番号・透かしの位置を確かめるためのものです。", build: coverSample },
     { caption: "この見本は、見出しと本文と箇条書きの読みやすさ、区切り線の濃さを確かめるためのものです。", build: bulletsSample },
     { caption: "この見本は、図表の系列色の見分けやすさと、強調色の目立ち方を確かめるためのものです。", build: chartSample },
     { caption: "この見本は、成功・注意・エラー・情報が状態として伝わるかを確かめるためのものです。状態の色は飾りには使いません。", build: statusSample }
@@ -241,25 +257,31 @@
   }
 
   // ---- ロゴ ----
-  function logoSlot(data, readonly, changed, fail) {
-    var asset = data.assets.filter(function (item) { return item.role === "logo_transparent"; })[0] || null;
-    var enabled = h("input", { type: "checkbox", id: "transparent-logo-" + (++nextInput) }); enabled.checked = !!asset;
-    var file = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp", disabled: readonly || !enabled.checked });
-    var info = text("p", asset ? "登録画像" : "ロゴなし", "small"), img = h("img", { class: "logo-original", alt: "背景透過ロゴのプレビュー", hidden: !asset });
+  // ロゴの画像 1 枚（役割 role）。PNG か JPEG（描くエンジンが受ける形）。画像は加工しない。
+  // 送るのは data.assets 全部（画面が扱わない役割の画像も消さない。P1 のレビューの指摘）
+  function logoSlot(data, opts, readonly, changed, fail) {
+    var role = opts.role;
+    var asset = data.assets.filter(function (item) { return item.role === role; })[0] || null;
+    var enabled = h("input", { type: "checkbox", id: "logo-use-" + (++nextInput) }); enabled.checked = opts.initiallyOn !== undefined ? opts.initiallyOn && !!asset : !!asset;
+    var file = h("input", { type: "file", accept: "image/png,image/jpeg", disabled: readonly || !enabled.checked, "aria-label": opts.label + "の画像" });
+    var info = text("p", asset ? "登録画像" : "なし", "small"), img = h("img", { class: "logo-original", alt: opts.label + "のプレビュー", hidden: !asset });
     if (asset) { img.src = "/api/assets/" + asset.asset_id + "/file"; }
     var busy = false;
-    function remove() { data.assets = data.assets.filter(function (item) { return item.role !== "logo_transparent"; }); img.hidden = true; img.removeAttribute("src"); info.textContent = "ロゴなし"; changed(); }
-    enabled.addEventListener("change", function () { file.disabled = readonly || !enabled.checked; if (!enabled.checked) { remove(); } else { changed(); } });
+    function remove() { data.assets = data.assets.filter(function (item) { return item.role !== role; }); img.hidden = true; img.removeAttribute("src"); info.textContent = "なし"; changed(); }
+    enabled.addEventListener("change", function () { file.disabled = readonly || !enabled.checked; if (!enabled.checked && opts.removeWhenOff) { remove(); } else { changed(); } });
     file.addEventListener("change", function () {
       var upload = file.files[0]; if (!upload || busy) { return; }
       if (upload.size > 10 * 1024 * 1024) { fail(new SS.ApiError("10 MiB以下の画像を選んでください。")); return; }
+      if (upload.type && upload.type !== "image/png" && upload.type !== "image/jpeg") { fail(new SS.ApiError("ロゴは PNG か JPEG を選んでください。")); return; }
       busy = true; info.textContent = "画像を確認しています…";
       SS.uploadImage(upload).then(function (result) {
-        data.assets = data.assets.filter(function (item) { return item.role !== "logo_transparent"; }); data.assets.push({ asset_id: result.asset_id, role: "logo_transparent", label: "背景透過ロゴ" });
-        img.src = "/api/assets/" + result.asset_id + "/file"; img.hidden = false; info.textContent = result.width + "×" + result.height + " px のロゴを登録しました。"; changed();
+        data.assets = data.assets.filter(function (item) { return item.role !== role; }); data.assets.push({ asset_id: result.asset_id, role: role, label: opts.label });
+        img.src = "/api/assets/" + result.asset_id + "/file"; img.hidden = false; info.textContent = result.width + "×" + result.height + " px の画像を登録しました。"; changed();
       }).catch(fail).finally(function () { busy = false; });
     });
-    return { enabled: enabled, node: h("section", { class: "logo-slot" }, h("label", { for: enabled.id }, enabled, " 背景透過ロゴを使う"), text("p", "PNG・JPEG・WebP、10 MiB以下。ロゴは1個だけ登録できます。", "small"), file, img, info, button("ロゴを取り除く", function () { enabled.checked = false; file.disabled = true; remove(); }, "btn--small")) };
+    return { enabled: enabled, has: function () { return data.assets.some(function (item) { return item.role === role; }); },
+      node: h("section", { class: "logo-slot" }, h("label", { for: enabled.id }, enabled, " " + opts.checkLabel), text("p", opts.help, "small"), file, img, info,
+        button("画像を取り除く", function () { enabled.checked = false; file.disabled = true; remove(); }, "btn--small")) };
   }
 
   // 四隅は 2x2 のボタンで選ぶ。並びと表示名、そして隅ごとの予約枠はすべてサーバのカタログの値を使い、
@@ -326,16 +348,34 @@
     var primary = colorField("基本色", colors.primary, changed), accent = colorField("強調色", colors.accent, changed), info = colorField("情報色（任意）", colors.info || semantic.info || "", changed, true);
     colorGrid.appendChild(primary.node); colorGrid.appendChild(accent.node); colorGrid.appendChild(info.node);
     form.appendChild(h("h2", { text: "色" })); form.appendChild(colorGrid);
-    var logo = logoSlot(data, readonly, changed, fail); form.appendChild(h("h2", { text: "ロゴ" })); form.appendChild(logo.node);
+    // 使うロゴの役割: いまの variant のもの（無ければ背景透過）。白いロゴはピッチで、ロゴが沈む場所に使う
+    var variant = (data.config.logo || {}).variant || "none";
+    var mainVariant = variant !== "none" && variant !== "white" ? variant : "transparent";
+    var logo = logoSlot(data, { role: LOGO_ROLE[mainVariant], label: "ロゴ", checkLabel: "ロゴを使う", initiallyOn: variant !== "none",
+      help: "PNG・JPEG、10 MiB以下。画像は加工しません（色も縦横比もそのまま）。" }, readonly, changed, fail);
+    var whiteLogo = logoSlot(data, { role: "logo_white", label: "白いロゴ", checkLabel: "白いロゴも登録する（任意）", removeWhenOff: true,
+      help: "ピッチの資料で、写真や絵の上でロゴが沈む場所に使います。ロゴと同じ縦横比の公式の白版だけを登録してください。" }, readonly, changed, fail);
+    form.appendChild(h("h2", { text: "ロゴ" })); form.appendChild(logo.node); form.appendChild(whiteLogo.node);
     var control = catalog.logo_control, currentPosition = Object.assign({}, control.default, (data.config.logo || {}).placement || {});
     var corner = cornerPicker(control, currentPosition[control.key], changed);
     form.appendChild(text("p", "ロゴの位置", "setting-field")); form.appendChild(corner.node);
-    form.appendChild(text("p", "選んだ隅の枠に、全ページ同じ位置でロゴが入ります。", "small"));
+    form.appendChild(text("p", "選んだ角にロゴが入ります。写真や文字で角がふさがったページは、描くときに別の角（右下 ⇄ 左下・右上 → 右下）へ逃がし、どこもふさがっていれば置きません。", "small"));
     form.appendChild(button("既定に戻す", function () { currentPosition = clone(control.default); corner.set(currentPosition[control.key]); changed(); }, "btn--small"));
     form.appendChild(logoWarnings);
-    var advanced = h("details", {}, text("summary", "拡張設定 — フッタ文字・色"), text("p", "通常は空欄のままで、基本色から算出します。指定した色だけを上書きします。", "small")), advancedGrid = h("div", { class: "setting-grid" }); form.appendChild(advanced);
-    var footer = field("フッタ文字（全ページに入ります）", (data.config.footer || {}).text || "", { maxlength: 500 }); advanced.appendChild(footer.node); footer.el.addEventListener("input", changed);
-    advanced.appendChild(text("p", "全ページの下部中央に入ります。空にすれば何も入りません。", "small"));
+    // 書式（フッタ・ページ番号・透かし）はブランドの中に持つ（P4。「書式を登録」は押せないまま）
+    var fmt = data.config.format || {}, limits = catalog.limits || {};
+    var footer = field("フッタの文字", (data.config.footer || {}).text || "", { maxlength: limits.footer || 120, placeholder: "例: 社外秘・会社名・資料名" });
+    footer.el.addEventListener("input", changed);
+    var pageNumbers = h("input", { type: "checkbox", id: "brand-page-numbers-" + (++nextInput) }); pageNumbers.checked = !!fmt.page_numbers;
+    var watermark = field("透かしの文字", fmt.watermark || "", { maxlength: limits.watermark || 60, placeholder: "例: 社外秘・配布禁止" });
+    watermark.el.addEventListener("input", changed);
+    form.appendChild(h("h2", { text: "書式", class: "brand-format-title" }));
+    form.appendChild(h("section", { class: "brand-format" }, footer.node,
+      text("p", "中身のページの左下に毎ページ入ります（表紙・章扉・全面の写真には入りません）。空にすれば入りません。", "small"),
+      h("label", { class: "setting-field setting-check", for: pageNumbers.id }, pageNumbers, " ページ番号を中央下に出す"),
+      watermark.node,
+      text("p", "全ページの中央下の端に薄いグレーで入ります。空にすれば入りません。", "small")));
+    var advanced = h("details", {}, text("summary", "拡張設定 — 色"), text("p", "通常は空欄のままで、基本色から算出します。指定した色だけを上書きします。", "small")), advancedGrid = h("div", { class: "setting-grid" }); form.appendChild(advanced);
     advanced.appendChild(advancedGrid);
     var overrideFields = {}, initialOverrideCheck = true;
     [["primary_light", "主役色（淡）"], ["primary_dark", "主役色（濃）"], ["border", "区切り線"], ["surface", "面の色"], ["base", "地の色"]].forEach(function (definition) { overrideFields[definition[0]] = colorField(definition[1], colors[definition[0]] || "", changed, true, false); advancedGrid.appendChild(overrideFields[definition[0]].node); });
@@ -347,15 +387,18 @@
       var primaryValue = primary.value(), accentValue = accent.value(); if (!primaryValue || !accentValue) { throw new SS.ApiError("基本色と強調色は #RRGGBB の6桁で入力してください。", "color_required"); }
       // 範囲から降ろした設定（src/quick_slide/scope.py）はこの画面で扱わない。**キーごと送らない。**
       // 保存済みの値はサーバが次の改訂へそのまま持ち越すので、保存し直しても消えない。
-      var c = { schema_version: 1, colors: { primary: primaryValue, accent: accentValue }, logo: { variant: "none", placement: clone(currentPosition) }, footer: { text: footer.el.value.trim(), style: { position: "footer_center" } } };
+      var c = { schema_version: 1, colors: { primary: primaryValue, accent: accentValue }, logo: { variant: "none", placement: clone(currentPosition) },
+        footer: { text: footer.el.value.trim(), style: { position: "footer_left" } },
+        format: { page_numbers: !!pageNumbers.checked, watermark: watermark.el.value.trim() } };
       c.logo.placement[control.key] = corner.value();
       if (info.enabled.checked) { var infoValue = info.value(); if (!infoValue) { throw new SS.ApiError("情報色は #RRGGBB の6桁で入力してください。", "info_invalid"); } c.colors.info = infoValue; }
       Object.keys(overrideFields).forEach(function (key) { if (overrideFields[key].enabled.checked) { var value = overrideFields[key].value(); if (!value) { throw new SS.ApiError("詳しく指定する色は #RRGGBB の6桁で入力してください。", "override_invalid"); } c.colors[key] = value; } });
-      if (logo.enabled.checked) { c.logo.variant = "transparent"; }
+      if (logo.enabled.checked) { c.logo.variant = mainVariant; }
       return c;
     }
     // 保存で送る形。名前と config（schema_version を含む）を 1 回で送り、改訂を 1 つだけ作る。
-    function requestBody() { var c = config(), roles = []; if (c.logo.variant === "transparent") { roles.push("logo_transparent"); } return { name: name.value.trim(), config: c, assets: clone(data.assets.filter(function (asset) { return roles.indexOf(asset.role) !== -1; })) }; }
+    // 画像は data.assets を全部送る（使っていない役割の画像も消さない）。サーバもロゴ以外の役割は持ち越す
+    function requestBody() { var c = config(); return { name: name.value.trim(), config: c, assets: clone(data.assets) }; }
     function preview() {
       var body; try { body = requestBody(); } catch (error) { fail(error); return Promise.resolve(); }
       var own = serial;
@@ -386,16 +429,17 @@
       if (verifiedSerial !== serial) { return; }
       var body; try { body = requestBody(); } catch (error) { fail(error); return; }
       if (!body.name) { fail(new SS.ApiError("名前を入力してください。", "name_required")); return; }
-      if (body.config.logo.variant === "transparent" && !body.assets.length) { fail(new SS.ApiError("背景透過ロゴの画像を選んでください。使わない場合はチェックを外してください。", "logo_required")); return; }
+      if (body.config.logo.variant !== "none" && !logo.has()) { fail(new SS.ApiError("ロゴの画像を選んでください。使わない場合はチェックを外してください。", "logo_required")); return; }
       try {
         var result = await SS.api("/api/settings/brands/" + item.id, { method: "POST", body: Object.assign(body, { expected_revision_id: revisionId }) });
         if (result.verified !== true) { throw new SS.ApiError("保存結果を確認できませんでした。一覧を読み直してください。", "save_unverified"); }
         revisionId = result.item.current_revision_id;
         data.name = result.item.name; name.value = result.item.name;
         dirty = false; SS.settingsLeave = null; save.disabled = true;
+        data.assets = clone(result.item.assets || data.assets);
         saveState.textContent = "保存済み";
         setTimeout(function () { saveState.textContent = ""; }, 1200);
-        SS.toast("「" + result.item.name + "」を保存しました。");
+        SS.toast("「" + result.item.name + "」を保存しました。このブランドのスライドを次に描くときから効きます。");
         SS.applyBrandTheme(document.documentElement, result.item.config);
       } catch (error) { fail(error); }
     }
@@ -532,45 +576,51 @@
     var density = select("密度", data.config.density || "", dialOptions("density"));
     var visualRatio = select("絵の量", data.config.visual_ratio || "", dialOptions("visual_ratio"));
     var recipe = field("描き味の補足（任意）", data.config.style_recipe || "", { placeholder: "例: 紙に描いたような柔らかい線" });
+    // エンジンのスタイル（モードごと）・画風・作風の一言（P4。描く回のたびにエンジンへ渡る）
+    var engineStyle = data.config.engine_style || {}, defaults = catalog.engine_style_defaults || {};
+    var presentationStyle = select("プレゼン（編集できる PPTX）の見せ方", engineStyle.presentation || defaults.presentation, catalog.engine_styles.presentation);
+    var pitchStyle = select("ピッチ（絵で描く資料）の見せ方", engineStyle.pitch || defaults.pitch, catalog.engine_styles.pitch);
+    var imageLook = select("画風", data.config.image_look || "", [{ value: "", label: "指定なし（見せ方の既定）" }].concat(catalog.image_looks));
+    var styleNote = field("作風の一言（任意）", data.config.style_note || "", { maxlength: (catalog.limits || {}).style_note || 400, placeholder: "例: 落ち着いた色で、余白を広く" });
 
-    var visiblePatternKeys = catalog.layout_patterns.map(function (option) { return option.value; });
-    var currentPatterns = data.config.allowed_layouts || [];
-    var hiddenPatterns = currentPatterns.filter(function (key) { return visiblePatternKeys.indexOf(key) === -1; });
-    var patternInputs = [], patternError = h("div", { role: "alert" });
+    // 使うパターン = 台本係が使ってよいページの型（エンジンの型の一覧）。「おまかせ」はすべて（ほかと一緒には選べない）
+    var currentPatterns = data.config.allowed_layouts || ["auto"];
+    var patternInputs = [], autoInput = null, patternError = h("div", { role: "alert" });
     var patternStatus = h("div", { class: "pattern-picker__status", "aria-live": "polite" });
     var patternGrid = h("div", { class: "pattern-grid" });
     catalog.layout_patterns.forEach(function (option) {
       var id = "style-pattern-" + (++nextInput);
       var input = h("input", { type: "checkbox", id: id, value: option.value });
-      input.checked = selectAllPatterns || currentPatterns.indexOf(option.value) !== -1;
-      patternInputs.push(input);
-      patternGrid.appendChild(h("label", { class: "pattern-choice", for: id }, input,
+      input.checked = option.value === "auto" ? (selectAllPatterns || currentPatterns.indexOf("auto") !== -1)
+        : (!selectAllPatterns && currentPatterns.indexOf(option.value) !== -1);
+      if (option.value === "auto") { autoInput = input; } else { patternInputs.push(input); }
+      patternGrid.appendChild(h("label", { class: "pattern-choice" + (option.value === "auto" ? " pattern-choice--auto" : ""), for: id }, input,
         h("span", { class: "pattern-choice__copy" }, text("strong", option.label), text("span", option.use, "pattern-choice__use"))));
     });
-    var patterns = h("fieldset", { class: "pattern-picker" }, text("legend", "使うパターン"),
-      text("p", "使いたくないものだけチェックを外します。新しく作るときはすべて選ばれています。", "small muted"),
+    var patterns = h("fieldset", { class: "pattern-picker" }, text("legend", "使うパターン（ページの型）"),
+      text("p", "「おまかせ」なら台本係がすべての型から選びます。使う型をしぼるときは「おまかせ」を外して、使う型だけを選びます。", "small muted"),
       h("div", { class: "pattern-picker__actions" },
-        button("すべて選ぶ", function () { patternInputs.forEach(function (input) { input.checked = true; }); syncPatternProblem(); }, "btn--small"),
-        button("すべて外す", function () { patternInputs.forEach(function (input) { input.checked = false; }); syncPatternProblem(); }, "btn--small")),
+        button("おまかせに戻す", function () { autoInput.checked = true; patternInputs.forEach(function (input) { input.checked = false; }); syncPatternProblem(); }, "btn--small"),
+        button("型をすべて外す", function () { autoInput.checked = false; patternInputs.forEach(function (input) { input.checked = false; }); syncPatternProblem(); }, "btn--small")),
       patternStatus, patternGrid, patternError);
 
     var saveButton = button("保存する", save, "btn--primary");
-    function selectedPatterns() { return patternInputs.filter(function (input) { return input.checked; }).map(function (input) { return input.value; }); }
+    function selectedPatterns() {
+      if (autoInput && autoInput.checked) { return ["auto"]; }
+      return patternInputs.filter(function (input) { return input.checked; }).map(function (input) { return input.value; });
+    }
+    autoInput.addEventListener("change", function () { if (autoInput.checked) { patternInputs.forEach(function (input) { input.checked = false; }); } });
+    patternInputs.forEach(function (input) { input.addEventListener("change", function () { if (input.checked) { autoInput.checked = false; } }); });
     function syncPatternProblem() {
-      var visibleCount = selectedPatterns().length, totalCount = visibleCount + hiddenPatterns.length;
-      var empty = totalCount === 0;
+      var chosen = selectedPatterns(), empty = chosen.length === 0;
       SS.clear(patternStatus);
-      patternStatus.appendChild(text("p", visibleCount + "件を選択中" + (hiddenPatterns.length
-        ? "（ほかに、互換のため保持する項目 " + hiddenPatterns.length + "件）" : ""), "small"));
-      if (visibleCount === 0 && hiddenPatterns.length) {
-        patternStatus.appendChild(text("p", "使うパターンは表示していない項目 " + hiddenPatterns.length + "件で有効です。ここから追加で選べます。", "small muted"));
-      }
+      patternStatus.appendChild(text("p", chosen[0] === "auto" ? "おまかせ（すべての型）" : chosen.length + "種類の型を選択中", "small"));
       SS.clear(patternError);
       if (empty) { patternError.appendChild(text("p", "使うパターンを1つ以上選んでください。", "notice notice--error small")); }
       saveButton.disabled = readonly || empty;
       return empty;
     }
-    patternInputs.forEach(function (input) { input.addEventListener("change", syncPatternProblem); });
+    patternInputs.concat([autoInput]).forEach(function (input) { input.addEventListener("change", syncPatternProblem); });
     function body() {
       var c = {};
       styleKeys.forEach(function (key) { if (Object.prototype.hasOwnProperty.call(data.config, key)) { c[key] = clone(data.config[key]); } });
@@ -581,7 +631,12 @@
       if (recipe.el.value.trim() || Object.prototype.hasOwnProperty.call(data.config, "style_recipe")) {
         c.style_recipe = recipe.el.value.trim();
       } else { delete c.style_recipe; }
-      c.allowed_layouts = selectedPatterns().concat(hiddenPatterns);
+      c.allowed_layouts = selectedPatterns();
+      c.engine_style = { presentation: presentationStyle.el.value, pitch: pitchStyle.el.value };
+      if (imageLook.el.value) { c.image_look = imageLook.el.value; } else { delete c.image_look; }
+      if (styleNote.el.value.trim() || Object.prototype.hasOwnProperty.call(data.config, "style_note")) {
+        c.style_note = styleNote.el.value.trim();
+      } else { delete c.style_note; }
       return { name: name.el.value.trim(), config: c, source_id: copying ? item.id : undefined,
         expected_revision_id: item ? item.current_revision_id : undefined };
     }
@@ -608,6 +663,10 @@
     form.appendChild(h("div", { class: "style-dials" }, typeface.node, density.node, visualRatio.node));
     form.appendChild(text("p", "密度を「詰める」にすると、要素を多く置く見せ方です。", "small muted style-field-help"));
     form.appendChild(recipe.node);
+    form.appendChild(text("h3", "描き方（エンジン）", "style-section-title"));
+    form.appendChild(h("div", { class: "style-dials" }, presentationStyle.node, pitchStyle.node, imageLook.node));
+    form.appendChild(styleNote.node);
+    form.appendChild(text("p", "スライドを次に描くときから効きます（描いてあるスライドは、直すか組み直すまで変わりません）。全ページを1枚に描く infographic は、ピッチで最初に描くときにだけ選べます。", "small muted style-field-help"));
     form.appendChild(patterns);
     form.appendChild(h("div", { class: "settings-actions" }, saveButton));
     syncPatternProblem();
@@ -650,6 +709,8 @@
       { placeholder: "100.100.1.23", spellcheck: "false", autocapitalize: "off" });
     var names = field("この名前でも開けるようにする", state.host_names.join("\n"),
       { multiline: true, rows: "3", placeholder: "my-mac\nmy-mac.example.net", spellcheck: "false", autocapitalize: "off" });
+    var port = field("ポート", String(state.port || ""), { inputmode: "numeric", maxlength: 5, spellcheck: "false" });
+    port.el.addEventListener("input", function () { dirty = true; SS.settingsLeave = { dirty: function () { return dirty; } }; });
     var away = h("div", { class: "setting-away" }, addr.node,
       text("p", "この機械に生えているアドレスを1つ書きます。「ぜんぶ」を意味する 0.0.0.0 は書けません。どの網に出すのかを選んでください。", "small muted"),
       names.node,
@@ -680,12 +741,17 @@
         host: open ? addr.el.value.trim() : "127.0.0.1",
         host_names: open ? names.el.value.split("\n").map(function (n) { return n.trim(); }).filter(Boolean) : []
       };
+      var portText = port.el.value.trim();
+      if (portText && String(state.port) !== portText) {
+        if (!/^[0-9]{1,5}$/.test(portText)) { SS.clear(errors).appendChild(text("p", "ポートは数で書いてください。", "notice notice--error")); return; }
+        body.port = parseInt(portText, 10);
+      }
       SS.clear(errors);
       save.disabled = true;
       SS.api("/api/settings/server", { method: "POST", body: body }).then(function (result) {
         if (result.verified !== true) { throw new SS.ApiError("保存できたか確かめられませんでした。画面を読み直してください。", "save_unverified"); }
         dirty = false; SS.settingsLeave = null;
-        SS.toast("保存しました。効くのは次にサーバを起こしたときからです。", { sticky: true });
+        SS.toast("保存しました。「再起動」を押すと効きます。");
         SS.navigate("/settings/server", true);
       }).catch(function (error) {
         save.disabled = false;
@@ -696,18 +762,54 @@
     var now = shut
       ? "いまは、この機械の中だけに開いています。"
       : "いまは " + state.host + " に開いています。ほかの機械から届きます。";
-    var live = state.restart_required
-      ? h("div", { class: "notice notice--warn" },
-          text("p", "保存した内容はまだ効いていません。動いているサーバは " + state.running_host
-            + " で待っています。効かせるにはサーバを起こし直してください。"))
-      : null;
+    var live = state.restart_required || state.settings_error ? restartBanner(state) : null;
 
     away.hidden = shut;
     SS.clear(root).appendChild(h("div", { class: "settings-page" }, settingsHead("server"),
       h("div", { class: "setting-panel" },
-        text("p", now, "muted"), live, choice, away, errors,
+        text("p", now, "muted"), live, choice, away, port.node,
+        text("p", "ふつうは 7801 のままにします。変えたら、開く URL のポートも変わります。", "small muted"), errors,
         h("div", { class: "setting-actions" }, save))));
   }
+
+  // 「再起動が必要」の帯（この機械の画面）。走っている仕事があれば「終わるのを待って」と「今すぐ」を出す。
+  // 押したあとの進み・つなぎ直し・新しい URL への移動は core.js の SS.restartServer
+  function restartBanner(state) {
+    var box = h("div", { class: "notice notice--warn restart-banner", role: "status" });
+    if (state.settings_error) {
+      box.appendChild(text("p", "設定のファイルを読めません（" + state.settings_error + "）。直すまで再起動はできません。"));
+      return box;
+    }
+    box.appendChild(text("p", "保存した待ち受けはまだ効いていません。動いているサーバは " + state.running_url
+      + " で待っています。再起動すると " + state.expected_url + " で開き直します。"));
+    var progress = text("p", "", "small restart-banner__progress");
+    var buttons = h("div", { class: "setting-actions restart-banner__actions" });
+    function go(mode) {
+      buttons.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+      SS.restartServer(mode, function (message) { progress.textContent = message; }).catch(function (error) {
+        buttons.querySelectorAll("button").forEach(function (b) { b.disabled = false; });
+        progress.textContent = "";
+        SS.toastError(error);
+      });
+    }
+    if (!state.restartable) {
+      box.appendChild(text("p", "このサーバは画面から再起動できません。コマンド（start）で起動し直してください。", "small"));
+      return box;
+    }
+    if (state.running_jobs > 0) {
+      buttons.appendChild(button("終わるのを待って再起動（" + state.running_jobs + " 件）", function () { go("wait"); }, "btn--primary restart-wait"));
+      buttons.appendChild(button("今すぐ再起動", function () {
+        if (!SS.confirm("走っている仕事を止めて再起動します。描いている途中のものは再起動のあと続きから描き、台本を書いている途中のものは失敗になります。よろしいですか？")) { return; }
+        go("now");
+      }, "restart-now"));
+    } else {
+      buttons.appendChild(button("再起動", function () { go("now"); }, "btn--primary restart-now"));
+    }
+    box.appendChild(buttons);
+    box.appendChild(progress);
+    return box;
+  }
+  SS.restartBanner = restartBanner;
 
   SS.views.settings = function (root, route, guard) {
     SS.clear(root).appendChild(text("p", "設定を読み込んでいます…"));

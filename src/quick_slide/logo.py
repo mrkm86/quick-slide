@@ -5,8 +5,9 @@ v2 ではロゴの置き場所を決めるのはエンジンである（`--logo-
 
 - 保存する形: `logo.placement = {"corner": <角>}`。角はエンジンの `--logo-position` と同じ 3 つ
   （右下・左下・右上。左上はエンジンが選ばせない）
-- 設定画面の**見本**に描く位置: エンジン（html-slide の `scripts/deck.py`）の既定の寸法を写した近似。
-  実際の位置はエンジンが描くときに決まる（P4 でブランドをエンジンの引数へ写す）
+- 設定画面の**見本**に描く位置: エンジン（html-slide の `scripts/deck.py`）の既定の寸法を写した近似
+  （ロゴ・フッタ・ページ番号・透かし）。実際の位置はエンジンが描くときに決まる（ふさがった角は別の角へ逃がす）。
+  エンジンで描いた見本（本物の 1 枚）は出さない（描くのに Chrome・時間がかかる。P4 では見送り）
 
 v1 の「ロゴの予約枠（clean area）」と枠の検査は持たない（エンジンが要らなくした）。
 """
@@ -27,8 +28,13 @@ DEFAULT_PLACEMENT: dict[str, Any] = {PLACEMENT_KEY: "bottom-right"}
 # 見本の位置（html-slide の scripts/deck.py の既定の数字の写し。1920×1080）
 _BOX_W, _BOX_H = 329, 44          # ロゴを収める枠
 _SIDE = 120                       # 左右の余白（本文の余白にそろう）
+_ROW_TOP, _ROW_H = 1006, round(22 * 1.4)   # 下の文字の行（フッタ・ページ番号）
 _BOTTOM_MID_Y = 1006 + 22 * 1.4 / 2   # 下の文字の行の中心
 _TOP_MID_Y = 46                   # 右上に置くときの縦の中心
+_LOGO_GAP = 28                    # 左下のロゴと、その右へ寄せるフッタの間
+_FOOTER_END, _FOOTER_END_WITH_NO = 1420, 912   # フッタの右端（ページ番号を出すときは番号の左まで）
+_PAGENO_X, _PAGENO_W = 900, 120   # ページ番号（中央下）
+_WATERMARK_TOP, _WATERMARK_H = 1054, 16        # 透かし（中央下の端）
 SMALL_LOGO_MIN_SIDE = 30          # 短辺がこれ未満なら小さいと知らせる
 
 
@@ -82,3 +88,26 @@ def preview_box(size: tuple[int, int], corner: str) -> dict[str, Any]:
 def corner_choices() -> list[dict[str, Any]]:
     """設定画面の角の選択肢。v1 の予約枠（`clean_area`）は返さない（画面は無ければ描かない）。"""
     return [{"value": c, "label": LOGO_POSITION_LABELS[c]} for c in LOGO_POSITIONS]
+
+
+def chrome_boxes(logo_xywh: list[int] | None, corner: str, *, footer: bool, page_numbers: bool,
+                 watermark: bool) -> dict[str, Any]:
+    """見本に描く下の部品の位置（エンジンの中身のページの既定の寸法の写し。1920×1080 の `[x, y, w, h]`）。
+
+    - フッタ: 左下（左の余白から）。ロゴが左下なら、ロゴの右へ寄せる。ページ番号を出すときは番号の手前まで
+    - ページ番号: 中央下（見本は「3」を置く）
+    - 透かし: 中央下の端（下の文字の行の下）
+    表紙・章扉・写真の全面のページには、フッタとページ番号は入らない（エンジンの決まり。見本は中身のページの姿）。
+    """
+    out: dict[str, Any] = {"footer": None, "page_number": None, "watermark": None}
+    if footer:
+        x = _SIDE
+        if logo_xywh is not None and corner == "bottom-left":
+            x = logo_xywh[0] + logo_xywh[2] + _LOGO_GAP
+        end = _FOOTER_END_WITH_NO if page_numbers else _FOOTER_END
+        out["footer"] = [x, _ROW_TOP, max(0, end - x), _ROW_H]
+    if page_numbers:
+        out["page_number"] = [_PAGENO_X, _ROW_TOP, _PAGENO_W, _ROW_H]
+    if watermark:
+        out["watermark"] = [CANVAS[0] // 2 - 300, _WATERMARK_TOP, 600, _WATERMARK_H]
+    return out

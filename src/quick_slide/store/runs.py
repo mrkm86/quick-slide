@@ -305,6 +305,14 @@ class RunsMixin(StoreBase):
             self.append_event("run_updated", {"run_id": run_id, "state": state, "progress": prog},
                               deck_id=run["deck_id"])
 
+    def update_run_args(self, run_id: str, update: dict[str, Any]) -> None:
+        """回の引数に足す（描く回を始めるときに決めた設定。P4）。状態は変えないので出来事も書かない。"""
+        with self.transaction():
+            run = self.run(run_id)
+            if run["state"] not in RUN_ACTIVE_STATES:
+                raise StateError("終わった回の引数は変えられません")
+            self._exec("UPDATE runs SET args_json=? WHERE id=?", (dump_json({**run["args"], **update}), run_id))
+
     def set_run_record(self, run_id: str, record: dict[str, Any]) -> None:
         """再現の記録（エンジンの引数・設定の控え・台本の版・エンジンの印）を足す（同じキーは上書き）。"""
         with self.transaction():

@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from helpers import capture_logs, intake_payload, start_server
 
-from quick_slide.ids import PRESET_STYLE_STANDARD_ID, PRESET_STYLE_VISUAL_ID
+from quick_slide.ids import PRESET_STYLE_INFOGRAPHIC_ID, PRESET_STYLE_STANDARD_ID
 
 
 class IntakeApiTests(unittest.TestCase):
@@ -41,7 +41,8 @@ class IntakeApiTests(unittest.TestCase):
             deck = store.deck(body["deck_id"])
             self.assertEqual((deck["mode"], deck["title"], deck["purpose"], deck["audience"]),
                              ("pitch", "会議を半分にする", "試行の提案", "部長会"))
-            self.assertEqual(store.style_revision(deck["style_revision_id"])["style_id"], PRESET_STYLE_VISUAL_ID)
+            # 会話が言ったスタイルにあたる付属スタイル（P4: infographic には専用の付属スタイルがある）
+            self.assertEqual(store.style_revision(deck["style_revision_id"])["style_id"], PRESET_STYLE_INFOGRAPHIC_ID)
             run = store.run(body["run_id"])
             self.assertEqual((run["state"], run["engine"], run["number"]), ("queued", "image-slide", 1))
             self.assertEqual({k: run["args"][k] for k in ("mode", "style", "image_look", "images", "page_count")},

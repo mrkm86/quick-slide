@@ -959,3 +959,16 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
   .brand-editor__head { flex-wrap: wrap; }
   .sample__states { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* P4: 設定（書式・再起動・見本の下の部品） */
+.restart-link { font-size: 12px; color: var(--color-warning); text-decoration: underline; }
+.restart-banner__actions { margin-top: var(--space-2); flex-wrap: wrap; }
+.restart-banner__progress { margin: var(--space-2) 0 0; }
+.brand-format { display: grid; gap: var(--space-2); }
+.setting-check { display: flex; align-items: center; gap: var(--space-2); }
+.setting-check input { width: auto; margin: 0; }
+.pattern-choice--auto { grid-column: 1 / -1; }
+.sample__chrome { position: absolute; margin: 0; font-size: .5em; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--color-text-muted); }
+.sample .sample__footer { left: auto; right: auto; bottom: auto; text-align: left; }
+.sample__pageno { text-align: center; }
+.sample__watermark { text-align: center; color: #9ca3af; font-size: .4em; }

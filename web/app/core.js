@@ -269,6 +269,47 @@
   });
   window.addEventListener("popstate", function () { SS.render(); });
 
+  // ---- 再起動（P4）----
+  // POST /api/server/restart のあと、同じ URL の health を見張る。インスタンスが替われば（同じ URL で起動した・
+  // 新しい設定で起動できずに前の設定へ戻した）この画面を読み直す。URL が変わる再起動では、前の URL が応答しなく
+  // なってから RESTART_GRACE_MS 待っても戻ってこなければ、新しい URL へ移る（別のオリジンの health は CSP の
+  // connect-src 'self' で読めないので、前の URL が戻ってこないことを「新しい設定で起動した」の印にする）。
+  // どちらでも ?restarted=<id> を付けて開き直し、app.js が health の restart で結果（前の設定に戻した理由など）を出す。
+  var RESTART_GRACE_MS = 8000;
+  var RESTART_POLL_MS = 500;
+  SS.restartServer = function (mode, say) {
+    say = say || function () {};
+    return SS.api("/api/server/restart", { method: "POST", body: { mode: mode } }).then(function (r) {
+      var oldInstance = r.instance_id, id = r.restart_id, target = r.same_url ? null : r.expected_url;
+      say(mode === "wait" && r.running_jobs ? "走っている仕事（" + r.running_jobs + " 件）が終わるのを待っています…" : "再起動しています…");
+      var downSince = null;
+      return new Promise(function (resolve) {
+        function land(base) {
+          var path = location.pathname + "?restarted=" + encodeURIComponent(id);
+          say("つなぎ直しています…");
+          resolve(base || location.origin);
+          if (base) { location.href = base + path; } else { location.replace(path); }
+        }
+        function down() {
+          if (downSince === null) { downSince = Date.now(); say("新しいサーバが起きるのを待っています…"); }
+          if (target && Date.now() - downSince > RESTART_GRACE_MS) { land(target); return; }
+          setTimeout(tick, RESTART_POLL_MS);
+        }
+        function tick() {
+          fetch("/api/health", { cache: "no-store" }).then(function (res) {
+            if (!res.ok && res.status !== 503) { throw new Error("not ours"); }
+            return res.json();
+          }).then(function (j) {
+            if (j && j.instance_id && j.instance_id !== oldInstance) { land(null); return; }
+            downSince = null;
+            setTimeout(tick, RESTART_POLL_MS);
+          }).catch(down);
+        }
+        setTimeout(tick, RESTART_POLL_MS);
+      });
+    });
+  };
+
   // ---- 共通の確認 ----
   SS.confirm = function (message) { return window.confirm(message); };
 

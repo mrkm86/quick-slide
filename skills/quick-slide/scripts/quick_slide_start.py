@@ -316,7 +316,7 @@ def build_payload(args: argparse.Namespace) -> tuple[dict[str, Any], str | None]
         if args.style not in STYLES[args.mode]:
             raise Failure("style_invalid", f"--style はこのモードでは {' / '.join(STYLES[args.mode])} のいずれかです。", EXIT_INPUT)
         attrs["style"] = args.style
-    for name in ("purpose", "audience", "style_note", "image_look", "brand_id"):
+    for name in ("purpose", "audience", "style_note", "image_look", "brand_id", "style_id"):
         value = getattr(args, name)
         if value:
             attrs[name] = value
@@ -593,6 +593,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--remake", action="store_true", help="--revise で絵を直すとき、今の絵を土台にせず作り直す")
     p.add_argument("--attach", action="append", help="--revise に添える画像（何度でも）")
     p.add_argument("--brand-id", help="ブランドの UUID（設定の画面で登録したもの）")
+    p.add_argument("--style-id", help="スライドスタイルの UUID（設定の画面で登録したもの。--style より細かい書き方の方針・使う型）")
     p.add_argument("--conversation-key", help="会話の識別子を明示する（既定は環境変数から。定数は渡さない）")
     p.add_argument("--runtime", choices=("claude_code", "codex", "browser", "cli", "other"),
                    help="origin.runtime（既定は環境変数から。台本を書く LLM をこれに合わせる）")

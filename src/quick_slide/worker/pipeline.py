@@ -20,6 +20,7 @@ from typing import Any
 from ..childenv import child_env
 from ..engines import Engine, engine_for, engine_marker
 from ..paths import DataRoot
+from ..render import look as LOOK
 from ..render import workspace as W
 from ..render.runner import RenderOutcome, check_prerequisites, check_script, render_deck
 from ..scriptdoc import (
@@ -38,6 +39,11 @@ from .tools import Tools
 log = logging.getLogger("quick_slide.worker")
 
 
+class Abandoned(BaseException):
+    """「今すぐ再起動」で仕事を手放した。台帳に何も書かずに抜ける（次のサーバの起動時の掃除が、描く段は続きから・
+    書く段は理由つきで失敗にする）。`except Exception` に呑まれないよう BaseException にする。"""
+
+
 @dataclass
 class Context:
     store: Any
@@ -46,9 +52,12 @@ class Context:
     settings: Settings
     tools: Tools
     stop: threading.Event
+    abandon: threading.Event | None = None
 
     def call(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         with self.lock:
+            if self.abandon is not None and self.abandon.is_set():
+                raise Abandoned()
             return fn(*args, **kwargs)
 
 
@@ -67,6 +76,27 @@ class RenderPlan:
                                               for r in self.revise],
                 "seeds": sorted(self.seeds), "aliases": dict(self.aliases),
                 "restore_presentation": [k for _, k in self.restore_presentation]}
+
+
+def settle_look(ctx: Context, run: dict[str, Any], *, previous_style: str | None) -> None:
+    """この回に使う設定（ブランド・スタイル・書式）を決めて、回の引数（`runs.args`）と記録に書く（P4）。
+
+    仕事を始めるときに 1 回だけ。止まった回を続けるとき（resume）は呼ばない（控えた引数のまま描く）。
+    `run["args"]` もその場で書き換える（このあと台本係・エンジンの引数がこれを読む）。
+    """
+    def work() -> dict[str, Any]:
+        update, record = LOOK.resolve(ctx.store, ctx.root, run, previous_style=previous_style)
+        ctx.store.update_run_args(run["id"], update)
+        ctx.store.set_run_record(run["id"], {"look": record})
+        return update
+
+    update = ctx.call(work)
+    run["args"] = {**run["args"], **update}
+
+
+def engine_script_view(data: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
+    """エンジンに渡す台本: 非表示のページを抜き、ブランドのフッタ・ページ番号を一番外に入れる（台本の版は変えない）。"""
+    return LOOK.apply_format(engine_view(data), args.get("look"))
 
 
 def _writer_progress(round_no: int, rounds: int, backend: str, phase: str) -> dict[str, Any]:
@@ -93,6 +123,7 @@ def make(ctx: Context, job: dict[str, Any]) -> str:
     if resume == "import":
         return import_recorded(ctx, run)
     if resume is None:
+        settle_look(ctx, run, previous_style=None)
         # 描く前の確かめ（仕事ごとに 1 回。ピッチは Codex のログイン。書く前に見るので、描けないのに台本係の枠を使わない）
         pre = check_prerequisites(engine, tools=ctx.tools, home=ctx.root.root, cwd=run_dir, stop=ctx.stop)
         ctx.call(store.set_run_record, run_id, {"prerequisites": {"checked": pre.rc is not None, "rc": pre.rc}})
@@ -177,7 +208,7 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
     else:
         ctx.call(store.set_run_state, run_id, "rendering",
                  progress={"phase": "rendering", "step": "starting", "done": 0, "total": len(pages)})
-    script_path = W.write_engine_script(ctx.root.engine_script_path(deck_id), engine_view(data))
+    script_path = W.write_engine_script(ctx.root.engine_script_path(deck_id), engine_script_view(data, args))
 
     placed: dict[str, str] = {}
     if engine.mode == "pitch" and not one_page(args):
@@ -247,7 +278,7 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
 
 def check_candidate(ctx: Context, engine: Engine, run: dict[str, Any], data: dict[str, Any]):
     """台本の候補をエンジンの `check` に通す（非表示のページを抜いた形で）。CheckResult を返す。"""
-    path = W.write_engine_script(ctx.root.engine_script_path(run["deck_id"]), engine_view(data))
+    path = W.write_engine_script(ctx.root.engine_script_path(run["deck_id"]), engine_script_view(data, run["args"]))
     return check_script(engine, tools=ctx.tools, home=ctx.root.root, script=path, args=run["args"], stop=ctx.stop)
 
 
@@ -282,8 +313,9 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
         "style": args.get("style"), "image_look": args.get("image_look"), "images": args.get("images"),
         "page_count": args.get("page_count"), "style_note": args.get("style_note") or None,
         "outline_fixed": bool(args.get("outline_fixed")), "outline_pages": len(outline) or None,
-        # ブランド（テーマ・ロゴ）は P4 でエンジンへ渡す。いまはエンジンの既定
-        "theme": None, "logo": None, "logo_position": None,
+        # ブランド・スタイル・書式の控えは record の look（テーマの YAML・ロゴの sha256・引数の元）
+        "theme": (args.get("look") or {}).get("theme"), "logo": (args.get("look") or {}).get("logo"),
+        "logo_position": (args.get("look") or {}).get("logo_position"),
     }})
 
     previous: dict[str, Any] | str | None = None
@@ -317,7 +349,7 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
         script = ctx.call(store.save_script, deck_id, data, written_by="writer", writer_backend=backend,
                           intake_id=intake["id"], run_id=run_id, round_no=round_no)
         ctx.call(store.set_run_state, run_id, "checking", progress=_writer_progress(round_no, rounds, backend, "checking"))
-        own = page_id_problems(slides)
+        own = page_id_problems(slides) + LOOK.type_problems(slides, args)
         if outline and len(slides) != len(outline):
             own.append(f"NG: 構成は {len(outline)} ページ（`## N.` の見出しの数）なのに、台本は {len(slides)} ページ。"
                        "構成のページ割りどおり、見出し 1 つを 1 ページにして、順番も変えずに書き直す")
@@ -332,6 +364,8 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
             return fail("サーバを止めたので、台本を確かめるのを中断しました。もう一度会話から頼んでください。", "stopped")
         if result.rc == 0:
             return script, data
+        if result.rc == 2 and LOOK.theme_refused(result.problems):
+            return fail(LOOK.BRAND_COLOR_MESSAGE, "brand", result.rc)
         if result.rc == 2:
             previous, problems = data, result.problems or ["NG: 検査で止まった（理由の行が取れなかった）"]
             log.info("run %s: 台本の検査で止まった（%d 回目・%d 行）", run_id, round_no, len(problems))

@@ -5,10 +5,15 @@
 時間の上限・検査の回数）・既定のブランド。値は暫定運用値。未知のキーは拒否せず無視する。
 
 `browser.mode` は環境変数 `QUICK_SLIDE_BROWSER` で上書きできる。
+
+**効くとき**（P4）: `server`（待ち受けのアドレス・名前・ポート）だけが再起動を要る。ほかの段（台本係・ワーカー・
+取り込みの上限・起動トークン・画面の開き方・既定のブランド）は、サーバが仕事を始めるたびにファイルの印
+（`file_fingerprint`）を見て、変わっていれば読み直す（`server/app.QuickSlideServer.current_settings`）。
 """
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import os
@@ -33,37 +38,99 @@ WRITER_CHOICES = ("auto", "claude", "codex")
 
 
 
-def save_server_section(path: Path, *, host: str, host_names: Sequence[str]) -> ServerSettings:
+def save_server_section(path: Path, *, host: str, host_names: Sequence[str], port: int | None = None) -> ServerSettings:
     """`settings.json` の `server` だけを書き換える（画面から直せるように）。
 
     **他のキーには触らない。** このファイル は手でも直すので、知らないキーを落とすと人の設定が消える。
     値は書く前に `ServerSettings` と `bind_refusal` に通す。通らないものはファイルに触れずに断る。
+    `port` を省けば、いま書いてある値を保つ。
     """
     names = tuple(host_names)
-    settings = ServerSettings(host=host, port=_existing_port(path), host_names=names)
+    settings = ServerSettings(host=host, port=_existing_port(path) if port is None else port, host_names=names)
     refusal = bind_refusal(settings.host)
     if refusal is not None:
         raise ValidationError(refusal)
-    raw: dict = {}
-    if path.exists():
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ValidationError(f"settings.json を読めません: {exc.__class__.__name__}") from exc
-        if not isinstance(raw, dict):
-            raise ValidationError("settings.json はオブジェクトである必要があります")
+    raw = _read_raw(path)
     server = dict(raw.get("server") or {})
     server["host"] = settings.host
     if names:
         server["host_names"] = list(names)
     else:
         server.pop("host_names", None)
+    if port is not None:
+        server["port"] = settings.port
     raw["server"] = server
+    _write_raw(path, raw)
+    return settings
+
+
+def restore_server_section(path: Path, listen: dict) -> None:
+    """`server` の段だけを `listen`（{host, port, host_names}）に戻す（再起動のやり直し。ほかのキーは触らない）。
+
+    読めない settings.json（JSON が壊れている）は、`server` の段だけを持つ新しい内容に置き換える
+    （壊れた中身は `settings.json.broken` に残す）。
+    """
+    try:
+        raw = _read_raw(path)
+    except ValidationError:
+        if path.exists():
+            os.replace(path, path.with_name(path.name + ".broken"))
+        raw = {}
+    server = dict(raw.get("server") or {}) if isinstance(raw.get("server"), dict) else {}
+    server["host"] = listen["host"]
+    server["port"] = listen["port"]
+    if listen.get("host_names"):
+        server["host_names"] = list(listen["host_names"])
+    else:
+        server.pop("host_names", None)
+    raw["server"] = server
+    _write_raw(path, raw)
+
+
+def _read_raw(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValidationError(f"settings.json を読めません: {exc.__class__.__name__}") from exc
+    if not isinstance(raw, dict):
+        raise ValidationError("settings.json はオブジェクトである必要があります")
+    return raw
+
+
+def _write_raw(path: Path, raw: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".writing")
     tmp.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, path)   # 途中で落ちても、古い内容か新しい内容のどちらかになる
-    return settings
+
+
+def file_fingerprint(path: Path) -> tuple[int, int, str] | None:
+    """設定のファイルの印（mtime・大きさ・中身の sha256）。無ければ None。手で直したかを見比べるのに使う。"""
+    try:
+        st = path.stat()
+        data = path.read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return (-1, -1, "")
+    return (st.st_mtime_ns, st.st_size, hashlib.sha256(data).hexdigest())
+
+
+def listen_of(server: "ServerSettings") -> dict:
+    """待ち受けの 3 つ（再起動が要る設定）。見比べと控え（last-good）に使う形。"""
+    return {"host": server.host, "port": server.port, "host_names": list(server.host_names)}
+
+
+def expected_url(listen: dict) -> str | None:
+    """その待ち受けで起動したときに人に見せる URL（名前があれば 1 つ目、無ければアドレス）。ポート 0 なら分からない。"""
+    port = listen.get("port")
+    if not isinstance(port, int) or port <= 0:
+        return None
+    names = listen.get("host_names") or []
+    host = names[0] if names else listen["host"]
+    return f"http://{'[' + host + ']' if ':' in host else host}:{port}"
 
 
 def _existing_port(path: Path) -> int:

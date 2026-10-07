@@ -208,8 +208,11 @@ class FlowTests(unittest.TestCase):
         body, run = self.make(fx, mode="presentation", style="visual", image_look="photo")
         rec = run["record"]
         self.assertEqual(rec["settings"]["writer"], "claude")
-        self.assertEqual((rec["settings"]["style"], rec["settings"]["image_look"], rec["settings"]["theme"]),
-                         ("visual", "photo", None))
+        self.assertEqual((rec["settings"]["style"], rec["settings"]["image_look"]), ("visual", "photo"))
+        # ブランドから作ったテーマの YAML は回の控え（settings/theme.yaml）に残り、エンジンにはそのファイルを渡す（P4）
+        self.assertTrue(rec["settings"]["theme"].endswith("/settings/theme.yaml"), rec["settings"]["theme"])
+        self.assertEqual(rec["look"]["theme_file"], rec["settings"]["theme"])
+        self.assertEqual(rec["look"]["theme"], {"background": "#FFFFFF", "ink": "#404040", "primary": "#0DB4F2"})
         with fx.server.store_lock:
             script = fx.store.script(run["script_id"])
         self.assertEqual((rec["script"]["version"], rec["script"]["sha256"]), (script["version"], script["sha256"]))
@@ -218,6 +221,7 @@ class FlowTests(unittest.TestCase):
         argv = rec["argv"][0]   # 回で呼んだエンジンのコマンドの並び（P3: deck のあとに revise が続くことがある）
         self.assertIn("--style", argv)
         self.assertEqual(argv[argv.index("--style") + 1], "visual")
+        self.assertEqual(argv[argv.index("--theme") + 1], rec["settings"]["theme"])
         self.assertEqual(run["engine_result"]["rc"], 0, "エンジンの終わり方も控える")
 
     def test_pitch_checks_the_codex_login_before_writing(self) -> None:

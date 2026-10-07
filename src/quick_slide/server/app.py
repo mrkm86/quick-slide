@@ -5,6 +5,8 @@
 - `_Handler` — `BaseHTTPRequestHandler`。全 verb を `QuickSlideServer.dispatch` に渡すだけ
 - ルート表 `ROUTES` と各ハンドラ（`_route_*`）。まだ無い口は `later.py` が「まだ使えない」と答える
 - ワーカー（`worker/pool.py`）はサーバの中のスレッド。`start()` の最後に起こし、`close()` の最初に止める
+- 設定（P4）: 待ち受け（`server`）のほかは仕事のたびに読み直す（`refresh_settings`）。待ち受けを変えたら画面の
+  「再起動」（`POST /api/server/restart`・`server/restart.py`）。ファイルを手で直したときも `restart_required` が立つ
 
 守っている性質（tests/ が確認する）:
 - I1/I8 静的配信は `static.py` の許可リスト経由のみ。データ置き場は静的ルートの外
@@ -20,6 +22,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+import errno
 import hmac
 import http.server
 import ipaddress
@@ -44,12 +48,13 @@ from ..errors import NotFoundError, QuickSlideError, StartupError, StateError
 from ..ids import is_uuid, new_id
 from ..paths import WEB_APP_DIR, DataRoot
 from ..security.tokens import hash_token
-from ..settings import Settings, bind_refusal, bind_scope, is_loopback_host
+from ..settings import Settings, bind_refusal, bind_scope, file_fingerprint, is_loopback_host, listen_of
 from ..store import Store
 from ..worker.pool import WorkerPool
 from ..worker.tools import Tools
 from .errors import GENERIC_500_MESSAGE, ApiError, bad_json, from_store_error, method_not_allowed, not_found
 from .later import NOT_READY_CODE
+from . import restart as restart_mod
 from .runtime import InstanceLock, ServerRecord, http_host, remove_record, status, write_record
 from .static import AssetFiles, ResolvedFile, StaticRoot
 
@@ -228,7 +233,12 @@ class QuickSlideServer:
         start_workers: bool = True,
     ) -> None:
         self.root = root if isinstance(root, DataRoot) else DataRoot.resolve(root)
+        # 起動したときに読んだ設定の印。仕事のたびに見比べ、変わっていれば読み直す（待ち受けの段は起動時のまま）
+        self._settings_fp = file_fingerprint(self.root.settings_path)
         self.settings = settings or Settings.load(self.root.settings_path)
+        self.boot_settings = self.settings
+        self.settings_error: str | None = None
+        self._settings_lock = threading.Lock()
         self.host = host if host is not None else self.settings.server.host
         self.port = port if port is not None else self.settings.server.port
         refusal = bind_refusal(self.host)
@@ -236,6 +246,10 @@ class QuickSlideServer:
             # 黙って 127.0.0.1 に落とさない（設定と実態を食い違わせない。I9）
             raise StartupError(refusal)
         self.static = StaticRoot(static_root or WEB_APP_DIR)
+        self.static_root_arg = static_root   # 再起動の後継にも同じものを渡す
+        self.restartable = False             # 常駐の `serve` だけが立てる（試験のスレッドの中では再起動しない）
+        self.restarting: dict[str, Any] | None = None
+        self._abandon = False
         self.assets = AssetFiles(self.root.root, self.root.assets_dir, self.root.trash_dir)
         self.clock = clock or Clock()
         self.instance_id = new_id()
@@ -285,6 +299,10 @@ class QuickSlideServer:
             try:
                 self._httpd = _HTTPServer((self.host, self.port), _Handler, self)
             except OSError as exc:
+                if exc.errno == errno.EADDRNOTAVAIL:
+                    raise StartupError(
+                        f"アドレス {self.host} はこの機械に無いので、そこでは待てません。"
+                        "この機械のアドレスを書いてください") from exc
                 raise StartupError(
                     f"ポート {self.port} に bind できません（{exc.__class__.__name__}）。"
                     "別のアプリがこのポートを使っている可能性があります。そのアプリを止めるか、設定 server.port を変えてください。"
@@ -302,6 +320,11 @@ class QuickSlideServer:
             if self.start_workers:
                 self.workers = WorkerPool(self, self.root, self.settings, self.tools)
                 self.workers.start()
+            # 起動できた待ち受けを控える（再起動して新しい設定で起動できなければ、これに戻す）
+            try:
+                restart_mod.save_last_good(self.root, self.running_listen())
+            except OSError:
+                log.warning("起動できた待ち受けを控えられませんでした（再起動のやり直しに使う）")
             self.started_at = utcnow()
             self._uptime_clock_name, self._uptime_read = elapsed_clock()
             self._t0 = self._uptime_read()
@@ -329,8 +352,13 @@ class QuickSlideServer:
         if self._httpd is not None:
             self._httpd.shutdown()
 
-    def request_stop(self) -> None:
-        """停止を頼む。**202 を返すために絶対に詰まらせない**（`shutdown()` は別スレッドで呼ぶ）。"""
+    def request_stop(self, *, abandon: bool = False) -> None:
+        """停止を頼む。**202 を返すために絶対に詰まらせない**（`shutdown()` は別スレッドで呼ぶ）。
+
+        `abandon`（今すぐ再起動）は、走っている仕事の終わりを台帳に書かずに止める（次のサーバが続きから戻す）。
+        """
+        if abandon:
+            self._abandon = True
         if self._stopping.is_set():
             return
         self._stopping.set()
@@ -340,7 +368,7 @@ class QuickSlideServer:
         # ワーカー → httpd → Store → server.json → server.lock の順。ワーカーは台帳に終わりを書いてから止まる
         if self.workers is not None:
             try:
-                self.workers.stop()
+                self.workers.stop(abandon=self._abandon)
             finally:
                 self.workers = None
         if self._httpd is not None:
@@ -381,6 +409,62 @@ class QuickSlideServer:
         t = threading.Thread(target=self.serve_forever, name="quick-slide-http", daemon=True)
         t.start()
         return t
+
+    # --- 設定（P4）---
+    def running_listen(self) -> dict[str, Any]:
+        """いま動いている待ち受け（頼まれたポート。0 は自動割当のまま）。"""
+        cfg = self.boot_settings.server
+        names = cfg.host_names if self.host == cfg.host else ()
+        return {"host": self.host, "port": self.port, "host_names": list(names)}
+
+    def refresh_settings(self) -> Settings:
+        """settings.json が起動時（か前に読んだとき）から変わっていれば読み直す。**待ち受けの段は起動時のまま**
+        （変えるには再起動）。読めなければ前の設定のまま続け、理由を `settings_error` に残す。"""
+        fp = file_fingerprint(self.root.settings_path)
+        if fp == self._settings_fp:
+            return self.settings
+        with self._settings_lock:
+            if fp == self._settings_fp:
+                return self.settings
+            try:
+                loaded = Settings.load(self.root.settings_path)
+            except QuickSlideError as exc:
+                self._settings_fp = fp
+                self.settings_error = str(exc)
+                log.warning("設定を読み直せませんでした（前の設定で続けます）: %s", exc)
+                return self.settings
+            fresh = dataclasses.replace(loaded, server=self.boot_settings.server)
+            self._settings_fp = fp
+            self.settings_error = None
+            changed = fresh != self.settings
+            self.settings = fresh
+            store = self.store
+            if store is not None:
+                # 台帳の錠は取らない（画面の口は台帳の錠を持ったままここへ来る。錠の順を逆にすると詰まる）。
+                # 属性の差し替えは 1 回の代入なので、読む側は前か後かのどちらかを見る
+                store.settings = fresh
+            if self.workers is not None and fresh.worker.parallel != self.workers.target:
+                self.workers.adjust(fresh.worker.parallel)
+            if changed:
+                log.info("設定を読み直しました writer=%s parallel=%d", fresh.writer, fresh.worker.parallel)
+        return self.settings
+
+    def settings_state(self) -> dict[str, Any]:
+        """ファイルに書いてある待ち受けと、いま動いている待ち受けの食い違い（画面の「再起動が必要」の帯）。"""
+        self.refresh_settings()
+        running = self.running_listen()
+        try:
+            disk = Settings.load(self.root.settings_path)
+        except QuickSlideError as exc:
+            return {"restart_required": False, "error": str(exc), "disk": None, "running": running,
+                    "expected_url": None}
+        listen = listen_of(disk.server)
+        from ..settings import expected_url
+
+        # ポート 0（自動割当。試験で使う）で動いているときは、ポートは見比べない
+        compare = dict(listen, port=running["port"]) if running["port"] == 0 else listen
+        return {"restart_required": compare != running, "error": None, "disk": listen, "running": running,
+                "expected_url": expected_url(listen)}
 
     # --- 要求処理 ---
     def dispatch(self, h: _Handler) -> None:
@@ -493,6 +577,8 @@ class QuickSlideServer:
                 req.params = params
                 if method in MUTATING_METHODS:
                     self._check_mutation(req)
+                    if self.restarting is not None and not path.startswith("/api/server/"):
+                        raise ApiError(503, "restarting", "サーバを再起動しています。少し待ってから、もう一度操作してください。")
                 return handler(self, req)
         if path_methods:
             raise method_not_allowed()
@@ -500,6 +586,7 @@ class QuickSlideServer:
 
     # --- ハンドラ ---
     def _health_body(self) -> tuple[bool, dict[str, Any]]:
+        self.refresh_settings()   # 手で直した設定を、ワーカーの数も含めてこの答えに映す
         db_ok = False
         db_error: str | None = None
         try:
@@ -528,8 +615,17 @@ class QuickSlideServer:
             "browser": {"mode": self.settings.browser.mode, "attach_wait_seconds": self.settings.browser.attach_wait_seconds},
             "static_available": self.static.available,
             "worker": self.workers.status() if self.workers is not None else None,
+            "settings": self._settings_health(),
+            "restarting": None if self.restarting is None else {
+                k: self.restarting[k] for k in ("id", "mode", "running_jobs")},
+            "restart": restart_mod.public_result(self.root),
         }
         return db_ok, body
+
+    def _settings_health(self) -> dict[str, Any]:
+        st = self.settings_state()
+        return {"restart_required": st["restart_required"], "error": st["error"] or self.settings_error,
+                "writer": self.settings.writer, "parallel": self.settings.worker.parallel}
 
     def _route_health(self, req: Request) -> Response:
         ok, body = self._health_body()
@@ -547,6 +643,10 @@ class QuickSlideServer:
     def _route_stop(self, req: Request) -> Response:
         self.request_stop()
         return Response.json(202, {"stopping": True, "instance_id": self.instance_id})
+
+    def _route_restart(self, req: Request) -> Response:
+        body = req.json_object()
+        return Response.json(202, restart_mod.begin(self, body.get("mode")))
 
     def wake_worker(self) -> None:
         """**仕事を作った直後に**ワーカーを起こす。取りこぼしても、ワーカーは数秒ごとに見に来る。"""
@@ -781,6 +881,7 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"GET"}), _exact("/api/health"), QuickSlideServer._route_health),
     (frozenset({"GET"}), _exact("/api/session"), QuickSlideServer._route_session),
     (frozenset({"POST"}), _exact("/api/server/stop"), QuickSlideServer._route_stop),
+    (frozenset({"POST"}), _exact("/api/server/restart"), QuickSlideServer._route_restart),
     # 会話からの投入
     (frozenset({"POST"}), _exact("/api/intakes"), _intake_routes.route_intake),
     (frozenset({"GET"}), _uuid_route("/api/launches/", "launch_id"), QuickSlideServer._route_launch_get),

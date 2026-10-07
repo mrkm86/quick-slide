@@ -208,3 +208,59 @@ def custom_roles(colors: dict[str, Any]) -> dict[str, Any]:
     if isinstance(gray, list) and [str(g).lower() for g in gray] != [g.lower() for g in baseline["gray"]]:
         kept["gray"] = list(gray)
     return kept
+
+
+# --- エンジンのテーマ（P4）---------------------------------------------------------------------------------------
+# ブランドの配色 → エンジン（html-slide・image-slide 共通）のテーマの YAML のキー。対応は docs/P4-NOTES.md の表。
+# エンジンのテーマのキーは background・ink・primary（必須）と accent・muted・surface・font・font_files（任意）。
+# エンジンは primary・accent から文字の色・面の色・淡い地を自分で作り、読めない組み合わせは描かずに止める（rc=2）。
+# だからここでは「人が決めた色」だけを渡し、算出はエンジンに任せる。
+INK_STEP = 1             # gray の何段目を本文の文字にするか（算出の gray[1] は明度 0.25 = エンジンの既定 #404040）
+INK_MIN_CONTRAST = 7.0   # 本文の文字と地の差がこれに届かなければ、gray・黒・白から一番差の大きい色にする
+SURFACE_MIN_CONTRAST = 7.0
+
+
+def engine_theme(colors: dict[str, Any]) -> dict[str, str]:
+    """保存した配色（`snapshot_colors` の形）→ エンジンのテーマ（キーの順は YAML に書く順）。
+
+    | ブランド | テーマ |
+    |---|---|
+    | 地の色（base。既定は白） | background |
+    | gray の 2 段目（読めなければ gray・黒・白で一番読める色） | ink |
+    | 基本色（primary） | primary |
+    | 強調色（accent。基本色と同じなら書かない＝エンジンが primary を使う） | accent |
+    | 面の色（surface。人が上書きしたときだけ・文字が読めるときだけ） | surface |
+    | 情報色（info）・成功/注意/エラー・主役色（淡/濃）・区切り線 | 渡さない（エンジンに役が無い・エンジンが作る） |
+    | 字体（fonts） | 渡さない（エンジンは字体ファイルの在りかが要る。既定の游ゴシックで組む） |
+    """
+    primary = _require_color(colors.get("primary"), "primary").upper()
+    accent = _require_color(colors.get("accent"), "accent").upper()
+    base = colors.get("base") if isinstance(colors.get("base"), str) and _HEX.fullmatch(colors["base"]) else "#FFFFFF"
+    base = base.upper()
+    gray = [g for g in (colors.get("gray") or []) if isinstance(g, str) and _HEX.fullmatch(g)]
+    ink = gray[INK_STEP].upper() if len(gray) > INK_STEP else "#404040"
+    if _contrast_ratio(ink, base) < INK_MIN_CONTRAST:
+        ink = max([g.upper() for g in gray] + ["#000000", "#FFFFFF"], key=lambda c: _contrast_ratio(c, base))
+    theme = {"background": base, "ink": ink, "primary": primary}
+    if accent != primary:
+        theme["accent"] = accent
+    surface = colors.get("surface")
+    if isinstance(surface, str) and _HEX.fullmatch(surface):
+        semantic = colors.get("semantic") if isinstance(colors.get("semantic"), dict) else {}
+        info = colors.get("info") if "info" in colors else semantic.get("info")
+        try:
+            computed = derive(primary, accent, info=info)["derived"]["surface"]
+        except ValueError:
+            computed = surface
+        if surface.lower() != computed.lower() and _contrast_ratio(ink, surface) >= SURFACE_MIN_CONTRAST:
+            theme["surface"] = surface.upper()
+    return theme
+
+
+def theme_yaml(theme: dict[str, str]) -> str:
+    """テーマを YAML の文にする（キーは決まった順・値は "#RRGGBB" だけなので、引用符で囲めば足りる）。"""
+    lines = ["# Quick Slide がブランドから作ったテーマ（描いた回の控え。手で直さない）"]
+    for key in ("background", "ink", "primary", "accent", "muted", "surface"):
+        if key in theme:
+            lines.append(f'{key}: "{_require_color(theme[key], key)}"')
+    return "\n".join(lines) + "\n"

@@ -1,7 +1,8 @@
 """設定の API（ブランド・スタイル・この機械）。ファイルの配信は `static.AssetFiles` を通す。
 
-P1 ではブランドとスタイルを v1 と同じ形で保存・見本表示する。エンジンの引数へ写すのは P4。
-画面が読むがまだ中身の無い値（ロゴの予約枠・使うパターンの目録）は互換の仮の値を返す（`catalog` を参照）。
+ブランドとスタイルは v1 と同じ形で保存・見本表示し、描く回のたびにエンジンの引数へ写す（P4。`render/look.py`）。
+書式（ページ番号・透かし）はブランドの中の `format` に持ち、ブランドの編集画面で直す（「書式を登録」は押せないまま）。
+使うパターンの目録はエンジンの型の一覧（`contenttypes.engine_types`。先頭に「おまかせ」）。
 """
 from __future__ import annotations
 
@@ -16,14 +17,26 @@ from functools import wraps
 
 from PIL import Image, UnidentifiedImageError
 
+from .. import contenttypes
 from .. import logo as logo_rules
 from .. import palette
 from ..errors import NotFoundError, StateError, ValidationError
+from ..engines import ENGINES
 from ..ids import PRESET_STYLE_STANDARD_ID, is_uuid
 from ..settings import LOOPBACK_HOSTS, Settings, bind_scope, save_server_section
-from ..store.brands import VARIANT_TO_ROLE, validate_brand_config
+from ..enums import LOGO_ROLES
+from ..store.brands import MAX_FOOTER_CHARS, MAX_WATERMARK_CHARS, VARIANT_TO_ROLE, merge_brand_assets, validate_brand_config
 from ..store.presets import PRESET_BRAND_CONFIG
-from ..store.styles import CANVAS_SIZES, LAYOUT_PATTERNS, STYLE_DIAL_OPTIONS, TONES, validate_style_config
+from ..store.styles import (
+    AUTO_PATTERN,
+    CANVAS_SIZES,
+    EDITABLE_KEYS,
+    IMAGE_LOOK_CHOICES,
+    MAX_STYLE_NOTE_CHARS,
+    STYLE_DIAL_OPTIONS,
+    TONES,
+    validate_style_config,
+)
 from .app import Response
 from .errors import ApiError
 
@@ -32,10 +45,14 @@ log = logging.getLogger("quick_slide.server.settings")
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 25_000_000
 IMAGE_TYPES = {"PNG": (".png", "image/png"), "JPEG": (".jpg", "image/jpeg"), "WEBP": (".webp", "image/webp")}
-STYLE_FIELDS = ("emphasis_prompt", "tone", "typeface", "density", "visual_ratio",
-                "allowed_layouts", "style_recipe", "margins", "canvas")
+STYLE_FIELDS = EDITABLE_KEYS
+LOGO_MEDIA = ("image/png", "image/jpeg")   # エンジン（--logo・--logo-white）が受ける形
+IMAGE_LOOK_LABELS = {"photo": "写真風", "illustration": "イラスト", "handdrawn": "手描き"}
+ENGINE_STYLE_LABELS = {"standard": "standard（説明・報告）", "visual": "visual（ビジュアル）",
+                       "infographic": "infographic（1枚のポスター）"}
 CAPABILITIES = {
-    "format": {"available": False, "label": "書式を登録", "reason": "書式（ページ番号・透かし・フッタ）の設定は、エンジンに設定をつないでから提供します。"},
+    "format": {"available": False, "label": "書式を登録",
+               "reason": "書式（フッタ・ページ番号・透かし）は、ブランドの編集画面の「書式」で設定します。"},
     # 「元の文書」は**入力に渡す文書**で、我々の成果物（画面では「スライド」）ではない。
     # ここを「スライド」にすると意味が逆になるので、成果物と混ざらない言い方にする。
     "infer": {"available": False, "label": "元の文書から色・字体を読み取る", "reason": "元の文書からの読み取りはまだ使えません。色と字体を下の欄で指定してください。"},
@@ -70,7 +87,8 @@ def boundary(fn):
             elif "colors.info" in msg:
                 hint = "情報色は # と6桁の色番号で入力してください。"
             elif "allowed_layouts" in msg:
-                hint = "使うパターンを1つ以上選んでください。"
+                hint = ("「おまかせ」とほかのパターンは一緒に選べません。どちらかにしてください。" if "おまかせ" in msg
+                        else "使うパターンを1つ以上選んでください。")
             elif "emphasis_prompt" in msg:
                 hint = "誰に向けて、どう書くかを入力してください。"
             elif "環境依存" in msg or "持てません" in msg:
@@ -78,7 +96,17 @@ def boundary(fn):
             elif "ロゴ variant" in msg or "logo.variant" in msg:
                 hint = "使用するロゴの画像を登録してください。使わない場合は「なし」を選んでください。"
             elif "footer.text" in msg:
-                hint = "中央下に入れる文字は文字列で入力してください。"
+                hint = f"フッタの文字は {MAX_FOOTER_CHARS} 字以内の 1 行で入力してください。"
+            elif "format.watermark" in msg:
+                hint = f"透かしの文字は {MAX_WATERMARK_CHARS} 字以内の 1 行で入力してください。"
+            elif "format.page_numbers" in msg:
+                hint = "ページ番号は「出す」か「出さない」を選んでください。"
+            elif "engine_style" in msg:
+                hint = "エンジンのスタイルは、画面に表示された選択肢から選んでください。"
+            elif "image_look" in msg:
+                hint = "画風は、画面に表示された選択肢から選んでください。"
+            elif "style_note" in msg:
+                hint = f"作風の一言は {MAX_STYLE_NOTE_CHARS} 字以内の 1 行で入力してください。"
             elif "tone" in msg:
                 hint = "文章の調子は硬め・標準・柔らかめから選んでください。"
             elif any(key in msg for key in ("typeface", "density", "visual_ratio")):
@@ -224,13 +252,24 @@ def brand_preview(app, b):
     logo = config["logo"]
     corner = logo_rules.validate_placement(logo.get("placement"))[logo_rules.PLACEMENT_KEY]
     result = {"canvas": list(logo_rules.CANVAS), "clean_area": None, "logo_xywh": None, "warnings": [], "image_url": None}
+    for a in assets:
+        if a["role"] in LOGO_ROLES and rows[a["asset_id"]]["media_type"] not in LOGO_MEDIA:
+            raise ApiError(400, "logo_type", "ロゴは PNG か JPEG で登録してください（スライドを描くエンジンが受ける形です）。")
+    fmt = config.get("format") or {}
+    footer_text = config["footer"]["text"]
     if logo["variant"] != "none":
         a = next(a for a in assets if a["role"] == VARIANT_TO_ROLE[logo["variant"]])
         row = rows[a["asset_id"]]
         box = logo_rules.preview_box((row["width"], row["height"]), corner)
         result.update(logo_xywh=box["logo_xywh"], warnings=box["warnings"], image_url=public_image(row)["url"])
-    result["copyright"] = {"text": config["footer"]["text"], "status": "not_checked",
-                           "message": "フッタの文字は保存されます。実際の文字の置き方は、描いたページで確認してください。"}
+    result["chrome"] = logo_rules.chrome_boxes(result["logo_xywh"], corner, footer=bool(footer_text),
+                                              page_numbers=bool(fmt.get("page_numbers")),
+                                              watermark=bool((fmt.get("watermark") or "").strip()))
+    result["format"] = {"page_numbers": bool(fmt.get("page_numbers")), "watermark": (fmt.get("watermark") or "").strip()}
+    result["copyright"] = {"text": footer_text, "status": "not_checked",
+                           "message": "フッタは中身のページの左下に入ります（表紙・章扉・写真の全面のページには入りません）。"
+                                      "ロゴが入らない角は、描くときにエンジンが別の角へ逃がします。"}
+    result["theme"] = palette.engine_theme(palette.snapshot_colors(config["colors"]))
     result["palette"] = colors
     return result
 
@@ -258,8 +297,8 @@ def catalog(app, req):
         groups[kind] = [public_setting(app, get_fn(r["id"]), kind) for r in list_fn()]
     # ロゴの角はエンジンの --logo-position と同じ 3 つ（右下・左下・右上）。v1 の予約枠（clean_area）と
     # 枠の上下限（bounds）は持たない（画面は無ければ描かない。bounds は空で返す）
-    # 使うパターンの目録は P4 でエンジンの型の一覧に替える。それまでは「おまかせ」の 1 つ（store/styles.py）
-    patterns = [{"value": key, "label": value["label"], "use": value["use"]} for key, value in LAYOUT_PATTERNS.items()]
+    # 使うパターンの目録はエンジンの型の一覧（先頭は「おまかせ」＝すべて）
+    patterns = [dict(AUTO_PATTERN)] + contenttypes.engine_types()
     return Response.json(200, {**groups, "counts": {k: len(v) for k, v in groups.items()},
         "brand_default": copy.deepcopy(PRESET_BRAND_CONFIG),
         "logo_control": {"key": logo_rules.PLACEMENT_KEY, "corners": logo_rules.corner_choices(),
@@ -269,6 +308,11 @@ def catalog(app, req):
                         for key, options in STYLE_DIAL_OPTIONS.items()},
         "style_default_id": PRESET_STYLE_STANDARD_ID,
         "layout_patterns": patterns,
+        "engine_styles": {mode: [{"value": v, "label": ENGINE_STYLE_LABELS.get(v, v)} for v in ENGINES[mode].styles]
+                          for mode in ENGINES},
+        "engine_style_defaults": {mode: ENGINES[mode].default_style for mode in ENGINES},
+        "image_looks": [{"value": v, "label": IMAGE_LOOK_LABELS.get(v, v)} for v in IMAGE_LOOK_CHOICES],
+        "limits": {"footer": MAX_FOOTER_CHARS, "watermark": MAX_WATERMARK_CHARS, "style_note": MAX_STYLE_NOTE_CHARS},
         "canvas_sizes": sorted(CANVAS_SIZES), "capabilities": CAPABILITIES,
         "server": server_block(app)})
 
@@ -286,7 +330,7 @@ def preview_brand(app, req):
 
 
 # ブランドの編集画面が組み直して送る config のキー。ここに無いキー（`fonts` など）は画面が知らないので送られない。
-SCREEN_BRAND_KEYS = ("schema_version", "colors", "logo", "footer")
+SCREEN_BRAND_KEYS = ("schema_version", "colors", "logo", "footer", "format")
 
 
 def merge_brand_config(previous, submitted):
@@ -335,7 +379,8 @@ def save_brand(app, req):
         if bid:
             row = app.store.brand(bid)
             editable(row, b)
-            b = {**b, "config": merge_brand_config(row["current_revision"]["config"], b.get("config"))}
+            b = {**b, "config": merge_brand_config(row["current_revision"]["config"], b.get("config")),
+                 "assets": merge_brand_assets(row["current_revision"]["assets"], b.get("assets", []))}
         name = name_of(b)
         preview = brand_preview(app, b)
         config = copy.deepcopy(b["config"])
@@ -408,24 +453,35 @@ def delete_setting(app, req):
 
 # ---- この機械の口 ----
 # 画面が見せるのは「いまファイルに書いてある値」で、`app.settings` の写しではない。
-# 保存しても動いているサーバの bind は変わらないので、両方を出して食い違いを見せる。
+# 保存しても動いているサーバの bind は変わらないので、両方を出して食い違いを見せる（手で直したときも同じ）。
+# 効かせるのは画面の「再起動」（`POST /api/server/restart`。server/restart.py）。
 
 def server_block(app):
-    cfg = Settings.load(app.root.settings_path).server
+    """この機械の口: ファイルの値・動いている値・再起動が要るか・再起動のボタンに要るもの（走っている仕事の数・新しい URL）。"""
+    st = app.settings_state()
+    cfg = st["disk"] or {"host": app.host, "port": app.port, "host_names": []}
+    workers = app.workers
     return {
-        "host": cfg.host,
-        "host_names": list(cfg.host_names),
-        "port": cfg.port,
-        "bind_scope": bind_scope(cfg.host),
+        "host": cfg["host"],
+        "host_names": list(cfg["host_names"]),
+        "port": cfg["port"],
+        "bind_scope": bind_scope(cfg["host"]),
         "running_host": app.host,
-        "restart_required": cfg.host != app.host or list(cfg.host_names) != list(app.settings.server.host_names),
+        "running_port": app.bound_port,
+        "running_url": app.url,
+        "restart_required": st["restart_required"],
+        "settings_error": st["error"],
+        "expected_url": st["expected_url"] or app.url,
+        "running_jobs": len(workers.busy_jobs()) if workers is not None else 0,
+        "restartable": bool(app.restartable),
+        "restarting": app.restarting is not None,
         "loopback_hosts": list(LOOPBACK_HOSTS),
     }
 
 
 @boundary
 def save_server(app, req):
-    b = payload(req, ("host", "host_names"))
+    b = payload(req, ("host", "host_names", "port"))
     host = b.get("host")
     if not isinstance(host, str) or not host.strip():
         raise ApiError(400, "bad_bind_address", "この機械のどのアドレスで待つかを書いてください。")
@@ -433,8 +489,11 @@ def save_server(app, req):
     if isinstance(names_raw, str) or not isinstance(names_raw, list):
         raise ApiError(400, "bad_host_names", "名前は一行に一つずつ書いてください。")
     names = [n.strip() for n in names_raw if isinstance(n, str) and n.strip()]
+    port = b.get("port")
+    if port is not None and (isinstance(port, bool) or not isinstance(port, int) or not (1024 <= port <= 65535)):
+        raise ApiError(400, "bad_port", "ポートは 1024〜65535 の数で書いてください。")
     try:
-        save_server_section(app.root.settings_path, host=host.strip(), host_names=names)
+        save_server_section(app.root.settings_path, host=host.strip(), host_names=names, port=port)
     except ValidationError as exc:
         # ここの文言は利用者に向けて書いてある（どこに開くかは利用者が決める）。そのまま見せる。
         raise ApiError(400, "bad_bind_address", str(exc)) from None

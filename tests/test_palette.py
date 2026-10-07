@@ -33,8 +33,8 @@ class PaletteTests(unittest.TestCase):
     def simple_config(self):
         config = copy.deepcopy(self.fx.get("/api/settings").json()["brand_default"])
         config.pop("fonts")
-        config["colors"].pop("semantic")
-        config["colors"].pop("gray")
+        config["colors"].pop("semantic", None)
+        config["colors"].pop("gray", None)
         return config
 
     def test_t2_t3_deterministic_and_valid_derived_palette(self):
@@ -103,7 +103,7 @@ class PaletteTests(unittest.TestCase):
         response = self.fx.post("/api/settings/brands/preview", {"config": self.simple_config(), "assets": []})
         self.assertEqual(response.status, 200, response.body)
         payload = response.json()["palette"]
-        self.assertEqual(payload["input"], {"primary": "#1f1f1f", "accent": "#4a4a4a", "info": None})
+        self.assertEqual(payload["input"], {"primary": "#0DB4F2", "accent": "#0DB4F2", "info": None})
         self.assertEqual(payload["note"], "配色は算出値です。生成される絵で実際にこの色が使われる保証はありません。")
 
 

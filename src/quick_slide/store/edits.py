@@ -23,8 +23,10 @@ from ..errors import NotFoundError
 from .base import StoreBase, dump_json, load_json
 
 # 直しの回に引き継ぐ、デッキの描き方（モードとエンジンの引数の元）。台本係の選び方は直しごとに決め直す
+# `overrides` は会話が言ったスタイル・画風・一言（設定のスタイルより勝つ。P4）。`style` は前の回のエンジンのスタイル
+# （全ページを 1 枚に描くかを保つため）。画風・一言・ブランドは回ごとに設定から決め直す（render/look.py）
 DECK_ARG_KEYS = ("mode", "style", "image_look", "images", "page_count", "purpose", "audience", "style_note",
-                 "origin_runtime")
+                 "origin_runtime", "overrides")
 
 
 class EditsMixin(StoreBase):

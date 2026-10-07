@@ -19,7 +19,7 @@
 | `skills/html-slide/` | エンジン: 編集できて動く PPTX |
 | `skills/image-slide/` | エンジン: 画像生成で1枚ずつ描く資料 |
 | `skills/quick-slide/` | 会話の入口（原稿を整えて投入し、スライドの画面の URL を返す） |
-| `src/quick_slide/`・`web/app/` | 常駐サーバ（台本係・描き係のワーカーを含む）と画面（段の進め方は `docs/DESIGN.md` §7、控えは `docs/P1-NOTES.md`・`docs/P2-NOTES.md`） |
+| `src/quick_slide/`・`web/app/` | 常駐サーバ（台本係・描き係のワーカーを含む）と画面（段の進め方は `docs/DESIGN.md` §7、控えは `docs/P1-NOTES.md`〜`docs/P4-NOTES.md`） |
 
 エンジンは状態を持たず、ほかのスキルを呼ばない（素材はファイルで受ける）。
 
