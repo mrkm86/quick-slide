@@ -30,9 +30,9 @@ IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 
 # 型 → (使えるキー, 下の帯（フッタ・ページ番号）を出すか, 必須のキー)。html-slide の deck_types.TYPES と同じ並び
 TYPES = {
-    "cover": ({"label", "title", "subtitle", "meta", "image", "layout", "text_side", "tone"}, False, ("title",)),
+    "cover": ({"label", "title", "subtitle", "meta", "image", "layout", "text_side", "tone", "motif"}, False, ("title",)),
     "agenda": (HEAD_KEYS | {"items", "highlight"}, True, ("items",)),
-    "section": ({"number", "label", "title", "subtitle", "image", "layout", "text_side", "tone"}, False, ("title",)),
+    "section": ({"number", "label", "title", "subtitle", "image", "layout", "text_side", "tone", "motif"}, False, ("title",)),
     "statement": ({"kicker", "headline", "body", "source"}, True, ("headline",)),
     "big-number": (HEAD_KEYS | {"value", "unit", "label", "note", "side"}, True, ("headline", "value")),
     "cards": (HEAD_KEYS | {"items"}, True, ("headline", "items")),
@@ -59,8 +59,8 @@ TYPES = {
 # 型ごとの「配置の指定」のキー（一番外だけ）。文字としては描かせず、描き方の指示として別に渡す（prompt.py）。
 # 同じ名前でも型によって中身のことがある（big-number の side は脇の数字・bullets の side は写真の側）ので、型ごとに持つ
 LAYOUT_KEYS = {
-    "cover": {"layout", "text_side", "tone"},
-    "section": {"layout", "text_side", "tone"},
+    "cover": {"layout", "text_side", "tone", "motif"},
+    "section": {"layout", "text_side", "tone", "motif"},
     "photo": {"layout", "split"},
     "quote": {"layout"},
     "bullets": {"side", "split"},

@@ -65,7 +65,7 @@ KEY_WORDS = ("キーの意味: kicker＝見出しの上の小さな名札、head
              "キーの名前そのものは描かない")
 
 LAYOUT_WORDS = ("配置のキーの意味: layout＝置き方（split＝片側に写真・hero／full＝全面の写真・left／right＝写真の側・band＝上に横長の帯・"
-                "collage＝大1枚＋小2枚・portrait＝脇に丸い人物写真・plain＝写真なし）、text_side＝文字を置く側、"
+                "collage＝大1枚＋小2枚・portrait＝脇に丸い人物写真・plain＝写真なし・graphic＝写真の代わりに幾何学の図形で飾る）、motif＝graphic の図柄（circles＝重なる円・grid＝点の格子と四角・bands＝斜めの帯・blocks＝色の面の組み合わせ）、text_side＝文字を置く側、"
                 "tone＝全面の写真の上の幕（light＝明るい幕に濃い文字・dark＝暗い幕に白い文字）、side＝写真の側、"
                 "split＝写真の幅（1/2・2/5・1/3）、fit＝cover は枠いっぱいに切り抜く・contain は切らずに全体を見せる、"
                 "widths＝表の列の幅の比、min・max＝グラフの軸の下限・上限、value_labels＝値を添える点（all・last・none）、"

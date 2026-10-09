@@ -650,6 +650,42 @@ def case_hero():
             assert words in str(e), (bad, str(e))
 
 
+def case_graphic():
+    """画像なしの表紙・章扉（layout: graphic）: 図形は svg.art の層で、全部が層の中（section の外に出ない）・図柄の既定は題で決まる・
+    クリックは増やさない・handout は動かない・誤りは rc=2。"""
+    import deck_art as ART
+    sc = {"title": "図形の試し", "slides": [{"type": "cover", "layout": "graphic", "title": "題", "subtitle": "副題"}]
+          + [{"type": "section", "layout": "graphic", "motif": m, "title": f"章 {m}"} for m in ART.MOTIFS]}
+    path, info = build(sc, "graphic")
+    secs = pathlib.Path(path).read_text(encoding="utf-8").split("<section")[1:]
+    assert len({ART.default_motif(f"資料{i}") for i in range(20)}) == len(ART.MOTIFS), "題が違えば図柄も替わる"
+    want = ART.art_layers(ART.default_motif("図形の試し"), 880, 1080)
+    assert want[0] and want[0] in secs[0], "motif を省いた表紙は、題で決まる図柄"
+    for i, sec in enumerate(secs):
+        arts = re.findall(r'<svg class="art" viewBox="0 0 (\d+) (\d+)"[^>]*style="position:absolute; left:(\d+)px([^>]*)>(.*?)</svg>', sec)
+        assert len(arts) >= 3, f"{i + 1}枚目: 図形の層が無い"
+        w, h, left = int(arts[0][0]), int(arts[0][1]), int(arts[0][2])
+        assert left + w == 1920 and h == 1080 and left == (1040 if i == 0 else 960), (left, w, h)
+        assert all('data-step="0"' in a[3] for a in arts), "図形は画面に入ったら出る（step 0）"
+        for a in arts:
+            for pts in re.findall(r'points="([^"]+)"', a[4]):
+                for xy in pts.split():
+                    x, y = map(float, xy.split(","))
+                    assert -0.01 <= x <= w + 0.01 and -0.01 <= y <= h + 0.01, f"{i + 1}枚目: 層の外の点 {x},{y}"
+            for cx, cy, r in re.findall(r'<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"', a[4]):
+                assert float(r) <= float(cx) <= w - float(r) and float(r) <= float(cy) <= h - float(r)
+            for x, y, rw, rh in re.findall(r'<rect x="([\d.-]+)" y="([\d.-]+)" width="([\d.]+)" height="([\d.]+)"', a[4]):
+                assert 0 <= float(x) and float(x) + float(rw) <= w + 0.01 and 0 <= float(y) and float(y) + float(rh) <= h + 0.01
+    assert 'data-step="1"' not in "".join(secs), "飾りでクリックが増えた"
+    path, _ = build(sc, "graphic-handout", mode="handout")
+    assert "data-step" not in pathlib.Path(path).read_text(encoding="utf-8").split("<section", 1)[1]
+    for bad, words in (({"type": "cover", "layout": "graphic", "title": "t", "image": {"prompt": "x"}}, "image と一緒に書かない"),
+                       ({"type": "cover", "title": "t", "motif": "circles"}, "graphic のときだけ"),
+                       ({"type": "section", "layout": "graphic", "motif": "waves", "title": "t"}, "motif は"),
+                       ({"type": "cover", "layout": "grafic", "title": "t"}, "graphic（")):
+        expect_error(one(bad), "graphic-bad", words)
+
+
 def case_overlay_contrast():
     """写真の上の文字の幕が薄すぎれば rc=2（暗い幕は白い写真、明るい幕は黒い写真を仮定）。使った幕だけを見る。"""
     for table, name, deckp in ((T.OVERLAYS, "photo（全面）", SAMPLE), (T.LIGHT_OVERLAYS, "cover・section（hero・light）", IMAGE_SAMPLE)):
@@ -1221,6 +1257,10 @@ def case_logo_pages():
     assert [(pages[n].get("corner"), pages[n].get("x")) for n in (1, 8)] == [("bottom-left", 160), ("bottom-left", 120)], \
         f"右下がふさがるページが、文字の左端にそろえた左下に移っていない: {pages[1]} {pages[8]}"
     assert pages[13].get("off") and pages[2]["corner"] == "bottom-right", (pages[13], pages[2])
+    sc = {"title": "t", "slides": [{"type": "cover", "layout": "graphic", "title": "題"},
+                                   {"type": "section", "layout": "graphic", "title": "章"}]}
+    _, info = build(sc, "logo-graphic", logo=str(logo))                           # 図形の飾りは写真と同じく避ける
+    assert [pg.get("corner") for pg in info["logo"]["pages"]] == ["bottom-left", "bottom-left"], info["logo"]["pages"]
 
 
 def case_logo_positions():

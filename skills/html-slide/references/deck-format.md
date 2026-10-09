@@ -66,9 +66,9 @@
 
 | 型 | いつ使うか | クリック |
 |---|---|---|
-| `cover` | 表紙。資料の題と、誰がいつ出したか。`layout: hero` で写真を全面に | 0 |
+| `cover` | 表紙。資料の題と、誰がいつ出したか。`layout: hero` で写真を全面に、`graphic` で写真の代わりに図形で飾る | 0 |
 | `agenda` | 目次。話の順番を先に見せる（2〜6項目）。章の頭で `highlight` を付けて再掲もできる | 0 |
-| `section` | 章扉。話の区切りを明確にする | 0 |
+| `section` | 章扉。話の区切りを明確にする。`layout: graphic` で写真の代わりに図形で飾る | 0 |
 | `statement` | 一番言いたいことを1文で大きく言う（結論・まとめ） | 0 |
 | `summary` | 冒頭で結論1文と、それを支える根拠2〜3を1枚で見せる（エグゼクティブサマリー・ハイライト・稟議の要旨） | 1 |
 | `big-number` | 1つの数字で状況を言い切る（＋補足の数字2〜3） | 1（`side` があれば 2） |
@@ -100,9 +100,9 @@
 
 | 型 | キー（★は必須） |
 |---|---|
-| `cover` | `title`★（3行まで）・`label`（題の上の小さな文字）・`subtitle`（2行）・`meta`（日付・組織など文字か3つまでの配列）・`image`・`layout`（`split`＝右の 880×1080 に写真・既定／`hero`＝全面の写真）・`text_side`（hero の文字の側 `left` 既定・`right`）・`tone`（hero の幕 `light`＝明るい幕に濃い文字・既定／`dark`＝暗い幕に白い文字） |
+| `cover` | `title`★（3行まで）・`label`（題の上の小さな文字）・`subtitle`（2行）・`meta`（日付・組織など文字か3つまでの配列）・`image`・`layout`（`split`＝右の 880×1080 に写真・既定／`hero`＝全面の写真／`graphic`＝右の 880×1080 をテーマの色の図形で飾る。image は書かない）・`motif`（graphic の図柄: `circles`＝重なる円・`grid`＝点の格子と四角・`bands`＝斜めの帯・`blocks`＝色の面の組み合わせ。省くと資料の題で決まり、資料の中でそろう）・`text_side`（hero の文字の側 `left` 既定・`right`）・`tone`（hero の幕 `light`＝明るい幕に濃い文字・既定／`dark`＝暗い幕に白い文字） |
 | `agenda` | `headline`（省くと「本日お話しすること」）・`items`★（文字か `{title, note}`・2〜6）・`highlight`（強める項目・1から） |
-| `section` | `title`★・`subtitle`・`number`（省くと章扉の通し番号）・`label`（「CHAPTER」など）・`image`（あれば右半分に写真、無ければ左に主役の色の帯）・`layout`・`text_side`・`tone`（cover と同じ。`hero` で全面の写真） |
+| `section` | `title`★・`subtitle`・`number`（省くと章扉の通し番号）・`label`（「CHAPTER」など）・`image`（あれば右半分に写真、無ければ左に主役の色の帯）・`layout`・`text_side`・`tone`・`motif`（cover と同じ。`hero` で全面の写真、`graphic` で右半分を図形で飾る） |
 | `statement` | `headline`★（主張・3行まで）・`body`（補足・3行）・`kicker` |
 | `big-number` | `value`★（数字の文字）・`unit`（単位）・`label`（説明・2行）・`note`・`side`（`{value, text}`・0〜3） |
 | `cards` | `items`★（`{label, title★, body, accent, image}`・2〜4）。`accent: true` の1枚を強める。`image` はカードの上に 16:9 で、書くなら全部のカードに |

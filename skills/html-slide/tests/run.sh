@@ -86,6 +86,7 @@ deck "画像が無い: 既定は rc=2・placeholder なら仮の枠＋警告（H
 deck "image_slots: 全部の枠・推奨の大きさ・prompt_full（文字を描かない・重ねる側を空ける）" image_slots
 deck "画像の見本: 16枚・クリック18・警告0・全部の枠に prompt と画像・画像の型を全部使う" image_sample
 deck "全面の表紙・章扉（hero）: 幕・文字を置く側・明暗・誤りは rc=2" hero
+deck "画像なしの表紙・章扉（graphic）: 図形は層の中・図柄の既定は題で決まる・クリックは増やさない・誤りは rc=2" graphic
 deck "写真の上の文字の幕が薄すぎれば rc=2（白い写真・黒い写真を仮定）" overlay_contrast
 deck "focus: 1〜2語・% に直す・px は rc=2" focus_words
 deck "写真の幅（split）と箇条書きの写真の側（side）" split_side

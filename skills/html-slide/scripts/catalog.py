@@ -18,13 +18,14 @@ import sys
 sys.dont_write_bytecode = True   # 置いた場所（配る物の中・ほかの環境からのリンク先）に __pycache__ を残さない
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import deck  # noqa: E402
+import deck_art as ART  # noqa: E402
 import deck_types as T  # noqa: E402
 import outputs as OUT  # noqa: E402
 
 SKILL = pathlib.Path(__file__).resolve().parent.parent
 IMG = SKILL / "examples" / "images"
 ASSET = SKILL / "examples" / "assets"
-SHOWN_KEYS = ("layout", "text_side", "tone", "split", "side", "accent", "arrow", "highlight", "steps", "fit")
+SHOWN_KEYS = ("layout", "text_side", "tone", "split", "side", "accent", "arrow", "highlight", "steps", "fit", "motif")
 
 
 def im(name: str, **kw) -> dict:
@@ -67,10 +68,13 @@ def variants() -> list[dict]:
         V("cover", {"layout": "hero", "title": "会議の時間を**半分**にする", "subtitle": "3か月の試行のご提案", "image": HERO}, "左・light（既定）", True),
         V("cover", {"layout": "hero", "text_side": "right", "title": "会議の時間を**半分**にする", "image": im("s01-image.jpg", focus="left")}, "", True),
         V("cover", {"layout": "hero", "tone": "dark", "title": "会議の時間を**半分**にする", "subtitle": "3か月の試行のご提案", "image": HERO}, "", True),
+        *[V("cover", {"layout": "graphic", "motif": m, "label": "社内提案", "title": "会議の時間を**半分**にする",
+                      "subtitle": "3か月の試行のご提案"}, "画像なしで図形で飾る" if m == "circles" else "") for m in ART.MOTIFS],
         V("agenda", {"items": ["いま何が起きているか", "なぜ減らないのか", "3つのルール", "試行の計画"]}),
         V("agenda", {"items": ["いま何が起きているか", "なぜ減らないのか", "3つのルール", "試行の計画"], "highlight": 2}),
         V("section", {"title": "いま会議に何が起きているか", "subtitle": "数字で見る現状"}),
         V("section", {"title": "どう変えるか", "subtitle": "3つのルール", "image": im("s07-image.png")}, "右に画像", True),
+        V("section", {"layout": "graphic", "motif": "bands", "title": "どう変えるか", "subtitle": "3つのルール"}, "画像なしで図形で飾る"),
         V("section", {"layout": "hero", "title": "現場で何を変えたか", "image": HERO}, "左・light（既定）", True),
         V("section", {"layout": "hero", "tone": "dark", "title": "現場で何を変えたか", "image": im("s03-image.png", focus="right")}, "", True),
         V("statement", {"kicker": "まとめ", "headline": "会議を減らすのではなく、**仕事の時間を取り戻す**", "body": "決めることを短く決め、考える時間を増やす"}),

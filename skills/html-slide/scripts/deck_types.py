@@ -19,6 +19,8 @@ import math
 import pathlib
 import re
 
+import deck_art as ART
+
 W, H = 1920, 1080
 X0 = 120                 # 左右の余白
 CW = W - 2 * X0          # 中身の幅 1680
@@ -525,8 +527,29 @@ def hero_layer(s: Slide, name: str):
     return parts, (140 if side == "left" else W - 140 - HERO_TW), HERO_TW, tone == "dark"
 
 
+def art_layer(s: Slide, x: int, w: int, name: str) -> list[str]:
+    """layout: graphic の飾り（deck_art）。x から右端まで・上下いっぱいに、層ごとに少しずつ遅れて出る（クリックは増やさない）。"""
+    motif = s.spec.get("motif") or ART.default_motif(str(s.spec.get("_motif_seed", "")))
+    if motif not in ART.MOTIFS:
+        s.err(f"motif は {ART.MOTIF_WORDS} のどれか")
+    out = []
+    for i, layer in enumerate(ART.art_layers(motif, w, H)):
+        if layer:
+            out.append(f'<svg class="art" viewBox="0 0 {w} {H}" width="{w}" height="{H}" style="position:absolute; {box(x, 0, w, H)}" '
+                       f'{s.anim(0, "fade" if i == 0 else "pop", 100 + 180 * i, f"{name}{i + 1}")}>{layer}</svg>')
+    return out
+
+
+def _graphic_keys(s: Slide, layout: str):
+    if layout == "graphic" and s.spec.get("image"):
+        s.err("layout: graphic は画像の代わりに図形で飾る置き方。image と一緒に書かない（写真なら split か hero）")
+    if "motif" in s.spec and layout != "graphic":
+        s.err("motif は layout: graphic のときだけ")
+
+
 def t_cover(s: Slide):
     """表紙: ラベル・題・副題・日付や組織。image があれば右の 880px に写真（layout: split）か、全面の写真（layout: hero）。
+    layout: graphic は画像の代わりに、右の 880px をテーマの色の図形で飾る（motif で図柄を選ぶ。deck_art）。
 
     hero は写真を全面に敷き、text_side（left 既定・right）に背景の色の幕（HERO_VEIL の濃さ）を重ねて、その上に題を置く。
     幕の端は2色の linear-gradient で写真に溶かす。幕の濃さは deck.py が「一番暗い（黒い）写真」を仮定して検査する
@@ -538,8 +561,9 @@ def t_cover(s: Slide):
     if not isinstance(meta, list) or len(meta) > 3:
         s.err("meta は文字か、3つまでの文字の配列で書く")
     layout = s.spec.get("layout", "split")
-    if layout not in ("split", "hero"):
-        s.err("layout は split（右に写真・既定）か hero（全面の写真）")
+    if layout not in ("split", "hero", "graphic"):
+        s.err("layout は split（右に写真・既定）か hero（全面の写真）か graphic（写真の代わりに図形で飾る）")
+    _graphic_keys(s, layout)
     if layout == "hero" and not s.spec.get("image"):
         s.err("layout: hero には image が要る")
     if layout != "hero" and ("text_side" in s.spec or "tone" in s.spec):
@@ -550,6 +574,9 @@ def t_cover(s: Slide):
         parts, tx, tw, dark = hero_layer(s, "表紙の写真")
     elif s.spec.get("image"):
         parts.append(s.img(s.spec["image"], "image", "photo", 1040, 0, 880, H, anim=s.anim(0, "fade", 0, "表紙の写真")))
+        tw = 820
+    elif layout == "graphic":
+        parts += art_layer(s, 1040, 880, "表紙の図形")
         tw = 820
     ts, _ = fit(title, 88, tw, what="題（title）", lines=3, lh=1.3, min_size=60, bold=True, tidy=True)
     inner = []
@@ -595,14 +622,16 @@ def t_agenda(s: Slide):
 
 
 def t_section(s: Slide):
-    """章扉: 番号・章題・副題。image が無ければ左に primary の帯、あれば右半分に写真（layout: split）か全面の写真（hero）。"""
+    """章扉: 番号・章題・副題。image が無ければ左に primary の帯、あれば右半分に写真（layout: split）か全面の写真（hero）。
+    layout: graphic は画像の代わりに、右半分をテーマの色の図形で飾る（文字の置き方は split の写真と同じ）。"""
     title, subtitle, label = s.text("title", required=True), s.text("subtitle"), s.text("label")
     number = s.text("number", default=str(s.spec.get("_auto_number", "")))
     if number.isdigit():
         number = f"{int(number):02d}"
     layout = s.spec.get("layout", "split")
-    if layout not in ("split", "hero"):
-        s.err("layout は split（右半分に写真・既定）か hero（全面の写真）")
+    if layout not in ("split", "hero", "graphic"):
+        s.err("layout は split（右半分に写真・既定）か hero（全面の写真）か graphic（写真の代わりに図形で飾る）")
+    _graphic_keys(s, layout)
     if layout == "hero" and not s.spec.get("image"):
         s.err("layout: hero には image が要る")
     if layout != "hero" and ("text_side" in s.spec or "tone" in s.spec):
@@ -614,6 +643,9 @@ def t_section(s: Slide):
         size, no_cls = 64, "primary"
     elif s.spec.get("image"):
         parts.append(s.img(s.spec["image"], "image", "photo", 960, 0, 960, H, anim=s.anim(0, "fade", 0, "章扉の写真")))
+        x, tw, size, no_cls = X0, 720, 64, "primary"
+    elif layout == "graphic":
+        parts += art_layer(s, 960, 960, "章扉の図形")
         x, tw, size, no_cls = X0, 720, 64, "primary"
     else:
         parts.append('<div class="sec-panel" style="width:640px" data-name="章扉の帯"></div>')
@@ -1772,9 +1804,9 @@ def t_annotate(s: Slide):
 # 型の棚: 名前 → (関数, 台本で使えるキー, 見出しの帯・下の文字・ページ番号を付けるか)
 HEAD_KEYS = {"kicker", "headline", "sub", "source"}
 TYPES = {
-    "cover": (t_cover, {"label", "title", "subtitle", "meta", "image", "layout", "text_side", "tone"}, False),
+    "cover": (t_cover, {"label", "title", "subtitle", "meta", "image", "layout", "text_side", "tone", "motif"}, False),
     "agenda": (t_agenda, HEAD_KEYS | {"items", "highlight"}, True),
-    "section": (t_section, {"number", "label", "title", "subtitle", "image", "layout", "text_side", "tone"}, False),
+    "section": (t_section, {"number", "label", "title", "subtitle", "image", "layout", "text_side", "tone", "motif"}, False),
     "statement": (t_statement, {"kicker", "headline", "body", "source"}, True),
     "big-number": (t_big_number, HEAD_KEYS | {"value", "unit", "label", "note", "side"}, True),
     "cards": (t_cards, HEAD_KEYS | {"items"}, True),

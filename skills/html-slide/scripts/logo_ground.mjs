@@ -53,7 +53,7 @@ try {
     await document.fonts.ready;
     document.querySelectorAll(".logo, .logo-plate, .footer, .pageno, .watermark").forEach((el) => { el.style.visibility = "hidden"; });
   });
-  // 枠にかかるもの: 写真・絵（ロゴ以外の <img>）と、文字を直に持つ要素
+  // 枠にかかるもの: 写真・絵（ロゴ以外の <img>）・図形の飾り（svg.art）と、文字を直に持つ要素
   const pages = await page.evaluate((boxes) => [...document.querySelectorAll("section[data-slide]")].map((sec) => {
     const o = sec.getBoundingClientRect();
     const hits = (el, [bx, by, bw, bh]) => {
@@ -63,7 +63,7 @@ try {
       return l < bx + bw && l + r.width > bx && t < by + bh && t + r.height > by;
     };
     const shown = (el) => getComputedStyle(el).visibility !== "hidden" && !el.closest("aside.notes");
-    const imgs = [...sec.querySelectorAll("img:not(.logo)")].filter(shown);
+    const imgs = [...sec.querySelectorAll("img:not(.logo), svg.art")].filter(shown);
     const texts = [...sec.querySelectorAll("*")].filter((el) => shown(el) && !el.closest("svg") &&
       [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()));
     const lefts = texts.map((el) => el.getBoundingClientRect()).filter((r) => r.width && r.left - o.left < 960)

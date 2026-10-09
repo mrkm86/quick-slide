@@ -511,6 +511,8 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
         if spec.get("type") == "section":
             chapter += 1
             spec["_auto_number"] = chapter
+        if spec.get("type") in ("cover", "section"):
+            spec["_motif_seed"] = sc.get("title") or script_path.stem   # layout: graphic の図柄の既定（資料の中でそろえる）
         steps_on = spec.get("steps", True)
         if not isinstance(steps_on, bool):
             raise DeckError(f"{no}枚目（{spec.get('type')}）: steps は true か false")

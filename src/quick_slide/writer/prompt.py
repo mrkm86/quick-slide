@@ -81,6 +81,8 @@ def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
         rules.append("画像の枠を使わない。image キーをどこにも書かない。写真が必須の型（photo・gallery・figure・annotate）と、"
                      "quote の layout: full・portrait は使わない")
     if engine.mode == "presentation":
+        rules.append(("表紙（cover）と章扉（section）は" if not args.get("images", True) else "画像を置かない表紙（cover）・章扉（section）は")
+                     + " layout: \"graphic\" にする（写真の代わりにテーマの色の図形で飾る。image は書かない）。motif は省いてよい（資料の中でそろう）")
         rules.append("talk（話す台本）を書くなら、その数は型のクリックの段の数＋1 にそろえる。そろえられないページは talk を省く")
     else:
         rules.append("このモードは各ページを画像生成で 1 枚丸ごと描く。見出しは短く、1 ページの文字は少なめにする"
