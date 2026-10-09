@@ -674,8 +674,10 @@ def case_graphic():
                     assert -0.01 <= x <= w + 0.01 and -0.01 <= y <= h + 0.01, f"{i + 1}枚目: 層の外の点 {x},{y}"
             for cx, cy, r in re.findall(r'<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"', a[4]):
                 assert float(r) <= float(cx) <= w - float(r) and float(r) <= float(cy) <= h - float(r)
-            for x, y, rw, rh in re.findall(r'<rect x="([\d.-]+)" y="([\d.-]+)" width="([\d.]+)" height="([\d.]+)"', a[4]):
-                assert 0 <= float(x) and float(x) + float(rw) <= w + 0.01 and 0 <= float(y) and float(y) + float(rh) <= h + 0.01
+            for x, y, rw, rh, st in re.findall(r'<rect x="([\d.-]+)" y="([\d.-]+)" width="([\d.]+)" height="([\d.]+)" style="([^"]*)"', a[4]):
+                m = float(re.search(r"stroke-width:([\d.]+)", st).group(1)) / 2 if "stroke:" in st else 0   # 線は辺の両側に出る
+                x, y, rw, rh = float(x) - m, float(y) - m, float(rw) + 2 * m, float(rh) + 2 * m
+                assert -0.01 <= x and x + rw <= w + 0.01 and -0.01 <= y and y + rh <= h + 0.01, f"{i + 1}枚目: 線ごと層の外 {x},{y},{rw},{rh}"
     assert 'data-step="1"' not in "".join(secs), "飾りでクリックが増えた"
     path, _ = build(sc, "graphic-handout", mode="handout")
     assert "data-step" not in pathlib.Path(path).read_text(encoding="utf-8").split("<section", 1)[1]
@@ -684,6 +686,53 @@ def case_graphic():
                        ({"type": "section", "layout": "graphic", "motif": "waves", "title": "t"}, "motif は"),
                        ({"type": "cover", "layout": "grafic", "title": "t"}, "graphic（")):
         expect_error(one(bad), "graphic-bad", words)
+
+
+def _role_sizes(html: str, cls: str) -> list[int]:
+    return [int(v) for v in re.findall(rf'class="{cls}" style="font-size:(\d+)px', html)]
+
+
+def case_grow():
+    """中身が少ないときに大きく組む（GROW_STEPS）: 短い3枚のカードは大きくなる・詰まったページと画像のあるページは元のまま・
+    並ぶ項目の題と本文は同じ大きさにそろう・本文は題との元の比より大きくしない。"""
+    def html_of(slide, name):
+        path, _ = build(one(slide), name)
+        return pathlib.Path(path).read_text(encoding="utf-8").split("<section", 1)[1]
+    short = {"type": "cards", "headline": "見出し", "items": [{"title": "速い", "body": "待たない"}, {"title": "安い", "body": "払わない"},
+                                                             {"title": "近い", "body": "歩ける"}]}
+    h = html_of(short, "grow-short")
+    ts, bs = _role_sizes(h, "card-title"), _role_sizes(h, "card-body")
+    assert len(set(ts)) == 1 and ts[0] > 44, f"短いカードの題が大きくならない: {ts}"
+    assert len(set(bs)) == 1 and bs[0] / ts[0] <= 32 / 44 + 0.01, f"本文が題との比を越えた: {ts} {bs}"
+    mixed = copy.deepcopy(short)
+    mixed["items"][1]["title"] = "コラムに使わない／TOP には二度と使わない"
+    ts = _role_sizes(html_of(mixed, "grow-mixed"), "card-title")
+    assert len(set(ts)) == 1, f"題の大きさがそろわない: {ts}"
+    full = {"type": "bullets", "headline": "見出し", "items": [
+        {"title": f"項目{i}の題はここまで長く書いてある", "body": "本文も二行に届くくらいの長さで書いておき、場所を使い切るようにしてある。さらにもう少し足す"}
+        for i in range(5)]}
+    assert max(_role_sizes(html_of(full, "grow-full"), "li-title")) <= 44, "詰まったページが大きくなった"
+    d = _img_dir("grow-img")
+    sc = one({"type": "cards", "headline": "見出し", "items": [dict(it, image={"prompt": "x"}) for it in short["items"]]})
+    path, _ = _build_in(d, sc, placeholder=True)
+    assert max(_role_sizes(pathlib.Path(path).read_text(encoding="utf-8"), "card-title")) <= 44, "画像のあるページが大きくなった"
+    long5 = {"type": "flow", "headline": "見出し", "items": [{"label": "1", "title": "あ" * 19, "body": "本文"} for _ in range(5)]}
+    bs = _role_sizes(html_of(long5, "grow-floor"), "flow-body")
+    assert min(bs) >= 28, f"大きく組んだのに本文が倍率 1 の大きさより縮んだ: {bs}"
+    tl = {"type": "timeline", "headline": "見出し", "items": [{"when": "2026年10月から2027年3月", "title": "開始"},
+                                                                {"when": "2027年", "title": "実行"}, {"when": "2028年", "title": "完了"}]}
+    hs = re.findall(r'class="tl-when" style="font-size:\d+px; height:([\d.]+)px"', html_of(tl, "grow-tl"))
+    assert len(hs) == 3 and len(set(hs)) == 1, f"時期の行の高さがそろわない（丸と線がずれる）: {hs}"
+    d2 = _img_dir("grow-img2")
+    sc = one({"type": "cards", "headline": "見出し", "items": [{"title": "速い", "image": {"prompt": "x"}},
+                                                             {"title": "あ" * 40, "image": {"prompt": "y"}}]})
+    _, info = _build_in(d2, sc, placeholder=True)
+    names = [x["slot"] for x in info["images"]]
+    assert len(names) == len(set(names)) == 2, f"画像の枠が二重に数えられた: {names}"
+    flow = {"type": "flow", "headline": "見出し", "items": [{"label": "1段目", "title": "完全一致"}, {"label": "2段目", "title": "見た目の指紋"},
+                                                            {"label": "3段目", "title": "画像の意味＋人の目"}]}
+    ts = _role_sizes(html_of(flow, "grow-flow"), "flow-title")
+    assert len(set(ts)) == 1 and ts[0] > 40, f"短い矢羽根の題が大きくならない: {ts}"
 
 
 def case_overlay_contrast():

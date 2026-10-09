@@ -179,12 +179,36 @@ class Slide:
         self.warnings = [] if warnings is None else warnings  # 仮の枠を描いたことなど
         self.overlays = {} if overlays is None else overlays  # 使った文字の幕（OVERLAYS・LIGHT_OVERLAYS の名前 → 枚目）。deck.py が検査する
         self.steps: set[int] = set()             # 型が使った段（1 以上）。flat でも記録する（talk の照合に使う）
+        self.grow = 1.0                          # 中身が少ないときに大きく組む倍率（build_slide が決める・GROW_STEPS）
+        self.need: float | None = None           # 型が見積もった中身の高さ（px）。大きく組めるかの判断に使う
+        self.avail: float | None = None          # 中身を置ける高さ（見出しの下から BODY_BOTTOM まで）
+        self.caps: dict[str, int] = {}           # 並ぶ項目の同じ役の文字（カードの題など）の大きさの上限（build_slide がそろえる）
+        self.seen: dict[str, list[int]] = {}     # 役ごとに、組んだ文字の大きさ
         self.fx = spec.get("fx")
         if self.fx is not None and self.fx not in FX:
             self.err(f"fx は {' / '.join(FX)} のどれか（{self.fx!r}）")
 
     def err(self, msg: str):
         raise DeckError(f"{self.no}枚目（{self.type}）: {msg}")
+
+    def fit(self, role: str, text, size, width, under: str | None = None, **kw):
+        """並ぶ項目の文字の fit。役（role）ごとに大きさを記録し、そろえる上限（caps）があれば、そこから測る。
+
+        under は本文の上の題の役。大きく組むときは、本文を題との元の比（倍率 1 のときの大きさの比）より大きくしない
+        （題が長くて縮んだのに本文だけ大きくなり、題と本文の差が無くなるのを防ぐ）。"""
+        if under and self.grow > 1:
+            ref = self.caps.get(under) or min(self.seen.get(under) or [0]) or None
+            if ref:                              # 倍率 1 のときの大きさより下げない（大きく組むことで縮めない）
+                size = min(size, max(round(size / self.grow), int(ref * size / self.grow / UNDER_BASE[under])))
+        if role in self.caps:
+            size, kw["tidy"] = min(size, self.caps[role]), False
+        v, n = fit(text, size, width, **kw)
+        self.seen.setdefault(role, []).append(v)
+        return v, n
+
+    def g(self, v: float) -> int:
+        """文字の大きさ・間隔に、大きく組む倍率を掛ける（倍率 1 なら元のまま）。"""
+        return int(round(v * self.grow))
 
     # 動き ---
     def anim(self, step: int, fx: str = "rise", delay: int = 0, name: str | None = None, item: bool = False) -> str:
@@ -749,7 +773,7 @@ def t_cards(s: Slide):
     avail = BODY_BOTTOM - top
     iw = cw - 88
     big = n <= 3
-    cards = []
+    cards, tallest = [], 400.0                 # カードの最低の高さ（.card の min-height）
     for i, it in enumerate(its):
         label, body = s.text("label", spec=it), s.text("body", spec=it)
         hl = bool(it.get("accent"))
@@ -760,20 +784,26 @@ def t_cards(s: Slide):
             ih = iw * 9 / 16
             inner = [s.img(it["image"], f"item{i + 1}", "card-img", 0, 0, iw, ih, extra="position:static;")]
             room -= ih + 28 - 36
+        h = 96 + 8 + 28 + (6 if hl else 0)      # 上下の padding・上の短い線とその下の間・強めた枠
         if label:
-            ls, _ = fit(label, 28, iw, what=f"items の {i + 1} 個目の label", lines=1, bold=True)
+            ls, _ = s.fit("card-label", label, s.g(28), iw, what=f"items の {i + 1} 個目の label", lines=1, bold=True)
             inner.append(f'<div class="card-label" style="font-size:{ls}px">{esc(label)}</div>')
-            room -= 28 * 1.4 + 10
-        ts, tn = fit(it["title"], 44 if big else 38, iw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.4,
+            room -= ls * 1.4 + 10
+            h += ls * 1.4 + 10
+        ts, tn = s.fit("card-title", it["title"], s.g(44 if big else 38), iw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.4,
                      min_size=30, bold=True, tidy=True)
         inner.append(f'<div class="card-title" style="font-size:{ts}px">{rich(it["title"])}</div>')
         room -= tn * ts * 1.4 + 20
+        h += tn * ts * 1.4 + 20
         if body:
-            bs, _ = fit(body, 32 if big else 28, iw, what=f"items の {i + 1} 個目の body", height=room, lh=1.6, min_size=22)
+            bs, bn = s.fit("card-body", body, s.g(32 if big else 28), iw, under="card-title", what=f"items の {i + 1} 個目の body", height=room, lh=1.6, min_size=22)
             inner.append(f'<div class="card-body" style="font-size:{bs}px">{rich(body)}</div>')
+            h += bn * bs * 1.6
+        tallest = max(tallest, h)
         cls = "card hl" if hl else "card"
         cards.append(f'<div class="{cls}" style="width:{px(cw)}" '
                      f'{s.anim(i + 1, "rise", 0, f"カード{i + 1}", item=True)}>' + "".join(inner) + "</div>")
+    s.need, s.avail = tallest, avail
     return [head, f'<div class="center" style="{box(X0, top, CW, avail)}"><div class="row" style="gap:{gap}px">'
             + "".join(cards) + "</div></div>", source_line(s)]
 
@@ -789,23 +819,25 @@ def t_flow(s: Slide):
     tint, accent = s.pal["tint"], s.pal["accent-strong"]     # 段の地は主役の色の淡い地。強める段は差し色で、文字を載せるので文字を載せる面の色
     room = avail - ah - 32
     big = n <= 4
-    cols = []
+    cols, tallest = [], 0.0
     for i, it in enumerate(its):
         hl = bool(it.get("accent")) if marked else i == n - 1
         lx = 24 if i == 0 else depth
         lw = cw - lx - depth
-        ls, _ = fit(it["label"], 36, lw, what=f"items の {i + 1} 個目の label", lines=1, lh=1.3, min_size=24, bold=True)
+        ls, _ = s.fit("flow-label", it["label"], s.g(36), lw, what=f"items の {i + 1} 個目の label", lines=1, lh=1.3, min_size=24, bold=True)
         tw = cw - 24
         inner, left = [], room
         title, body = s.text("title", spec=it), s.text("body", spec=it)
         if title:
-            ts, tn = fit(title, 40 if big else 34, tw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.4,
+            ts, tn = s.fit("flow-title", title, s.g(40 if big else 34), tw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.4,
                          min_size=28, bold=True, tidy=True)
             inner.append(f'<div class="flow-title" style="font-size:{ts}px">{rich(title)}</div>')
             left -= tn * ts * 1.4 + 14
         if body:
-            bs, _ = fit(body, 30 if big else 28, tw, what=f"items の {i + 1} 個目の body", height=left, lh=1.6, min_size=22)
+            bs, bn = s.fit("flow-body", body, s.g(30 if big else 28), tw, under="flow-title", what=f"items の {i + 1} 個目の body", height=left, lh=1.6, min_size=22)
             inner.append(f'<div class="flow-body" style="font-size:{bs}px">{rich(body)}</div>')
+            left -= bn * bs * 1.6
+        tallest = max(tallest, room - left)
         color = "on-accent" if hl else "primary"
         cols.append(
             f'<div class="flow-item" style="width:{px(cw)}" {s.anim(i + 1, "rise", 0, f"矢羽根{i + 1}", item=True)}>'
@@ -814,6 +846,7 @@ def t_flow(s: Slide):
             + f'<div class="flow-label {color}" style="{box(lx, 0, lw, ah)} font-size:{ls}px">{esc(it["label"])}</div></div>'
             + ('<div class="flow-text" style="padding:0 16px 0 8px">' + "".join(inner) + "</div>" if inner else "")
             + "</div>")
+    s.need, s.avail = ah + (32 + tallest if tallest else 0), avail
     return [head, f'<div class="center" style="{box(X0, top, CW, avail)}"><div class="row" style="gap:{gap}px; align-items:flex-start">'
             + "".join(cols) + "</div></div>", source_line(s)]
 
@@ -828,7 +861,7 @@ def t_compare(s: Slide):
     gap = 140 if arrow else 60
     pw, avail = (CW - gap) / 2, BODY_BOTTOM - top
     iw = pw - 104
-    panels = []
+    panels, tallest = [], 420.0                # 列の最低の高さ（.cmp の min-height）
     for i, side in enumerate(("left", "right")):
         sp = s.spec.get(side)
         if not isinstance(sp, dict):
@@ -842,27 +875,31 @@ def t_compare(s: Slide):
         pts = s.items("points", 0, 5, ("text",), required=("text",), spec=sp, where=f"{side}.")
         room = avail - 96
         iw = pw - 104 - (6 if acc == side else 0)   # 強めた列は枠 3px ずつ内側が狭い
-        inner = []
+        inner, h = [], 96.0 + (6 if acc == side else 0)
         if sp.get("image"):                         # 列の上に 16:9 の写真（ビフォー・アフター）。場所が足りなければ低くする
             ih = min(iw * 9 / 16, (avail - 96) * 0.45)
             inner.append(s.img(sp["image"], side, "card-img", 0, 0, iw, ih, extra="position:static;"))
             room -= ih + 28 + 12
         if label:
-            ls, _ = fit(label, 30, iw - 44, what=f"{side}.label", lines=1, bold=True)
+            ls, _ = s.fit("cmp-label", label, s.g(30), iw - 44, what=f"{side}.label", lines=1, bold=True)
             inner.append(f'<div class="cmp-chip" style="font-size:{ls}px">{esc(label)}</div>')
-            room -= 30 * 1.4 + 12 + 24
+            room -= ls * 1.4 + 12 + 24
+            h += ls * 1.4 + 12 + 24
         if title:
-            ts, tn = fit(title, 46, iw, what=f"{side}.title", lines=2, lh=1.4, min_size=32, bold=True, tidy=True)
+            ts, tn = s.fit("cmp-title", title, s.g(46), iw, what=f"{side}.title", lines=2, lh=1.4, min_size=32, bold=True, tidy=True)
             inner.append(f'<div class="cmp-title" style="font-size:{ts}px">{rich(title)}</div>')
             room -= tn * ts * 1.4 + 22
+            h += tn * ts * 1.4 + 22
         if pts:
             per = room / len(pts) - 18
             for j, p in enumerate(pts):
-                fs, _ = fit(p["text"], 34, iw - 38, what=f"{side}.points の {j + 1} 個目", height=per, lh=1.55, min_size=24)
+                fs, fn_ = s.fit("cmp-point", p["text"], s.g(34), iw - 38, under="cmp-title", what=f"{side}.points の {j + 1} 個目", height=per, lh=1.55, min_size=24)
+                h += 18 + fn_ * fs * 1.55
                 inner.append(f'<div class="cmp-point"><div class="cmp-dot"></div>'
                              f'<div class="cmp-text" style="font-size:{fs}px">{rich(p["text"])}</div></div>')
         if not inner:
             s.err(f"{side} が空")
+        tallest = max(tallest, h)
         cls = "cmp hl" if acc == side else "cmp"
         if i == 1 and arrow:
             fill = s.pal["accent"] if acc == "right" else s.pal["bar"]
@@ -872,6 +909,7 @@ def t_compare(s: Slide):
             panels.append(f'<div style="width:{gap}px; flex:none"></div>')
         panels.append(f'<div class="{cls}" style="width:{px(pw)}" '
                       f'{s.anim(i + 1, "rise", 150 * i, "左の列" if i == 0 else "右の列", item=True)}>' + "".join(inner) + "</div>")
+    s.need, s.avail = tallest, avail
     return [head, f'<div class="center" style="{box(X0, top, CW, avail)}"><div class="row">' + "".join(panels) + "</div></div>",
             source_line(s)]
 
@@ -1093,25 +1131,29 @@ def t_quote(s: Slide):
 
 def _list_rows(s: Slide, its, width, room, numbered, step_each):
     """箇条書きの行（印か番号＋title＋body）。room に入らなければ DeckError。"""
-    gap = 44
+    gap = s.g(44)
     lead = 104 if numbered else 52
     per = (room - gap * (len(its) - 1)) / len(its)
-    rows = []
+    rows, need = [], gap * (len(its) - 1)
     for i, it in enumerate(its):
         tw = width - lead
-        ts, tn = fit(it["title"], 44, tw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.45, min_size=30, bold=True, tidy=True)
+        ts, tn = s.fit("li-title", it["title"], s.g(44), tw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.45, min_size=30, bold=True, tidy=True)
         inner = f'<div class="li-title" style="font-size:{ts}px">{rich(it["title"])}</div>'
+        h = tn * ts * 1.45
         body = s.text("body", spec=it)
         if body:
-            bs, _ = fit(body, 30, tw, what=f"items の {i + 1} 個目の body", height=per - tn * ts * 1.45 - 8, lh=1.6, min_size=22)
+            bs, bn = s.fit("li-body", body, s.g(30), tw, under="li-title", what=f"items の {i + 1} 個目の body", height=per - tn * ts * 1.45 - 8, lh=1.6, min_size=22)
             inner += f'<div class="li-body" style="font-size:{bs}px">{rich(body)}</div>'
+            h += 8 + bn * bs * 1.6
         elif tn * ts * 1.45 > per:
             s.err(f"items が多すぎて入らない（{len(its)} 個）")
+        need += max(h, 68 if numbered else 0)    # 番号の丸（.li-no）は 68px
         mark = (f'<div class="li-no">{i + 1}</div>' if numbered
                 else f'<div class="li-mark" style="margin-top:{ts * 1.45 / 2 - 9:.0f}px"></div>')
         a = s.anim(i + 1, "rise", 0, f"項目{i + 1}", item=True) if step_each else s.anim(0, "rise", 300 + 150 * i, f"項目{i + 1}")
         margin = f"margin-top:{gap}px;" if i else ""
         rows.append(f'<div class="li" style="{margin}" {a}>{mark}<div class="li-text">{inner}</div></div>')
+    s.need, s.avail = need, room
     return "".join(rows)
 
 
@@ -1253,26 +1295,28 @@ def t_timeline(s: Slide):
     slot = CW / len(its)
     tw = slot - 48
     big = len(its) <= 4
-    room = avail - 34 * 1.4 - 20 - 36 - 34
+    wl = s.g(34) * 1.4                         # 時期の行の高さ。箱の高さに書くので、縮めた時期があっても丸と線の高さはそろう
+    room = avail - wl - 20 - 36 - 34
     cols, tallest = [], 0.0
     for i, it in enumerate(its):
-        ws, _ = fit(it["when"], 34, tw, what=f"items の {i + 1} 個目の when", lines=1, lh=1.4, min_size=24, bold=True)
-        ts, tn = fit(it["title"], 40 if big else 34, tw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.45,
+        ws, _ = s.fit("tl-when", it["when"], s.g(34), tw, what=f"items の {i + 1} 個目の when", lines=1, lh=1.4, min_size=24, bold=True)
+        ts, tn = s.fit("tl-title", it["title"], s.g(40 if big else 34), tw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.45,
                      min_size=26, bold=True, tidy=True)
-        inner = (f'<div class="tl-when" style="font-size:{ws}px">{esc(it["when"])}</div><div class="tl-dot" style="margin-top:20px"></div>'
+        inner = (f'<div class="tl-when" style="font-size:{ws}px; height:{wl:.1f}px">{esc(it["when"])}</div><div class="tl-dot" style="margin-top:20px"></div>'
                  f'<div class="tl-title" style="font-size:{ts}px">{rich(it["title"])}</div>')
         h = tn * ts * 1.45
         body = s.text("body", spec=it)
         if body:
-            bs, bn = fit(body, 30 if big else 26, tw, what=f"items の {i + 1} 個目の body", height=room - h - 10, lh=1.6, min_size=22)
+            bs, bn = s.fit("tl-body", body, s.g(30 if big else 26), tw, under="tl-title", what=f"items の {i + 1} 個目の body", height=room - h - 10, lh=1.6, min_size=22)
             inner += f'<div class="tl-body" style="font-size:{bs}px">{rich(body)}</div>'
             h += 10 + bn * bs * 1.6
         tallest = max(tallest, h)
         cls = "tl-item hl" if cur == i + 1 else "tl-item"
         cols.append((cls, inner, i))
-    group = 34 * 1.4 + 20 + 36 + 34 + tallest
+    group = wl + 20 + 36 + 34 + tallest
     gtop = top + max(0.0, (avail - group) / 2)
-    line_y = gtop + 34 * 1.4 + 20 + 18
+    line_y = gtop + wl + 20 + 16                # 丸（.tl-dot・border-box で 32px）の中心
+    s.need, s.avail = group, avail
     parts = [head, f'<div class="tl-line" style="{box(X0, line_y - 3, CW)}" {s.anim(1, "wipe-right", 0, "年表の線")}></div>']
     for cls, inner, i in cols:
         parts.append(f'<div class="{cls}" style="{box(X0 + i * slot, gtop, tw)}" '
@@ -1290,24 +1334,27 @@ def t_summary(s: Slide):
     cw = (CW - gap * (n - 1)) / n
     avail = BODY_BOTTOM - top
     room = avail - 40 - 6 - 28 - 34 * 1.4 - 16
-    cols = []
+    cols, tallest = [], 0.0
     for i, p in enumerate(pts):
         inner = f'<div class="sum-bar"></div><div class="sum-no">{esc(label)}{i + 1}</div>'
         left = room
         v = s.text("value", spec=p)
         if v:
-            vs, _ = fit(v, 64, cw, what=f"points の {i + 1} 個目の value", lines=1, lh=1.2, min_size=44, bold=True)
+            vs, _ = s.fit("sum-value", v, s.g(64), cw, what=f"points の {i + 1} 個目の value", lines=1, lh=1.2, min_size=44, bold=True)
             inner += f'<div class="sum-value" style="font-size:{vs}px">{esc(v)}</div>'
             left -= vs * 1.2 + 8
-        ts, tn = fit(p["title"], 40, cw, what=f"points の {i + 1} 個目の title", lines=3, lh=1.45, min_size=30, bold=True)
+        ts, tn = s.fit("sum-title", p["title"], s.g(40), cw, what=f"points の {i + 1} 個目の title", lines=3, lh=1.45, min_size=30, bold=True)
         inner += f'<div class="sum-title" style="font-size:{ts}px">{rich(p["title"])}</div>'
         left -= tn * ts * 1.45 + 14
         body = s.text("body", spec=p)
         if body:
-            bs, _ = fit(body, 30, cw, what=f"points の {i + 1} 個目の body", height=left, lh=1.6, min_size=22)
+            bs, bn = s.fit("sum-body", body, s.g(30), cw, under="sum-title", what=f"points の {i + 1} 個目の body", height=left, lh=1.6, min_size=22)
+            left -= bn * bs * 1.6
             inner += f'<div class="sum-body" style="font-size:{bs}px">{rich(body)}</div>'
+        tallest = max(tallest, room - left)
         cols.append(f'<div class="sum-col" style="width:{px(cw)}" {s.anim(1, "rise", 150 * i, f"根拠{i + 1}", item=True)}>'
                     f'{inner}</div>')
+    s.need, s.avail = 6 + 22 + 28 * 1.4 + tallest, avail
     return [head, f'<div class="center" style="{box(X0, top, CW, avail)}"><div class="row" style="gap:{gap}px; align-items:flex-start">'
             + "".join(cols) + "</div></div>", source_line(s)]
 
@@ -1801,6 +1848,14 @@ def t_annotate(s: Slide):
     return parts
 
 
+# 中身が少ないとき（型の見積もった高さが置ける高さの GROW_FILL 未満）は、文字と間隔を GROW_STEPS の倍率で大きくして組み直す。
+# 画像のあるページは大きくしない（画像の枠の大きさが変わると、描いた絵の区画が変わる）
+GROWABLE = {"cards", "flow", "compare", "bullets", "closing", "timeline", "summary"}
+GROW_STEPS = (1.25, 1.15)
+GROW_FILL = 0.7
+# 題の役の、倍率 1 のときの大きさ（本文を題との元の比に抑えるのに使う。Slide.fit の under）。2つある型は大きい方（並びが少ないとき）
+UNDER_BASE = {"card-title": 44, "flow-title": 40, "li-title": 44, "tl-title": 40, "sum-title": 40, "cmp-title": 46}
+
 # 型の棚: 名前 → (関数, 台本で使えるキー, 見出しの帯・下の文字・ページ番号を付けるか)
 HEAD_KEYS = {"kicker", "headline", "sub", "source"}
 TYPES = {
@@ -1839,5 +1894,35 @@ def build_slide(s: Slide) -> tuple[list[str], bool]:
     extra = sorted(k for k in set(s.spec) - keys - COMMON_KEYS if not k.startswith("_"))
     if extra:
         s.err(f"知らないキー: {', '.join(extra)}（この型で使えるのは {', '.join(sorted(keys))}）")
-    parts = [p for p in fn(s) if p]
+    parts = _compose(s, fn)
+    if s.type in GROWABLE and not _has_image(s.spec) and s.need is not None and s.need < GROW_FILL * s.avail:
+        for f in GROW_STEPS:                    # 中身が少ないときは、文字を大きくして場所を使う。入る一番大きい倍率
+            s.grow = f
+            try:
+                grown = _compose(s, fn)
+            except DeckError:
+                continue
+            if s.need is not None and s.need <= GROW_FILL * s.avail:
+                parts = grown
+                break
+        else:
+            s.grow = 1.0
+            parts = _compose(s, fn)
     return parts, getattr(s, "chrome", chrome)
+
+
+def _compose(s: Slide, fn) -> list[str]:
+    """型を組む。並ぶ項目の同じ役の文字の大きさがそろわなければ、一番小さい大きさを上限にして組み直す（画像のあるページは除く）。"""
+    s.caps, s.seen, s.need = {}, {}, None
+    parts = [p for p in fn(s) if p]
+    # 画像のあるページは組み直さない（画像の枠・キャラの参照・警告は組むたびに足されるため。大きさは項目ごとのまま）
+    if not _has_image(s.spec) and any(len(set(v)) > 1 for v in s.seen.values()):
+        s.caps, s.seen, s.need = {k: min(v) for k, v in s.seen.items()}, {}, None
+        parts = [p for p in fn(s) if p]
+    return parts
+
+
+def _has_image(v) -> bool:
+    if isinstance(v, dict):
+        return "image" in v or any(_has_image(x) for x in v.values())
+    return isinstance(v, list) and any(_has_image(x) for x in v)

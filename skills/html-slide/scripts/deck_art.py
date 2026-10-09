@@ -94,7 +94,9 @@ def _ring(cx, cy, r, w, h, color, sw):
 
 
 def _rect(x, y, rw, rh, **paint):
-    return f'<rect x="{x:g}" y="{y:g}" width="{rw:g}" height="{rh:g}" {_paint(**paint)}/>'
+    """四角。線は辺の両側に描かれるので、線のある四角は線の半分だけ内側に寄せる（層の外へ線をはみ出させない）。"""
+    m = paint.get("sw", 0) / 2 if paint.get("stroke") else 0
+    return f'<rect x="{x + m:g}" y="{y + m:g}" width="{rw - 2 * m:g}" height="{rh - 2 * m:g}" {_paint(**paint)}/>'
 
 
 P, A, PS, SF = "var(--primary)", "var(--accent)", "var(--primary-strong)", "var(--surface)"
