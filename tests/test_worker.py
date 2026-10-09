@@ -212,7 +212,7 @@ class FlowTests(unittest.TestCase):
         # ブランドから作ったテーマの YAML は回の控え（settings/theme.yaml）に残り、エンジンにはそのファイルを渡す（P4）
         self.assertTrue(rec["settings"]["theme"].endswith("/settings/theme.yaml"), rec["settings"]["theme"])
         self.assertEqual(rec["look"]["theme_file"], rec["settings"]["theme"])
-        self.assertEqual(rec["look"]["theme"], {"background": "#FFFFFF", "ink": "#404040", "primary": "#0DB4F2"})
+        self.assertEqual(rec["look"]["theme"], {"background": "#FFFFFF", "ink": "#333333", "primary": "#0DB4F2"})
         with fx.server.store_lock:
             script = fx.store.script(run["script_id"])
         self.assertEqual((rec["script"]["version"], rec["script"]["sha256"]), (script["version"], script["sha256"]))

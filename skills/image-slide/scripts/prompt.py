@@ -4,7 +4,7 @@
 選んだ型の描き方・このページの中身）。ただし quick-slide の企画ページ（題・意図・本文）ではなく、
 html-slide の台本の1枚（型と中身）から組む。
 
-- 型（TYPE_NOTES）は html-slide の型（26種）に1つずつ、何を載せるか（コンテンツ）だけを言う。構図は Codex に任せる（ADR 0005）
+- 型（TYPE_NOTES）は html-slide の型（29種）に1つずつ、何を載せるか（コンテンツ）だけを言う。構図は Codex に任せる（ADR 0005）
 - ロゴ・フッタの文字・ページ番号は描かせない。下端の帯を空けさせ、あとで PowerPoint の部品として上に置く（pptx_out.py）
 - プロンプトに入れるのは台本の中身だけ。ファイルのパスは入れない（参照画像は「添付の参照画像1」と順番で言う）
 """
@@ -18,7 +18,7 @@ import layouts as Y
 import script_io as S
 import styles as ST
 
-PROMPT_VERSION = "9"   # …5: スタイルを standard・visual・カスタムに（ADR 0007）／6: infographic を「1枚を最初から設計する」言い方に／7: 色を主役の色と差し色に／8: 強調は差し色と言い切る／9: 骨格（札・ラベル・番号）は主役の色と名指し
+PROMPT_VERSION = "10"   # …5: スタイルを standard・visual・カスタムに（ADR 0007）／6: infographic を「1枚を最初から設計する」言い方に／7: 色を主役の色と差し色に／8: 強調は差し色と言い切る／9: 骨格（札・ラベル・番号）は主役の色と名指し／10: お知らせの枠・用語と説明・手順の案内の型と、強調の札（badge）・締めの帯のアイコン
 
 # 型 = コンテンツ（どのキーが何で、何が主役か）。構図は指定せず Codex に任せる（ADR 0005）。
 # だからここには配置を書かない。順番に意味がある・値の大小を正しく、のように中身から決まることだけを書く
@@ -33,21 +33,22 @@ TYPE_NOTES = {
     "big-number": "数字で言い切る1枚。主役は value（と unit）で、画面で一番大きな文字。label はその数字の説明。"
                   "side は脇の補足の数字と文字（小さく）。headline はその数字が言いたいこと",
     "kpi": "同格の指標の並び。items の各指標に label・value（大きく）・unit・delta（増減）。"
-           "trend が up なら▲、down なら▼、flat なら→を添える。accent が真の指標だけ目立たせる",
+           "trend が up なら▲、down なら▼、flat なら→を添える。accent が真の指標だけ、色の濃さに加えて小さな札（badge の語。無ければ「注目」）を添えて目立たせる",
     "cards": "並列の要点。items は同格の要点で、それぞれ label・title・body。内容を表すアイコンや小さな絵を添えてよい。"
-             "accent が真の要点だけ目立たせる",
+             "accent が真の要点だけ、色の濃さに加えて小さな札（badge の語。無ければ「注目」）を添えて目立たせる",
     "flow": "順序のある流れ。items は順に進む段で、label は各段の短い名札、title・body はその説明。"
-            "段の順と、段から段へ進む流れが分かるように描く。accent が真の段（無ければ最後の段）を目立たせる",
+            "段の順と、段から段へ進む流れが分かるように描く。accent が真の段（無ければ最後の段）を、濃い面と太い輪郭で目立たせる（badge があればその札を添える）",
     "compare": "2つの比較。left と right を同じ観点で見比べられるように描く。各側に label・title・points。"
-               "accent の側（無ければ right）を目立たせる。arrow が false でなければ、左から右への変化が分かるようにする",
+               "accent の側（無ければ right）を、色の濃さに加えて小さな札（badge の語。無ければ「注目」）を添えて目立たせる。arrow が false でなければ、左から右への変化が分かるようにする",
     "bar-chart": "大小の比較のグラフ。bars の label と value をそのまま使い、値の大小どおりの長さにする。highlight が真の棒だけ強調色、"
                  "ほかは淡い色。各棒に値（display があればその文字）を添え、unit は値の後ろ。callout は要点（大きく）、note は注記（小さく）",
     "line-chart": "推移のグラフ。labels を時点、series の values を値として、正しい位置に点を打って線でつなぐ。"
-                  "highlight が真の系列を強調色で太く。2本以上なら name を凡例に。callout は要点、note は注記",
+                  "highlight が真の系列を強調色で太く。2本以上なら、系列ごとに点の形（丸・四角・ひし形）と線の種類（実線・破線）を変え、"
+                  "線の端に name を添える。callout は要点、note は注記",
     "table": "表。columns を見出し、rows を本文の行にする。セルの文字は与えられたとおり。"
-             "highlight（1から数えた列）の列を目立たせる。数値は右揃え",
+             "highlight（1から数えた列）の列を、色の面に加えて太字と太い縦の線で目立たせる。数値は右揃え",
     "bullets": "箇条書き。items を上から順に。title があれば太字、body はその説明。image があれば添えるビジュアル",
-    "timeline": "時期と出来事。items を時期の順に。when は時期、title と body は出来事。current（1から数えた番号）の時期を目立たせる",
+    "timeline": "時期と出来事。items を時期の順に。when は時期、title と body は出来事。current（1から数えた番号）の時期を、二重の丸と小さな札「いま」で目立たせる",
     "photo": "写真や絵が主役の1枚。image がそのビジュアルで、headline を重ねるか添える。caption は出典（小さく）",
     "quote": "誰かの言葉。主役は quote（大きな引用符とともに）。by（誰の言葉か）と position（肩書き）は小さく添える",
     "gallery": "写真や絵の並び。items の各枚に caption を添える",
@@ -63,17 +64,27 @@ TYPE_NOTES = {
     "hub": "放射。中央に center（中心の役）を丸く置き、items を左右に分けて並べて中心と線でつなぐ。"
            "各項目は title・body と、tag があれば小さな札",
     "pairs": "対。items の各組で、label（何の話か）の横に before（よくない例）→ after（よい例）を矢印でつなぐ。"
-             "before は控えめに、after は目立たせる。bad_label・good_label は各箱に添える小さな札（既定は NG と OK）",
+             "before は控えめに、after は目立たせる。bad_label・good_label は各箱に添える小さな札（既定は NG と OK）。"
+             "札には、NG には×、OK にはチェックのアイコンを添える",
+    "notice": "お知らせの枠。items の各項目を、枠線で囲んだ1つの枠にする（1〜3個）。kind（info＝お知らせ・success＝完了・warning＝注意・error＝重要）で、"
+              "アイコンと種類の語と枠の色を変える（label を書けばその語）。種類は色だけでなく、アイコンと語でも示す。"
+              "枠の中は、種類の語・title（題）・body（本文）・points（短い箇条）の順",
+    "deflist": "用語と説明。items の各行は、左に term（用語・太字）、右に body（説明）の2列。行と行の間は線で区切る。用語の列は幅をそろえる",
+    "steps": "手順の案内。items を順番に並べ、番号の丸・title・body を添える。段ごとの state（done＝済・current＝いま・todo＝これから）、"
+             "または current（1から数えた番号。それより前が済・後ろがこれから）で、進み具合を示す。"
+             "状態は色だけでなく、丸の形（済は塗り・いまは二重の輪・これからは白に枠）と札の語（「済」「いま」「これから」）でも示す。"
+             "段をつなぐ線は、済の所は実線・これからは破線",
 }
 
 KEY_WORDS = ("キーの意味: kicker＝見出しの上の小さな名札、headline＝見出し（主張）、sub＝見出しの下のリード文、"
              "source＝下端に小さく置く出典・注記、title・body＝項目の題と説明、label＝短い名札、"
              "icon＝その項目に添える線のアイコンの名前（名前は描かず、その意味の小さなアイコンを描く）、"
-             "takeaway＝中身の下に置く結論の1行の帯。"
+             "takeaway＝中身の下に置く結論の1行の帯（takeaway_icon があれば、その意味のアイコンを帯の頭に添える）、"
+             "badge＝目立たせる項目に添える小さな札の語、"
              "キーの名前そのものは描かない")
 
 LAYOUT_WORDS = ("配置のキーの意味: layout＝置き方（split＝片側に写真・hero／full＝全面の写真・left／right＝写真の側・band＝上に横長の帯・"
-                "collage＝大1枚＋小2枚・portrait＝脇に丸い人物写真・plain＝写真なし・graphic＝写真の代わりに幾何学の図形で飾る）、motif＝graphic の図柄（circles＝重なる円・grid＝点の格子と四角・bands＝斜めの帯・blocks＝色の面の組み合わせ）、text_side＝文字を置く側、"
+                "collage＝大1枚＋小2枚・portrait＝脇に丸い人物写真・plain＝写真なし・graphic＝写真の代わりに幾何学の図形で飾る・row＝段を横に並べる／column＝縦に並べる）、motif＝graphic の図柄（circles＝重なる円・grid＝点の格子と四角・bands＝斜めの帯・blocks＝色の面の組み合わせ）、text_side＝文字を置く側、"
                 "tone＝全面の写真の上の幕（light＝明るい幕に濃い文字・dark＝暗い幕に白い文字）、side＝写真の側、"
                 "split＝写真の幅（1/2・2/5・1/3）、fit＝cover は枠いっぱいに切り抜く・contain は切らずに全体を見せる、"
                 "widths＝表の列の幅の比、min・max＝グラフの軸の下限・上限、value_labels＝値を添える点（all・last・none）、"

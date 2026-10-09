@@ -424,6 +424,8 @@ def cmd_deck(a) -> int:
         return 2
     for w in info.get("warnings") or []:
         print(f"警告: {w}", file=sys.stderr)
+    if info.get("font_note"):
+        print(f"注: {info['font_note']}", file=sys.stderr)
     report = None
     if "pptx" in fmts:
         try:

@@ -32,12 +32,15 @@ FIELDS = {"name", "description", "defaults", "motion", "look", "image_look", "ex
 # 見た目の調子（look）。文字の大きさ・余白は変えない（はみ出しの検査は字体で実測しているため）。色は全部テーマから作り、読みやすさの検査も通す
 LOOK = {
     "background": ("plain", "tint"),                    # ページの地: テーマの地／主役の色（primary）をうっすら混ぜた地
-    "surface": ("soft", "white", "primary", "line"),     # カード・比較の列・KPI・吹き出しの地: 淡いグレー／白に影／主役の色の淡い地／白に枠線
-    "radius": ("default", "square", "round"),           # 箱の角: 16px／4px／32px
+    "surface": ("soft", "white", "primary", "line"),     # カード・比較の列・KPI・吹き出しの地: 淡いグレー／（white は退役・RETIRED_LOOKS）／主役の色の淡い地／白に枠線
+    "radius": ("default", "square", "round"),           # 箱の角: 16px／4px／32px（写真は 8px・square のときだけ 4px）
     "band": ("small", "bar", "none"),                   # 中身の型の左上の印: 小さな印／上端の全幅の帯／無し
     "emphasis": ("default", "strong"),                  # 強調する箱（accent: true のカードなど）: 淡い地に枠／差し色のベタ塗りに白抜き（明るい色なら黒）
     "statement": ("plain", "panel"),                    # 主張の1枚（statement）: 地のまま／主役の色の全面に白抜き（明るい色なら黒）
 }
+# 退役した変化形（look の項目, 値）→ 代わりの値。YAML には今までどおり書けて、代わりの値と同じに描くが、読んだときに注意を出し、
+# 台本の書き方（deck-format.md）・台本係の一覧には載せない（ADR 0020・0021）。white は白に影（0 8px 28px）で、影は elevation の番号の丸だけにしたため
+RETIRED_LOOKS = {("surface", "white"): "line"}
 TRANSITIONS = ("morph", "fade", "none")
 HALVES = ("1/2", "2/5", "1/3")
 
@@ -116,7 +119,9 @@ def load(spec: str | None) -> dict:
     expects = d.get("expects_images") or []
     if not isinstance(expects, list) or any(t not in T.TYPES for t in expects):
         raise DeckError(f"{path}: expects_images は型の名前の配列で書く（{expects!r}）")
-    return {"name": d["name"].strip(), "description": (d.get("description") or "").strip(),
+    retired = [f"スタイル {d['name'].strip()}: look.{k}: {v} は退役した（{RETIRED_LOOKS[(k, v)]} と同じに描く）。{RETIRED_LOOKS[(k, v)]} に書き換える"
+               for k, v in look.items() if (k, v) in RETIRED_LOOKS]
+    return {"name": d["name"].strip(), "description": (d.get("description") or "").strip(), "retired": retired,
             "defaults": defaults, "motion": motion, "look": look, "path": path,
             "image_look": d.get("image_look"), "expects_images": tuple(expects)}
 
@@ -137,29 +142,30 @@ def look_css(look: dict) -> str:
     """look を CSS にする（テンプレートの {{LOOK}} に入る）。使うのは HTML の決まりの許可リストの中だけ（地の色・一様な枠・角丸・外側の影）。"""
     css = []
     s = look.get("surface", "soft")
-    if s == "white":
-        css.append(f"{BOXES} {{ background-color: #ffffff; box-shadow: 0 8px 28px var(--shadow); }}")
-        css.append(".tr.th { background-color: #ffffff; }")
+    s = RETIRED_LOOKS.get(("surface", s), s)    # white（白に影）は退役。影は elevation の番号の丸だけなので、line（白に枠線）と同じに描く（ADR 0020）
+    if s == "line":
+        css.append(f"{BOXES} {{ background-color: var(--bg); border: 2px solid var(--rule); }}")
+        css.append(".tr.th { background-color: var(--bg); }")
     elif s == "primary":
         css.append(f"{BOXES} {{ background-color: var(--primary-soft); }}")
         css.append(".tr.th { background-color: var(--primary-soft); }")
-    elif s == "line":
-        css.append(f"{BOXES} {{ background-color: var(--bg); border: 2px solid var(--line); }}")
     r = {"square": 4, "round": 32}.get(look.get("radius"))
     if r:
         css.append(f"{BOXES}, .contact, .scrim, .side-img, .gal-img {{ border-radius: {r}px; }}")
-        css.append(f".card-img {{ border-radius: {max(2, r * 10 // 16)}px; }}")
+        if r == 4:
+            css.append(".card-img { border-radius: 4px; }")
     b = look.get("band", "small")
     if b == "bar":
-        css.append(".band { left: 0; width: 1920px; height: 14px; }")
+        css.append(".band { left: 0; width: 1920px; height: 16px; }")
     elif b == "none":
         css.append(".band { display: none; }")
     if look.get("emphasis") == "strong":
-        css.append(f"{HL} {{ background-color: var(--accent-strong); border-color: var(--accent-strong); box-shadow: none; }}")
+        css.append(f"{HL} {{ background-color: var(--accent-strong); border-color: var(--accent-strong); }}")
         css.append(f".card.hl div, .cmp.hl div, .kpi.hl div, .card.hl em, .cmp.hl em, .kpi.hl em {{ color: var(--on-accent); }}")
         css.append(".card.hl .card-bar, .cmp.hl .cmp-dot { background-color: var(--on-accent); }")
         css.append(".kpi.hl .kpi-value, .kpi.hl .kpi-unit { color: var(--on-accent); }")   # 型の CSS の方が強いので名指しで上書き
         css.append(".cmp.hl .cmp-chip { background-color: var(--on-accent); color: var(--accent-strong); }")
+        css.append(".card.hl .chip, .cmp.hl .chip, .kpi.hl .chip { background-color: var(--on-accent); color: var(--accent-strong); }")   # 強める箱の札は面と反対の色
     if look.get("statement") == "panel":
         st = 'section[data-type="statement"]'
         css.append(f"{st} {{ background-color: var(--primary-strong); }}")

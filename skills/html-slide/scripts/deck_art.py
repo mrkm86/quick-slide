@@ -1,7 +1,7 @@
 """図形の飾り（layout: graphic）: 画像の無い表紙・章扉を、テーマの色の幾何学の図形で飾る。
 
 - 図形はインラインの SVG の基本図形だけで描く（PPTX では図形のまま。あとから色や形を直せる）
-- 色はテーマの変数（primary・accent・primary-strong・surface）だけ。ブランドを替えれば図形の色も替わる
+- 色はテーマの変数（primary-decor・accent-decor・primary-strong・surface。飾りの面だけ・情報を持たせない）だけ。ブランドを替えれば図形の色も替わる
 - 画面の端で切れて見える図形は、切れた形の多角形にして渡す（SVG の中の図形も section の外に出ると check が止める）。
   切れてよいのは画面の端だけで、文字の側の縁で切れる図形は置かない（切り損ねに見える）
 - 図形は層に分け、層ごとに少しずつ遅れて出る（画面に入ったら自動。クリックの段は増やさない）
@@ -99,7 +99,7 @@ def _rect(x, y, rw, rh, **paint):
     return f'<rect x="{x + m:g}" y="{y + m:g}" width="{rw - 2 * m:g}" height="{rh - 2 * m:g}" {_paint(**paint)}/>'
 
 
-P, A, PS, SF = "var(--primary)", "var(--accent)", "var(--primary-strong)", "var(--surface)"
+P, A, PS, SF = "var(--primary-decor)", "var(--accent-decor)", "var(--primary-strong)", "var(--surface)"
 
 
 def _circles(w, h):

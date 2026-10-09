@@ -531,20 +531,50 @@ function installLib() {
           }
           if (cur.length) subs.push({ pts: cur, closed: false });
         } else {
+          // 曲線のある path: 長さに沿って点を取る。サブパス（M・m で始まる部分）ごとに、手前までの長さを測って区間を切る
+          // （点の飛びで見分けると、前の終わりの近くから始まる穴を取り違える）。穴は1つの path の中の部分パスで、そのまま別のサブパスとして写す
           const L = el.getTotalLength();
-          const step = Math.max(0.5, Math.min(2, L / 400));
-          let cur = [], prev = null;
-          for (let s = 0; s <= L + 1e-6; s += step) {
-            const q = el.getPointAtLength(Math.min(s, L));
-            if (prev && Math.hypot(q.x - prev.x, q.y - prev.y) > step * 3) { subs.push({ pts: cur, closed: false }); cur = []; }
-            cur.push(P(q.x, q.y));
-            prev = q;
+          const stepPx = Math.max(0.5, Math.min(2, L * sc / 400));
+          const step = stepPx / sc;
+          const cuts = [];
+          if (tag === 'path') for (const mt of d.matchAll(/[Mm]/g)) if (mt.index > 0) cuts.push(mt.index);
+          const lens = [0];
+          if (cuts.length) {
+            const tmp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            el.parentNode.appendChild(tmp);
+            for (const c of cuts) { tmp.setAttribute('d', d.slice(0, c)); lens.push(tmp.getTotalLength()); }
+            tmp.remove();
           }
-          if (cur.length) subs.push({ pts: cur, closed: false });
-          const closedAll = tag !== 'path' || /[zZ]\s*$/.test(d);
-          for (const sp of subs) {
-            const a = sp.pts[0], b = sp.pts[sp.pts.length - 1];
-            if (closedAll || Math.hypot(a[0] - b[0], a[1] - b[1]) < 1.5) sp.closed = true;
+          lens.push(L);
+          const bounds = [0, ...cuts, d.length];
+          const at = s => { const q = el.getPointAtLength(s); return P(q.x, q.y); };
+          const rdp = (pts, tol) => {   // 折れ線の間引き（直線の上の点を落とす）
+            if (pts.length < 3) return pts;
+            const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+            const stack = [[0, pts.length - 1]];
+            while (stack.length) {
+              const [i, j] = stack.pop();
+              const [ax, ay] = pts[i], [bx, by] = pts[j];
+              const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
+              let worst = -1, wd = tol;
+              for (let k = i + 1; k < j; k++) {
+                const dd = len < 1e-9 ? Math.hypot(pts[k][0] - ax, pts[k][1] - ay) : Math.abs(dy * (pts[k][0] - ax) - dx * (pts[k][1] - ay)) / len;
+                if (dd > wd) { wd = dd; worst = k; }
+              }
+              if (worst > 0) { keep[worst] = 1; stack.push([i, worst], [worst, j]); }
+            }
+            return pts.filter((_, k) => keep[k]);
+          };
+          for (let k = 0; k < lens.length - 1; k++) {
+            const s0 = lens[k], s1 = lens[k + 1];
+            const text = d.slice(bounds[k], bounds[k + 1]).trim();
+            const eps = Math.min(1e-3, (s1 - s0) / 4);      // 区間の境目は前後どちらのサブパスにも読めるので、少し内側から取る
+            const pts = [];
+            for (let s = s0 + eps; s < s1 - eps; s += step) pts.push(at(s));
+            pts.push(at(s1 - eps));
+            const a0 = pts[0], b0 = pts[pts.length - 1];
+            const closed = tag !== 'path' || /[zZ]$/.test(text) || Math.hypot(a0[0] - b0[0], a0[1] - b0[1]) < 1.5;
+            subs.push({ pts: rdp(pts, 0.05), closed });
           }
         }
       }

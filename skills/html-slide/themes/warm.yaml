@@ -1,6 +1,7 @@
-# 生成りの見本。生成りの地・紺の文字・朱のアクセント
+# 生成りの見本。DADS の橙の段。生成りの地・Gray-800 の文字・橙のアクセント（orange-900）
 background: "#faf7f0"
-ink: "#1c2a4a"
-primary: "#b4472a"
+ink: "#333333"
+primary: "#ac3e00"
+muted: "#666666"
 surface: "#f1ece1"
-font: "Yu Gothic"
+font: "Noto Sans JP"

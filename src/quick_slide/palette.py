@@ -215,7 +215,7 @@ def custom_roles(colors: dict[str, Any]) -> dict[str, Any]:
 # エンジンのテーマのキーは background・ink・primary（必須）と accent・muted・surface・font・font_files（任意）。
 # エンジンは primary・accent から文字の色・面の色・淡い地を自分で作り、読めない組み合わせは描かずに止める（rc=2）。
 # だからここでは「人が決めた色」だけを渡し、算出はエンジンに任せる。
-INK_STEP = 1             # gray の何段目を本文の文字にするか（算出の gray[1] は明度 0.25 = エンジンの既定 #404040）
+INK_STEP = 1             # gray の何段目を本文の文字にするか（算出の gray[1] は明度 0.25 = #404040。付属の既定のブランドだけ presets.py で DADS の #333333 に上書き）
 INK_MIN_CONTRAST = 7.0   # 本文の文字と地の差がこれに届かなければ、gray・黒・白から一番差の大きい色にする
 SURFACE_MIN_CONTRAST = 7.0
 

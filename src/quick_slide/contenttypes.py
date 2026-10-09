@@ -25,6 +25,7 @@ LABELS = {
     "bullets": "箇条書き", "timeline": "年表", "photo": "写真", "quote": "引用", "gallery": "ギャラリー",
     "figure": "図・画面の写し", "annotate": "注釈つきの画像", "team": "体制・人", "matrix": "2×2",
     "closing": "締め", "equation": "式（A＋B＝C）", "hub": "中心と周り", "pairs": "NG → OK の対",
+    "notice": "お知らせの枠", "deflist": "用語と説明", "steps": "手順の案内",
 }
 # 画像が要る型（画像を使わないデッキでは使えない）
 NEEDS_IMAGE = ("photo", "gallery", "figure", "annotate")

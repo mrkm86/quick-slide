@@ -7,9 +7,10 @@
 入口の html_slide.py からは build_html() を呼ぶ。台本の outline と role は読み飛ばす（ストーリーテンプレートはやめた・ADR 0004）。
 
 - テーマ: --theme > 台本の theme > 設定の default_theme > default。名前は themes/<名前>.yaml、パスも書ける
-- 字体: テーマの font の名前で、設定（places.py の置き場の config.yaml）の fonts を引く。
-  無ければ游ゴシックの既定のパス（deck_types.DEFAULT_FONTS）。テーマの font_files で直に差し替えもできる
-- 色: テーマの background・ink・primary（と任意の差し色 accent）から、型が使う色を全部作り、文字と地の組み合わせを検査する（読めなければ rc=2）
+- 字体: テーマの font（既定 Noto Sans JP）の名前で、設定（places.py の置き場の config.yaml）の fonts を引く。
+  Noto Sans JP のファイルが分からなければ、游ゴシック（deck_types.DEFAULT_FONTS）で組み、警告に残す。テーマの font_files で直に差し替えもできる
+- 色: テーマの background・ink・primary（と任意の差し色 accent）から、DADS のキーカラー（skills/dads/scripts/keycolors.py）の
+  作り方で型が使う色を全部作り、文字は 4.5:1・図形と罫は 3:1 で検査する（足りなければ rc=2）
 """
 from __future__ import annotations
 
@@ -24,7 +25,10 @@ import urllib.parse
 
 sys.dont_write_bytecode = True   # 置いた場所（配る物の中・ほかの環境からのリンク先）に __pycache__ を残さない
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+# DADS のキーカラーの作り方（skills/dads）。エンジンは symlink 経由でも呼ばれるので、resolve() した位置から辿る
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "dads" / "scripts"))
 import cache as K  # noqa: E402
+import keycolors as KC  # noqa: E402
 import deck_style as DS  # noqa: E402
 import deck_types as T  # noqa: E402
 import places as PL  # noqa: E402
@@ -37,15 +41,16 @@ MODES = ("talk", "handout")
 TRANSITIONS = ("morph", "fade", "none")
 TOP_KEYS = {"title", "theme", "mode", "footer", "page_numbers", "outline", "slides"}
 THEME_KEYS = {"background", "ink", "primary", "accent", "muted", "surface", "font", "font_files"}
+DEFAULT_FONT, FALLBACK_FONT = "Noto Sans JP", "Yu Gothic"   # 既定の字体（DADS）と、そのファイルが無いときの字体（ADR 0020）
 CLICK = "［クリック］"
 
 # ロゴ（--logo）: 右下の枠に、縦横比を保って収める（縮めるだけ・引き伸ばさない）。枠の寸法は quick-slide の
 # placement.py の既定（1920×1080 で 329×44）と同じ。縦は下の文字の行の中心にそろえ、右は本文の余白（120px）にそろえる
 LOGO_BOX_W, LOGO_BOX_H = 329, 44
 LOGO_RIGHT = 120
-LOGO_MID_Y = 1006 + 22 * 1.4 / 2      # .footer・.pageno の行の中心（templates/deck.html）
+LOGO_MID_Y = 1008 + 22 * 1.5 / 2      # .footer・.pageno の行の中心（templates/deck.html）
 LOGO_GAP = 28                         # ロゴと下の文字の間
-FOOTER_LEFT, FOOTER_END = 120, 1420   # 下の文字（.footer）の左端と右端
+FOOTER_LEFT, FOOTER_END = 120, 1416   # 下の文字（.footer）の左端と右端
 FOOTER_END_WITH_NO = 912              # ページ番号（中央下・900〜1020px）を出すときの下の文字の右端（番号の左 48px まで）
 LOGO_MIN_SIDE = 30                    # 短辺がこれ未満なら小さいと警告する（quick-slide の small_logo と同じ 2.8%）
 LOGO_EXT = {".png", ".jpg", ".jpeg"}
@@ -58,12 +63,12 @@ LOGO_POSITIONS = {
     "top-right": ("top-right", "bottom-right"),
 }
 LOGO_KEEP = {"bottom-right": "", "bottom-left": "-left", "top-right": "-top"}   # 角ごとに別の名前（同じ名前だとモーフで滑る）
-# 透かし（--watermark）: 全ページの中央下の端に、固定の薄いグレーで（ADR 0009）。
-# 数字は image-slide の layout.py と同じ（image-slide の tests が見比べる）。下の文字の行（1006〜1037px）とは重ならない
+# 透かし（--watermark）: 全ページの中央下の端に、Gray-536 で（ADR 0009・0020）。
+# 数字は image-slide の layout.py と同じ（image-slide の tests が見比べる）。下の文字の行（1008〜1041px）とは重ならない
 WATERMARK_PX = 16                     # 文字の大きさ（1080 の 1.5%）
-WATERMARK_COLOR = "#9ca3af"           # Gray-400。下の色は測らない
+WATERMARK_COLOR = "#767676"           # Gray-536（DADS・白の地で 4.54:1）。地が白でなければ palette が濃くする（--faint）。写真の上は測らない
 WATERMARK_BOTTOM = 13                 # 文字のベースラインから画面の下端まで（1080 の 1.2%）
-WATERMARK_TOP = 1054                  # .watermark の箱の上端（templates/deck.html）。line-height 1 の Yu Gothic でベースラインは上端から 13px → 1067px（Chrome で実測）
+WATERMARK_TOP = 1048                  # .watermark の箱の上端（templates/deck.html）。16px・行高 170% の箱で、ベースラインは下端の約 12px 上（Chrome で実測）
 
 
 # --- 色 ----------------------------------------------------------------------------
@@ -98,52 +103,104 @@ def ratio(a, b) -> float:
     return (la + 0.05) / (lb + 0.05)
 
 
-def palette(t: dict) -> dict:
-    """テーマの色（地・文字・主役の色 primary・差し色 accent。任意で muted・surface）から型が使う色を作る。
+# DADS の値（skills/dads/tokens/slide.json の color と同じ。tests が見比べる）
+INK, MUTED, GRAY_SURFACE = "#333333", "#666666", "#f2f2f2"          # Gray-800・Gray-600・Gray-50
+RULE, RULE_WEAK = "#767676", "#949494"                              # Gray-536（どの地でも 3:1）・Gray-420（白の地だけ 3:1）
+SEMANTIC = {                                                         # 意味の色。-1 は枠・図形（3:1）、-2 は文字・アイコン・塗り（4.5:1）。白い面の上だけ
+    "success-1": "#259d63", "success-2": "#197a4b", "error-1": "#ec0000", "error-2": "#ce0000",
+    "warning-yellow-1": "#b78f00", "warning-yellow-2": "#927200", "warning-orange-1": "#fb5b01", "warning-orange-2": "#c74700",
+}
 
-    色は2つの系統。どちらも同じ作り方で4つの役を持つ（2026-10-05）:
-      primary … 骨格（上の帯・小見出し・章扉・番号の丸・矢羽根・印・連絡先・主張の全面）。ブランドの主役の色
+
+def _darken(color: str, grounds: list[str], need: float) -> str:
+    """color の色相・彩度を保ち（OKLCH）、どの地の上でも need 以上になるまで明度を下げた色（初めから満たせばそのまま）。"""
+    L, c, h = KC.to_oklch(color)
+    x = color
+    while not all(ratio(x, g) >= need - 1e-9 for g in grounds):
+        L -= 0.004
+        if L <= 0:
+            return "#000000"
+        x = KC.from_oklch(L, c, h)
+    return x
+
+
+def _key(brand: str, bg: str, surface: str, what: str) -> dict:
+    """主役の色 1 つから、DADS のキーカラーの作り方で色の役を作る（primary・accent で同じ）。
+
+    ブランドの色が DADS のプリミティブの段そのままなら、その色相の段（keycolors.ramp_key_colors）。そうでなければ、同じ色相のまま
+    明度だけを動かして作る（keycolors.brand_key_colors）。
+      key    … 4.5:1（地・surface・淡い地の全部の上）。文字にも使う
+      tint   … 同じ色相のごく淡い地
+      mark   … 意味のある図形・線・棒（地・surface・淡い地の上で 3:1）。key より明るい
+      deco   … 飾りの面だけ（セカンダリー。情報を持たせない）
+      strong … 白い文字を載せる面（key か、足りなければターシャリー）
+    """
+    try:
+        kc = KC.brand_key_colors(brand, bg)
+    except ValueError as e:
+        raise DeckError(f"テーマの {what}（{brand}）から読める色を作れない: {e}")
+    fam = KC.nearest_primitive(kc["primary"]["hex"])
+    if fam["delta"] == 0 and fam["family"] != "solid-gray":
+        r = KC.ramp_key_colors(fam["family"], bg)
+        key, sec, ter, tint = (r[k]["hex"] for k in ("primary", "secondary", "tertiary", "background"))
+        steps = [x["hex"] for x in KC.ramp(fam["family"])]
+        grounds = [bg, surface, tint]
+        key = _darken(key, grounds, 4.5)
+        mark = next((x for x in steps if all(ratio(x, g) >= 3.0 for g in grounds)), key)
+    else:
+        key, sec, ter, tint = (kc[k]["hex"] for k in ("primary", "secondary", "tertiary", "background"))
+        grounds = [bg, surface, tint]
+        key = _darken(key, grounds, 4.5)
+        mark = _darken(sec, grounds, 3.0)
+    white = "#ffffff"
+    strong = key if ratio(white, key) >= 4.5 else ter
+    return {"key": key, "tint": tint, "mark": mark, "deco": sec, "strong": strong}
+
+
+def palette(t: dict) -> dict:
+    """テーマの色（地・文字・主役の色 primary・差し色 accent。任意で muted・surface）から型が使う色を作る（DADS・ADR 0020）。
+
+    色は2つの系統。どちらも同じ作り方で役を持つ:
+      primary … 骨格（小見出し・番号・章扉・矢羽根・印・連絡先・主張の全面）。ブランドの主役の色
       accent  … 差し色（台本の *語*・accent: true の項目・強調する棒と線・表の強調する列）。書かなければ primary と同じ
     役（primary を例に。accent も同じ名前で accent-…）:
-      primary         … 面（帯・棒・矢羽根・線・印）。テーマの色そのまま
-      primary-text    … 文字（小見出し・番号・数字）。地の上で 4.5 を越えるまで、色相を保って暗くした色
-      primary-strong  … 文字を載せる面（章扉・番号の丸・連絡先）。白か文字の色が 4.5 を越える色。届かなければ暗くする
-      on-primary      … その面に載せる文字（白か文字の色の、読める方）
-      primary-soft    … 淡い地（強めた目次の行）。accent-soft は強調する箱・表の列の地
-      primary-on-dark … 写真の上（暗幕の地）の色
+      primary         … 文字にも使う色。地・surface・淡い地の全部の上で 4.5:1（テーマの色の色相のまま、明度だけを動かす）
+      primary-text    … primary と同じ値（文字に使う印）
+      primary-strong  … 文字を載せる面（章扉・番号の丸・連絡先）。on-primary がその上の文字（白か、読める方）
+      primary-mark    … 意味のある図形・線・棒・印。地と surface と淡い地の上で 3:1
+      primary-decor   … 純粋な飾りの面（上の帯・表紙の図形）だけ
+      primary-soft    … 淡い地（強めた目次の行）。tint と同じ。accent-soft は強調する箱・表の列の地
+      primary-on-dark … 写真の上（暗幕の地）の色。4.5:1。primary-on-light … 明るい幕（全面の表紙・章扉の light）の上の色。4.5:1
+    共通:
+      ink（Gray-800）・muted（Gray-600）・faint（Gray-536。透かし）・surface（Gray-50）
+      rule … 罫・枠・軸（Gray-536）。rule-weak … 白の地の上だけの罫（Gray-420。白でなければ rule と同じ）。bar … 強めない棒
+      success-1 … warning-orange-2 … 意味の色（DADS の値。白い面の上だけ）
     """
     bg, ink = t["background"], t["ink"]
-    primary, accent = t["primary"], t.get("accent") or t["primary"]
     white = "#ffffff"
-    p = {
-        "bg": bg, "ink": ink, "primary": primary, "accent": accent,
-        "muted": t.get("muted") or mix(ink, 0.72, bg),           # 下で、淡い地の上でも読める濃さに寄せる（テーマで書いたときはそのまま）
-        "surface": t.get("surface") or mix(ink, 0.04, bg),
-        "primary-soft": mix(primary, 0.07, bg),   # 強めた目次の地・スタイルの look: surface primary の箱の地
-        "accent-soft": mix(accent, 0.07, bg),     # 強めたカード・比較の列・表の列・吹き出しの地
-        "tint": mix(primary, 0.13, bg),           # 矢羽根の地
-        "line": mix(ink, 0.14, bg),               # 区切りの線・比較の札
-        "bar": mix(ink, 0.24, bg),                # 強めない棒・年表の丸
-    }
-    grounds = [bg, p["surface"], p["primary-soft"], p["accent-soft"], p["tint"]]
-    if not t.get("muted"):
-        p["muted"] = _readable(p["muted"], grounds, 4.5)
-    # 写真の上（暗幕の地）: 色を白に寄せて、ink の地で 4.5・一番薄い暗幕を白い写真に重ねた地で 3.0 を越える一番濃い色
+    surface = t.get("surface") or (GRAY_SURFACE if bg == white else mix(ink, 0.04, bg))
+    pk = _key(t["primary"], bg, surface, "primary")
+    ak = _key(t["accent"], bg, surface, "accent") if t.get("accent") and t["accent"] != t["primary"] else pk
+    grounds = [bg, surface, pk["tint"], ak["tint"]]
+    p = {"bg": bg, "ink": ink, "surface": surface}
+    p["muted"] = t.get("muted") or _darken(MUTED, grounds, 4.5)
+    p["faint"] = _darken(RULE, [bg], 4.5)             # 透かし。地の上だけ
+    p["rule"] = _darken(RULE, grounds, 3.0)
+    p["rule-weak"] = RULE_WEAK if ratio(RULE_WEAK, bg) >= 3.0 else p["rule"]
+    p["bar"] = p["rule-weak"]
+    p["tint"] = pk["tint"]
+    p["primary-soft"] = pk["tint"]
+    p["accent-soft"] = ak["tint"]
+    # 写真の上（暗幕の地）: 色を白に寄せて、一番薄い暗幕を白い写真に重ねた地で 4.5 を越える一番濃い色
     thin = mix(ink, min(T.OVERLAYS.values()), white)
-    for name, color in (("primary", primary), ("accent", accent)):
-        p[f"{name}-on-dark"] = next((c for c in (mix(color, 1 - k / 40, white) for k in range(41))
-                                     if ratio(c, ink) >= 4.5 and ratio(c, thin) >= 3.0), white)
-        p[f"{name}-text"] = _readable(color, grounds, 4.5)
-        # 文字を載せる面は、なるべく白抜き（2026-10-05）。濃い色の背景やカードに文字を載せるなら白抜きにする。
-        # 白が読めない色は、色相を保って白が読める濃さまで暗くする。ただし暗くする量が WHITE_DROP を越える明るい色
-        # （黄・橙・黄緑など）は、色を変えすぎるので、そのままの色に文字の色（ink）を載せる
-        if ratio(white, color) >= 4.5:
-            strong = color
-        else:
-            dark = _readable(color, [white], 4.5)
-            strong = dark if _drop(color, dark) <= WHITE_DROP or ratio(ink, color) < 4.5 else color
-        p[f"{name}-strong"] = strong
-        p[f"on-{name}"] = white if ratio(white, strong) >= 4.5 else ink
+    for name, k in (("primary", pk), ("accent", ak)):
+        p[name] = k["key"]
+        p[f"{name}-text"] = k["key"]
+        p[f"{name}-mark"] = k["mark"]
+        p[f"{name}-decor"] = k["deco"]
+        p[f"{name}-strong"] = k["strong"]
+        p[f"on-{name}"] = white if ratio(white, k["strong"]) >= 4.5 else ink
+        p[f"{name}-on-dark"] = next((c for c in (mix(k["deco"], 1 - n / 40, white) for n in range(41)) if ratio(c, thin) >= 4.5), white)
     r, g, b = (int(p["ink"][i:i + 2], 16) for i in (1, 3, 5))
     p["scrim"] = f"rgba({r}, {g}, {b}, {T.SCRIM_ALPHA})"      # 全面写真の上の文字の地
     p["scrim-0"] = f"rgba({r}, {g}, {b}, 0)"                  # 暗幕のグラデーションの透明な端
@@ -151,41 +208,34 @@ def palette(t: dict) -> dict:
     vr, vg, vb = (int(bg[i:i + 2], 16) for i in (1, 3, 5))
     p["veil"] = f"rgba({vr}, {vg}, {vb}, {T.HERO_VEIL})"      # 全面の表紙の題の下の幕（背景の色）
     p["veil-0"] = f"rgba({vr}, {vg}, {vb}, 0)"
-    p["shadow"] = f"rgba({r}, {g}, {b}, 0.12)"                 # 白い箱の影（スタイルの look: surface white）
+    # 明るい幕の上（黒い写真に幕を重ねた地）で 4.5:1 になるまで暗くした色。幕の上のラベル・番号・強調の語に使う
+    veil_ground = mix(bg, T.HERO_VEIL, "#000000")
+    for name, k in (("primary", pk), ("accent", ak)):
+        p[f"{name}-on-light"] = _darken(k["key"], [veil_ground], 4.5)
+    p.update(SEMANTIC)
     return p
 
 
-WHITE_DROP = 0.32   # 白抜きのために暗くしてよい明るさの割合（シアン #0db4f2 は 0.30・青 #399dd1 は 0.21 で白抜き、黄 #f5a623 は 0.39 で黒の文字）
-
-
-def _drop(color: str, dark: str) -> float:
-    """color から dark へ、明るさ（HLS の L）が何割下がったか。"""
-    import colorsys
-    l0 = colorsys.rgb_to_hls(*_rgb(color))[1]
-    return 0.0 if l0 == 0 else 1 - colorsys.rgb_to_hls(*_rgb(dark))[1] / l0
-
-
-def _readable(color: str, grounds: list[str], need: float) -> str:
-    """color の色相・彩度を保ち、どの地の上でも need を越えるまで暗くした色（初めから越えていればそのまま）。"""
-    import colorsys
-    r, g, b = _rgb(color)
-    h, l, sat = colorsys.rgb_to_hls(r, g, b)
-    for k in range(0, 101):
-        c = _to_hex(colorsys.hls_to_rgb(h, max(0.0, l * (1 - k / 100)), sat))
-        if all(ratio(c, gr) >= need for gr in grounds):
-            return c
-    return "#000000"
+# 検査する組み合わせ。文字は大きさによらず 4.5（DADS は大きな文字の緩和を使わない）。図形・罫・枠は 3
+TEXT_GROUNDS = ("bg", "surface", "tint", "accent-soft")
 
 
 def contrast_problems(p: dict) -> list[str]:
-    """実際に描く「文字 × 地」の組み合わせで、読めないものを返す（空なら合格）。"""
+    """実際に描く「文字 × 地」「図形・罫 × 地」の組み合わせで、足りないものを返す（空なら合格）。"""
     need = []
-    grounds = ("bg", "surface", "primary-soft", "accent-soft", "tint")
     for fg in ("ink", "muted", "primary-text", "accent-text"):
-        for g in grounds:
+        for g in TEXT_GROUNDS:
             need.append((fg, g, 4.5))
-    need += [("primary-text", "line", 3.0), ("accent-text", "line", 3.0), ("ink", "line", 4.5),
-             ("on-primary", "primary-strong", 4.5), ("on-accent", "accent-strong", 4.5), ("ink", "bar", 3.0)]
+    need += [("faint", "bg", 4.5),
+             ("on-primary", "primary-strong", 4.5), ("on-accent", "accent-strong", 4.5)]
+    for g in TEXT_GROUNDS:                      # 罫・枠・軸
+        need.append(("rule", g, 3.0))
+    need += [("rule-weak", "bg", 3.0), ("bar", "bg", 3.0)]
+    for g in ("bg", "surface", "tint"):         # 意味のある図形・線・棒
+        need.append(("primary-mark", g, 3.0))
+    for g in ("bg", "surface", "accent-soft"):
+        need.append(("accent-mark", g, 3.0))
+    need += [("primary-strong", "bg", 3.0), ("accent-strong", "bg", 3.0)]    # 面の境
     bad = []
     for fg, g, n in need:
         r = ratio(p[fg], p[g])
@@ -195,7 +245,7 @@ def contrast_problems(p: dict) -> list[str]:
 
 
 def overlay_problems(p: dict, used: dict) -> list[str]:
-    """写真の上の文字の幕のうち、台本で使ったもの（used: 名前 → 枚目）だけを検査する。
+    """写真の上の文字の幕のうち、台本で使ったもの（used: 名前 → 枚目）だけを検査する。文字は全部 4.5（DADS）。
 
     暗い幕（ink の半透明）は一番明るい（白い）写真に、明るい幕（背景の色の半透明）は一番暗い（黒い）写真に重ねた色を地とする。
     濃さは型ごとに T.OVERLAYS・T.LIGHT_OVERLAYS（グラデーションなら文字がある範囲での最小）
@@ -205,18 +255,18 @@ def overlay_problems(p: dict, used: dict) -> list[str]:
         if name in T.OVERLAYS:
             alpha = T.OVERLAYS[name]
             ground = mix(p["ink"], alpha, "#ffffff")
-            for fg, val, n in (("白の文字", "#ffffff", 4.5), ("主役の色（primary-on-dark）", p["primary-on-dark"], 3.0),
-                               ("差し色（accent-on-dark）", p["accent-on-dark"], 3.0)):
+            for fg, val in (("白の文字", "#ffffff"), ("主役の色（primary-on-dark）", p["primary-on-dark"]),
+                            ("差し色（accent-on-dark）", p["accent-on-dark"])):
                 r = ratio(val, ground)
-                if r < n - 1e-9:
-                    bad.append(f"{no}枚目 {name}の{fg}（{val}）× 暗幕（ink を {alpha} で白い写真に重ねた {ground}）のコントラスト {r:.2f} が {n} 未満")
+                if r < 4.5 - 1e-9:
+                    bad.append(f"{no}枚目 {name}の{fg}（{val}）× 暗幕（ink を {alpha} で白い写真に重ねた {ground}）のコントラスト {r:.2f} が 4.5 未満")
         if name in T.LIGHT_OVERLAYS:
             alpha = T.LIGHT_OVERLAYS[name]
             ground = mix(p["bg"], alpha, "#000000")
-            for fg, n in (("ink", 4.5), ("primary-text", 3.0), ("accent-text", 3.0)):   # 幕の上では副題・日付も ink で書く（muted は使わない）。小見出しと強調の語は文字の色
+            for fg in ("ink", "primary-on-light", "accent-on-light"):   # 幕の上では副題・日付も ink で書く（muted は使わない）。ラベル・番号・強調の語は幕の上用の色
                 r = ratio(p[fg], ground)
-                if r < n - 1e-9:
-                    bad.append(f"{no}枚目 {name}の {fg}（{p[fg]}）× 幕（背景の色を {alpha} で黒い写真に重ねた {ground}）のコントラスト {r:.2f} が {n} 未満")
+                if r < 4.5 - 1e-9:
+                    bad.append(f"{no}枚目 {name}の {fg}（{p[fg]}）× 幕（背景の色を {alpha} で黒い写真に重ねた {ground}）のコントラスト {r:.2f} が 4.5 未満")
     return bad
 
 
@@ -247,7 +297,7 @@ def load_theme(path: pathlib.Path) -> dict:
     extra = sorted(set(raw) - THEME_KEYS)
     if extra:
         raise DeckError(f"{path}: テーマに知らないキー: {', '.join(extra)}（使えるのは {', '.join(sorted(THEME_KEYS))}）")
-    t = {"name": path.stem, "font": str(raw.get("font") or "Yu Gothic"), "font_files": raw.get("font_files")}
+    t = {"name": path.stem, "font": str(raw.get("font") or DEFAULT_FONT), "font_files": raw.get("font_files")}
     if any(c in t["font"] for c in '"\\<>;{}'):
         raise DeckError(f"{path}: font の名前に使えない文字がある（CSS にそのまま入るため）: {t['font']}")
     if "accent" in raw and "primary" not in raw:
@@ -262,25 +312,58 @@ def load_theme(path: pathlib.Path) -> dict:
     return t
 
 
-def font_files(theme: dict, cfg: dict) -> dict:
-    """測る字体ファイル（regular・bold）。テーマの font_files > 設定の fonts[字体名] > 游ゴシックの既定。"""
-    ff = theme.get("font_files") or (cfg.get("fonts") or {}).get(theme["font"])
-    if ff is None:
-        if theme["font"] != "Yu Gothic":
-            raise DeckError(f"字体 {theme['font']} のファイルが分からない（設定の fonts か テーマの font_files に書く）")
-        ff = T.DEFAULT_FONTS
+def _font_pair(ff, who: str) -> dict:
     if not isinstance(ff, dict) or not ff.get("regular"):
-        raise DeckError(f"字体 {theme['font']} の指定は regular と bold のパスで書く")
+        raise DeckError(f"字体 {who} の指定は regular と bold のパスで書く")
     reg = str(pathlib.Path(ff["regular"]).expanduser())
     bold = str(pathlib.Path(ff.get("bold") or ff["regular"]).expanduser())
     return {"regular": reg, "bold": bold}
 
 
+def resolve_font(theme: dict, cfg: dict) -> tuple[str, dict, str | None]:
+    """組む字体 (名前, 測る字体ファイル {regular, bold}, 警告)。テーマの font_files > 設定の fonts[字体名] > 既定。
+
+    既定の Noto Sans JP のファイルが分からない（設定に無い・ファイルが無い）ときは、游ゴシック（設定の fonts か
+    deck_types.DEFAULT_FONTS）に落として警告する（ADR 0020）。ほかの字体は、ファイルが分からなければ rc=2。
+    """
+    name = theme["font"]
+    ff = theme.get("font_files") or (cfg.get("fonts") or {}).get(name)
+    if ff is not None:
+        files = _font_pair(ff, name)
+        if name != DEFAULT_FONT or all(pathlib.Path(v).is_file() for v in files.values()):
+            return name, files, None
+    elif name == FALLBACK_FONT:
+        return name, _font_pair(T.DEFAULT_FONTS, name), None
+    elif name != DEFAULT_FONT:
+        raise DeckError(f"字体 {name} のファイルが分からない（設定の fonts か テーマの font_files に書く）")
+    yu = (cfg.get("fonts") or {}).get(FALLBACK_FONT) or T.DEFAULT_FONTS
+    return FALLBACK_FONT, _font_pair(yu, FALLBACK_FONT), (
+        f"字体 {DEFAULT_FONT} のファイルが分からないので、{FALLBACK_FONT} で組んだ（設定の fonts に {DEFAULT_FONT} の regular と bold を書けば使う）")
+
+
+def _metric_overrides(path: str) -> str:
+    """@font-face の ascent-override・descent-override。字体の上下の幅（ascent＋descent）を 1em に縮め、ベースラインは動かさない。
+
+    Noto Sans JP は 1.448em あり、行高 1.0〜1.4 の箱では文字の領域が行の箱からはみ出して見え（scrollHeight）、
+    描き出し係の「文字のはみ出し」の検査が止まる。ベースラインの位置（行高の半分＋(ascent−descent)/2）を保ったまま
+    領域を 1em にすれば、見た目は変わらずに、行高 1.0 以上の箱に収まる（ADR 0020）。
+    """
+    try:
+        from PIL import ImageFont
+        asc, desc = ImageFont.truetype(path, 1000, index=0).getmetrics()
+    except Exception:
+        return ""
+    if asc + desc <= 1000:
+        return ""
+    half = (asc - desc) / 2000                       # ベースラインの、領域の中心からのずれ（em）
+    return (f" ascent-override: {(0.5 + half) * 100:.2f}%; descent-override: {(0.5 - half) * 100:.2f}%; line-gap-override: 0%;")
+
+
 def font_faces(family: str, files: dict) -> str:
     def url(p):
         return "file://" + urllib.parse.quote(p)
-    return (f'@font-face {{ font-family: "{family}"; font-weight: 400; src: url("{url(files["regular"])}"); }}\n'
-            f'      @font-face {{ font-family: "{family}"; font-weight: 700; src: url("{url(files["bold"])}"); }}')
+    return (f'@font-face {{ font-family: "{family}"; font-weight: 400; src: url("{url(files["regular"])}");{_metric_overrides(files["regular"])} }}\n'
+            f'      @font-face {{ font-family: "{family}"; font-weight: 700; src: url("{url(files["bold"])}");{_metric_overrides(files["bold"])} }}')
 
 
 # --- 台本 --------------------------------------------------------------------------
@@ -437,7 +520,10 @@ def fit_logo_plates(html_path, info) -> None:
         if corner == "bottom-left":                                           # 下の文字はロゴの右
             left = x + w + LOGO_GAP
             end = FOOTER_END_WITH_NO if 'class="pageno"' in sec else FOOTER_END
-            sec = re.sub(r'(data-name="下の文字")(?: style="[^"]*")?>', rf'\1 style="left: {left}px; width: {end - left}px;">', sec, count=1)
+            if info.get("footer") and T.text_width(info["footer"], info.get("footer_px", 22)) > end - left - 8:
+                info["warnings"].append(f"{no}枚目: ロゴを左下に置くと下の文字が1行に入らない（幅 {end - left}px）。短くするか、ロゴを右下に置く")
+            fpx = f" font-size: {info['footer_px']}px;" if info.get("footer_px", 22) != 22 else ""
+            sec = re.sub(r'(data-name="下の文字")(?: style="[^"]*")?>', rf'\1 style="left: {left}px; width: {end - left}px;{fpx}">', sec, count=1)
         sec = sec.replace('      <aside class="notes">', "".join(f"      {ln}\n" for ln in logo_parts(box, corner, name, color))
                           + '      <aside class="notes">', 1)
         pages.append({"no": no, "corner": corner, "x": x, "plate": color})
@@ -480,19 +566,32 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
     bad = contrast_problems(pal)
     if bad:
         raise DeckError(f"テーマ {th['name']} の色で読めない文字がある:\n  " + "\n  ".join(bad))
-    files = font_files(th, cfg)
+    family, files, font_warning = resolve_font(th, cfg)
     T.use_fonts(files["regular"], files["bold"])
 
     footer = sc.get("footer") or ""
     if not isinstance(footer, str):
         raise DeckError("footer は文字で書く")
     numbers = sc.get("page_numbers", False)          # 既定はオフ。出すときは中央下（2026-10-06・ADR 0008）
+    footer_px = 22                                   # 注記の大きさ。1行に入らなければ 20（DADS の段）まで下りる
+    footer_room = (FOOTER_END_WITH_NO if numbers else FOOTER_END) - FOOTER_LEFT - 8
+    if footer and T.text_width(footer, 22) > footer_room and T.text_width(footer, 20) <= footer_room:
+        footer_px = 20
+    footer_long = bool(footer) and T.text_width(footer, footer_px) > footer_room
     logo_position = logo_position or "bottom-right"
     if logo_position not in LOGO_POSITIONS:
         raise DeckError(f"ロゴの位置（--logo-position）は {' / '.join(LOGO_POSITIONS)} のどれか（{logo_position!r}）")
     watermark = (watermark or "").strip()
     if "\n" in watermark:
         raise DeckError("透かし（--watermark）は1行で書く")
+    if footer_long:
+        # 22px は注記の下限で縮めない。2行に折れると、透かしの帯（1048px〜）にかかる
+        why = f"footer が1行に入らない（20px・幅 {footer_room + 8}px{'。ページ番号を出すと狭い' if numbers else ''}）"
+        if watermark:
+            raise DeckError(f"{why}。透かしの帯にかかるので、短くする: {footer}")
+        footer_warning = f"{why}ので2行に折れる。短くする"
+    else:
+        footer_warning = None
     logo_path, logo_geo = load_logo(logo)
     assets: list = []
     logo_name = None
@@ -500,7 +599,7 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
         logo_name = "logo" + logo_path.suffix.lower()
         assets.append((logo_path, logo_name) if not logo_geo["trim"] else (None, logo_name))
     slots: list = []
-    img_warns: list = []
+    img_warns: list = list(sty.get("retired") or [])      # 退役した変化形を使うスタイルの注意（rc は変えない）
     used_overlays: dict = {}
     sections, info_slides = [], []
     chapter = 0
@@ -538,7 +637,8 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
             parts.insert(0, '<div class="band" data-keep="band" data-name="上の帯"></div>')
         if chrome:
             if footer:
-                fs = f' style="width: {FOOTER_END_WITH_NO - FOOTER_LEFT}px;"' if numbers else ""   # 中央下の番号の手前まで
+                fs = (f' style="{"font-size: 20px; " if footer_px == 20 else ""}'
+                      f'{"width: %dpx;" % (FOOTER_END_WITH_NO - FOOTER_LEFT) if numbers else ""}"') if (numbers or footer_px == 20) else ""   # 中央下の番号の手前まで
                 parts.append(f'<div class="footer" data-keep="footer" data-name="下の文字"{fs}>{T.esc(footer)}</div>')
             if numbers:
                 parts.append(f'<div class="pageno" data-keep="pageno" data-name="ページ番号">{no}</div>')
@@ -578,22 +678,26 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
     title = str(sc.get("title") or script_path.stem)
     html = (TEMPLATE.read_text(encoding="utf-8")
             .replace("{{TITLE}}", T.esc_plain(title))
-            .replace("{{FONT_FACES}}", font_faces(th["font"], files))
+            .replace("{{FONT_FACES}}", font_faces(family, files))
             .replace("{{THEME}}", theme_css)
-            .replace("{{FONT_FAMILY}}", f'"{th["font"]}", sans-serif')
+            .replace("{{FONT_FAMILY}}", f'"{family}", sans-serif')
             .replace("{{LOOK}}", DS.look_css(sty["look"]))
             .replace("{{SLIDES}}", "\n".join(sections)))
     html_path = out_dir / "deck.html"
     html_path.write_text(html, encoding="utf-8")
     info = {"title": title, "mode": mode, "theme": str(tpath), "html": str(html_path),
             "style": sty["name"], "style_description": sty["description"], "image_look": image_look,
-            "warnings": img_warns + ([logo_geo["warning"]] if logo_geo and logo_geo["warning"] else []),
+            "warnings": img_warns + ([logo_geo["warning"]] if logo_geo and logo_geo["warning"] else []) + ([footer_warning] if footer_warning else []),
+            "font": family, "font_note": font_warning,       # 字体が既定の Noto Sans JP でないときの理由（警告ではない。入口が注として出す）
             "images": slots, "cache": str(gen_dir),
             "logo": ({"path": str(logo_path), "name": logo_name, "position": logo_position,
                       **{k: logo_geo[k] for k in ("x", "y", "w", "h", "scale")}} if logo_path else None),
             "slides": info_slides}
     if watermark:
         info["watermark"] = watermark
+    if footer:
+        info["footer"] = footer
+        info["footer_px"] = footer_px
     if logo_path:
         fit_logo_plates(html_path, info)          # ページごとにロゴの角と地の色を決めて書き入れる・写真のページは置かない
     return html_path, info

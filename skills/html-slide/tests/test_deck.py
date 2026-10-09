@@ -268,16 +268,19 @@ def case_theme():
     """テーマ: 3つとも通る・読めない色は rc=2・無い名前は rc=2。"""
     for name in ("default", "forest", "warm"):
         build(sample(), f"theme-{name}", theme=name)
-    # 薄い主役の色（淡い水色など）は止めない。面にはそのまま使い、文字と、文字を載せる面は読める濃さにした色を使う（2026-10-05）
+    # 薄い主役の色（淡い水色など）は止めない。同じ色相のまま明度だけを動かして、文字は 4.5:1・図形は 3:1 にする（DADS・ADR 0020）
     pale = TMP / "pale.yaml"
     pale.write_text('background: "#ffffff"\nink: "#1a2b4c"\nprimary: "#9ec5ff"\n', encoding="utf-8")
     html, _ = build(sample(), "theme-pale", theme=str(pale))
     p = deck.palette(deck.load_theme(pale))
-    assert p["primary"] == "#9ec5ff" and deck.ratio(p["primary-text"], "#ffffff") >= 4.5, p
+    assert deck.ratio(p["primary-text"], "#ffffff") >= 4.5 and deck.ratio(p["primary-mark"], "#ffffff") >= 3.0, p
     assert deck.ratio(p["on-primary"], p["primary-strong"]) >= 4.5, p
-    assert all(p[f"accent{r}"] == p[f"primary{r}"] for r in ("", "-text", "-strong", "-soft")), "差し色を書かないのに primary と違う"
+    h0, h1 = deck.KC.to_oklch("#9ec5ff")[2], deck.KC.to_oklch(p["primary-text"])[2]
+    assert abs((h0 - h1 + 180) % 360 - 180) < 10, f"色相が動いた: {h0} → {h1}"
+    assert all(p[f"accent{r}"] == p[f"primary{r}"] for r in ("", "-text", "-strong", "-soft", "-mark", "-decor")), "差し色を書かないのに primary と違う"
     h = pathlib.Path(html).read_text()
-    assert "var(--primary-text)" in h and "--primary: #9ec5ff" in h, "面の色をそのまま使っていない"
+    assert "var(--primary-text)" in h and f"--primary-text: {p['primary-text']}" in h and f"--primary-mark: {p['primary-mark']}" in h, "色の役が CSS 変数に入っていない"
+    assert deck.contrast_problems(p) == [], deck.contrast_problems(p)
     # 地と文字が近いテーマは今までどおり止める（強調色だけが救われる）
     bad = TMP / "bad.yaml"
     bad.write_text('background: "#ffffff"\nink: "#bbbbbb"\nprimary: "#1f5fd1"\n', encoding="utf-8")
@@ -295,12 +298,22 @@ def case_theme():
 
 def case_fit():
     """文字の大きさの決め方: 入れば元の大きさ・入らなければ縮める・tidy は1語だけの行を避ける。"""
-    s, n = T.fit("短い見出し", 60, 1680, what="x", lines=2, bold=True)
-    assert (s, n) == (60, 1)
-    s, n = T.fit("あ" * 40, 60, 1680, what="x", lines=2, bold=True)
-    assert n == 2 and s == 60
-    s, n = T.fit("会議の時間を半分にする", 88, 820, what="x", lines=3, bold=True, tidy=True)
+    s, n = T.fit("短い見出し", 64, 1680, what="x", lines=2, bold=True)
+    assert (s, n) == (64, 1)
+    s, n = T.fit("あ" * 40, 64, 1680, what="x", lines=2, bold=True)
+    assert n == 2 and s == 64
+    s, n = T.fit("会議の時間を半分にする", 96, 816, what="x", lines=3, bold=True, tidy=True)
     assert n == 2, (s, n)
+    # DADS の段を1つずつ下りる（連続値で縮めない）。段の外の大きさは段に丸める
+    s, n = T.fit("あ" * 30, 64, 1680, what="x", lines=1, lh=1.4, min_size=36, bold=True)
+    assert (s, n) == (48, 1), (s, n)                       # 64 → 57 → 48 と段を下りて、1行に入る
+    assert [T.snap(v) for v in (200, 100, 60, 58, 40, 30, 22, 17, 10)] == [200, 96, 57, 57, 36, 28, 22, 16, 16]
+    assert T.step_down(64, 2) == 48 and T.step_down(28, 3, 24) == 24 and T.step_up(28, 1, 36) == 32 and T.step_up(28, 5, 36) == 36 and T.step_up(45, 1, 45) == 45
+    try:
+        T.fit("あ" * 60, 64, 1680, what="x", lines=1, lh=1.4, min_size=45, bold=True)
+        raise AssertionError("下限まで下りても入らないのに通った")
+    except T.DeckError as e:
+        assert "45px まで下りても" in str(e), e
     assert T.count_lines("abcdefghij" * 3, 40, 200) == 99      # 英数字の長い語は折れない
     try:
         T.fit("https://example.com/very/long/path", 30, 200, what="x", lines=2)
@@ -340,7 +353,7 @@ def case_line_chart_svg():
     pts = [tuple(map(float, xy.split(","))) for xy in poly.group(1).split()]
     lc = next(s for s in sc["slides"] if s["type"] == "line-chart")
     assert len(pts) == len(lc["labels"])
-    assert poly.group(2) == deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))["accent"]
+    assert poly.group(2) == deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))["accent-mark"]
     vals = lc["series"][0]["values"]
     hi, lo = vals.index(max(vals)), vals.index(min(vals))
     assert pts[hi][1] < pts[lo][1], "大きい値ほど上に描く"
@@ -353,12 +366,12 @@ def _sizes(html: str, cls: str) -> list[int]:
 def case_fit_size_applied():
     """Codex r2 #3: fit() が縮めた大きさを、その要素の font-size に書く（KPI のラベル・増減・注記・表紙の日付など）。"""
     kp = {"type": "kpi", "headline": "h", "items": [
-        {"label": "A" * 23, "value": "1", "delta": "B" * 24, "note": "注" * 38}, {"label": "b", "value": "2"}, {"label": "c", "value": "3"}]}
+        {"label": "A" * 23, "value": "1", "delta": "B" * 24, "note": "注" * 34}, {"label": "b", "value": "2"}, {"label": "c", "value": "3"}]}
     path, _ = build(one(kp, ["", ""]), "fit-kpi")
     html = path.read_text(encoding="utf-8")
     lab, dl, nt = _sizes(html, "kpi-label"), _sizes(html, "kpi-delta"), _sizes(html, "kpi-note")
-    assert lab and lab[0] < 30 and dl and dl[0] < 30 and nt and nt[0] < 24, (lab, dl, nt)
-    iw = (deck_types_cw(3)) - 88
+    assert lab and lab[0] < 28 and dl and dl[0] < 28 and nt and nt[0] == 22, (lab, dl, nt)   # 注記は 22 が下限（下りない）
+    iw = T.inner_w(deck_types_cw(3))
     assert T.text_width("A" * 23, lab[0], True) <= iw * T.SAFE, "折れない語が1行に入る大きさになっていない"
     cv = {"type": "cover", "title": "t", "meta": ["あ" * 60]}
     html = build(one(cv), "fit-cover")[0].read_text(encoding="utf-8")
@@ -366,13 +379,13 @@ def case_fit_size_applied():
     assert m and int(m.group(1)) < 28, "表紙の日付・組織が縮んでいない"
 
 
-def deck_types_cw(n, gap=40):
+def deck_types_cw(n, gap=T.GUTTER):
     return (T.CW - gap * (n - 1)) / n
 
 
 def case_callout_inner_width():
-    """Codex r2 #4: グラフの右の要点は、実際の内幅（500 − 左右 44）で測る。"""
-    assert T.CALLOUT_IW == 412
+    """Codex r2 #4: グラフの右の要点は、実際の内幅（格子の 4 列 528 − 左右 42）で測る。"""
+    assert T.CALLOUT_W == T.span(4) and T.CALLOUT_IW == 444
     for typ, extra in (("bar-chart", {"bars": [{"label": "a", "value": 1}, {"label": "b", "value": 2}]}),
                        ("line-chart", {"labels": ["a", "b", "c"], "series": [{"values": [1, 2, 3]}]})):
         sc = one({"type": typ, "headline": "h", "callout": {"value": "12345678", "text": "x"}} | extra, ["", ""])
@@ -396,7 +409,7 @@ def case_agenda_source():
     assert 'class="source"' in html and "出典の文字" in html
 
 
-SKIP_ESC = {"type", "role", "image", "layout", "trend", "value_labels", "accent", "fx", "transition", "initials"}
+SKIP_ESC = {"type", "role", "image", "layout", "trend", "value_labels", "accent", "fx", "transition", "initials", "kind", "state"}
 
 
 def _poison(v, key=None):
@@ -472,6 +485,13 @@ def minimal(type_: str, role: dict) -> dict:
     if type_ == "closing":
         return head | {"items": [{"title": "{次の一手1}", "body": "{期限と担当}"}, {"title": "{次の一手2}", "body": "{期限と担当}"}],
                        "contact": {"name": "{窓口}", "lines": ["{連絡先}"]}}
+    if type_ == "notice":
+        return head | {"items": [{"kind": "warning", "label": "{種類}", "title": "{題}", "body": "{本文}", "points": ["{箇条1}"]}]}
+    if type_ == "deflist":
+        return head | {"items": [{"term": f"{{用語{i}}}", "body": "{説明}"} for i in (1, 2, 3)]}
+    if type_ == "steps":
+        return head | {"current": 2, "items": [{"title": f"{{段{i}}}", "body": "{説明}", "state": s}
+                                               for i, s in zip((1, 2, 3), ("done", "current", "todo"))]}
     raise T.DeckError(f"雛形を作れない型: {type_}")
 
 
@@ -647,9 +667,9 @@ def case_hero():
     html = path.read_text(encoding="utf-8")
     secs = html.split("<section")[1:]
     assert 'class="veil"' in secs[0] and "linear-gradient(to right" in secs[0]
-    assert 'class="cover-subtitle" style="font-size:36px; color:var(--ink)"' in secs[0], "明るい幕の副題は ink"
+    assert 'class="cover-subtitle" style="font-size:32px; color:var(--ink)"' in secs[0], "明るい幕の副題は ink"
     assert "on-dark" in secs[1] and "linear-gradient(to left" in secs[1] and "var(--scrim)" in secs[1]
-    assert re.search(r'class="sec-text on-dark" style="left:1040px', secs[1]), "右に文字（1920 − 140 − 740）"
+    assert re.search(r'class="sec-text on-dark" style="left:1032px', secs[1]), "右に文字（1920 − 144 − 744）"
     sl = {x["slide"]: x for x in info["images"]}
     assert sl[1]["clear"].startswith("左の45%") and sl[2]["clear"].startswith("右の45%")
     assert "左の45%" in sl[1]["prompt_full"]
@@ -715,8 +735,9 @@ def case_grow():
                                                              {"title": "近い", "body": "歩ける"}]}
     h = html_of(short, "grow-short")
     ts, bs = _role_sizes(h, "card-title"), _role_sizes(h, "card-body")
-    assert len(set(ts)) == 1 and ts[0] > 44, f"短いカードの題が大きくならない: {ts}"
-    assert len(set(bs)) == 1 and bs[0] / ts[0] <= 32 / 44 + 0.01, f"本文が題との比を越えた: {ts} {bs}"
+    assert len(set(ts)) == 1 and ts[0] > 36, f"短いカードの題が大きくならない: {ts}"
+    assert len(set(bs)) == 1 and bs[0] <= 36 and bs[0] < ts[0] and bs[0] > 32, f"本文が段を上がっていない・題や上限を越えた: {ts} {bs}"
+    assert all(v in T.SCALE for v in ts + bs), "大きく組んでも DADS の段の外にならない"
     mixed = copy.deepcopy(short)
     mixed["items"][1]["title"] = "コラムに使わない／TOP には二度と使わない"
     ts = _role_sizes(html_of(mixed, "grow-mixed"), "card-title")
@@ -724,14 +745,14 @@ def case_grow():
     full = {"type": "bullets", "headline": "見出し", "items": [
         {"title": f"項目{i}の題はここまで長く書いてある", "body": "本文も二行に届くくらいの長さで書いておき、場所を使い切るようにしてある。さらにもう少し足す"}
         for i in range(5)]}
-    assert max(_role_sizes(html_of(full, "grow-full"), "li-title")) <= 44, "詰まったページが大きくなった"
+    assert max(_role_sizes(html_of(full, "grow-full"), "li-title")) <= 45, "詰まったページが大きくなった"
     d = _img_dir("grow-img")
     sc = one({"type": "cards", "headline": "見出し", "items": [dict(it, image={"prompt": "x"}) for it in short["items"]]})
     path, _ = _build_in(d, sc, placeholder=True)
-    assert max(_role_sizes(pathlib.Path(path).read_text(encoding="utf-8"), "card-title")) <= 44, "画像のあるページが大きくなった"
+    assert max(_role_sizes(pathlib.Path(path).read_text(encoding="utf-8"), "card-title")) <= 45, "画像のあるページが大きくなった"
     long5 = {"type": "flow", "headline": "見出し", "items": [{"label": "1", "title": "あ" * 19, "body": "本文"} for _ in range(5)]}
     bs = _role_sizes(html_of(long5, "grow-floor"), "flow-body")
-    assert min(bs) >= 28, f"大きく組んだのに本文が倍率 1 の大きさより縮んだ: {bs}"
+    assert min(bs) >= 28, f"大きく組んだのに本文が段を上る前の大きさより縮んだ: {bs}"
     tl = {"type": "timeline", "headline": "見出し", "items": [{"when": "2026年10月から2027年3月", "title": "開始"},
                                                                 {"when": "2027年", "title": "実行"}, {"when": "2028年", "title": "完了"}]}
     hs = re.findall(r'class="tl-when" style="font-size:\d+px; height:([\d.]+)px"', html_of(tl, "grow-tl"))
@@ -745,7 +766,7 @@ def case_grow():
     flow = {"type": "flow", "headline": "見出し", "items": [{"label": "1段目", "title": "完全一致"}, {"label": "2段目", "title": "見た目の指紋"},
                                                             {"label": "3段目", "title": "画像の意味＋人の目"}]}
     ts = _role_sizes(html_of(flow, "grow-flow"), "flow-title")
-    assert len(set(ts)) == 1 and ts[0] > 40, f"短い矢羽根の題が大きくならない: {ts}"
+    assert len(set(ts)) == 1 and ts[0] > 36, f"短い矢羽根の題が大きくならない: {ts}"
 
 
 def case_diagram_types():
@@ -767,9 +788,14 @@ def case_diagram_types():
     assert 'data-step="3"' in take.group(2), f"締めの帯は最後の段（3）と一緒に出る: {take.group(2)}"
     box_top = re.search(r'class="center" style="left:120px; top:([\d.]+)px; width:1680px; height:([\d.]+)px', secs[0])
     assert float(box_top.group(1)) + float(box_top.group(2)) <= T.BODY_BOTTOM - T.TAKE_H - T.TAKE_GAP + 0.5, "中身が帯に重なる"
-    assert "stroke:var(--primary-strong)" in secs[1] and 'class="icon-disc"' in secs[1], "カードのアイコン"
+    assert "fill:var(--primary-text)" in secs[1] and "stroke" not in re.search(r"<svg.*?</svg>", secs[1], re.S).group(0) and 'class="icon-disc"' in secs[1], "カードのアイコン"
     assert secs[2].count('class="li-icon"') == 2
-    assert len(ICON.ICONS) >= 40 and all(" " not in k for k in ICON.ICONS)
+    assert len(ICON.ICONS) == 100 and all(re.fullmatch(r"[a-z]+(-[a-z]+)*", k) for k in ICON.ICONS)
+    assert all(d for d, _ in ICON.ICONS.values()) and set(ICON.DESCRIPTIONS) == set(ICON.ICONS), "説明は100種すべてに付く"
+    assert all(v["viewBox"] == "0 -960 960 960" and v["path"][0] in "Mm" for _, v in ICON.ICONS.values())
+    assert 'style="fill:#123456"' in ICON.svg("info", 40, "#123456") and "stroke" not in ICON.svg("info", 40, "#123456")
+    fmt = (pathlib.Path(__file__).resolve().parents[1] / "references" / "deck-format.md").read_text(encoding="utf-8")
+    assert ICON.words() in fmt, "deck-format.md のアイコンの一覧が deck_icons.words() と違う（貼り直す）"
     for bad, words in (({"type": "cards", "headline": "h", "items": [{"icon": "unicorn", "title": "a"}, {"title": "b"}]}, "unicorn"),
                        ({"type": "statement", "headline": "h", "takeaway": "x"}, "知らないキー"),
                        ({"type": "team", "headline": "h", "members": [{"name": "a"}, {"name": "b"}], "takeaway": "x"}, "知らないキー"),
@@ -801,7 +827,14 @@ def case_overlay_contrast():
         finally:
             table[name] = keep
     p = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
-    assert deck.ratio(p["accent-on-dark"], deck.mix(p["ink"], T.SCRIM_ALPHA, "#ffffff")) >= 3.0
+    assert deck.ratio(p["accent-on-dark"], deck.mix(p["ink"], T.SCRIM_ALPHA, "#ffffff")) >= 4.5      # 写真の上の文字も 4.5（DADS）
+    veil = deck.mix(p["bg"], T.HERO_VEIL, "#000000")
+    assert deck.ratio(p["primary-on-light"], veil) >= 4.5 and deck.ratio(p["ink"], veil) >= 4.5
+    # Quick Slide の既定のブランド（水色 #0DB4F2・ink #333333）でも、tint の地（visual）の全面の表紙の幕で 4.5 を満たす
+    for look in ({}, {"background": "tint"}):
+        th = deck.DS.look_theme({"background": "#ffffff", "ink": "#333333", "primary": "#0db4f2", "font": "Noto Sans JP", "font_files": None}, look)
+        pal = deck.palette(th)
+        assert deck.overlay_problems(pal, {"cover・section（hero・light）": 1, "cover・section（hero・dark）": 2, "photo（全面）": 3, "quote（全面）": 4}) == [], look
 
 
 def case_focus_words():
@@ -829,8 +862,8 @@ def case_split_side():
     sc = one({"type": "bullets", "headline": "h", "items": ["a", "b"], "image": "c.png", "side": "left", "split": "1/2"},
              ["", "", ""])
     html = _build_in(d, sc)[0].read_text(encoding="utf-8")
-    assert 'class="side-img" src="assets/s01-image.png" alt="" style="left:120px;' in html and "width:820px" in html
-    assert 'class="list" style="left:1020px' in html
+    assert 'class="side-img" src="assets/s01-image.png" alt="" style="left:120px;' in html and f"width:{T.span(6)}px" in html     # 格子の 6 列
+    assert f'class="list" style="left:{120 + T.span(6) + 96}px' in html
     for bad, words in (({"type": "photo", "headline": "h", "image": "c.png", "split": "1/3"}, "left・right のときだけ"),
                        ({"type": "bullets", "headline": "h", "items": ["a", "b"], "side": "left"}, "image があるときだけ")):
         try:
@@ -850,7 +883,7 @@ def case_figure_gallery_cards():
     c = re.search(r'class="fig-cap" style="left:120px; top:(\d+)px', html)
     top, fh, cap = int(m.group(1)), int(m.group(2)), int(c.group(1))
     dh = 900 * min(1680 / 1600, fh / 900)            # 見本の図は 1600×900
-    assert abs(cap - (top + (fh + dh) / 2 + 12)) <= 1, (top, fh, cap)
+    assert abs(cap - (top + (fh + dh) / 2 + 16)) <= 1, (top, fh, cap)
     sc = one({"type": "cards", "headline": "h", "items": [{"title": "a", "image": {"prompt": "x"}}, {"title": "b"}]}, ["", "", ""])
     try:
         build(sc, "cards-img", placeholder=True)
@@ -891,7 +924,7 @@ def case_small_image_warning():
 def case_r3_overlay_only_used():
     """Codex r3 #4: 写真を使わない資料は、幕の検査で止めない（使う置き方だけを検査する）。"""
     th = TMP / "plain-theme.yaml"
-    th.write_text('background: "#ffffff"\nink: "#555555"\nmuted: "#555555"\nprimary: "#1f5fd1"\n', encoding="utf-8")
+    th.write_text('background: "#ffffff"\nink: "#6a6a6a"\nmuted: "#6a6a6a"\nprimary: "#1f5fd1"\n', encoding="utf-8")   # 文字は 4.5:1 だが、暗幕にすると白い文字が 4.5:1 に届かない淡さ
     sc = one({"type": "statement", "headline": "文字だけの主張"})
     path, _ = build(sc, "r3-plain", theme=str(th))          # 写真を使わないので通る
     assert path.is_file()
@@ -918,7 +951,7 @@ def case_r3_figure_caption():
         dh = 500 * min(1680 / 2000, fh / 500)
         img_bottom = top + (fh - dh) * expect + dh
         cap = int(re.search(r'class="fig-cap" style="left:120px; top:(\d+)px', html).group(1))
-        assert img_bottom + 11 <= cap <= img_bottom + 13, (focus, img_bottom, cap)
+        assert img_bottom + 15 <= cap <= img_bottom + 17, (focus, img_bottom, cap)
 
 
 def case_r3_quote_full_source():
@@ -1032,12 +1065,12 @@ def case_six_image_layouts():
     assert 'style="left:0px; top:0px; width:1920px; height:480px;' in html[band]
     assert "band" not in secs[band]["keep"] and "pageno" in secs[band]["keep"], "帯の写真には上の印を重ねない・ページ番号は出す"
     kpi = no["kpi"]
-    assert 'width:1920px; height:340px;' in html[kpi] and "band" not in secs[kpi]["keep"]
-    assert re.search(r'class="head" style="width:1680px; top:388px"', html[kpi])
+    assert f'width:1920px; height:{T.KPI_BAND_H}px;' in html[kpi] and "band" not in secs[kpi]["keep"]
+    assert re.search(rf'class="head" style="width:1680px; top:{T.KPI_BAND_H + 48}px"', html[kpi])
     cl = no["closing"]
-    assert 'style="left:1160px; top:0px; width:760px; height:1080px;' in html[cl] and not secs[cl]["keep"]
+    assert f'style="left:{T.W - T.CLOSING_IMG_W}px; top:0px; width:{T.CLOSING_IMG_W}px; height:1080px;' in html[cl] and not secs[cl]["keep"]
     col = no["gallery/collage"]
-    assert len(re.findall(r'class="gal-item"', html[col])) == 3 and "width:974px" in html[col]
+    assert len(re.findall(r'class="gal-item"', html[col])) == 3 and f"width:{T.span(7)}px" in html[col]
     sl = {(x["slide"], x["slot"]) for x in info["images"]}
     cmpn = no["compare"] + 1
     assert (cmpn, "left") in sl and (cmpn, "right") in sl
@@ -1063,15 +1096,15 @@ def case_annotate_marks():
         sc = one({"type": "annotate", "headline": "短い", "fit": fit_mode, "image": {"prompt": "図"},
                   "items": [{"x": 0, "y": 0, "title": "左上"}, {"x": 100, "y": 100, "title": "右下"}]}, ["", "", ""])
         html = _build_in(d, sc)[0].read_text(encoding="utf-8")
-        m = re.search(r'class="(?:side|figure)-img"[^>]*style="left:120px; top:(\d+)px; width:1080px; height:(\d+)px;', html)
+        m = re.search(rf'class="(?:side|figure)-img"[^>]*style="left:120px; top:(\d+)px; width:{T.ANNOTATE_IMG_W}px; height:(\d+)px;', html)
         top, ih = int(m.group(1)), int(m.group(2))
         dots = [tuple(map(int, x)) for x in re.findall(r'class="mk-dot" style="left:(-?\d+)px; top:(-?\d+)px;', html)]
         if fit_mode == "cover":
-            exp = [(120, top), (120 + 1080, top + ih)]
+            exp = [(120, top), (120 + T.ANNOTATE_IMG_W, top + ih)]
         else:
-            k = min(1080 / 2000, ih / 1000)
+            k = min(T.ANNOTATE_IMG_W / 2000, ih / 1000)
             rw, rh = 2000 * k, 1000 * k
-            ox, oy = 120 + (1080 - rw) / 2, top + (ih - rh) / 2
+            ox, oy = 120 + (T.ANNOTATE_IMG_W - rw) / 2, top + (ih - rh) / 2
             exp = [(ox, oy), (ox + rw, oy + rh)]
         for (x, y), (ex, ey) in zip(dots, exp):
             assert abs(x + T.MARK_D / 2 - ex) <= 1 and abs(y + T.MARK_D / 2 - ey) <= 1, (fit_mode, dots, exp)
@@ -1093,7 +1126,7 @@ def case_line_breaks():
 def _r4_specs():
     """Codex r4 の入力（#2 注釈6件・#3 画像つき KPI の2行見出し）。"""
     ann = {"type": "annotate", "headline": "短い見出し", "image": {"prompt": "図"},
-           "items": [{"x": 10 + i * 15, "y": 50, "title": "項目", "body": "説明"} for i in range(6)]}
+           "items": [{"x": 10 + i * 15, "y": 50, "title": "項" * 12, "body": "説" * 10} for i in range(6)]}
     kpi = {"type": "kpi", "headline": "先行した3部署の4週目は、会議の時間と長さと出なくてよかった割合がそろって下がった",
            "image": {"prompt": "現場"}, "items": [
                {"label": "1人あたり週の会議の時間（先行3部署）", "value": "2.8", "unit": "時間", "delta": "前は6.0", "note": "予定表から集計"},
@@ -1110,7 +1143,7 @@ def case_r4_annotate_kpi_fit():
     assert len(sizes) == 6 and max(sizes) < 36, sizes
     html = build(one(kpi, ["", ""]), "r4-kpi", placeholder=True)[0].read_text(encoding="utf-8")
     labels = [int(x) for x in re.findall(r'class="kpi-label" style="font-size:(\d+)px', html)]
-    assert labels and max(labels) < 30, labels
+    assert labels and max(labels) < 28, labels
 
 
 def case_r4_line_breaks_everywhere():
@@ -1144,8 +1177,8 @@ def case_r4_closing_image_guards():
     ok = {"type": "closing", "headline": "次の一手", "image": {"prompt": "窓"}, "items": ["承認"],
           "contact": {"name": "窓口", "lines": ["内線"]}, "source": "出典: 社内の資料（架空）"}
     html = _build_in(d, one(ok))[0].read_text(encoding="utf-8")
-    left_w = T.W - T.CLOSING_IMG_W - T.X0 - 80
-    assert f'class="source" style="top:958px; width:{left_w}px;' in html
+    left_w = T.W - T.CLOSING_IMG_W - T.X0 - 96
+    assert f'class="source" style="top:{T.BODY_BOTTOM + 8}px; width:{left_w}px;' in html
     try:
         _build_in(d, one(ok | {"source": "出典：" + "あ" * 60}))
         raise AssertionError("写真に届く出典が通った")
@@ -1258,12 +1291,14 @@ def case_style_look():
             assert want in str(e), e
     html, _ = build(sc, "look-visual", style="visual")
     h = pathlib.Path(html).read_text()
-    for want in ("box-shadow: 0 8px 28px var(--shadow)", ".band { left: 0; width: 1920px", 'section[data-type="statement"] { background-color: var(--primary-strong)',
+    for want in (".card, .cmp, .kpi, .callout { background-color: var(--bg); border: 2px solid var(--rule); }", ".band { left: 0; width: 1920px", 'section[data-type="statement"] { background-color: var(--primary-strong)',
                  ".card.hl, .cmp.hl, .kpi.hl { background-color: var(--accent-strong)", "border-radius: 32px",
                  ".kpi.hl .kpi-value, .kpi.hl .kpi-unit { color: var(--on-accent); }"):
         assert want in h, f"visual の CSS に {want!r} が無い"
     html, _ = build(sc, "look-standard", style="standard")
-    assert "var(--shadow)" not in pathlib.Path(html).read_text().split("{{LOOK}}")[0].split("/* スタイルの見た目の調子")[1], "standard に look の CSS が入った"
+    assert "box-shadow" not in pathlib.Path(html).read_text().split("{{LOOK}}")[0].split("/* スタイルの見た目の調子")[1], "standard に look の CSS が入った"
+    # look.surface: white（白に影）は退役。受け付けるが、line（白に枠線）と同じに描き、影は出さない（ADR 0020）
+    assert DS.look_css({"surface": "white"}) == DS.look_css({"surface": "line"}) and "shadow" not in DS.look_css({"surface": "white"}), "white が line と同じでない"
     assert DS.look_css({}) == "", "look が空なら CSS も空"
     t = DS.look_theme({"background": "#ffffff", "ink": "#1a2b4c", "primary": "#1f5fd1"}, {"background": "tint"})
     assert t["background"] != "#ffffff", "tint で地の色が変わっていない"
@@ -1274,18 +1309,20 @@ def case_theme_primary_accent():
     two = TMP / "two.yaml"
     two.write_text('background: "#ffffff"\nink: "#1a1a1a"\nprimary: "#f5a623"\naccent: "#399dd1"\n', encoding="utf-8")
     p = deck.palette(deck.load_theme(two))
-    assert p["primary"] == "#f5a623" and p["accent"] == "#399dd1", p
-    assert p["on-primary"] == "#1a1a1a", "明るい黄色の面に黒の文字を選んでいない"
+    assert p["primary"] != p["accent"] and p["primary-mark"] != p["accent-mark"], "primary と accent が同じ色になった"
+    assert deck.ratio(p["primary-text"], "#ffffff") >= 4.5 and deck.ratio(p["primary-mark"], "#ffffff") >= 3.0, "明るい黄色は、同じ色相のまま暗くして 4.5:1・3:1 にする"
+    assert p["on-primary"] == "#ffffff" and deck.ratio(p["on-primary"], p["primary-strong"]) >= 4.5, "暗くした黄色の面が白抜きになっていない"
     assert deck.ratio(p["accent-text"], "#ffffff") >= 4.5 and deck.ratio(p["on-accent"], p["accent-strong"]) >= 4.5, p
     assert p["on-accent"] == "#ffffff" and p["accent-strong"] != "#399dd1", "中くらいの青の面が白抜きになっていない（少し暗くして白）"
+    assert deck.contrast_problems(p) == [], deck.contrast_problems(p)
     dflt = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
     assert dflt["on-primary"] == "#ffffff", "既定のシアンの面が白抜きになっていない"
     sc = {"title": "t", "slides": [
         {"type": "cards", "headline": "会議を*半分*にする", "items": [{"title": "a"}, {"title": "b", "accent": True}]}]}
     html, _ = build(sc, "theme-two", theme=str(two), style="visual")
     h = pathlib.Path(html).read_text()
-    for want in ("--primary: #f5a623", "--accent: #399dd1", "em { font-style: normal; color: var(--accent-text); }",
-                 "background-color: var(--primary); }", ".card.hl, .cmp.hl, .kpi.hl { background-color: var(--accent-strong)"):
+    for want in (f"--primary: {p['primary']}", f"--accent: {p['accent']}", "em { font-style: normal; color: var(--accent-text); }",
+                 "background-color: var(--primary-decor); }", ".card.hl, .cmp.hl, .kpi.hl { background-color: var(--accent-strong)"):
         assert want in h, f"{want!r} が無い"
     old = TMP / "old.yaml"
     old.write_text('background: "#ffffff"\nink: "#1a1a1a"\naccent: "#f5a623"\n', encoding="utf-8")
@@ -1344,9 +1381,9 @@ def case_logo_pages():
     html, info = deck.build_html(SAMPLE, TMP / "logo-visual", style="visual", logo=str(logo))
     pages = {pg["no"]: pg for pg in info["logo"]["pages"]}
     off = sorted(n for n, pg in pages.items() if pg.get("off"))
-    assert off == [1, 8, 13], f"ロゴを置かないページ {off}（表紙・章扉の絵・全面の写真）"
+    assert off == [1, 9, 15], f"ロゴを置かないページ {off}（表紙・章扉の絵・全面の写真）"
     th = deck.DS.look_theme(deck.load_theme(deck.THEMES / "default.yaml"), deck.DS.load("visual")["look"])
-    assert pages[21]["plate"] == deck.palette(th)["primary-strong"], f"主張の全面の地の色になっていない: {pages[21]}"
+    assert pages[24]["plate"] == deck.palette(th)["primary-strong"], f"主張の全面の地の色になっていない: {pages[21]}"
     assert pages[2]["plate"] == th["background"], pages[2]
     h = pathlib.Path(html).read_text()
     secs = h.split("<section data-slide")[1:]
@@ -1356,9 +1393,9 @@ def case_logo_pages():
     assert (TMP / "logo-visual" / "assets" / "logo.png").is_file()
     _, info = deck.build_html(SAMPLE, TMP / "logo-standard", logo=str(logo))      # 右半分が絵の表紙・章扉は左下へ
     pages = {pg["no"]: pg for pg in info["logo"]["pages"]}
-    assert [(pages[n].get("corner"), pages[n].get("x")) for n in (1, 8)] == [("bottom-left", 160), ("bottom-left", 120)], \
-        f"右下がふさがるページが、文字の左端にそろえた左下に移っていない: {pages[1]} {pages[8]}"
-    assert pages[13].get("off") and pages[2]["corner"] == "bottom-right", (pages[13], pages[2])
+    assert [(pages[n].get("corner"), pages[n].get("x")) for n in (1, 9)] == [("bottom-left", 160), ("bottom-left", 120)], \
+        f"右下がふさがるページが、文字の左端にそろえた左下に移っていない: {pages[1]} {pages[9]}"
+    assert pages[15].get("off") and pages[2]["corner"] == "bottom-right", (pages[15], pages[2])
     sc = {"title": "t", "slides": [{"type": "cover", "layout": "graphic", "title": "題"},
                                    {"type": "section", "layout": "graphic", "title": "章"}]}
     _, info = build(sc, "logo-graphic", logo=str(logo))                           # 図形の飾りは写真と同じく避ける
@@ -1372,17 +1409,17 @@ def case_logo_positions():
     html, info = deck.build_html(SAMPLE, TMP / "logo-bl", logo=str(logo), logo_position="bottom-left")
     pages = {pg["no"]: pg for pg in info["logo"]["pages"]}
     assert info["logo"]["position"] == "bottom-left"
-    assert pages[2]["corner"] == "bottom-left" and pages[19]["corner"] == "bottom-right" and pages[13].get("off"), \
-        f"左下 → 右下 → 置かない になっていない: {pages[2]} {pages[19]} {pages[13]}（19 は左半分が絵）"
+    assert pages[2]["corner"] == "bottom-left" and pages[22]["corner"] == "bottom-right" and pages[15].get("off"), \
+        f"左下 → 右下 → 置かない になっていない: {pages[2]} {pages[22]} {pages[15]}（22 は左半分が絵）"
     secs = pathlib.Path(html).read_text().split("<section data-slide")[1:]
     assert 'data-keep="logo-left"' in secs[1] and 'data-keep="logo-plate-left"' in secs[1]
     assert re.search(r'class="footer"[^>]*style="left: 477px; width: 435px;"', secs[1]), "下の文字がロゴの右に寄っていない"
     assert re.search(r'class="pageno"[^>]*>2<', secs[1]) and 'data-name="ページ番号" style=' not in secs[1], "ページ番号が動いた"
-    assert 'data-keep="logo"' in secs[18], "右下に逃げたページの部品名が右下のものでない"
+    assert 'data-keep="logo"' in secs[21], "右下に逃げたページの部品名が右下のものでない"
     html, info = deck.build_html(SAMPLE, TMP / "logo-tr", logo=str(logo), logo_position="top-right")
     pages = {pg["no"]: pg for pg in info["logo"]["pages"]}
-    assert pages[2]["corner"] == "top-right" and all(pages[n].get("off") for n in (1, 8, 13)), \
-        f"右上 → 右下 → 置かない になっていない（表紙・章扉は右半分が絵）: {[pages[n] for n in (1, 2, 8, 13)]}"
+    assert pages[2]["corner"] == "top-right" and all(pages[n].get("off") for n in (1, 9, 15)), \
+        f"右上 → 右下 → 置かない になっていない（表紙・章扉は右半分が絵）: {[pages[n] for n in (1, 2, 9, 15)]}"
     secs = pathlib.Path(html).read_text().split("<section data-slide")[1:]
     assert 'data-keep="logo-top"' in secs[1] and "top: 24px;" in secs[1], "右上の位置か部品名が違う"
     assert 'data-name="ページ番号" style=' not in secs[1] and 'style="width: 792px;"' in secs[1] and "left: 477px" not in secs[1], \
@@ -1404,7 +1441,7 @@ def case_page_numbers_default_off():
     h = pathlib.Path(html).read_text()
     assert 'class="pageno"' not in h and 'class="footer" data-keep="footer" data-name="下の文字">' in h, "既定でページ番号が出た"
     css = (deck.TEMPLATE).read_text()
-    assert ".pageno { left: 900px; width: 120px; text-align: center; }" in css, "ページ番号が中央下でない"
+    assert ".pageno { left: 896px; width: 128px; text-align: center; }" in css, "ページ番号が中央下でない"
 
 
 def case_watermark():
@@ -1418,9 +1455,10 @@ def case_watermark():
     assert h.count('<div class="watermark" data-keep="watermark" data-name="透かし">example.com</div>') == n, "全ページに透かしが無い"
     assert info["watermark"] == "example.com"
     css = deck.TEMPLATE.read_text()
-    assert (f"top: {deck.WATERMARK_TOP}px;" in css and f"font-size: {deck.WATERMARK_PX}px;" in css and f"color: {deck.WATERMARK_COLOR};" in css), \
+    assert (f"top: {deck.WATERMARK_TOP}px;" in css and f"font-size: {deck.WATERMARK_PX}px;" in css and "color: var(--faint);" in css), \
         "templates/deck.html の .watermark が deck.py の数字とずれた"
-    assert deck.WATERMARK_TOP > 1006 + 22 * 1.4, "透かしが下の文字の行にかかる"
+    assert deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))["faint"] == deck.WATERMARK_COLOR and deck.ratio(deck.WATERMARK_COLOR, "#ffffff") >= 4.5, "透かしの色は白の地で 4.5:1（Gray-536）"
+    assert deck.WATERMARK_TOP > 1008 + 22 * 1.5, "透かしが下の文字の行にかかる"
     rep = R.render(html, TMP / "wm" / "deck.pptx")
     assert not R.errors(rep.get("violations") or []), rep.get("violations")
     for i, sl in enumerate(Presentation(str(TMP / "wm" / "deck.pptx")).slides, 1):
@@ -1437,6 +1475,326 @@ def case_watermark():
         raise AssertionError("改行のある透かしが通った")
     except T.DeckError as e:
         assert "1行" in str(e), e
+
+
+# --- DADS（スライド用ローカルデザインシステム・ADR 0020） --------------------------------
+
+SLIDE_JSON = SKILL.parent / "dads" / "tokens" / "slide.json"
+
+
+def _slide_json() -> dict | None:
+    return json.loads(SLIDE_JSON.read_text(encoding="utf-8")) if SLIDE_JSON.is_file() else None
+
+
+def case_dads_tokens():
+    """トークンの正本（skills/dads/tokens/slide.json）と、エンジンの定数が同じ: 文字の段・行高・余白・格子・角丸・影・色。"""
+    j = _slide_json()
+    if j is None:
+        print("skills/dads が無いので飛ばす")
+        return
+    assert [x["px"] for x in j["type"]["scale"]] == list(T.SCALE), "文字の段"
+    assert [float(v) for v in j["type"]["line_height"].values()] == list(T.LINE_HEIGHTS), "行高の段"
+    assert {int(k): v for k, v in j["space"]["steps"].items()} == T.SPACE and j["space"]["page_margin_x"] == T.X0, "余白の段"
+    g = j["grid"]
+    assert (g["columns"], g["column"], g["gutter"], g["margin"], g["width"]) == (T.COLS, T.COL, T.GUTTER, T.X0, T.CW), "格子"
+    assert all(T.span(int(k)) == v for k, v in g["span"].items()), "n 列ぶんの幅"
+    assert sorted(int(k) for k in j["radius"] if k != "full") + [T.FULL] == sorted(T.RADII), "角丸の段"
+    assert j["elevation"]["2"].replace(" ", "") == T.ELEVATION_2.replace(" ", ""), "elevation-2"
+    c = j["color"]
+    for mine, theirs in ((deck.INK, "text"), (deck.MUTED, "text-muted"), (deck.GRAY_SURFACE, "ground-alt"), (deck.RULE, "border"),
+                         (deck.RULE_WEAK, "border-weak"), (deck.RULE, "text-faint")):
+        assert mine == c[theirs]["hex"], (mine, theirs)
+    assert deck.WATERMARK_COLOR == c["text-faint"]["hex"]
+    for k, v in deck.SEMANTIC.items():
+        assert v == c[k]["hex"], k
+    dflt = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
+    for mine, theirs in (("primary", "key-primary"), ("tint", "key-background"), ("primary-decor", "key-secondary")):
+        assert dflt[mine] == c[theirs]["hex"], (mine, dflt[mine], c[theirs]["hex"])
+
+
+def case_dads_palette():
+    """色の役: 3つのテーマとブランドの色で、文字は 4.5:1・図形と罫は 3:1・意味の色は白の上で（deck.contrast_problems が空）。"""
+    for name in ("default", "forest", "warm"):
+        th = deck.load_theme(deck.THEMES / f"{name}.yaml")
+        p = deck.palette(th)
+        assert deck.contrast_problems(p) == [], (name, deck.contrast_problems(p))
+        assert p["ink"] == "#333333" and p["muted"] == "#666666", name           # 文字は DADS の Gray-800・Gray-600
+        assert deck.ratio(p["rule"], p["bg"]) >= 3.0 and deck.ratio(p["bar"], p["bg"]) >= 3.0, name
+        assert deck.ratio(p["faint"], p["bg"]) >= 4.5, name
+    for hexc in ("#0db4f2", "#f5a623", "#9ec5ff", "#e60012", "#1f5fd1"):                 # ブランドの色は、同じ色相のまま明度を動かす
+        th = deck.load_theme(deck.THEMES / "default.yaml") | {"primary": hexc}
+        p = deck.palette(th)
+        assert deck.contrast_problems(p) == [], (hexc, deck.contrast_problems(p))
+        assert p["primary-mark"] != p["primary-decor"] or deck.ratio(p["primary-decor"], "#ffffff") >= 3.0
+    for k, v in deck.SEMANTIC.items():                                                      # 意味の色は白い面の上だけ
+        assert deck.ratio(v, "#ffffff") >= (4.5 if k.endswith("-2") else 3.0), k
+    # 同じ入力なら同じ色（keycolors は決まった手順）
+    th = deck.load_theme(deck.THEMES / "default.yaml")
+    assert deck.palette(th) == deck.palette(dict(th))
+    dflt = deck.palette(th)
+    assert (dflt["primary"], dflt["primary-mark"], dflt["tint"]) == ("#006f83", "#008da6", "#e9f7f9"), dflt
+
+
+def _css_values(text: str, prop: str) -> list[str]:
+    return re.findall(rf"(?<![\w-]){prop}:\s*([^;}}\"]+)", text)
+
+
+def case_dads_scale_rhythm():
+    """組んだ HTML の文字の大きさは DADS の段・行高は行高の段・角丸は角の段・影は elevation-2 だけ。雛形の余白は 8 の倍数。"""
+    sizes = set(T.SCALE) | {16}
+    lhs = {str(v) for v in T.LINE_HEIGHTS} | {"1"}
+    radii = set(T.RADII)
+    for src, name in ((SAMPLE, "dads-sample"), (IMAGE_SAMPLE, "dads-image")):
+        path, _ = deck.build_html(src, TMP / name, placeholder=True)
+        h = pathlib.Path(path).read_text(encoding="utf-8")
+        bad = [v for v in _css_values(h, "font-size") if int(re.match(r"\d+", v).group(0)) not in sizes]
+        assert not bad, (name, "段の外の文字", sorted(set(bad)))
+        bad = [v for v in _css_values(h, "line-height") if v.strip() not in lhs and v.strip() != "1.0"]
+        assert not bad, (name, "段の外の行高", sorted(set(bad)))
+        bad = [n for v in _css_values(h, "border-radius") for n in re.findall(r"(\d+)px", v) if int(n) not in radii and int(n) not in (4,)]
+        assert not bad, (name, "段の外の角丸", sorted(set(bad)))
+        shadows = set(_css_values(h, "box-shadow"))
+        assert shadows <= {"none", T.ELEVATION_2.replace(", ", ", ")} or all("rgba(0, 0, 0, 0.1)" in x for x in shadows), (name, shadows)
+    tpl = deck.TEMPLATE.read_text(encoding="utf-8")
+    css = tpl.split("<style>")[1].split("</style>")[0]
+    bad = [v for prop in ("padding", "margin", "gap", "padding-left", "margin-left", "margin-top", "margin-bottom", "margin-right") for v in _css_values(css, prop)
+           for n in re.findall(r"-?\d+(?:\.\d+)?(?=px)", v) if float(n) % 8]
+    assert not bad, f"雛形の余白が 8 の倍数でない: {sorted(set(bad))}"
+    assert all(int(v) in sizes for v in re.findall(r"font-size:\s*(\d+)px", css)), "雛形の文字の大きさが段の外"
+    assert "var(--line)" not in css and "var(--shadow)" not in css and "box-shadow" in css and css.count("box-shadow") == 1, "影は番号の丸（elevation-2）だけ"
+
+
+def case_font_default_and_fallback():
+    """字体は既定が Noto Sans JP。ファイルが分からなければ游ゴシックに落ちて理由を残す（警告にはしない）。設定に書いてあれば Noto で組む。"""
+    th = deck.load_theme(deck.THEMES / "default.yaml")
+    assert th["font"] == "Noto Sans JP" and deck.load_theme(deck.THEMES / "forest.yaml")["font"] == "Noto Sans JP"
+    yu = T.DEFAULT_FONTS
+    fam, files, note = deck.resolve_font(th, {})
+    assert fam == "Yu Gothic" and files == yu and "Noto Sans JP" in note, (fam, note)
+    cfg = {"fonts": {"Noto Sans JP": {"regular": yu["regular"], "bold": yu["bold"]}}}       # 設定に書いてある（ここでは游ゴシックのファイルを借りる）
+    fam, files, note = deck.resolve_font(th, cfg)
+    assert fam == "Noto Sans JP" and note is None and files == yu
+    gone = {"fonts": {"Noto Sans JP": {"regular": "/nonexistent/NotoSansJP-Regular.ttf"}}}   # 書いてあってもファイルが無ければ落ちる
+    assert deck.resolve_font(th, gone)[0] == "Yu Gothic"
+    try:
+        deck.resolve_font(th | {"font": "My Sans"}, {})
+        raise AssertionError("ファイルの分からない字体が通った")
+    except T.DeckError as e:
+        assert "字体 My Sans" in str(e), e
+    assert deck.resolve_font(th | {"font": "Yu Gothic"}, {})[0] == "Yu Gothic"
+    _, info = deck.build_html(SAMPLE, TMP / "font-fallback", placeholder=True)
+    assert info["font"] in ("Yu Gothic", "Noto Sans JP") and (info["font"] == "Noto Sans JP") == (info["font_note"] is None)
+    assert info["warnings"] == [], "字体の落ちは警告にしない"
+    h = pathlib.Path(info["html"]).read_text(encoding="utf-8")
+    assert f'font-family: "{info["font"]}"' in h and "ascent-override" in h, "字体の上下の幅を 1em に縮める（文字のはみ出しの検査のため）"
+
+
+def case_footer_one_line():
+    """下の文字は1行（注記 22px。入らなければ 20px まで下りる）。入らなければ、透かしがあれば rc=2・無ければ警告。"""
+    sc = one({"type": "statement", "headline": "h"})
+    sc["page_numbers"] = True
+    base = deck.T.text_width("あ", 22)
+    room = deck.FOOTER_END_WITH_NO - deck.FOOTER_LEFT - 8
+    fit22 = "あ" * int(room // base)
+    fit20 = "あ" * int(room // (base * 20 / 22))
+    long_ = "あ" * 80
+    h, info = build(dict(sc, footer=fit22), "footer-22")
+    assert info["footer_px"] == 22 and info["warnings"] == [], info
+    h, info = build(dict(sc, footer=fit20), "footer-20")
+    assert info["footer_px"] == 20 and 'style="font-size: 20px; width: 792px;"' in pathlib.Path(h).read_text(encoding="utf-8"), info
+    h, info = build(dict(sc, footer=long_), "footer-long")
+    assert any("1行に入らない" in w for w in info["warnings"]), info["warnings"]
+    try:
+        build(dict(sc, footer=long_), "footer-long-wm", watermark="社外秘")
+        raise AssertionError("透かしの帯にかかる footer が通った")
+    except T.DeckError as e:
+        assert "透かしの帯" in str(e), e
+
+
+def _secs(path) -> list[str]:
+    return pathlib.Path(path).read_text(encoding="utf-8").split("<section")[1:]
+
+
+def case_dads_emphasis_not_by_color():
+    """型の構造（ADR 0021）: 強める項目は色だけで示さない（札・太い輪郭・縦の罫と太字・二重の丸）。badge は強める項目にだけ書ける。"""
+    cards = {"type": "cards", "headline": "h", "items": [{"title": "a", "accent": True}, {"title": "b"}]}
+    s = _secs(build(one(cards), "emph-cards")[0])[0]
+    assert s.count('class="chip on"') == 1 and ">注目<" in s, "強めるカードに札「注目」が付く"
+    cards["items"][0]["badge"] = "おすすめ"
+    assert ">おすすめ<" in _secs(build(one(cards), "emph-cards2")[0])[0]
+    expect_error(one({"type": "cards", "headline": "h", "items": [{"title": "a", "badge": "x"}, {"title": "b"}]}), "emph-bad", "badge")
+    expect_error(one({"type": "cards", "headline": "h", "items": [{"title": "a", "accent": True, "badge": "あいうえおかきくけこ"}, {"title": "b"}]}),
+                 "emph-long", "badge")
+    kpi = {"type": "kpi", "headline": "h", "items": [{"label": "a", "value": "1", "accent": True, "badge": "目標"}, {"label": "b", "value": "2"},
+                                                     {"label": "c", "value": "3"}]}
+    assert ">目標<" in _secs(build(one(kpi), "emph-kpi")[0])[0]
+    cmp_ = {"type": "compare", "headline": "h", "left": {"label": "いま", "title": "a"}, "right": {"label": "これから", "title": "b", "badge": "目玉"}}
+    s = _secs(build(one(cmp_), "emph-cmp")[0])[0]
+    assert ">目玉<" in s and 'class="chips"' in s and s.index("いま") < s.index("これから"), "札は label の隣に並ぶ"
+    flow = {"type": "flow", "headline": "h", "items": [{"label": "a"}, {"label": "b"}, {"label": "c", "badge": "ゴール"}]}
+    s = _secs(build(one(flow), "emph-flow")[0])[0]
+    assert 'stroke-width="4"' in s and ">ゴール<" in s, "最後の段は太い輪郭（と、書けば札）"
+    assert 'class="chip' not in _secs(build(one(dict(flow, items=[{"label": "a"}, {"label": "b"}, {"label": "c"}])), "emph-flow2")[0])[0], "札は書いたときだけ"
+    tbl = {"type": "table", "headline": "h", "columns": ["a", "b", "c"], "rows": [["1", "2", "3"]], "highlight": 2}
+    s = _secs(build(one(tbl), "emph-table")[0])[0]
+    assert s.count('class="td hl"') == 2, "強める列の見出しと行"
+    css = deck.TEMPLATE.read_text(encoding="utf-8")
+    assert re.search(r"\.td\.hl \{[^}]*border-left: 4px solid var\(--accent-mark\)[^}]*border-right: 4px", css), "強める列は太い縦の罫"
+    tl = {"type": "timeline", "headline": "h", "current": 2, "items": [{"when": "1月", "title": "a"}, {"when": "2月", "title": "b"}, {"when": "3月", "title": "c"}]}
+    s = _secs(build(one(tl), "emph-tl")[0])[0]
+    assert ">いま<" in s and 'class="tl-dot hl"' in s and 'class="tl-dot-in"' in s, "いまは札と二重の丸"
+    mx = {"type": "matrix", "headline": "h", "x": {"label": "x"}, "y": {"label": "y"}, "focus": 2,
+          "items": [{"label": "a", "x": 80, "y": 80, "accent": True}, {"label": "b", "x": 20, "y": 20}]}
+    s = _secs(build(one(mx), "emph-mx")[0])[0]
+    assert 'class="mx-dot hl"' in s and 'class="mx-dot-in"' in s, "強める点は二重の輪"
+    assert re.search(r"\.mx-focus \{[^}]*border: 4px solid var\(--accent-mark\)", css), "focus の象限は枠線で囲む"
+    assert s.index('class="mx-ylab"') < s.index('class="mx-item"') < s.index("mx-quad") if "mx-quad" in s else True, "読む順は 軸 → 項目 → 象限名"
+
+
+def case_dads_matrix_overlap():
+    """matrix: 名前は点・ほかの名前・区切り線と重ならないようにずらす。点どうしが重なる・置けないときは rc=2。"""
+    base = {"type": "matrix", "headline": "h", "x": {"label": "x"}, "y": {"label": "y"}}
+    near = dict(base, items=[{"label": "決めたらその場で閉じる", "x": 78, "y": 88, "accent": True}, {"label": "25分を基本にする", "x": 86, "y": 70, "accent": True},
+                             {"label": "議題は前日までに出す", "x": 60, "y": 62, "accent": True}])
+    s = _secs(build(one(near), "mx-near")[0])[0]
+    boxes = []
+    for m in re.finditer(r'class="mx-item" style="left:([\d.]+)px; top:([\d.]+)px; width:([\d.]+)px; height:([\d.]+)px', s):
+        x, y, w, h = map(float, m.groups())
+        boxes.append((x, y, x + w, y + h))
+    assert len(boxes) == 3
+    for i, a in enumerate(boxes):
+        for b in boxes[i + 1:]:
+            assert not (a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]), f"項目が重なる: {a} {b}"
+    expect_error(one(dict(base, items=[{"label": "a", "x": 50, "y": 50}, {"label": "b", "x": 51, "y": 50}])), "mx-dots", "重なる")
+
+
+def case_dads_line_chart_marks():
+    """line-chart: 系列は点の形（丸・四角・ひし形）と線種（実線・破線・点線）で区別し、線の端に名前を出す。長くて入らなければ凡例（線種と点の形も写す）。"""
+    three = {"type": "line-chart", "headline": "h", "labels": ["1月", "2月", "3月", "4月"],
+             "series": [{"name": "全体", "values": [3, 4, 5, 6]}, {"name": "東日本", "values": [2, 3, 3, 4], "highlight": True},
+                        {"name": "西日本", "values": [1, 2, 2, 3]}]}
+    s = _secs(build(one(three), "lc-3")[0])[0]
+    assert s.count("<polyline") == 3 and s.count("stroke-dasharray") == 2, "2本目・3本目は破線・点線"
+    assert "<circle" in s and "<rect" in s and "<polygon" in s, "点の形が3つ"
+    assert s.count('class="end-name"') == 3 and 'class="legend"' not in s, "線の端に名前（凡例は出さない）"
+    for nm in ("全体", "東日本", "西日本"):
+        assert f"<div>{nm}</div>" in s
+    long_ = dict(three, series=[{"name": "系列Aの名前" + "あ" * 20, "values": [3, 4, 5, 6]},
+                                {"name": "系列Bの名前" + "あ" * 20, "values": [2, 3, 3, 4]}])
+    s = _secs(build(one(long_), "lc-long")[0])[0]
+    assert 'class="legend"' in s and 'class="end-name"' not in s and "<line" in s, "名前が入らなければ凡例（線種と点の形つき）"
+    big = {"type": "line-chart", "headline": "h", "labels": ["1", "2", "3"], "callout": {"value": "x", "text": "y"},
+           "series": [{"name": "A", "values": [100000000000] * 3}, {"name": "B", "values": [90000000000] * 3}]}
+    s = _secs(build(one(big), "lc-big")[0])[0]          # 最後の値（桁が多い）も端の幅に入る。callout の左（1224）を越えない
+    for m in re.finditer(r'class="end-name" style="left:([\d.]+)px; top:[\d.]+px; width:([\d.]+)px', s):
+        assert float(m.group(1)) + float(m.group(2)) <= 1224 + 0.5, m.groups()
+    assert s.count('class="end-name"') == 2 and "100,000,000,000" in s
+    tall = {"type": "line-chart", "kicker": "k", "headline": "見出しを長くして二行にする、さらに長くして確かめる文章を書く、まだ続けて二行に収める", "sub": "リード文も長くして二行にする。リード文も長くして二行にする。リード文も長くする。",
+            "labels": ["1", "2", "3"], "min": 0, "max": 10, "takeaway": "結論の1行",
+            "series": [{"name": "第一系列" + "あ" * 8, "values": [1, 2, 0]}, {"name": "第二系列" + "い" * 8, "values": [1, 2, 0]},
+                       {"name": "第三系列" + "う" * 8, "values": [1, 2, 0]}]}
+    s = _secs(build(one(tall), "lc-tall")[0])[0]       # 端の名前の高さが見出しの下から軸までに入らなければ凡例（見出しに重ならない）
+    assert 'class="legend"' in s and 'class="end-name"' not in s, "高さが足りないのに端の名前を置いた"
+    dl = _secs(build(one({"type": "deflist", "headline": "h", "items": [{"term": "a", "body": "b"}] * 4}), "dl-top")[0])[0]
+    assert 'class="col" style="left:120px; top:' in dl and 'class="center"' not in dl, "deflist は見出しの下から始める"
+    # 非強調の線は rule 以上の濃さ（ink・muted）
+    p = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
+    assert deck.ratio(p["ink"], p["bg"]) >= deck.ratio(p["rule"], p["bg"]) and deck.ratio(p["muted"], p["bg"]) >= deck.ratio(p["rule"], p["bg"])
+
+
+def case_dads_reading_order():
+    """DOM 順（読む順）: hub は 中心 → 周り・pairs は 札 → 文。pairs の札は NG・OK の語とアイコン（×・チェック）を両方持つ。takeaway は頭にアイコン。"""
+    hub = {"type": "hub", "headline": "h", "center": {"title": "中心"}, "items": [{"title": "a"}, {"title": "b"}, {"title": "c"}]}
+    s = _secs(build(one(hub), "ro-hub")[0])[0]
+    assert s.index('class="card hub-center"') < s.index('class="card hub-item"'), "中心が先"
+    assert "stroke:var(--rule); stroke-width:2" in s and "stroke-dasharray" not in s, "接続線は rule の 2px"
+    pairs = {"type": "pairs", "headline": "h", "items": [{"label": "a", "before": "x", "after": "y"}, {"label": "b", "before": "x", "after": "y"}]}
+    s = _secs(build(one(dict(pairs, takeaway="結論", takeaway_icon="bulb")), "ro-pairs")[0])[0]
+    first = s.index('class="card pair"')
+    tags = [m.start() for m in re.finditer(r'class="pair-tag ', s[first:])]
+    boxes = [m.start() for m in re.finditer(r'class="pair-box ', s[first:])]
+    assert tags[0] < boxes[0] < tags[1] < boxes[1] or tags[0] < boxes[0], "札 → 文の順"
+    assert "var(--error-2)" in s and "var(--success-2)" in s and ">NG<" in s and ">OK<" in s
+    assert re.search(r'class="pair-tag pair-bad-tag"[^>]*><svg', s) and re.search(r'class="pair-tag pair-good-tag"[^>]*><svg', s), "札にアイコン"
+    take = re.search(r'<div class="take".*?</div></div>', s, re.S).group(0)
+    assert "<svg" in take and 'class="take-t"' in take and "結論" in take, "帯はアイコンと語"
+    plain = _secs(build(one(dict(pairs, takeaway="結論")), "ro-pairs2")[0])[0]
+    assert re.search(r'<div class="take".*?<path d="([^"]+)"', plain, re.S).group(1) != re.search(r'<div class="take".*?<path d="([^"]+)"', s, re.S).group(1), "takeaway_icon が効く"
+    expect_error(one(dict(pairs, takeaway_icon="bulb")), "ro-icon-only", "takeaway_icon")
+    expect_error(one(dict(pairs, takeaway="x", takeaway_icon="unicorn")), "ro-icon-bad", "unicorn")
+
+
+def case_dads_new_types():
+    """新しい型（ADR 0021）: notice（種類・アイコンと語・クリックは枠ごと）・deflist（行ごと）・steps（段ごと・状態は形と札と線で）。誤りは rc=2。"""
+    notice = {"type": "notice", "headline": "h", "items": [{"kind": "info", "title": "a", "body": "b"}, {"kind": "success", "title": "c"},
+                                                           {"kind": "warning", "title": "d", "points": ["e", "f"]}]}
+    path, info = build(one(notice), "nt")
+    s = _secs(path)[0]
+    assert info["slides"][0]["clicks"] == 3
+    for word in ("お知らせ", "完了", "注意"):
+        assert f">{word}<" in s
+    assert 'class="nt-band"' in s and s.count("<svg") >= 3 and "var(--warning-orange-2)" in s and "var(--success-1)" in s, "種類は色・アイコン・語"
+    assert ">重要<" in _secs(build(one({"type": "notice", "headline": "h", "items": [{"kind": "error", "title": "x"}]}), "nt-err")[0])[0]
+    assert ">できた<" in _secs(build(one({"type": "notice", "headline": "h", "items": [{"title": "x", "label": "できた"}]}), "nt-label")[0])[0]
+    for bad, words in (({"type": "notice", "headline": "h", "items": [{"kind": "nazo", "title": "x"}]}, "kind"),
+                       ({"type": "notice", "headline": "h", "items": [{"title": "x"}] * 4}, "1〜3"),
+                       ({"type": "notice", "headline": "h", "items": [{"title": "x", "points": ["a"] * 5}]}, "points"),
+                       ({"type": "notice", "headline": "h", "items": [{"kind": "info"}]}, "title"),
+                       ({"type": "notice", "headline": "h", "items": [{"title": "x"}], "takeaway": "t"}, "知らないキー")):
+        expect_error(one(bad), "nt-bad", words)
+    dl = {"type": "deflist", "headline": "h", "items": [{"term": f"用語{i}", "body": f"説明{i}"} for i in range(1, 5)]}
+    path, info = build(one(dl), "dl")
+    s = _secs(path)[0]
+    assert info["slides"][0]["clicks"] == 4 and s.count('class="dl-row') == 4 and 'class="dl-row first"' in s
+    assert re.search(r"\.dl-row \{[^}]*border-bottom: 2px solid var\(--rule\)", deck.TEMPLATE.read_text(encoding="utf-8")), "行の区切りは rule"
+    assert f"width:{T.span(3)}px" in s, "用語の列は格子の 3 列"
+    for bad, words in (({"type": "deflist", "headline": "h", "items": [{"term": "a", "body": "b"}] * 2}, "3〜8"),
+                       ({"type": "deflist", "headline": "h", "items": [{"term": "a", "body": "b", "icon": "doc"}, {"term": "c", "body": "d"}, {"term": "e", "body": "f"}]}, "全部の行"),
+                       ({"type": "deflist", "headline": "h", "items": [{"term": "a"}, {"term": "b"}, {"term": "c"}]}, "body")):
+        expect_error(one(bad), "dl-bad", words)
+    steps = {"type": "steps", "headline": "h", "current": 2, "items": [{"title": "a"}, {"title": "b"}, {"title": "c"}, {"title": "d"}]}
+    path, info = build(one(steps), "st")
+    s = _secs(path)[0]
+    assert info["slides"][0]["clicks"] == 4 and ">済<" in s and ">いま<" in s and s.count(">これから<") == 2, "状態は札の語"
+    assert s.count('class="st-no cur"') == 1 and "stroke-dasharray" in s, "いまは二重の輪・これからの線は破線"
+    col = _secs(build(one(dict(steps, layout="column", items=steps["items"] + [{"title": "e"}, {"title": "f"}])), "st-col")[0])[0]
+    assert col.count('class="st-row"') == 6
+    assert ">いま<" in _secs(build(one({"type": "steps", "headline": "h", "items": [{"title": "a", "state": "done"}, {"title": "b", "state": "current"}, {"title": "c"}]}),
+                                   "st-state")[0])[0], "state だけでも書ける"
+    for bad, words in (({"type": "steps", "headline": "h", "items": [{"title": "a"}, {"title": "b"}, {"title": "c"}]}, "flow"),
+                       ({"type": "steps", "headline": "h", "current": 9, "items": [{"title": "a"}, {"title": "b"}, {"title": "c"}]}, "current"),
+                       ({"type": "steps", "headline": "h", "items": [{"title": "a", "state": "current"}, {"title": "b", "state": "current"}, {"title": "c"}]}, "1 つ"),
+                       ({"type": "steps", "headline": "h", "current": 1, "items": [{"title": "a", "state": "nazo"}, {"title": "b"}, {"title": "c"}]}, "state"),
+                       ({"type": "steps", "headline": "h", "current": 1, "items": [{"title": str(i)} for i in range(6)]}, "3〜5"),
+                       ({"type": "steps", "headline": "h", "current": 1, "layout": "diag", "items": [{"title": str(i)} for i in range(3)]}, "layout")):
+        expect_error(one(bad), "st-bad", words)
+    # 台本の talk は 段の数 + 1（クリックは枠・行・段ごと）
+    build(one(notice, talk=["入り", "1", "2", "3"]), "nt-talk")
+    build(one(dl, talk=["入り", "1", "2", "3", "4"]), "dl-talk")
+
+
+def case_retired():
+    """退役の仕組み（ADR 0021）: 型は RETIRED_TYPES に入れると、今までどおり描くが警告し、deck-format.md には載せない。
+    変化形 look.surface: white は line と同じに描き、スタイルを読んだとき注意を出す。今、退役した型は無い。"""
+    assert T.RETIRED_TYPES == {}, "今は退役した型が無い（足したら、deck-format.md に載っていないこと・image-slide の TYPES にも載っていないことをここで見る）"
+    fmt = (SKILL / "references" / "deck-format.md").read_text(encoding="utf-8")
+    listed = set(re.findall(r"^\| `([a-z-]+)` \|", fmt[fmt.index("## 型の一覧"):fmt.index("## 型ごとのキー")], re.M))
+    assert listed == set(T.TYPES) - set(T.RETIRED_TYPES), listed ^ set(T.TYPES)
+    T.RETIRED_TYPES["pairs"] = "代わりは table"
+    try:
+        _, info = build(one({"type": "pairs", "headline": "h", "items": [{"label": "a", "before": "x", "after": "y"}, {"label": "b", "before": "x", "after": "y"}]}), "retired-type")
+        assert any("退役" in w and "pairs" in w for w in info["warnings"]), info["warnings"]
+    finally:
+        del T.RETIRED_TYPES["pairs"]
+    import deck_style as DS
+    sc = {"title": "t", "slides": [{"type": "cards", "headline": "h", "items": [{"title": "a"}, {"title": "b"}]}]}
+    h_white, info = build(sc, "retired-white", style=_style("w", "name: w\nlook: {surface: white}\n"))
+    assert any("退役" in w and "white" in w for w in info["warnings"]), info["warnings"]
+    h_line, info = build(sc, "retired-line", style=_style("l", "name: l\nlook: {surface: line}\n"))
+    assert info["warnings"] == [], info["warnings"]
+    css = lambda p: re.search(r"/\* look \*/|\.card, \.cmp, \.kpi, \.callout \{[^}]*\}", pathlib.Path(p).read_text(encoding="utf-8")).group(0)
+    assert css(h_white) == css(h_line) and "box-shadow" not in css(h_white), "white は line と同じに描く（影を出さない）"
+    assert DS.RETIRED_LOOKS == {("surface", "white"): "line"}
 
 
 CASES = {k[5:]: v for k, v in globals().items() if k.startswith("case_")}

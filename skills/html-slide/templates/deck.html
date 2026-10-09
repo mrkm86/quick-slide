@@ -27,32 +27,34 @@
       .primary { color: var(--primary-text); }
       .on-primary { color: var(--on-primary); }
 
+      /* 大きさは DADS の段（64・57・48・45・36・32・28・26・24・22・20・16 と拡張の 80〜200）・行高は 1.0〜1.75 の段・
+         余白は 8・16・24・40・64（と格子の溝 48）・角丸は 0・8・12・16・24・32・full（ADR 0020）。型が書く style も同じ段 */
       /* 画面をまたいで残すもの（data-keep）: 上の帯・下の文字・ページ番号 */
-      .band { position: absolute; left: 120px; top: 0; width: 160px; height: 10px; background-color: var(--primary); }
-      .footer, .pageno { position: absolute; top: 1006px; font-size: 22px; line-height: 1.4; color: var(--muted); }
-      .footer { left: 120px; width: 1300px; }
-      .pageno { left: 900px; width: 120px; text-align: center; }   /* 中央下（ロゴは角に置くので重ならない・ADR 0008） */
-      /* 透かし（--watermark）。全ページの中央下の端・固定の薄いグレー。数字は deck.py の WATERMARK_*（ADR 0009） */
-      .watermark { position: absolute; left: 0; top: 1054px; width: 1920px; font-size: 16px; line-height: 1; font-weight: 400;
-                   text-align: center; white-space: nowrap; color: #9ca3af; }
+      .band { position: absolute; left: 120px; top: 0; width: 160px; height: 8px; background-color: var(--primary-decor); }
+      .footer, .pageno { position: absolute; top: 1008px; font-size: 22px; line-height: 1.5; color: var(--muted); }
+      .footer { left: 120px; width: 1296px; }
+      .pageno { left: 896px; width: 128px; text-align: center; }   /* 中央下（ロゴは角に置くので重ならない・ADR 0008） */
+      /* 透かし（--watermark）。全ページの中央下の端・Gray-536（白の地で 4.5:1）。数字は deck.py の WATERMARK_*（ADR 0009） */
+      .watermark { position: absolute; left: 0; top: 1048px; width: 1920px; font-size: 16px; line-height: 1.7; font-weight: 400;
+                   text-align: center; white-space: nowrap; color: var(--faint); }
       /* ロゴ（--logo）と、その後ろのロゴと同じ大きさの地。位置と大きさは deck.py が書く */
       .logo-plate { position: absolute; background-color: var(--bg); }
       .logo { position: absolute; }
 
       /* 見出し（すべての中身の型の左上） */
       .head { position: absolute; left: 120px; top: 80px; width: 1680px; display: flex; flex-direction: column; }
-      .kicker { font-size: 28px; line-height: 1.4; font-weight: 700; color: var(--primary-text); margin-bottom: 12px; }
-      .headline { font-size: 60px; line-height: 1.35; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      .kicker { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--primary-text); margin-bottom: 8px; }
+      .headline { font-size: 64px; line-height: 1.4; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
       /* balance は文節を割ることがある（「全部／署」）。そのときは台本の文字に改行（\n）を入れて切れ目を決める（<br> になる） */
-      .sub { font-size: 30px; line-height: 1.5; color: var(--muted); margin-top: 14px; word-break: auto-phrase; }
-      .source { position: absolute; left: 120px; font-size: 22px; line-height: 1.4; color: var(--muted); }
+      .sub { font-size: 32px; line-height: 1.5; color: var(--muted); margin-top: 16px; word-break: auto-phrase; }
+      .source { position: absolute; left: 120px; font-size: 22px; line-height: 1.5; color: var(--muted); }
 
       /* 表紙 */
       .cover-text { position: absolute; display: flex; flex-direction: column; justify-content: center; }
-      .cover-label { font-size: 30px; line-height: 1.4; font-weight: 700; color: var(--primary-text); margin-bottom: 28px; }
-      .cover-title { line-height: 1.3; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
-      .cover-rule { width: 120px; height: 8px; background-color: var(--primary); margin: 44px 0 36px; }
-      .cover-subtitle { font-size: 36px; line-height: 1.5; color: var(--muted); word-break: auto-phrase; }
+      .cover-label { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--primary-text); margin-bottom: 24px; }
+      .cover-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      .cover-rule { width: 120px; height: 8px; background-color: var(--primary-decor); margin: 40px 0 32px; }
+      .cover-subtitle { font-size: 32px; line-height: 1.5; color: var(--muted); word-break: auto-phrase; }
       .cover-meta { position: absolute; display: flex; flex-direction: column; }
       .cover-meta div { font-size: 28px; line-height: 1.5; color: var(--ink); }
       .photo { position: absolute; object-fit: cover; }
@@ -64,149 +66,174 @@
       .on-dark em { color: var(--accent-on-dark); }
       .on-dark .cover-label, .on-dark .sec-label, .on-dark .sec-no { color: var(--primary-on-dark); }
       .on-dark .cover-rule { background-color: var(--primary-on-dark); }
-      /* 写真の並び・図・カードの写真 */
+      /* 明るい幕（tone: light）の上の色（幕の地で 4.5:1） */
+      .on-light em { color: var(--accent-on-light); }
+      .on-light .cover-label, .on-light .sec-label, .on-light .sec-no { color: var(--primary-on-light); }
+      /* 写真の並び・図・カードの写真（写真の角は 8） */
       .gal-item { position: absolute; display: flex; flex-direction: column; }
-      .gal-img { object-fit: cover; border-radius: 12px; }
-      .gal-cap { font-size: 26px; line-height: 1.5; color: var(--muted); margin-top: 14px; word-break: auto-phrase; }
+      .gal-img { object-fit: cover; border-radius: 8px; }
+      .gal-cap { font-size: 26px; line-height: 1.5; color: var(--muted); margin-top: 16px; word-break: auto-phrase; }
       .figure-img { position: absolute; object-fit: contain; }
       .fig-cap { position: absolute; font-size: 26px; line-height: 1.5; color: var(--muted); text-align: center; }
-      .card-img { object-fit: cover; border-radius: 10px; margin-bottom: 28px; flex: none; }
+      .card-img { object-fit: cover; border-radius: 8px; margin-bottom: 24px; flex: none; }
       .quote.on-dark .quote-text, .quote.on-dark .quote-name, .quote.on-dark .quote-role, .quote.on-dark .kicker { color: #ffffff; }
       .quote.on-dark .qmark { color: var(--primary-on-dark); }
-      /* 注釈つきの画像の番号の丸印 */
-      .mk-dot { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 28px;
+      /* 注釈つきの画像の番号の丸印（浮かせる印だけ elevation-2。白い縁で写真の上でも 3:1） */
+      .mk-dot { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 9999px;
                 background-color: var(--primary-strong); color: var(--on-primary); border: 4px solid #ffffff;
-                font-size: 26px; line-height: 1; font-weight: 700; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25); }
+                font-size: 26px; line-height: 1; font-weight: 700; box-shadow: 0 2px 12px 2px rgba(0, 0, 0, 0.1), 0 1px 6px 0 rgba(0, 0, 0, 0.3); }
       /* 画像が無いときの仮の枠（--placeholder・下書き用） */
-      .img-ph { position: absolute; display: flex; align-items: center; justify-content: center; padding: 12px;
-                background-color: var(--line); border: 3px dashed var(--bar); overflow: hidden; }
+      .img-ph { position: absolute; display: flex; align-items: center; justify-content: center; padding: 16px;
+                background-color: var(--surface); border: 4px dashed var(--rule); overflow: hidden; }
       .img-ph div { line-height: 1.5; color: var(--ink); text-align: center; word-break: auto-phrase; }
 
       /* 目次 */
       .agenda { position: absolute; display: flex; flex-direction: column; }
-      .agenda-row { display: flex; align-items: center; border-bottom: 2px solid var(--line); }
-      .agenda-no { width: 120px; flex: none; font-size: 44px; line-height: 1.4; font-weight: 700; color: var(--primary-text); }
-      .agenda-title { flex: 1; font-size: 44px; line-height: 1.4; font-weight: 700; }
-      .agenda-note { flex: none; font-size: 30px; line-height: 1.4; color: var(--muted); text-align: right; }
+      .agenda-row { display: flex; align-items: center; border-bottom: 2px solid var(--rule); }
+      .agenda-no { width: 120px; flex: none; font-size: 45px; line-height: 1.4; font-weight: 700; color: var(--primary-text); }
+      .agenda-title { flex: 1; font-size: 45px; line-height: 1.4; font-weight: 700; }
+      .agenda-note { flex: none; font-size: 28px; line-height: 1.4; color: var(--muted); text-align: right; }
       .agenda-row.dim .agenda-title, .agenda-row.dim .agenda-no { color: var(--muted); font-weight: 400; }
       .agenda-row.on { background-color: var(--primary-soft); }
 
       /* 章扉 */
       .sec-panel { position: absolute; left: 0; top: 0; height: 1080px; background-color: var(--primary-strong); }
-      .sec-label { font-size: 30px; line-height: 1.4; font-weight: 700; }
-      .sec-no { font-size: 200px; line-height: 1.1; font-weight: 700; }
+      .sec-label { font-size: 28px; line-height: 1.5; font-weight: 700; }
+      .sec-no { font-size: 200px; line-height: 1.0; font-weight: 700; }
       .sec-text { position: absolute; display: flex; flex-direction: column; justify-content: center; }
-      .sec-title { line-height: 1.3; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
-      .sec-subtitle { font-size: 34px; line-height: 1.5; color: var(--muted); margin-top: 28px; word-break: auto-phrase; }
+      .sec-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      .sec-subtitle { font-size: 32px; line-height: 1.5; color: var(--muted); margin-top: 24px; word-break: auto-phrase; }
 
       /* 主張 */
       .stmt { position: absolute; display: flex; flex-direction: column; justify-content: center; }
-      .stmt-bar { position: absolute; width: 12px; background-color: var(--primary); }
+      .stmt-bar { position: absolute; width: 16px; background-color: var(--primary-mark); }
       .stmt-text { line-height: 1.4; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
-      .stmt-body { font-size: 34px; line-height: 1.6; color: var(--muted); margin-top: 40px; word-break: auto-phrase; }
+      .stmt-body { font-size: 32px; line-height: 1.6; color: var(--muted); margin-top: 40px; word-break: auto-phrase; }
 
       /* 大きな数字 */
       .bn-main { position: absolute; display: flex; flex-direction: column; justify-content: center; }
       .bn-row { display: flex; align-items: baseline; }
-      .bn-value { line-height: 1.1; font-weight: 700; color: var(--primary-text); }
-      .bn-unit { line-height: 1.1; font-weight: 700; color: var(--primary-text); margin-left: 12px; }
-      .bn-label { font-size: 38px; line-height: 1.45; font-weight: 700; margin-top: 24px; word-break: auto-phrase; }
+      .bn-value { line-height: 1.0; font-weight: 700; color: var(--primary-text); }
+      .bn-unit { line-height: 1.0; font-weight: 700; color: var(--primary-text); margin-left: 16px; }
+      .bn-label { font-size: 36px; line-height: 1.4; font-weight: 700; margin-top: 24px; word-break: auto-phrase; }
       .bn-side { position: absolute; display: flex; flex-direction: column; justify-content: center; }
-      .bn-item { border-top: 2px solid var(--line); padding: 28px 0; }
-      .bn-item-value { font-size: 56px; line-height: 1.2; font-weight: 700; }
-      .bn-item-text { font-size: 28px; line-height: 1.5; color: var(--muted); margin-top: 6px; word-break: auto-phrase; }
+      .bn-item { border-top: 2px solid var(--rule); padding: 24px 0; }
+      .bn-item-value { font-size: 57px; line-height: 1.4; font-weight: 700; }
+      .bn-item-text { font-size: 28px; line-height: 1.5; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
 
-      /* カード */
-      .card { display: flex; flex-direction: column; flex: none; min-height: 400px; background-color: var(--surface); border-radius: 16px; padding: 48px 44px; }
-      .card.hl { background-color: var(--accent-soft); border: 3px solid var(--accent); }
-      .card-bar { width: 56px; height: 8px; background-color: var(--primary); margin-bottom: 28px; }
-      .card.hl .card-bar { background-color: var(--accent); }
-      .card-label { font-size: 28px; line-height: 1.4; font-weight: 700; color: var(--primary-text); margin-bottom: 10px; }
-      .card-title { font-size: 44px; line-height: 1.4; font-weight: 700; margin-bottom: 20px; word-break: auto-phrase; }
+      /* カード（箱は必ず外周の枠を持つ: 地と面を 3:1 で分ける。強める箱は 4px の差し色の枠） */
+      .card { display: flex; flex-direction: column; flex: none; min-height: 400px; background-color: var(--surface); border: 2px solid var(--rule);
+              border-radius: 16px; padding: 40px; }
+      .card.hl { background-color: var(--accent-soft); border: 4px solid var(--accent-mark); }
+      .card-bar { width: 56px; height: 8px; background-color: var(--primary-mark); margin-bottom: 24px; }
+      .card.hl .card-bar { background-color: var(--accent-mark); }
+      .card-label { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--primary-text); margin-bottom: 8px; }
+      .card-title { font-size: 45px; line-height: 1.4; font-weight: 700; margin-bottom: 16px; word-break: auto-phrase; }
       .card-body { font-size: 32px; line-height: 1.6; word-break: auto-phrase; }
 
       /* アイコン・締めの帯（ADR 0019） */
       .icon-disc { display: flex; align-items: center; justify-content: center; flex: none; }
-      .li-icon { flex: none; margin-right: 28px; }
-      .take { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 44px;
-              background-color: var(--tint); color: var(--ink); font-weight: 700; line-height: 1.3; padding: 0 48px; }
+      .li-icon { flex: none; margin-right: 16px; }
+      .take { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 9999px; border: 2px solid var(--primary-mark);
+              background-color: var(--tint); color: var(--ink); font-weight: 700; line-height: 1.4; padding: 0 64px; }
+      .take svg { flex: none; margin-right: 16px; }
+      .take-t { line-height: 1.4; font-weight: 700; color: var(--ink); }
+      /* 札（DADS のチップラベル・ADR 0021）: 24B・高さ 40・角は full。強調・いま（on 濃い面）・済（done 淡い面とチェック）・これから（todo 白に枠）・地に枠（line）。語を必ず添える */
+      .chip { align-self: flex-start; display: flex; align-items: center; flex: none; height: 40px; padding: 0 24px; border-radius: 9999px;
+              font-size: 24px; line-height: 1.0; font-weight: 700; margin-bottom: 16px; white-space: nowrap; }
+      .chip svg { flex: none; margin-right: 8px; }
+      .chip-t { line-height: 1.0; font-size: 24px; font-weight: 700; }
+      .chip.on { background-color: var(--accent-strong); color: var(--on-accent); }
+      .chip.done { background-color: var(--tint); color: var(--primary-text); }
+      .chip.done .chip-t { color: var(--primary-text); }
+      .chip.todo { background-color: var(--bg); color: var(--ink); border: 2px solid var(--rule); }
+      .chip.line { background-color: var(--bg); color: var(--ink); border: 2px solid var(--rule); }
+      .chips { display: flex; align-items: center; margin-bottom: 24px; }
+      .chips .cmp-chip { margin-bottom: 0; }
+      .chips .chip { margin-bottom: 0; margin-left: 16px; }
 
       /* 図解の型: 式・放射・対（ADR 0019） */
       .eq-box { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: none; text-align: center;
-                min-height: 0; padding: 48px 32px; }
+                min-height: 0; padding: 40px 32px; }
       .eq-res { background-color: var(--primary-strong); border-radius: 16px; }
       .eq-res .eq-title { color: var(--on-primary); }
-      .eq-title { line-height: 1.3; font-weight: 700; word-break: auto-phrase; }
-      .eq-body { line-height: 1.45; color: var(--muted); margin-top: 14px; word-break: auto-phrase; }
-      .eq-chip { line-height: 1.45; font-weight: 700; color: var(--primary-strong); background-color: var(--on-primary);
-                 border-radius: 10px; padding: 4px 22px; margin-top: 14px; }
-      .eq-op { flex: none; display: flex; align-items: center; justify-content: center; font-size: 80px; line-height: 1; font-weight: 700;
+      .eq-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .eq-body { line-height: 1.5; color: var(--muted); margin-top: 16px; word-break: auto-phrase; }
+      .eq-chip { line-height: 1.5; font-weight: 700; color: var(--primary-strong); background-color: var(--on-primary);
+                 border-radius: 8px; padding: 8px 24px; margin-top: 16px; }
+      .eq-op { flex: none; display: flex; align-items: center; justify-content: center; font-size: 64px; line-height: 1.0; font-weight: 700;
                color: var(--primary-text); }
       .hub-lines { position: absolute; left: 0; top: 0; }
-      .hub-item { position: absolute; flex-direction: row; align-items: center; min-height: 0; padding: 0 36px; }
+      .hub-item { position: absolute; flex-direction: row; align-items: center; min-height: 0; padding: 0 32px; }
       .hub-text { display: flex; flex-direction: column; min-width: 0; }
-      .hub-title { line-height: 1.3; font-weight: 700; }
-      .hub-body { line-height: 1.4; color: var(--muted); margin-top: 4px; }
-      .hub-tag { align-self: flex-start; line-height: 1.4; font-weight: 700; color: var(--primary-text); background-color: var(--tint);
-                 border-radius: 8px; padding: 2px 14px; margin-top: 12px; }
-      .hub-center { position: absolute; align-items: center; justify-content: center; text-align: center; min-height: 0; padding: 0 36px;
-                    border: 4px solid var(--tint); }
-      .hub-c-title { line-height: 1.3; font-weight: 700; margin-top: 12px; }
-      .hub-c-body { line-height: 1.4; color: var(--muted); margin-top: 6px; }
+      .hub-title { line-height: 1.4; font-weight: 700; }
+      .hub-body { line-height: 1.5; color: var(--muted); margin-top: 8px; }
+      .hub-tag { align-self: flex-start; line-height: 1.5; font-weight: 700; color: var(--primary-text); background-color: var(--tint);
+                 border-radius: 8px; padding: 0 16px; margin-top: 8px; }
+      .hub-center { position: absolute; align-items: center; justify-content: center; text-align: center; min-height: 0; padding: 0 32px;
+                    border: 4px solid var(--primary-mark); }
+      .hub-c-title { line-height: 1.4; font-weight: 700; margin-top: 8px; }
+      .hub-c-body { line-height: 1.5; color: var(--muted); margin-top: 8px; }
       .pair { position: absolute; min-height: 0; padding: 0; }
       .pair-left { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-      .pair-label { line-height: 1.3; font-weight: 700; margin-top: 10px; }
-      .pair-box { position: absolute; display: flex; align-items: center; justify-content: center; text-align: center; border-radius: 14px;
-                  padding: 0 24px; line-height: 1.45; word-break: auto-phrase; }
-      .pair-bad { background-color: var(--bg); border: 2px solid var(--line); color: var(--muted); }
-      .pair-good { background-color: var(--accent-soft); border: 2px solid var(--accent); color: var(--accent-text); font-weight: 700; }
-      .pair-tag { position: absolute; font-size: 20px; line-height: 1.6; font-weight: 700; border-radius: 6px; padding: 0 12px; }
-      .pair-bad-tag { background-color: var(--muted); color: var(--bg); }
-      .pair-good-tag { background-color: var(--accent-strong); color: var(--on-accent); }
+      .pair-label { line-height: 1.4; font-weight: 700; margin-top: 8px; }
+      .pair-box { position: absolute; display: flex; align-items: center; justify-content: center; text-align: center; border-radius: 12px;
+                  padding: 0 24px; line-height: 1.5; word-break: auto-phrase; }
+      .pair-bad { background-color: var(--bg); border: 2px solid var(--rule); color: var(--muted); }
+      .pair-good { background-color: var(--accent-soft); border: 2px solid var(--accent-mark); color: var(--accent-text); font-weight: 700; }
+      /* NG/OK の札: 白い面に意味の色（error-2・success-2）の輪郭と文字・アイコン。語とアイコンを両方添える */
+      .pair-tag { position: absolute; display: flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 9999px; background-color: #ffffff; }
+      .pair-tag svg { flex: none; margin-right: 8px; }
+      .pair-tag-t { font-size: 24px; line-height: 1.0; font-weight: 700; white-space: nowrap; }
+      .pair-bad-tag { border: 2px solid var(--error-2); color: var(--error-2); }
+      .pair-good-tag { border: 2px solid var(--success-2); color: var(--success-2); }
       .abs-svg { position: absolute; }
 
       /* 矢羽根 */
       .flow-item { position: relative; flex: none; }
       .flow-head { position: relative; }
       .flow-head svg { position: absolute; left: 0; top: 0; }
-      .flow-label { position: absolute; top: 0; display: flex; align-items: center; justify-content: center; font-size: 34px; line-height: 1.3; font-weight: 700; }
+      .flow-label { position: absolute; top: 0; display: flex; align-items: center; justify-content: center; line-height: 1.4; font-weight: 700; }
       .flow-text { display: flex; flex-direction: column; margin-top: 32px; }
-      .flow-title { font-size: 40px; line-height: 1.4; font-weight: 700; margin-bottom: 14px; word-break: auto-phrase; }
-      .flow-body { font-size: 30px; line-height: 1.6; color: var(--ink); word-break: auto-phrase; }
+      .flow-title { line-height: 1.4; font-weight: 700; margin-bottom: 16px; word-break: auto-phrase; }
+      .flow-body { line-height: 1.6; color: var(--ink); word-break: auto-phrase; }
 
       /* 比較 */
-      .cmp { display: flex; flex-direction: column; flex: none; min-height: 420px; border-radius: 16px; padding: 48px 52px; background-color: var(--surface); }
-      .cmp.hl { background-color: var(--accent-soft); border: 3px solid var(--accent); }
-      .cmp-chip { align-self: flex-start; font-size: 30px; line-height: 1.4; font-weight: 700; padding: 6px 22px; border-radius: 8px; background-color: var(--line); color: var(--ink); margin-bottom: 24px; }
+      .cmp { display: flex; flex-direction: column; flex: none; min-height: 416px; border-radius: 16px; padding: 40px; background-color: var(--surface);
+             border: 2px solid var(--rule); }
+      .cmp.hl { background-color: var(--accent-soft); border: 4px solid var(--accent-mark); }
+      .cmp-chip { align-self: flex-start; line-height: 1.0; font-weight: 700; padding: 8px 24px; border-radius: 9999px; background-color: var(--tint); color: var(--ink); margin-bottom: 24px; }
       .cmp.hl .cmp-chip { background-color: var(--accent-strong); color: var(--on-accent); }
-      .cmp-title { font-size: 46px; line-height: 1.4; font-weight: 700; margin-bottom: 22px; word-break: auto-phrase; }
-      .cmp-point { display: flex; align-items: flex-start; margin-top: 18px; }
-      .cmp-dot { flex: none; width: 16px; height: 16px; border-radius: 8px; background-color: var(--muted); margin: 19px 22px 0 0; }
-      .cmp.hl .cmp-dot { background-color: var(--accent); }
-      .cmp-text { font-size: 34px; line-height: 1.55; word-break: auto-phrase; }
+      .cmp-title { font-size: 45px; line-height: 1.4; font-weight: 700; margin-bottom: 16px; word-break: auto-phrase; }
+      .cmp-point { display: flex; align-items: flex-start; margin-top: 16px; }
+      .cmp-dot { flex: none; width: 16px; height: 16px; border-radius: 9999px; background-color: var(--muted); margin: 0 24px 0 0; }
+      .cmp.hl .cmp-dot { background-color: var(--accent-mark); }
+      .cmp-text { font-size: 32px; line-height: 1.5; word-break: auto-phrase; }
       .cmp-gap { flex: none; display: flex; align-items: center; justify-content: center; }
 
-      /* 棒グラフ */
+      /* 棒グラフ（非強調の棒は 3:1 以上の bar・強調は accent-mark。軸は rule の 4px） */
       .bar-group { position: absolute; display: flex; flex-direction: column; align-items: center; }
-      .bar-value { font-size: 36px; line-height: 1.3; font-weight: 700; margin-bottom: 12px; white-space: nowrap; }
-      .bar { border-radius: 6px 6px 0 0; background-color: var(--bar); }
-      .bar.hl { background-color: var(--accent); }
-      .bar-label { position: absolute; font-size: 28px; line-height: 1.4; text-align: center; color: var(--ink); }
+      .bar-value { font-size: 36px; line-height: 1.4; font-weight: 700; margin-bottom: 8px; white-space: nowrap; }
+      .bar { border-radius: 8px 8px 0 0; background-color: var(--bar); }
+      .bar.hl { background-color: var(--accent-mark); }
+      .bar-label { position: absolute; font-size: 28px; line-height: 1.5; text-align: center; color: var(--ink); }
       .bar-label.hl { font-weight: 700; color: var(--accent-text); }
-      .baseline { position: absolute; height: 3px; background-color: var(--ink); }
-      .bar-unit { position: absolute; font-size: 24px; line-height: 1.4; color: var(--muted); }
-      .callout { position: absolute; display: flex; flex-direction: column; justify-content: center; background-color: var(--accent-soft); border-radius: 16px; padding: 48px 44px; }
-      .callout-value { line-height: 1.15; font-weight: 700; color: var(--accent-text); }
-      .callout-text { font-size: 30px; line-height: 1.55; margin-top: 18px; word-break: auto-phrase; }
+      .baseline { position: absolute; height: 4px; background-color: var(--rule); }
+      .bar-unit { position: absolute; font-size: 22px; line-height: 1.5; color: var(--muted); }
+      .callout { position: absolute; display: flex; flex-direction: column; justify-content: center; background-color: var(--accent-soft);
+                 border: 2px solid var(--accent-mark); border-radius: 16px; padding: 40px; }
+      .callout-value { line-height: 1.2; font-weight: 700; color: var(--accent-text); }
+      .callout-text { font-size: 28px; line-height: 1.6; margin-top: 16px; word-break: auto-phrase; }
 
       /* 表 */
       .table { position: absolute; display: flex; flex-direction: column; }
-      .tr { display: flex; border-bottom: 2px solid var(--line); }
-      .tr.th { background-color: var(--surface); border-bottom: 3px solid var(--ink); }
+      .tr { display: flex; border-bottom: 2px solid var(--rule); }
+      .tr.th { background-color: var(--surface); border-bottom: 4px solid var(--ink); }
       .td { display: flex; align-items: center; padding: 0 24px; }
-      .td div { line-height: 1.4; }
+      .td div { line-height: 1.5; word-break: auto-phrase; }
       .tr.th .td div { font-weight: 700; }
-      .td.hl { background-color: var(--accent-soft); }
+      .td.hl { background-color: var(--accent-soft); border-left: 4px solid var(--accent-mark); border-right: 4px solid var(--accent-mark); }
+      .td.hl div { font-weight: 700; }
       .tr.th .td.hl { background-color: var(--accent-strong); }
       .tr.th .td.hl div { color: var(--on-accent); }
 
@@ -216,96 +243,130 @@
       .scrim .sub { color: #ffffff; }
       .scrim em { color: var(--accent-on-dark); }
       .photo-text { position: absolute; display: flex; flex-direction: column; justify-content: center; }
-      .caption { position: absolute; font-size: 22px; line-height: 1.4; color: var(--muted); }
+      .caption { position: absolute; font-size: 22px; line-height: 1.5; color: var(--muted); }
 
       /* 引用 */
-      .qmark { font-size: 200px; line-height: 1.2; margin: -30px 0 -80px -12px; font-weight: 700; color: var(--primary-text); }
+      .qmark { font-size: 200px; line-height: 1.2; margin: -32px 0 -80px -16px; font-weight: 700; color: var(--primary-text); }
       .quote { position: absolute; display: flex; flex-direction: column; justify-content: center; }
-      .quote-text { line-height: 1.55; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
-      .quote-by { display: flex; align-items: baseline; margin-top: 48px; }
-      .quote-name { font-size: 34px; line-height: 1.4; font-weight: 700; }
+      .quote-text { line-height: 1.5; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      .quote-by { display: flex; align-items: baseline; margin-top: 40px; }
+      .quote-name { font-size: 32px; line-height: 1.4; font-weight: 700; }
       .quote-role { font-size: 28px; line-height: 1.4; color: var(--muted); margin-left: 24px; }
 
       /* 箇条書き・締めの一覧 */
       .list { position: absolute; display: flex; flex-direction: column; justify-content: center; }
       .li { display: flex; align-items: flex-start; }
-      .li-mark { flex: none; width: 18px; height: 18px; background-color: var(--primary); margin-right: 34px; }
-      .li-no { flex: none; width: 68px; height: 68px; border-radius: 34px; background-color: var(--primary-strong); color: var(--on-primary);
-               display: flex; align-items: center; justify-content: center; font-size: 32px; line-height: 1; font-weight: 700; margin-right: 36px; }
+      .li-mark { flex: none; width: 16px; height: 16px; background-color: var(--primary-mark); margin-right: 32px; }
+      .li-no { flex: none; width: 64px; height: 64px; border-radius: 9999px; background-color: var(--primary-strong); color: var(--on-primary);
+               display: flex; align-items: center; justify-content: center; font-size: 32px; line-height: 1.0; font-weight: 700; margin-right: 32px; }
       .li-text { display: flex; flex-direction: column; flex: 1; }
-      .li-title { font-size: 44px; line-height: 1.45; font-weight: 700; word-break: auto-phrase; }
-      .li-body { font-size: 30px; line-height: 1.6; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
-      .side-img { position: absolute; object-fit: cover; border-radius: 16px; }
-      .contact { display: flex; flex-direction: column; justify-content: center; background-color: var(--primary-strong); border-radius: 16px; padding: 56px 52px; }
-      .contact-label { font-size: 26px; line-height: 1.4; font-weight: 700; color: var(--on-primary); margin-bottom: 24px; }
-      .contact div.contact-line { font-size: 30px; line-height: 1.6; color: var(--on-primary); }
-      .contact div.contact-strong { font-size: 38px; line-height: 1.5; font-weight: 700; color: var(--on-primary); margin-bottom: 8px; }
+      .li-title { font-size: 45px; line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .li-body { font-size: 28px; line-height: 1.6; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
+      .side-img { position: absolute; object-fit: cover; border-radius: 8px; }
+      .contact { display: flex; flex-direction: column; justify-content: center; background-color: var(--primary-strong); border-radius: 16px; padding: 40px; }
+      .contact-label { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--on-primary); margin-bottom: 24px; }
+      .contact div.contact-line { font-size: 28px; line-height: 1.5; color: var(--on-primary); }
+      .contact div.contact-strong { font-size: 36px; line-height: 1.4; font-weight: 700; color: var(--on-primary); margin-bottom: 8px; }
 
-      /* 年表 */
-      .tl-line { position: absolute; height: 6px; background-color: var(--line); }
+      /* 年表（線と丸の縁は rule・いまの丸は accent-mark） */
+      .tl-line { position: absolute; height: 4px; background-color: var(--rule); }
       .tl-item { position: absolute; display: flex; flex-direction: column; }
-      .tl-dot { width: 32px; height: 32px; border-radius: 16px; background-color: var(--bg); border: 6px solid var(--bar); }
-      .tl-item.hl .tl-dot { background-color: var(--accent); border: 6px solid var(--accent); }
-      .tl-when { font-size: 34px; line-height: 1.4; font-weight: 700; color: var(--muted); }
+      .tl-dotbox { display: flex; align-items: center; flex: none; }
+      .tl-dot { width: 32px; height: 32px; border-radius: 9999px; background-color: var(--bg); border: 4px solid var(--rule); }
+      /* いまは二重の輪（外 48・内 24）と札「いま」。色だけで示さない */
+      .tl-dot.hl { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border: 4px solid var(--accent-mark); }
+      .tl-dot-in { width: 24px; height: 24px; border-radius: 9999px; background-color: var(--accent-mark); }
+      .tl-when { font-size: 36px; line-height: 1.4; font-weight: 700; color: var(--muted); }
       .tl-item.hl .tl-when { color: var(--accent-text); }
-      .tl-title { font-size: 40px; line-height: 1.45; font-weight: 700; margin-top: 34px; word-break: auto-phrase; }
-      .tl-body { font-size: 30px; line-height: 1.6; color: var(--muted); margin-top: 10px; word-break: auto-phrase; }
+      .tl-title { font-size: 36px; line-height: 1.4; font-weight: 700; margin-top: 24px; word-break: auto-phrase; }
+      .tl-body { font-size: 28px; line-height: 1.6; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
       /* 要約（結論＋根拠） */
       .sum-col { display: flex; flex-direction: column; flex: none; }
-      .sum-bar { width: 100%; height: 6px; background-color: var(--primary); }
-      .sum-no { font-size: 28px; line-height: 1.4; font-weight: 700; color: var(--primary-text); margin-top: 22px; }
-      .sum-value { line-height: 1.2; font-weight: 700; margin-top: 8px; }
-      .sum-title { font-size: 40px; line-height: 1.45; font-weight: 700; margin-top: 10px; word-break: auto-phrase; }
-      .sum-body { font-size: 30px; line-height: 1.6; color: var(--muted); margin-top: 14px; word-break: auto-phrase; }
+      .sum-bar { width: 100%; height: 8px; background-color: var(--primary-mark); }
+      .sum-no { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--primary-text); margin-top: 24px; }
+      .sum-value { line-height: 1.4; font-weight: 700; margin-top: 8px; }
+      .sum-title { font-size: 36px; line-height: 1.4; font-weight: 700; margin-top: 8px; word-break: auto-phrase; }
+      .sum-body { font-size: 28px; line-height: 1.6; color: var(--muted); margin-top: 16px; word-break: auto-phrase; }
 
       /* 指標の並び */
-      .kpi { display: flex; flex-direction: column; flex: none; background-color: var(--surface); border-radius: 16px; padding: 48px 44px; }
-      .kpi.hl { background-color: var(--accent-soft); border: 3px solid var(--accent); }
-      .kpi-label { font-size: 30px; line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
-      .kpi-value { line-height: 1.15; font-weight: 700; }
-      .kpi-unit { line-height: 1.15; font-weight: 700; margin-left: 10px; }
+      .kpi { display: flex; flex-direction: column; flex: none; background-color: var(--surface); border: 2px solid var(--rule); border-radius: 16px; padding: 40px; }
+      .kpi.hl { background-color: var(--accent-soft); border: 4px solid var(--accent-mark); }
+      .kpi-label { font-size: 28px; line-height: 1.5; font-weight: 700; word-break: auto-phrase; }
+      .kpi-value { line-height: 1.0; font-weight: 700; }
+      .kpi-unit { line-height: 1.0; font-weight: 700; margin-left: 16px; }
       .kpi.hl .kpi-value, .kpi.hl .kpi-unit { color: var(--accent-text); }
-      .kpi-delta { font-size: 30px; line-height: 1.4; font-weight: 700; margin-top: 20px; }
-      .kpi-note { font-size: 24px; line-height: 1.5; color: var(--muted); margin-top: 10px; word-break: auto-phrase; }
+      .kpi-delta { font-size: 28px; line-height: 1.5; font-weight: 700; margin-top: 16px; }
+      .kpi-note { font-size: 22px; line-height: 1.5; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
 
-      /* 折れ線 */
-      .grid-line { position: absolute; background-color: var(--line); }
+      /* 折れ線（目盛り線は白の地の上だけの罫 rule-weak） */
+      .grid-line { position: absolute; background-color: var(--rule-weak); }
       .tick { position: absolute; font-size: 24px; line-height: 1.5; color: var(--muted); text-align: right; }
       .line-svg { position: absolute; overflow: visible; }
-      .pt-value { position: absolute; font-size: 28px; line-height: 1.3; font-weight: 700; text-align: center; white-space: nowrap; }
+      .pt-value { position: absolute; font-size: 28px; line-height: 1.4; font-weight: 700; text-align: center; white-space: nowrap; }
       .legend { position: absolute; display: flex; justify-content: flex-end; }
       .legend-item { display: flex; align-items: center; margin-left: 40px; }
-      .legend-swatch { width: 44px; height: 8px; border-radius: 4px; margin-right: 14px; }
-      .legend-name { font-size: 26px; line-height: 1.4; }
+      .legend-item svg { margin-right: 16px; }
+      .end-name { position: absolute; line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .legend-name { font-size: 28px; line-height: 1.5; }
 
       /* 体制・人 */
       .member { display: flex; flex-direction: column; align-items: center; flex: none; }
       .face { object-fit: cover; }
-      .face-ini { display: flex; align-items: center; justify-content: center; line-height: 1; font-weight: 700;
+      .face-ini { display: flex; align-items: center; justify-content: center; line-height: 1.0; font-weight: 700;
                   background-color: var(--tint); color: var(--primary-text); }
-      .member-name { font-size: 38px; line-height: 1.4; font-weight: 700; margin-top: 26px; text-align: center; }
-      .member-role { font-size: 28px; line-height: 1.4; font-weight: 700; color: var(--primary-text); margin-top: 4px; text-align: center; }
-      .member-note { font-size: 26px; line-height: 1.55; color: var(--muted); margin-top: 12px; text-align: center; word-break: auto-phrase; }
+      .member-name { font-size: 36px; line-height: 1.4; font-weight: 700; margin-top: 24px; text-align: center; }
+      .member-role { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--primary-text); margin-top: 8px; text-align: center; }
+      .member-note { font-size: 28px; line-height: 1.5; color: var(--muted); margin-top: 16px; text-align: center; word-break: auto-phrase; }
 
       /* 2×2 */
-      .mx-focus { position: absolute; background-color: var(--accent-soft); }
-      .mx-frame { position: absolute; border: 2px solid var(--line); }
-      .mx-axis { position: absolute; background-color: var(--bar); }
+      .mx-focus { position: absolute; background-color: var(--accent-soft); border: 4px solid var(--accent-mark); }
+      .mx-frame { position: absolute; border: 2px solid var(--rule); }
+      .mx-axis { position: absolute; background-color: var(--rule); }
       .mx-quad { position: absolute; display: flex; flex-direction: column; }
-      .mx-qtitle { font-size: 30px; line-height: 1.4; font-weight: 700; color: var(--muted); }
+      .mx-qtitle { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--muted); }
       .mx-qtitle.accent { color: var(--accent-text); }
-      .mx-qbody { font-size: 24px; line-height: 1.5; color: var(--muted); margin-top: 4px; }
+      .mx-qbody { font-size: 24px; line-height: 1.5; color: var(--muted); margin-top: 8px; }
       .mx-ylab { position: absolute; display: flex; flex-direction: column; align-items: flex-end; }
-      .mx-ylab div { font-size: 26px; line-height: 1.4; color: var(--muted); text-align: right; }
+      .mx-ylab div { font-size: 26px; line-height: 1.5; color: var(--muted); text-align: right; }
       .mx-ylab div.bold { font-weight: 700; color: var(--ink); }
-      .mx-xlab { position: absolute; font-size: 26px; line-height: 1.4; color: var(--muted); }
+      .mx-xlab { position: absolute; font-size: 26px; line-height: 1.5; color: var(--muted); }
       .mx-xlab.bold { font-weight: 700; color: var(--ink); }
       .mx-item { position: absolute; }
-      .mx-dot { position: absolute; border-radius: 15px; background-color: var(--ink); }
-      .mx-dot.hl { background-color: var(--accent); }
-      .mx-label { position: absolute; line-height: 1.4; font-weight: 700; white-space: nowrap; }
+      .mx-dot { position: absolute; border-radius: 9999px; background-color: var(--ink); }
+      /* 強める点は二重の輪（外 40 の枠と内 16 の点）。色だけで示さない */
+      .mx-dot.hl { background-color: var(--bg); border: 4px solid var(--accent-mark); display: flex; align-items: center; justify-content: center; }
+      .mx-dot-in { width: 16px; height: 16px; border-radius: 9999px; background-color: var(--accent-mark); }
+      .mx-label { position: absolute; line-height: 1.5; font-weight: 700; white-space: nowrap; }
       .mx-label.accent { color: var(--accent-text); }
-      .callout-title { font-size: 40px; line-height: 1.4; font-weight: 700; color: var(--accent-text); word-break: auto-phrase; }
+      .callout-title { font-size: 36px; line-height: 1.4; font-weight: 700; color: var(--accent-text); word-break: auto-phrase; }
+      /* お知らせの枠（DADS の注釈ブロック・ADR 0021）: 白い面・意味の色の枠 2px と左の色帯 16。種類はアイコン＋語でも示す */
+      .col { display: flex; flex-direction: column; }
+      .notice { display: flex; flex-direction: row; flex: none; background-color: #ffffff; border: 2px solid var(--rule); }
+      .nt-band { width: 16px; flex: none; align-self: stretch; }
+      .nt-main { display: flex; flex-direction: column; flex: 1; padding: 32px 40px; }
+      .nt-head { display: flex; align-items: center; margin-bottom: 8px; }
+      .nt-label { line-height: 1.5; font-weight: 700; }
+      .nt-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .nt-body { line-height: 1.6; margin-top: 8px; word-break: auto-phrase; }
+      .nt-point { display: flex; align-items: flex-start; margin-top: 8px; }
+      .nt-mark { flex: none; width: 16px; height: 16px; margin-right: 16px; }
+      .nt-text { line-height: 1.5; word-break: auto-phrase; }
+      /* 用語と説明（DADS の説明リスト）: 左に用語（太字）・右に説明。行の区切りは rule の 2px。行の上下の余白は型が style で上書きする（大きく組むとき） */
+      .dl-row { display: flex; align-items: flex-start; flex: none; padding: 16px 0; border-bottom: 2px solid var(--rule); }
+      .dl-row.first { border-top: 2px solid var(--rule); }
+      .dl-head { display: flex; align-items: flex-start; flex: none; }
+      .dl-term { line-height: 1.5; font-weight: 700; word-break: auto-phrase; }
+      .dl-body { flex: none; line-height: 1.5; word-break: auto-phrase; }
+      /* 手順の案内（DADS のステップナビゲーション）: 番号の丸・札・題・補足。丸の形（塗り・二重の輪・白に枠）と札の語で状態を示す */
+      .st-col { position: absolute; display: flex; flex-direction: column; align-items: flex-start; }
+      .st-row { position: absolute; display: flex; align-items: flex-start; }
+      .st-text { display: flex; flex-direction: column; }
+      .st-line { display: flex; align-items: center; }
+      .st-no { width: 80px; height: 80px; flex: none; display: flex; align-items: center; justify-content: center; }
+      .st-no.cur { border-radius: 9999px; border: 4px solid var(--accent-mark); background-color: var(--bg); }
+      .st-dot { display: flex; align-items: center; justify-content: center; border-radius: 9999px; font-size: 32px; line-height: 1.0; font-weight: 700; }
+      .st-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .st-body { line-height: 1.6; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
       /* スタイルの見た目の調子（look・ADR 0005 追記）。deck.py が差し込む。standard は空 */
       {{LOOK}}
     </style>

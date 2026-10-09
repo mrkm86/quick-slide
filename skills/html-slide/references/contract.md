@@ -35,7 +35,7 @@ html-slide の描き出し係は、**この決まりに沿った HTML だけ**�
 | 箱（`div` など） | `background-color` のベタ塗り（透明度あり）、一様な枠（`solid` / `dashed`・4辺同じ太さと色）、一様な角丸、`box-shadow`（外側の影1つに近似） |
 | 文字 | 文字を直に持つ要素ごとにテキストボックス1つ。色・大きさ・太さ（600 以上は太字）・`text-align`・`line-height`。中の `em` / `strong` / `span` / `b` は色と太さを変えた run になる |
 | 画像 | `img`（png / jpg / webp）。`object-fit: cover` は切り抜き、`contain` は縮小。角丸は図形の角丸にする |
-| SVG | インラインの `svg` の中の `rect` / `circle` / `ellipse` / `line` / `polyline` / `polygon` / `path` / `text` / `tspan` / `g`。塗り・線・線の太さ・透明度。`path` の曲線は折れ線に近似する |
+| SVG | インラインの `svg` の中の `rect` / `circle` / `ellipse` / `line` / `polyline` / `polygon` / `path` / `text` / `tspan` / `g`。塗り・線・線の太さ・透明度。`path` の曲線は折れ線に近似する。1 つの `path` の中の複数の部分パス（`M`…`Z`）は 1 つの図形のまま写り、入れ子の部分パスは穴になる（viewBox の原点が負でもよい・アイコンの塗りの図形が使う。穴の向きは問わない＝塗りは even-odd） |
 | 字体 | `font-family` の先頭の名前を、そのまま PPTX の字体名にする（`latin` と `ea` の両方）。計測に使う字体は `@font-face` で読ませる |
 
 **止めるもの（`check` が rc=2）**: `transform`（`none` 以外）、`filter`、`backdrop-filter`、`clip-path`、`mask`、

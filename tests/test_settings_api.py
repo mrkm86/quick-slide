@@ -97,7 +97,7 @@ class SettingsApiTests(unittest.TestCase):
         deck_format = (REPO / "skills/html-slide/references/deck-format.md").read_text(encoding="utf-8")
         table = deck_format[deck_format.index("## 型の一覧"):deck_format.index("## 型ごとのキー")]
         self.assertEqual(values[1:], re.findall(r"^\| `([a-z-]+)` \|", table, re.M), "エンジンの型の一覧と同じ並び")
-        self.assertEqual(len(values), 27)   # おまかせ＋エンジンの型 26
+        self.assertEqual(len(values), 30)   # おまかせ＋エンジンの型 29
         self.assertTrue(all(p["label"] for p in self.catalog["layout_patterns"]))
         for s in self.catalog["styles"]:
             self.assertEqual(s["config"]["allowed_layouts"], ["auto"])

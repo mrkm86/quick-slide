@@ -266,7 +266,10 @@ class BrandFontTests(unittest.TestCase):
         self.assertIsNone(font["applied"])
         self.assertIn("Noto Sans JP", font["note"])
         self.assertEqual(LOOK.font_yaml(font), "")
-        self.assertIsNone(LOOK.brand_font(self.root, self.brand("Yu Gothic"), "html-slide")["note"])
+        self.assertIsNone(LOOK.brand_font(self.root, self.brand("Noto Sans JP"), "html-slide")["note"])    # html-slide の既定は Noto Sans JP（ADR 0020）
+        self.assertIsNone(LOOK.brand_font(self.root, self.brand("Yu Gothic"), "image-slide")["note"])     # image-slide は游ゴシックのまま
+        self.assertIn("既定（Noto Sans JP）", LOOK.brand_font(self.root, self.brand("Unknown Font"), "html-slide")["note"])
+        self.assertIn("既定（Yu Gothic）", LOOK.brand_font(self.root, self.brand("Unknown Font"), "image-slide")["note"])
         self.assertIsNone(LOOK.brand_font(self.root, {}, "html-slide")["requested"])
         # 字体ファイルが無ければ渡さない
         self.config("image-slide", {"Gone": {"regular": str(self.tmp / "nope.ttf")}})

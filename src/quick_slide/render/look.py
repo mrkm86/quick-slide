@@ -147,8 +147,21 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
     return update, record
 
 
-ENGINE_DEFAULT_FONT = "Yu Gothic"
-DEFAULT_FONT_NAMES = {"yu gothic", "yugothic", "游ゴシック", "游ゴシック体"}
+# エンジンの既定の字体（名前が同じブランドの字体は、渡さずに既定のまま組む）。html-slide は DADS の Noto Sans JP（ADR 0020）。
+# image-slide は画像に焼くので、游ゴシックのまま
+ENGINE_DEFAULT_FONT = "Noto Sans JP"
+DEFAULT_FONT_NAMES = {"noto sans jp", "notosansjp", "noto sans cjk jp"}
+IMAGE_ENGINE_DEFAULT_FONT = "Yu Gothic"
+IMAGE_ENGINE_FONT_NAMES = {"yu gothic", "yugothic", "游ゴシック", "游ゴシック体"}
+
+
+def default_font(skill: str) -> tuple[str, set[str]]:
+    """そのエンジンの既定の字体の名前と、同じ字体を指す名前の一覧（小文字）。"""
+    if skill == "image-slide":
+        return IMAGE_ENGINE_DEFAULT_FONT, IMAGE_ENGINE_FONT_NAMES
+    return ENGINE_DEFAULT_FONT, DEFAULT_FONT_NAMES
+
+
 _UNSAFE_FONT = set('"\\<>;{}')
 
 
@@ -157,7 +170,7 @@ def brand_font(root: DataRoot, brand_cfg: dict[str, Any], skill: str) -> dict[st
 
     エンジンは字体の名前だけでは組めない（文字の幅を字体ファイルで測る・PNG に焼く）。だから**字体ファイルの在りかが
     分かるときだけ**渡す: エンジンの設定（`engines/<スキル>/config.yaml`）の `fonts:` にその名前の regular（と bold）が
-    書いてあり、ファイルがあること。分からなければエンジンの既定（游ゴシック）のまま組み、回の記録（`look.font.note`）に理由を書く。
+    書いてあり、ファイルがあること。分からなければエンジンの既定（html-slide は Noto Sans JP・image-slide は游ゴシック）のまま組み、回の記録（`look.font.note`）に理由を書く。
     ブランドの字体は本文（`fonts.body`）の名前、無ければ見出し（`fonts.heading`）。代わりの名前（`fallback_families`）も順に見る。
     戻り値: {"requested", "applied"（渡した名前か None）, "files"（regular・bold）, "note"}。
     """
@@ -169,15 +182,16 @@ def brand_font(root: DataRoot, brand_cfg: dict[str, Any], skill: str) -> dict[st
             if isinstance(n, str) and n.strip() and n.strip() not in names:
                 names.append(n.strip())
     requested = names[0] if names else None
+    default_name, default_names = default_font(skill)
     out: dict[str, Any] = {"requested": requested, "applied": None, "files": None, "note": None}
-    if requested is None or requested.lower() in DEFAULT_FONT_NAMES:
+    if requested is None or requested.lower() in default_names:
         return out
     from .caches import engine_config
 
     configured = engine_config(root, skill).get("fonts")
     configured = configured if isinstance(configured, dict) else {}
     for name in names:
-        if name.lower() in DEFAULT_FONT_NAMES or name in ("sans-serif", "serif") or set(name) & _UNSAFE_FONT:
+        if name.lower() in default_names or name in ("sans-serif", "serif") or set(name) & _UNSAFE_FONT:
             continue
         spec = configured.get(name)
         if not isinstance(spec, dict) or not spec.get("regular"):
@@ -188,7 +202,7 @@ def brand_font(root: DataRoot, brand_cfg: dict[str, Any], skill: str) -> dict[st
             if name != requested:
                 out["note"] = f"ブランドの字体 {requested} の字体ファイルが分からないので、代わりの {name} で組みます"
             return out
-    out["note"] = (f"ブランドの字体 {requested} の字体ファイルが分からないので、エンジンの既定（{ENGINE_DEFAULT_FONT}）で組みます"
+    out["note"] = (f"ブランドの字体 {requested} の字体ファイルが分からないので、エンジンの既定（{default_name}）で組みます"
                    f"（エンジンの設定の fonts: に字体ファイルの在りかを書けば使います）")
     return out
 

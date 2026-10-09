@@ -1,5 +1,7 @@
-# 深緑の見本。白の地・墨に近い緑の文字・深緑のアクセント
+# html-slide の themes/forest.yaml と値が同じ（image-slide の tests が見比べる）。image-slide は描く指示の色に使う（muted・surface があれば添える）
+# 深緑の見本。DADS の緑の段。白の地・Gray-800 の文字・深緑のアクセント（green-800）
 background: "#ffffff"
-ink: "#1d2a26"
-primary: "#1f6b4a"
-font: "Yu Gothic"
+ink: "#333333"
+primary: "#197a4b"
+muted: "#666666"
+font: "Noto Sans JP"

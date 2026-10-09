@@ -5,8 +5,13 @@
 # 出力先（--out を省いたとき）。<out>/<台本の名前>/ に deck.pptx などが出る
 out: ~/.quick-slide/engines/html-slide/output
 
-# Chrome で文字を測るときの字体ファイル（ADR 0002）。PowerPoint for Mac 同梱の Windows 版游ゴシック
+# Chrome で文字を測るときの字体ファイル（ADR 0002・0020）。テーマの font の名前で引く。既定の字体は Noto Sans JP（DADS・SIL OFL 1.1）。
+# Google Fonts の静的な Regular と Bold の TTF を置き、パスを書く（可変フォントの 1 ファイルではなく、太さごとのファイル）。
+# Noto Sans JP の行が無い・ファイルが無いときは、游ゴシック（下。PowerPoint for Mac 同梱の Windows 版）で組む
 fonts:
+  "Noto Sans JP":
+    regular: ~/.quick-slide/fonts/noto-sans-jp/NotoSansJP-Regular.ttf
+    bold: ~/.quick-slide/fonts/noto-sans-jp/NotoSansJP-Bold.ttf
   "Yu Gothic":
     regular: /Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts/YuGothR.ttc
     bold: /Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts/YuGothB.ttc

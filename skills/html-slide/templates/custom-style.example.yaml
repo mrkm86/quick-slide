@@ -15,7 +15,7 @@ motion:
   transition: fade
 look:                             # 見た目の調子（文字の大きさ・余白は変えない）。項目と値は scripts/deck_style.py の LOOK
   background: plain               # plain / tint
-  surface: line                   # soft / white / primary / line
+  surface: line                   # soft / primary / line（white は退役。line と同じに描く・ADR 0020）
   radius: square                  # default / square / round
   band: none                      # small / bar / none
   emphasis: strong                # default / strong

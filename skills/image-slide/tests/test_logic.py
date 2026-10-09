@@ -1279,7 +1279,7 @@ def t_theme_primary_accent():
     root = tmpdir()
     one = S.load_theme(None, root, {})
     t1 = P.colors_text(one)
-    check("主役の色 #0db4f2" in t1 and "差し色" not in t1 and "強調色は主役の色" in t1, t1)
+    check("主役の色 #006f83" in t1 and "差し色" not in t1 and "強調色は主役の色" in t1, t1)
     two = root / "two.yaml"
     two.write_text('background: "#ffffff"\nink: "#1a1a1a"\nprimary: "#f5a623"\naccent: "#399dd1"\n', encoding="utf-8")
     t2 = P.colors_text(S.load_theme(str(two), root, {}))

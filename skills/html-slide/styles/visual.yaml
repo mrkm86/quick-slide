@@ -16,7 +16,7 @@ motion:
   transition: morph
 look:                           # 見た目の調子（文字の大きさ・余白は変えない）
   background: tint              # 地に強調色をうっすら
-  surface: white                # カード・比較の列・KPI は白に影
+  surface: line                 # カード・比較の列・KPI は白に枠線（白に影の white は退役・ADR 0020）
   radius: round                 # 箱の角を大きく丸める
   band: bar                     # 中身の型の上端に全幅の帯
   emphasis: strong              # 強調する箱は強調色のベタ塗りに白い文字

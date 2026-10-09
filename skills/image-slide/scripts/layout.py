@@ -55,7 +55,7 @@ BAND_MAX_SHARE = 0.006                  # その画素がこの割合を超え�
 
 # 透かし（--watermark）。Gray-400・高さの 1.5%・下端から 1.2%（ADR 0010）。数字は html-slide の deck.py と同じ
 WATERMARK_PX = 16                       # 文字の大きさ（1080 の 1.5%）
-WATERMARK_COLOR = "#9ca3af"             # 固定の薄いグレー（下の色は測らない）
+WATERMARK_COLOR = "#767676"             # Gray-536（DADS・白の地で 4.5:1）。html-slide と同じ。絵の上は測らない
 WATERMARK_BOTTOM = 13                   # 文字のベースラインから画面の下端まで（1080 の 1.2%）
 ROW_MID_RAISED = BAND_TOP + LOGO_BOX_H / 2   # フッタか番号があるページの下の行の中心（1026。ロゴの上端が帯の上端にそろう）
 

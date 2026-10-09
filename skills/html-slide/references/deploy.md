@@ -12,6 +12,7 @@ Quick Slide から使うなら、`python3 <プラグイン>/skills/quick-slide/s
 | Node | PATH の `node`（設定の `node_bin`・環境変数 `HTML_SLIDE_NODE` で替えられる） | 18 以上 |
 | puppeteer-core | 下の「在りかの探し方」 | スキルの中に node_modules を置かない |
 | Chrome（headless shell） | 下の「在りかの探し方」 | Chrome そのもの（GUI）ではなく、`chrome-headless-shell` |
+| 字体（Noto Sans JP・既定） | `~/.quick-slide/fonts/noto-sans-jp/NotoSansJP-{Regular,Bold}.ttf` | Google Fonts（SIL OFL 1.1）の静的な TTF。設定の `fonts:` にパスを書く。無ければ次の游ゴシックで組む（ADR 0020） |
 | 字体（游ゴシック） | `/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts/YuGoth*.ttc` | PowerPoint for Mac に同梱。無い機体では設定の `fonts:` でパスを渡す（ADR 0002） |
 | LibreOffice（任意） | `/opt/homebrew/bin/soffice` | `verify --odp` と確認用の PDF に使う。無ければその照合だけ飛ばす |
 

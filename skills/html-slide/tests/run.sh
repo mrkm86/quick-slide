@@ -117,6 +117,17 @@ deck "ロゴのページごとの扱い（Chrome）: 右下が写真なら左下
 deck "ロゴの位置（--logo-position・Chrome）: 左下 → 右下・右上 → 右下・左下なら下の文字をロゴの右へ・角ごとに部品名・左上は止める" logo_positions
 deck "ページ番号は既定でオフ・出すときは中央下（下の文字はその手前まで）" page_numbers_default_off
 deck "透かし（--watermark）: 全ページの中央下の端・CSS と数字がそろう・PPTX では選べない・動かせない !!watermark・付けなければ足さない・改行は止める" watermark
+deck "DADS: トークンの正本（skills/dads/tokens/slide.json）と定数が同じ（文字の段・行高・余白・格子・角丸・影・色）" dads_tokens
+deck "DADS: 色の役（primary・mark・decor・strong・rule・bar・faint・意味の色）が3つのテーマとブランドの色で 4.5:1・3:1 を満たす" dads_palette
+deck "DADS: 組んだ HTML の文字は段・行高は段・角丸は段・影は elevation-2 だけ・雛形の余白は 8 の倍数" dads_scale_rhythm
+deck "字体: 既定は Noto Sans JP・ファイルが分からなければ游ゴシックに落ちる（警告にしない）・字体の上下の幅を 1em に縮める" font_default_and_fallback
+deck "下の文字は1行（22px → 20px）・入らなければ透かしがあるとき rc=2・無ければ警告" footer_one_line
+deck "型の構造: 強める項目は色だけで示さない（札 badge・太い輪郭・縦の罫と太字・二重の丸・象限の枠）・badge は強める項目にだけ" dads_emphasis_not_by_color
+deck "matrix: 名前は点・ほかの名前・区切り線と重ならないようにずらす・点どうしが重なれば rc=2" dads_matrix_overlap
+deck "line-chart: 点の形と線種で系列を区別・線の端に名前・入らなければ凡例に線種と点の形も写す" dads_line_chart_marks
+deck "DOM 順（hub は中心 → 周り・pairs は札 → 文）・pairs の札は語とアイコン・takeaway はアイコンつき" dads_reading_order
+deck "新しい型（notice・deflist・steps）: 種類・状態を形と語で示す・クリックは枠・行・段ごと・誤りは rc=2" dads_new_types
+deck "退役の仕組み（RETIRED_TYPES・RETIRED_LOOKS）: 描いて警告・deck-format に載せない・surface: white は line と同じ" retired
 
 # --- 画像の枠を Codex で埋める（ADR 0011・偽物の codex） ---
 # --- 出力（ADR 0012） ---

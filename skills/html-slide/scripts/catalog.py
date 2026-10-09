@@ -25,7 +25,7 @@ import outputs as OUT  # noqa: E402
 SKILL = pathlib.Path(__file__).resolve().parent.parent
 IMG = SKILL / "examples" / "images"
 ASSET = SKILL / "examples" / "assets"
-SHOWN_KEYS = ("layout", "text_side", "tone", "split", "side", "accent", "arrow", "highlight", "steps", "fit", "motif")
+SHOWN_KEYS = ("layout", "text_side", "tone", "split", "side", "accent", "arrow", "highlight", "current", "steps", "fit", "motif")
 
 
 def im(name: str, **kw) -> dict:
@@ -208,6 +208,20 @@ def variants() -> list[dict]:
         V("pairs", {"headline": "会議は、2つの直しで短くなる", "items": pairs[:2]}, "2組"),
         V("pairs", {"headline": "会議は、3つの直しで短くなる", "items": pairs[:3], "takeaway": "どれも、今日から変えられる"}, "3組・締めの帯"),
         V("pairs", {"headline": "会議は、4つの直しで短くなる", "items": pairs, "bad_label": "いま", "good_label": "これから"}, "4組・札を替える"),
+        V("notice", {"headline": "試行の間、**3つのこと**を知っておいてください", "items": [
+            {"kind": "info", "title": "試行は11月から、2部署で始める", "body": "ほかの部署は結果を見てから決める"},
+            {"kind": "warning", "title": "25分で終わらなくても、会議は閉じる", "points": ["残りは次回か文書に", "議題が無い会議は開かない"]},
+            {"kind": "error", "title": "議事録に個人名は書かない", "body": "役割で書き換える"}]}, "3つ・種類つき"),
+        V("notice", {"headline": "設定は**完了**している", "items": [{"kind": "success", "title": "次の画面から使える", "body": "やり直しは要らない"}]}, "1つ"),
+        V("deflist", {"headline": "この資料で使う言葉は、**4つ**だけ", "items": [
+            {"term": "定例会議", "body": "曜日と時間を決めて繰り返す会議"}, {"term": "25分ルール", "body": "30分の枠でも25分で閉じる"},
+            {"term": "議題", "body": "話す内容と決めたいことを1行ずつ"}, {"term": "3行の記録", "body": "決定・担当・期限だけの議事録"}]}),
+        V("steps", {"headline": "申請は5つの段で進み、**いまは2段目**", "current": 2, "items": [
+            {"title": "申込", "body": "フォームに入力"}, {"title": "確認", "body": "担当が確かめる"}, {"title": "承認", "body": "部長が決裁"},
+            {"title": "手配", "body": "物品を発注"}, {"title": "完了", "body": "受け取って報告"}]}, "横"),
+        V("steps", {"headline": "会議は4つの段で進み、**いまは3段目**", "layout": "column", "current": 3, "items": [
+            {"title": "前日までに議題を出す", "body": "予定表に1行ずつ"}, {"title": "事前に資料を読む", "body": "当日は質問から"},
+            {"title": "25分で決めて閉じる", "body": "残りは次回へ"}, {"title": "3行の記録を共有する", "body": "その日のうちに"}]}, "縦"),
         V("cards", {"headline": "会議は**3つのルール**で短くできる", "items": [{"icon": "clock", "title": "30分で切る", "body": "延長しない"},
                     {"icon": "list", "title": "議題は前日に", "body": "1行で書く"}, {"icon": "users", "title": "立って話す", "body": "10分の会議"}],
                     "takeaway": "3つを同時に始める"}, "アイコン・締めの帯"),

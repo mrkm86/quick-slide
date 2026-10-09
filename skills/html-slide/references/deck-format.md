@@ -17,9 +17,11 @@
 8. **ラベルも日本語で書く。** 「RULE 1」ではなく「ルール1」（固有名詞は英語のままでよい）
 9. **型は中身の形で選び、同じ型を続けない。** 順番のある段は `flow`、並列の要点は `cards`、観点×項目は `table`、2軸の位置づけは `matrix`、時期は `timeline`、
    一番言いたい1文は `statement`、冒頭の結論と根拠は `summary`、数字は 4. のとおり。順番の無い並びを `flow` にしない。
+   進み具合（どこまで済んで今どこか）を見せるなら `steps`、補足・注意・決まりごとは `notice`、用語と説明・項目と内容の対は `deflist`（比べるなら `table`）。
    同じ型を3枚続けない。1つの型は表紙・締めを除いた枚数の3分の1まで。10枚を超えたら話の区切りに `section`（か `agenda` の再掲）を入れる
 10. **箱の中は名詞と短い補足まで。** 文で説明しない。題は全角10字まで、補足は20字まで（「文字起こし／Whisper・MLX」）。
-   言い切りは見出しに、結論の1行は `takeaway` に置く。構成要素は `equation`、中心と周りは `hub`、直し方は `pairs`、並列の要点には `icon` を添える
+   言い切りは見出しに、結論の1行は `takeaway` に置く。構成要素は `equation`、中心と周りは `hub`、直し方は `pairs`、並列の要点には `icon` を添える。
+   強める項目（`accent`・`highlight`・`current`）は色だけに頼らない: 型が札（「注目」など）・太い輪郭・二重の丸で示す。札の語は `badge` で替えられる（全角6字まで）
 
 > 6〜8 は、見本の台本を3ラウンド検品して実際に落ちた点。10 は、文で埋めた箱が冗長に見えた実例から。9 は、13枚の台本で7種しか使わず矢羽根が4枚に偏った実例から。
 
@@ -44,7 +46,8 @@
 | `talk` | 話す台本（文字の配列）。**1つ目は画面に入ったとき、2つ目以降は各クリックのときに話すこと**。省けば空 |
 | `transition` | `morph`（既定）／`fade`／`none`。1枚目の既定は `fade` |
 | `steps` | `false` にすると、その1枚のクリックをなくす（全部が自動で順に出る。`talk` は1つにする） |
-| `takeaway` | 中身の下に置く**結論の1行の帯**（全角でおよそ40字まで）。最後のクリックと一緒に出る（クリックは増えない）。中身の型（`cards`・`flow`・`compare`・`bullets`・`timeline`・`summary`・`kpi`・`bar-chart`・`line-chart`・`table`・`matrix`・`equation`・`hub`・`pairs`）だけ |
+| `takeaway` | 中身の下に置く**結論の1行の帯**（全角でおよそ40字まで）。最後のクリックと一緒に出る（クリックは増えない）。頭にアイコンが付く。中身の型（`cards`・`flow`・`compare`・`bullets`・`timeline`・`summary`・`kpi`・`bar-chart`・`line-chart`・`table`・`matrix`・`equation`・`hub`・`pairs`・`deflist`・`steps`）だけ。`notice` には置かない |
+| `takeaway_icon` | 帯の頭のアイコンの名前（下の「アイコン」の一覧から。省くと `info`）。`takeaway` と一緒に書く |
 | `fx` | 並びの1つずつ（カード・矢羽根・比較の列・箇条書きの項目・大きな数字の補足・要約の根拠・指標・人）の出方を変える: `rise`・`fade`・`pop`・`wipe-right` など（contract.md の語彙） |
 
 **文字の大きさ**は型が決める。項目が少なくて場所が余るページ（並びの型で画像の無いもの）は、型が文字を大きくして組む。並ぶ項目の題・本文の大きさはそろう（[ADR 0018](../docs/adr/0018-grow-sparse-pages.md)）。
@@ -97,14 +100,17 @@
 | `equation` | 式で言い切る（A＋B＋C＝D・構成要素とその結果）。要素2〜4と答え | 要素の数＋1 |
 | `hub` | 中心と周り（司令塔と道具・1つの仕組みと関わる人や部品 3〜6） | 1 |
 | `pairs` | よくない例 → よい例 を 2〜4 組（直し方・やり方の違い） | 組の数 |
+| `notice` | 補足・注意・決まりごとを、種類（お知らせ・完了・注意・重要）つきの枠で 1〜3 個（DADS の注釈ブロック） | 枠の数 |
+| `deflist` | 用語と説明・項目と内容の対を、左右 2 列で 3〜8 行（DADS の説明リスト）。比べるなら `table` | 行の数 |
+| `steps` | 手順の進み具合（済・いま・これから）を、番号の丸と札で見せる。横 3〜5 段・縦 3〜6 段（DADS のステップナビゲーション）。順番の説明だけなら `flow` | 段の数 |
 
 ## 型ごとのキー
 
 中身の型（`cover`・`section`・`photo` 以外）は左上に見出しを持つ:
 `kicker`（小さな名札・任意）、`headline`（**主張**・必須）、`sub`（リード文・任意・2行まで）、`source`（出典・注記・任意・下端に1行）。
 
-**文字の長さの目安**: 見出しは 2行（全角でおよそ 28字×2）まで。入らなければ 44px まで縮め、それでも入らなければ rc=2。
-ほかの文字も型ごとに行数の上限があり、縮めても入らなければ rc=2（**文を短くする**。最終的なはみ出しは描き出しの Chrome の検査が見る）。
+**文字の長さの目安**: 見出しは 2行（全角でおよそ 28字×2）まで。入らなければ DADS の段（64→57→48→45）を1つずつ下り、45px まで下りても入らなければ rc=2。
+ほかの文字も型ごとに行数の上限と下限（本文 24px・注記 22px）があり、下限まで下りても入らなければ rc=2（**文を短くする**。最終的なはみ出しは描き出しの Chrome の検査が見る）。
 
 | 型 | キー（★は必須） |
 |---|---|
@@ -113,34 +119,37 @@
 | `section` | `title`★・`subtitle`・`number`（省くと章扉の通し番号）・`label`（「CHAPTER」など）・`image`（あれば右半分に写真、無ければ左に主役の色の帯）・`layout`・`text_side`・`tone`・`motif`（cover と同じ。`hero` で全面の写真、`graphic` で右半分を図形で飾る） |
 | `statement` | `headline`★（主張・3行まで）・`body`（補足・3行）・`kicker` |
 | `big-number` | `value`★（数字の文字）・`unit`（単位）・`label`（説明・2行）・`note`・`side`（`{value, text}`・0〜3） |
-| `cards` | `items`★（`{label, title★, body, accent, image, icon}`・2〜4）。`accent: true` の1枚を強める。`image` はカードの上に 16:9 で、書くなら全部のカードに |
-| `flow` | `items`★（`{label★, title, body, accent}`・3〜5）。`label` は矢羽根の中の短い語（「課題」）。既定で最後の段を強める |
-| `compare` | `left`★・`right`★（`{label, title, points: [文字…], image}`・points は5つまで。`image` は列の上に 16:9 で、書くなら両方に＝ビフォー・アフター）・`accent`（`right` 既定／`left`／`none`）・`arrow`（既定 true） |
+| `cards` | `items`★（`{label, title★, body, accent, image, icon, badge}`・2〜4）。`accent: true` の1枚を強める（頭に札「注目」が付く。`badge` でその語を替える）。`image` はカードの上に 16:9 で、書くなら全部のカードに |
+| `flow` | `items`★（`{label★, title, body, accent, badge}`・3〜5）。`label` は矢羽根の中の短い語（「課題」）。既定で最後の段を強める（濃い面と太い輪郭。`badge` を書けば、その段の頭に札が付く） |
+| `compare` | `left`★・`right`★（`{label, title, points: [文字…], image, badge}`・points は5つまで。強める側の頭に札「注目」が付く（`badge` でその語を替える）。`image` は列の上に 16:9 で、書くなら両方に＝ビフォー・アフター）・`accent`（`right` 既定／`left`／`none`）・`arrow`（既定 true） |
 | `bar-chart` | `bars`★（`{label★, value★（0以上の数）, highlight, display}`・2〜8）・`unit`（値の後ろに付ける）・`max`（軸の上限）・`note`（グラフの注記）・`callout`（`{value, text}` 右に要点） |
-| `table` | `columns`★（2〜5）・`rows`★（各行は columns と同じ数・1〜7行）・`highlight`（強める列・1から）・`widths`（列の幅の比） |
-| `bullets` | `items`★（文字か `{title, body, icon}`・2〜5。icon は書くなら全部の項目に）・`image`（脇に写真）・`side`（写真の側 `right` 既定・`left`）・`split`（写真の幅 `1/3` 既定＝600・`2/5`＝700・`1/2`＝820） |
-| `timeline` | `items`★（`{when★, title★, body}`・3〜6）・`current`（今の時期・1から） |
+| `table` | `columns`★（2〜5）・`rows`★（各行は columns と同じ数・1〜7行）・`highlight`（強める列・1から。色の地に加えて、太い縦の罫と太字で示す）・`widths`（列の幅の比） |
+| `bullets` | `items`★（文字か `{title, body, icon}`・2〜5。icon は書くなら全部の項目に）・`image`（脇に写真）・`side`（写真の側 `right` 既定・`left`）・`split`（写真の幅 `1/3` 既定＝格子の4列 528・`2/5`＝5列 672・`1/2`＝6列 816） |
+| `timeline` | `items`★（`{when★, title★, body}`・3〜6）・`current`（今の時期・1から。札「いま」と二重の丸で示す） |
 | `photo` | `image`★・`headline`★・`layout`（`full` 既定／`left`／`right`／`band`＝上に横長の写真の帯 1920×480、下に見出しと本文。下の文字・ページ番号も出す）・`split`（left・right の写真の幅 `1/2` 既定＝960・`2/5`＝768・`1/3`＝640）・`kicker`・`body`・`caption`（写真の出典） |
 | `quote` | `quote`★（4行まで）・`by`（誰の）・`position`（肩書き。`role` は章の ID に使う）・`kicker`・`layout`（`plain` 既定／`full`＝全面の写真に一様な暗幕を敷いて白い文字。帯・ページ番号は出さない／`portrait`＝左に人物の丸い写真）・`image`（full・portrait で必須） |
-| `gallery` | `items`★（`{image★, caption}`・2〜4）。枠は全部同じ大きさ（縦横比は枚数で決まる。2:3 より縦長にしない）・`layout`（`row` 既定／`collage`＝3枚を大1枚（左 58%）＋小2枚） |
-| `annotate` | `image`★・`items`★（`{x★, y★（0〜100 の %）, title★, body}`・1〜6）・`fit`（`cover` 既定＝枠いっぱいに切り抜き、% は枠に対して／`contain`＝切らずに縮め、% は描いた画像に対して）。画像は左 1080 幅、説明は右。印と説明は同じクリックで1つずつ |
+| `gallery` | `items`★（`{image★, caption}`・2〜4）。枠は全部同じ大きさ（縦横比は枚数で決まる。2:3 より縦長にしない）・`layout`（`row` 既定／`collage`＝3枚を大1枚（左は格子の 7 列）＋小2枚（5 列）） |
+| `annotate` | `image`★・`items`★（`{x★, y★（0〜100 の %）, title★, body}`・1〜6）・`fit`（`cover` 既定＝枠いっぱいに切り抜き、% は枠に対して／`contain`＝切らずに縮め、% は描いた画像に対して）。画像は左の格子の 8 列（1104 幅）、説明は右。印と説明は同じクリックで1つずつ |
 | `figure` | `image`★（`object-fit: contain` で縮めて全体を見せる。余りは地の色）・`caption`（図のすぐ下に1行） |
-| `closing` | `items`（次の一手 `{title, body}`・0〜4）・`contact`（文字・配列・`{label, name, lines}`）。どちらかは必須・`image`（右に写真 760×1080。次の一手と連絡先は左に縦に積む。ページ番号は出さない） |
+| `closing` | `items`（次の一手 `{title, body}`・0〜4）・`contact`（文字・配列・`{label, name, lines}`）。どちらかは必須・`image`（右に写真 768×1080。次の一手と連絡先は左に縦に積む。ページ番号は出さない） |
 | `summary` | `headline`★（結論）・`points`★（`{title★, body, value}`・2〜3）・`label`（根拠の番号の前の語。既定「根拠」）。`kicker` は省くと「結論」 |
-| `kpi` | `items`★（`{label★, value★, unit, delta（前年比など）, trend（up・down・flat → ▲▼→）, note, accent}`・3〜4）・`image`（上に現場の写真の帯 1920×340。見出しと数字はその下） |
-| `line-chart` | `labels`★（横軸の時点・3〜12）・`series`★（`{name, values★（labels と同じ数）, highlight}`・1〜3。2本以上は `name` 必須）・`unit`・`min`（既定 0。負の値があれば必須）・`max`（省くと切りのよい上限）・`note`・`callout`（`{value, text}`）・`value_labels`（`all`／`last`／`none`。既定は1本で8時点までなら all、ほかは last） |
+| `kpi` | `items`★（`{label★, value★, unit, delta（前年比など）, trend（up・down・flat → ▲▼→）, note, accent, badge}`・3〜4。accent の指標の頭に札「注目」が付く）・`image`（上に現場の写真の帯 1920×296。見出しと数字はその下） |
+| `line-chart` | `labels`★（横軸の時点・3〜12）・`series`★（`{name, values★（labels と同じ数）, highlight}`・1〜3。2本以上は `name` 必須。線は点の形（丸・四角・ひし形）と線種（実線・破線・点線）を台本の順に変え、線の端に名前と最後の値を出す。名前が長くて入らないときだけ凡例）・`unit`・`min`（既定 0。負の値があれば必須）・`max`（省くと切りのよい上限）・`note`・`callout`（`{value, text}`）・`value_labels`（`all`／`last`／`none`。既定は1本で8時点までなら all、ほかは last） |
 | `team` | `members`★（`{name★, role, note, image, initials}`・2〜6）。`image` が無ければ `initials`（省くと名前の1文字目）の丸。5〜6人は3人ずつ2段 |
 | `equation` | `items`★（`{title★, body, icon}`・2〜4）・`result`★（`{title★, body, icon}`・答え。主役の色で塗った箱。`body` は札になる）。見出しは大きく出る |
 | `hub` | `center`★（`{title★, body, icon}`・中心の丸）・`items`★（`{title★, body, icon, tag}`・3〜6。左右に分けて並べ、中心と線でつなぐ。title・body・tag はそれぞれ1行）。見出しは大きく出る |
-| `pairs` | `items`★（`{label★, before★, after★, icon}`・2〜4。label は何の話か・before はよくない例・after はよい例。どれも短く）・`bad_label`（既定「NG」）・`good_label`（既定「OK」）。見出しは大きく出る |
-| `matrix` | `x`★・`y`★（`{label★, low, high}`）・`items`★（`{label★, x★, y★（0〜100）, accent}`・1〜8）・`quadrants`（`{title, body}` を 左上・右上・左下・右下 の順に4つ）・`focus`（淡く塗る象限・同じ順で1〜4）・`callout`（`{title, text}` 右に要点） |
+| `pairs` | `items`★（`{label★, before★, after★, icon}`・2〜4。label は何の話か・before はよくない例・after はよい例。どれも短く）・`bad_label`（既定「NG」）・`good_label`（既定「OK」）。札には×・チェックのアイコンが付く。見出しは大きく出る |
+| `notice` | `items`★（`{kind, label, title★, body, points}`・1〜3）。`kind` は `info`（お知らせ・既定）／`success`（完了）／`warning`（注意）／`error`（重要）で、アイコン・種類の語・枠の色が決まる（`label` を書けばその語）。`points` は短い箇条（4つまで）。1つずつクリックで出る。見出しの下に枠を縦に並べる |
+| `deflist` | `items`★（`{term★, body★, icon}`・3〜8）。左に用語（太字）・右に説明。用語の列は格子の 3 列（長ければ 4 列）で固定。`icon` は書くなら全部の行に。1行ずつクリックで出る |
+| `steps` | `items`★（`{title★, body, state}`・横 3〜5・縦 3〜6）・`current`（いま何段目か・1から。それより前が済・後ろがこれから）・`layout`（`row` 既定＝横／`column`＝縦）。`state`（`done`＝済・`current`＝いま・`todo`＝これから）を段ごとに書けば `current` より優先。どちらも無ければ rc=2。状態は丸の形（済は塗り・いまは二重の輪・これからは白に枠）・札の語・線（済は実線・これからは破線）で示す。1段ずつクリックで出る |
+| `matrix` | `x`★・`y`★（`{label★, low, high}`）・`items`★（`{label★, x★, y★（0〜100）, accent}`・1〜8。accent の点は二重の輪。名前どうし・区切り線との重なりはずらし、置けなければ rc=2＝x・y を離す）・`quadrants`（`{title, body}` を 左上・右上・左下・右下 の順に4つ）・`focus`（淡く塗る象限・同じ順で1〜4）・`callout`（`{title, text}` 右に要点） |
 
 ### アイコン（`icon`）
 
-`cards`・`bullets`・`equation`・`hub`・`pairs` の項目に、線のアイコンを名前で添えられる（[ADR 0019](../docs/adr/0019-diagram-types-icons-takeaway.md)）。
+`cards`・`bullets`・`equation`・`hub`・`pairs`・`deflist` の項目と、`takeaway_icon`（結論の帯）に、アイコンを名前で添えられる（[ADR 0019](../docs/adr/0019-diagram-types-icons-takeaway.md)）。
 PPTX では図形のまま（色はテーマの主役の色）。合う名前が無ければ書かない。カードは icon と image のどちらか。
 
-doc（書類・原稿）・list（一覧・手順）・checklist（決まり・確かめること）・code（プログラム）・chart（数字・グラフ）・trend（伸び・増える）・scissors（切る・削る）・image（写真・画像）・video（動画・再生）・mic（声・話す）・speaker（音）・captions（字幕・文字）・chat（会話・相談）・mail（連絡・メール）・sparkle（強調・仕上げ・AI）・bulb（思いつき・アイデア）・target（目標・狙い）・flag（決めたこと・到達点）・check（できた・よい）・cross（やめる・よくない）・alert（注意・困りごと）・search（探す・調べる）・folder（フォルダ・置き場）・layers（重ねる・仕組み）・gear（設定・仕組み）・shield（守る・安全）・lock（鍵・閉じる）・link（つなぐ）・refresh（繰り返す・見直す）・upload（入れる・出す）・download（受け取る）・calendar（日付・予定）・clock（時間）・yen（お金・費用）・user（人・担当）・users（人たち・チーム）・building（会社・建物）・laptop（パソコン・手元）・phone（スマホ）・cloud（外のサービス・クラウド）・book（学ぶ・手引き）・pin（場所）・star（おすすめ・大事）・rocket（始める・速く）・hub（司令塔・まとめ役）
+doc（書類・原稿）・list（一覧・手順）・checklist（決まり・確かめること）・code（プログラム）・chart（数字・グラフ）・trend（伸び・増える）・scissors（切る・削る）・image（写真・画像）・video（動画・再生）・mic（声・話す）・speaker（音）・captions（字幕・文字）・chat（会話・相談）・mail（連絡・メール）・sparkle（強調・仕上げ・AI）・bulb（思いつき・アイデア）・target（目標・狙い）・flag（決めたこと・到達点）・check（できた・よい）・cross（やめる・よくない）・alert（注意・困りごと）・search（探す・調べる）・folder（フォルダ・置き場）・layers（重ねる・仕組み）・gear（設定・仕組み）・shield（守る・安全）・lock（鍵・閉じる）・link（つなぐ）・refresh（繰り返す・見直す）・upload（入れる・出す）・download（受け取る）・calendar（日付・予定）・clock（時間）・yen（お金・費用）・user（人・担当）・users（人たち・チーム）・building（会社・建物）・laptop（パソコン・手元）・phone（スマホ）・cloud（外のサービス・クラウド）・book（学ぶ・手引き）・pin（場所）・star（おすすめ・大事）・rocket（始める・速く）・hub（司令塔・まとめ役）・info（情報・補足）・notice（お知らせ・告知）・help（疑問・ヘルプ）・error（エラー・失敗）・done（チェックの印だけ（丸なし））・arrow-right（次へ・進む）・arrow-left（戻る）・arrow-up（上・昇順）・arrow-down（下・降順）・chevron-right（リンクの強調・次）・chevron-left（前）・chevron-down（開く（アコーディオン・選択））・chevron-up（閉じる）・compare（比べる）・trend-down（減る・下がる）・add（追加）・remove（削除・引く）・close（閉じる・×）・edit（編集）・delete（ごみ箱・削除）・copy（複製）・external-link（新しいタブで開く）・eye（見る・表示）・filter（絞り込み）・sort（並べ替え）・menu（メニュー）・more-vert（縦三点（メニューを開く））・home（ホーム・トップ）・article（記事・本文）・table（表）・slideshow（スライド・資料）・assignment（課題・申請）・fact-check（検証・照合）・database（データ・保存）・pie（割合・構成比）・analytics（分析・気づき）・timer（所要時間・計る）・hourglass（待つ・処理中（動かない砂時計））・history（履歴・経過）・event（催し・日程）・terminal（コマンド・端末）・key（鍵・認証）・bolt（速い・電気・即時）・robot（AI・ロボット）・brain（考える・判断）・tree（構造・分岐）・puzzle（部品・拡張）・tool（道具・直す）・speed（速さ・性能）・school（学ぶ・研修）・work（仕事・業務）・handshake（合意・連携）・globe（世界・公開）・translate（言語・翻訳）・award（成果・表彰）
 
 ### 画像
 
@@ -161,7 +170,7 @@ doc（書類・原稿）・list（一覧・手順）・checklist（決まり・�
 - 枠の一覧（推奨の大きさ・文字を重ねる側を空けるよう足した prompt・有るか無いか）は `deck.py --script <台本> --out _ --slots`（関数は `deck.image_slots`）。
   推奨の大きさは、画像生成で出せる 1024×1024・1536×1024・1024×1536 のうち枠の縦横比に一番近いもの（16:9 の全面なら 1536×1024 を中央で切り抜く）
 - 出力の `assets/` にコピーして HTML から引く。枠に合わせて切り抜く（`object-fit: cover`・`focus` の位置）
-- **写真の上に文字を重ねる型**は、文字の下に ink の暗幕を敷く。暗幕を一番明るい（白い）写真に重ねた色を地として、白の文字は 4.5、強調は 3.0 を下回れば rc=2（テーマの検査と同じ基準）
+- **写真の上に文字を重ねる型**は、文字の下に ink の暗幕を敷く。暗幕を一番明るい（白い）写真に重ねた色を地として、白の文字も強調の色も 4.5 を下回れば rc=2（DADS は大きな文字の緩和を使わない。暗幕は ink の 86%）
 
 ### 絵の出どころ（ADR 0011）
 
@@ -224,9 +233,9 @@ doc（書類・原稿）・list（一覧・手順）・checklist（決まり・�
 
 台本には書かない（ロゴと同じく引数で渡す。同じ台本を、配る先ごとに違う透かしで出せる）。例: `社外秘`・`配布禁止`・`○○様限定`。
 
-- **全ページ**（表紙・章扉・写真も）の**中央下の端**に1行で置く。16px・固定の薄いグレー `#9ca3af`・ベースラインが下端から 13px
-- 色は下の色を測らずに固定（明るい写真の上では薄くなる。透かしなので許す）
-- 下の文字の行（1006〜1037px。中央下のページ番号）の下に来るので重ならない。行は動かさない
+- **全ページ**（表紙・章扉・写真も）の**中央下の端**に1行で置く。16px（行高 170%）・Gray-536 `#767676`（白の地で 4.54:1。地が白でなければ濃くする）・ベースラインが下端の約 12px 上
+- 色は地（白）の上で 4.5:1。写真の上は測らない（明るい写真の上では薄くなる。透かしなので許す）
+- 下の文字の行（1008〜1041px。中央下のページ番号）の下（1048px〜）に来るので重ならない。行は動かさない。下の文字が 1 行に入らないと透かしの帯にかかるので、透かしを付けるときは rc=2（付けないときは警告）
 - PPTX では全スライドに `!!watermark` の文字の部品を置き、**クリックで選べない・動かせない・書き換えられない**ようにする（`a:spLocks`。消すには［選択］ウィンドウから）。モーフでは動かずに残る
 - PowerPoint の「ヘッダーとフッター」やスライドマスターは使わない（マスターの部品は全面の写真の下に隠れるため）
 - 決めた経緯は [ADR 0009](../docs/adr/0009-watermark.md)
@@ -243,12 +252,16 @@ accent: "#399dd1"    # 差し色（任意）。*語*・accent: true の項目・
 ```
 
 古い書き方（主役の色を `accent` に書く）は rc=2（「primary に名前が変わった」）。
-ほかの色は `deck.py` が2色それぞれから作る: 面（そのまま）・文字（地の上で読める濃さに暗くした色）・文字を載せる面（白か文字の色が読める濃さ）・
-その面に載せる文字（白か文字の色の、読める方。明るい黄色なら黒）・淡い地・写真の上の色。
-**文字と地の組み合わせのコントラストを検査する**（本文・薄い字・色の文字は 4.5、色の文字と線は 3.0 を下回れば rc=2）。
+ほかの色は `deck.py` が2色それぞれから、DADS のキーカラーの作り方（`skills/dads/scripts/keycolors.py`）で作る（[ADR 0020](../docs/adr/0020-dads-foundations.md)）。
+DADS のプリミティブの段そのまま（`#006f83` = cyan-900 など）ならその色相の段、そうでなければ**同じ色相のまま明度だけを動かす**:
+文字にも使う主役の色 `primary`（地・surface・淡い地の全部の上で 4.5:1）・意味のある図形と線の `primary-mark`（3:1）・飾りの面だけの `primary-decor`・
+文字を載せる面 `primary-strong` と、その上の文字 `on-primary`（白）・淡い地 `tint`・写真の上の色 `primary-on-dark`。`accent` も同じ。
+文字の `ink` は Gray-800・`muted` は Gray-600・罫・枠・軸の `rule` は Gray-536・非強調の棒の `bar` は 3:1。意味の色（成功・エラー・警告）は DADS の値で、白い面の上だけ。
+**組み合わせのコントラストを検査する**（文字は大きさによらず 4.5、罫・枠・棒・図形は 3.0 を下回れば rc=2）。
 
-字体のファイルは、テーマの `font`（既定 `Yu Gothic`）の名前で設定（`config.example.yaml` を見る）の `fonts` を引く。
-無ければ PowerPoint 同梱の游ゴシックの既定のパス。テーマの `font_files: {regular, bold}` で直に差し替えもできる。
+字体は、テーマの `font`（既定 `Noto Sans JP`）の名前で設定（`config.example.yaml` を見る）の `fonts` を引く。
+Noto Sans JP のファイルが分からなければ、游ゴシック（設定の `fonts`、無ければ PowerPoint 同梱のパス）で組み、`deck-info.json` の `font_note` に理由を残す。
+テーマの `font_files: {regular, bold}` で直に差し替えもできる。文字の大きさは DADS の段（64・57・48・45・36・32・28・26・24・22・20・16 と、題・数字・主張だけの拡張 80・96・120・160・200）だけ。
 
 ## 確かめ方
 
@@ -266,7 +279,7 @@ node scripts/snapshot.mjs /tmp/deck-try/deck.html /tmp/deck-try/png       # 1枚
 | スタイル | 中身 |
 |---|---|
 | `standard`（既定） | 説明・報告・社内資料向け。今までの見た目そのもの（何も足さない） |
-| `visual` | ビジュアル寄り。プレゼン・ピッチ向け。表紙・章扉は全面写真、写真は全面、画像つきの箇条書きは写真1/2、3枚のギャラリーはコラージュ、出方はフェード。見た目は地に強調色をうっすら・上端に全幅の帯・白い箱に影・角を丸く・強調する箱と主張の1枚は強調色のベタ塗り |
+| `visual` | ビジュアル寄り。プレゼン・ピッチ向け。表紙・章扉は全面写真、写真は全面、画像つきの箇条書きは写真1/2、3枚のギャラリーはコラージュ、出方はフェード。見た目は地に強調色をうっすら・上端に全幅の帯・白い箱に枠線・角を丸く・強調する箱と主張の1枚は強調色のベタ塗り |
 | カスタム（YAML） | `defaults`（型ごとの変化形の既定）・`motion`（fx・transition）・`look`（見た目の調子: background・surface・radius・band・emphasis・statement）。雛形は `templates/custom-style.example.yaml`。知らないキー・値は rc=2 |
 
 - 画像が要る変化形（hero・full・portrait など）は、そのページに `image` があるときだけ効く

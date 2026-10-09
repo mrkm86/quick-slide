@@ -1,63 +1,136 @@
-"""型の中に置く線のアイコン（台本の `icon: "名前"`）。ADR 0019。
+"""型の中に置くアイコン（台本の `icon: "名前"`）。ADR 0019・0019 の追記。
 
-- 24×24 の升目に、線（stroke）の基本図形だけで描く。PPTX では図形のまま写る（直せる・色が替わる）
-- 色は呼ぶ側が渡す（テーマの色の変数）。線の太さは升目で 1.6（大きく置いても細く見えない太さ）
+- 形は Material Symbols（Outlined・weight 400）の部分集合 100 種。実体は `skills/dads/icons/material-symbols.json`
+  （名前 → {path, viewBox, symbol}・Apache License 2.0・出どころは同じフォルダの README.md と LICENSE-material-symbols.txt）
+- **塗りの図形**（線ではない）。viewBox は "0 -960 960 960"。穴は path の巻き方向で作ってあり、1 つの path に全部の部分パスが入る
+  （PPTX では 1 つの自由形のまま写り、穴も開く）。色は呼ぶ側が渡し、style の fill に書く（SVG の属性は var() を読まない）。stroke は使わない
 - 名前は物の名前（英小文字とハイフン）。台本係はこの一覧から選び、合うものが無ければ書かない
+- JSON はこのファイルの位置から辿る（エンジンは symlink 経由でも呼ばれる）。説明（日本語）は台本係が選ぶ手がかりで、ここに持つ
 """
 
 from __future__ import annotations
 
-# 色はテーマの変数（var(--…)）で渡すので、属性ではなく style に書く（SVG の属性は var() を読まない）
-_S = 'style="fill:none; stroke:{c}; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round"'
+import json
+from pathlib import Path
 
-# 名前 → (日本語の説明, SVG の中身。{s} が線の属性、{c} が色)
-ICONS: dict[str, tuple[str, str]] = {
-    "doc": ("書類・原稿", '<path d="M6 3 H14 L19 8 V21 H6 Z" {s}/><polyline points="14,3 14,8 19,8" {s}/><line x1="9" y1="13" x2="16" y2="13" {s}/><line x1="9" y1="17" x2="14" y2="17" {s}/>'),
-    "list": ("一覧・手順", '<circle cx="5.5" cy="6" r="1.6" {s}/><circle cx="5.5" cy="12" r="1.6" {s}/><circle cx="5.5" cy="18" r="1.6" {s}/><line x1="10" y1="6" x2="20" y2="6" {s}/><line x1="10" y1="12" x2="20" y2="12" {s}/><line x1="10" y1="18" x2="20" y2="18" {s}/>'),
-    "checklist": ("決まり・確かめること", '<rect x="4" y="3" width="16" height="18" rx="2.5" {s}/><polyline points="7.5,9 9,10.5 11.5,8" {s}/><line x1="13.5" y1="9.3" x2="16.5" y2="9.3" {s}/><polyline points="7.5,15 9,16.5 11.5,14" {s}/><line x1="13.5" y1="15.3" x2="16.5" y2="15.3" {s}/>'),
-    "code": ("プログラム", '<polyline points="8,7 3,12 8,17" {s}/><polyline points="16,7 21,12 16,17" {s}/><line x1="14" y1="4.5" x2="10" y2="19.5" {s}/>'),
-    "chart": ("数字・グラフ", '<line x1="4" y1="20" x2="20" y2="20" {s}/><rect x="5.5" y="12" width="3" height="8" {s}/><rect x="10.5" y="8" width="3" height="12" {s}/><rect x="15.5" y="4" width="3" height="16" {s}/>'),
-    "trend": ("伸び・増える", '<polyline points="3,17 9,11 13,15 21,7" {s}/><polyline points="15,7 21,7 21,13" {s}/>'),
-    "scissors": ("切る・削る", '<circle cx="6.5" cy="6.5" r="3" {s}/><circle cx="6.5" cy="17.5" r="3" {s}/><line x1="9" y1="8.2" x2="20" y2="17" {s}/><line x1="9" y1="15.8" x2="20" y2="7" {s}/>'),
-    "image": ("写真・画像", '<rect x="3.5" y="5" width="17" height="14" rx="2.5" {s}/><circle cx="9" cy="10" r="1.8" {s}/><polyline points="5,17 10,13 13,15.5 16,12.5 19.5,16" {s}/>'),
-    "video": ("動画・再生", '<circle cx="12" cy="12" r="9" {s}/><polygon points="10,8.5 16,12 10,15.5" {s}/>'),
-    "mic": ("声・話す", '<rect x="9" y="3" width="6" height="11" rx="3" {s}/><path d="M5.5 11 C5.5 15, 8.5 17.5, 12 17.5 C15.5 17.5, 18.5 15, 18.5 11" {s}/><line x1="12" y1="17.5" x2="12" y2="21" {s}/>'),
-    "speaker": ("音", '<polygon points="4,9 8,9 13,5 13,19 8,15 4,15" {s}/><path d="M16 9 C17.5 10.5, 17.5 13.5, 16 15" {s}/><path d="M18.5 6.5 C21.5 9.5, 21.5 14.5, 18.5 17.5" {s}/>'),
-    "captions": ("字幕・文字", '<rect x="3" y="5" width="18" height="14" rx="2.5" {s}/><line x1="7" y1="11" x2="17" y2="11" {s}/><line x1="7" y1="15" x2="14" y2="15" {s}/>'),
-    "chat": ("会話・相談", '<path d="M4 5 H20 V16 H11 L7 19.5 V16 H4 Z" {s}/><line x1="8" y1="9.5" x2="16" y2="9.5" {s}/><line x1="8" y1="12.5" x2="13" y2="12.5" {s}/>'),
-    "mail": ("連絡・メール", '<rect x="3" y="5.5" width="18" height="13" rx="2" {s}/><polyline points="3.5,6.5 12,13 20.5,6.5" {s}/>'),
-    "sparkle": ("強調・仕上げ・AI", '<line x1="4" y1="20" x2="14" y2="10" {s}/><polygon points="17,2.5 18.2,5.8 21.5,7 18.2,8.2 17,11.5 15.8,8.2 12.5,7 15.8,5.8" {s}/>'),
-    "bulb": ("思いつき・アイデア", '<path d="M9 17 C9 14.5, 6 13, 6 9.5 C6 6, 8.7 3.5, 12 3.5 C15.3 3.5, 18 6, 18 9.5 C18 13, 15 14.5, 15 17 Z" {s}/><line x1="9.5" y1="20.5" x2="14.5" y2="20.5" {s}/>'),
-    "target": ("目標・狙い", '<circle cx="12" cy="12" r="9" {s}/><circle cx="12" cy="12" r="5" {s}/><circle cx="12" cy="12" r="1.2" {s}/>'),
-    "flag": ("決めたこと・到達点", '<line x1="5" y1="21" x2="5" y2="3.5" {s}/><path d="M5 4 H18 L15.5 8 L18 12 H5" {s}/>'),
-    "check": ("できた・よい", '<circle cx="12" cy="12" r="9" {s}/><polyline points="8,12.5 11,15.5 16.5,9" {s}/>'),
-    "cross": ("やめる・よくない", '<circle cx="12" cy="12" r="9" {s}/><line x1="9" y1="9" x2="15" y2="15" {s}/><line x1="15" y1="9" x2="9" y2="15" {s}/>'),
-    "alert": ("注意・困りごと", '<polygon points="12,3.5 21,19.5 3,19.5" {s}/><line x1="12" y1="9.5" x2="12" y2="14" {s}/><line x1="12" y1="16.8" x2="12" y2="16.9" {s}/>'),
-    "search": ("探す・調べる", '<circle cx="10.5" cy="10.5" r="6.5" {s}/><line x1="15.5" y1="15.5" x2="20.5" y2="20.5" {s}/>'),
-    "folder": ("フォルダ・置き場", '<path d="M3 6.5 H9.5 L11.5 8.5 H21 V19 H3 Z" {s}/>'),
-    "layers": ("重ねる・仕組み", '<polygon points="12,3.5 21,8 12,12.5 3,8" {s}/><polyline points="3,12 12,16.5 21,12" {s}/><polyline points="3,16 12,20.5 21,16" {s}/>'),
-    "gear": ("設定・仕組み", '<circle cx="12" cy="12" r="3" {s}/><path d="M12 3 V5.5 M12 18.5 V21 M3 12 H5.5 M18.5 12 H21 M5.6 5.6 L7.4 7.4 M16.6 16.6 L18.4 18.4 M5.6 18.4 L7.4 16.6 M16.6 7.4 L18.4 5.6" {s}/><circle cx="12" cy="12" r="6.5" {s}/>'),
-    "shield": ("守る・安全", '<path d="M12 3 L19.5 6 V11.5 C19.5 16, 16.5 19.5, 12 21 C7.5 19.5, 4.5 16, 4.5 11.5 V6 Z" {s}/><polyline points="8.5,12 11,14.5 15.5,9.5" {s}/>'),
-    "lock": ("鍵・閉じる", '<rect x="5" y="10.5" width="14" height="10" rx="2" {s}/><path d="M8 10.5 V7.5 C8 5, 9.8 3.5, 12 3.5 C14.2 3.5, 16 5, 16 7.5 V10.5" {s}/>'),
-    "link": ("つなぐ", '<rect x="2.5" y="9" width="10" height="6" rx="3" {s}/><rect x="11.5" y="9" width="10" height="6" rx="3" {s}/>'),
-    "refresh": ("繰り返す・見直す", '<path d="M19.5 12 C19.5 16, 16.2 19.5, 12 19.5 C8.6 19.5, 5.8 17.4, 4.9 14.3" {s}/><path d="M4.5 12 C4.5 8, 7.8 4.5, 12 4.5 C15.4 4.5, 18.2 6.6, 19.1 9.7" {s}/><polyline points="19.5,5 19.3,9.9 14.6,9.4" {s}/><polyline points="4.5,19 4.7,14.1 9.4,14.6" {s}/>'),
-    "upload": ("入れる・出す", '<line x1="12" y1="15" x2="12" y2="4" {s}/><polyline points="7.5,8.5 12,4 16.5,8.5" {s}/><polyline points="4,15 4,20 20,20 20,15" {s}/>'),
-    "download": ("受け取る", '<line x1="12" y1="4" x2="12" y2="15" {s}/><polyline points="7.5,10.5 12,15 16.5,10.5" {s}/><polyline points="4,15 4,20 20,20 20,15" {s}/>'),
-    "calendar": ("日付・予定", '<rect x="3.5" y="5" width="17" height="15.5" rx="2" {s}/><line x1="3.5" y1="9.5" x2="20.5" y2="9.5" {s}/><line x1="8" y1="3" x2="8" y2="6.5" {s}/><line x1="16" y1="3" x2="16" y2="6.5" {s}/>'),
-    "clock": ("時間", '<circle cx="12" cy="12" r="9" {s}/><polyline points="12,7 12,12 15.5,14" {s}/>'),
-    "yen": ("お金・費用", '<circle cx="12" cy="12" r="9" {s}/><polyline points="8.5,7 12,11.5 15.5,7" {s}/><line x1="12" y1="11.5" x2="12" y2="17.5" {s}/><line x1="9" y1="12.5" x2="15" y2="12.5" {s}/><line x1="9" y1="15" x2="15" y2="15" {s}/>'),
-    "user": ("人・担当", '<circle cx="12" cy="8" r="4" {s}/><path d="M4.5 20.5 C4.5 16.5, 7.8 14, 12 14 C16.2 14, 19.5 16.5, 19.5 20.5" {s}/>'),
-    "users": ("人たち・チーム", '<circle cx="9" cy="8.5" r="3.5" {s}/><path d="M2.5 20 C2.5 16.5, 5.3 14.5, 9 14.5 C12.7 14.5, 15.5 16.5, 15.5 20" {s}/><circle cx="17" cy="9" r="2.8" {s}/><path d="M17 14.5 C19.6 14.6, 21.5 16.4, 21.5 19.5" {s}/>'),
-    "building": ("会社・建物", '<rect x="5" y="3.5" width="14" height="17" {s}/><line x1="9" y1="7.5" x2="9" y2="7.6" {s}/><line x1="15" y1="7.5" x2="15" y2="7.6" {s}/><line x1="9" y1="11.5" x2="9" y2="11.6" {s}/><line x1="15" y1="11.5" x2="15" y2="11.6" {s}/><rect x="10" y="16" width="4" height="4.5" {s}/>'),
-    "laptop": ("パソコン・手元", '<rect x="5" y="5" width="14" height="10" rx="1.5" {s}/><line x1="2.5" y1="18.5" x2="21.5" y2="18.5" {s}/>'),
-    "phone": ("スマホ", '<rect x="7" y="2.5" width="10" height="19" rx="2.5" {s}/><line x1="11" y1="18.5" x2="13" y2="18.5" {s}/>'),
-    "cloud": ("外のサービス・クラウド", '<path d="M7 18.5 C4.5 18.5, 3 16.8, 3 14.8 C3 12.7, 4.7 11.2, 6.7 11.2 C7.3 8.2, 9.6 6, 12.6 6 C15.9 6, 18.3 8.5, 18.4 11.5 C20.2 11.8, 21.5 13.3, 21.5 15.1 C21.5 17, 20 18.5, 18 18.5 Z" {s}/>'),
-    "book": ("学ぶ・手引き", '<path d="M12 6 C10 4.5, 7 4, 3.5 4.5 V18.5 C7 18, 10 18.5, 12 20 C14 18.5, 17 18, 20.5 18.5 V4.5 C17 4, 14 4.5, 12 6 Z" {s}/><line x1="12" y1="6" x2="12" y2="20" {s}/>'),
-    "pin": ("場所", '<path d="M12 21 C8 16.5, 5.5 13, 5.5 9.5 C5.5 5.9, 8.4 3, 12 3 C15.6 3, 18.5 5.9, 18.5 9.5 C18.5 13, 16 16.5, 12 21 Z" {s}/><circle cx="12" cy="9.5" r="2.5" {s}/>'),
-    "star": ("おすすめ・大事", '<polygon points="12,3 14.6,8.8 21,9.4 16.2,13.6 17.6,20 12,16.7 6.4,20 7.8,13.6 3,9.4 9.4,8.8" {s}/>'),
-    "rocket": ("始める・速く", '<path d="M12 3 C15.5 5.5, 17 9, 16 14 H8 C7 9, 8.5 5.5, 12 3 Z" {s}/><circle cx="12" cy="9" r="1.6" {s}/><polyline points="8,14 5.5,17 8.5,17" {s}/><polyline points="16,14 18.5,17 15.5,17" {s}/><line x1="12" y1="17" x2="12" y2="21" {s}/>'),
-    "hub": ("司令塔・まとめ役", '<circle cx="9" cy="12" r="5.5" {s}/><circle cx="15" cy="12" r="5.5" {s}/>'),
+_SRC = Path(__file__).resolve().parents[2] / "dads" / "icons" / "material-symbols.json"
+
+# 名前 → 日本語の説明（台本係が選ぶ一覧になる。JSON の名前と過不足なく同じ）
+DESCRIPTIONS: dict[str, str] = {
+    "doc": "書類・原稿",
+    "list": "一覧・手順",
+    "checklist": "決まり・確かめること",
+    "code": "プログラム",
+    "chart": "数字・グラフ",
+    "trend": "伸び・増える",
+    "scissors": "切る・削る",
+    "image": "写真・画像",
+    "video": "動画・再生",
+    "mic": "声・話す",
+    "speaker": "音",
+    "captions": "字幕・文字",
+    "chat": "会話・相談",
+    "mail": "連絡・メール",
+    "sparkle": "強調・仕上げ・AI",
+    "bulb": "思いつき・アイデア",
+    "target": "目標・狙い",
+    "flag": "決めたこと・到達点",
+    "check": "できた・よい",
+    "cross": "やめる・よくない",
+    "alert": "注意・困りごと",
+    "search": "探す・調べる",
+    "folder": "フォルダ・置き場",
+    "layers": "重ねる・仕組み",
+    "gear": "設定・仕組み",
+    "shield": "守る・安全",
+    "lock": "鍵・閉じる",
+    "link": "つなぐ",
+    "refresh": "繰り返す・見直す",
+    "upload": "入れる・出す",
+    "download": "受け取る",
+    "calendar": "日付・予定",
+    "clock": "時間",
+    "yen": "お金・費用",
+    "user": "人・担当",
+    "users": "人たち・チーム",
+    "building": "会社・建物",
+    "laptop": "パソコン・手元",
+    "phone": "スマホ",
+    "cloud": "外のサービス・クラウド",
+    "book": "学ぶ・手引き",
+    "pin": "場所",
+    "star": "おすすめ・大事",
+    "rocket": "始める・速く",
+    "hub": "司令塔・まとめ役",
+    "info": "情報・補足",
+    "notice": "お知らせ・告知",
+    "help": "疑問・ヘルプ",
+    "error": "エラー・失敗",
+    "done": "チェックの印だけ（丸なし）",
+    "arrow-right": "次へ・進む",
+    "arrow-left": "戻る",
+    "arrow-up": "上・昇順",
+    "arrow-down": "下・降順",
+    "chevron-right": "リンクの強調・次",
+    "chevron-left": "前",
+    "chevron-down": "開く（アコーディオン・選択）",
+    "chevron-up": "閉じる",
+    "compare": "比べる",
+    "trend-down": "減る・下がる",
+    "add": "追加",
+    "remove": "削除・引く",
+    "close": "閉じる・×",
+    "edit": "編集",
+    "delete": "ごみ箱・削除",
+    "copy": "複製",
+    "external-link": "新しいタブで開く",
+    "eye": "見る・表示",
+    "filter": "絞り込み",
+    "sort": "並べ替え",
+    "menu": "メニュー",
+    "more-vert": "縦三点（メニューを開く）",
+    "home": "ホーム・トップ",
+    "article": "記事・本文",
+    "table": "表",
+    "slideshow": "スライド・資料",
+    "assignment": "課題・申請",
+    "fact-check": "検証・照合",
+    "database": "データ・保存",
+    "pie": "割合・構成比",
+    "analytics": "分析・気づき",
+    "timer": "所要時間・計る",
+    "hourglass": "待つ・処理中（動かない砂時計）",
+    "history": "履歴・経過",
+    "event": "催し・日程",
+    "terminal": "コマンド・端末",
+    "key": "鍵・認証",
+    "bolt": "速い・電気・即時",
+    "robot": "AI・ロボット",
+    "brain": "考える・判断",
+    "tree": "構造・分岐",
+    "puzzle": "部品・拡張",
+    "tool": "道具・直す",
+    "speed": "速さ・性能",
+    "school": "学ぶ・研修",
+    "work": "仕事・業務",
+    "handshake": "合意・連携",
+    "globe": "世界・公開",
+    "translate": "言語・翻訳",
+    "award": "成果・表彰",
 }
+
+
+def _load() -> dict[str, dict[str, str]]:
+    try:
+        return json.loads(_SRC.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise RuntimeError(f"アイコンの図形が読めない: {_SRC}（skills/dads が配られていない）") from exc
+
+
+_SHAPES = _load()
+
+# 名前 → (日本語の説明, 図形 {path, viewBox, symbol})
+ICONS: dict[str, tuple[str, dict[str, str]]] = {k: (DESCRIPTIONS[k], v) for k, v in _SHAPES.items()}
 
 
 def names() -> list[str]:
@@ -66,8 +139,9 @@ def names() -> list[str]:
 
 def svg(name: str, size: float, color: str) -> str:
     """アイコンの SVG（size px 四方）。名前が無ければ KeyError（呼ぶ側が台本の誤りとして止める）。"""
-    body = ICONS[name][1].format(s=_S.format(c=color), c=color)
-    return f'<svg width="{size:g}" height="{size:g}" viewBox="0 0 24 24">{body}</svg>'
+    shape = ICONS[name][1]
+    return (f'<svg width="{size:g}" height="{size:g}" viewBox="{shape["viewBox"]}">'
+            f'<path d="{shape["path"]}" style="fill:{color}"/></svg>')
 
 
 def words() -> str:

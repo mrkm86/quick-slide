@@ -23,6 +23,8 @@ PRESET_BRAND_CONFIG: dict[str, Any] = {
     "colors": {
         "primary": "#0DB4F2",
         "accent": "#0DB4F2",
+        # 本文の文字（2 段目）は DADS の Gray-800（#333333）。ほかの段は算出の値のまま（エンジンの既定のテーマの ink と同じにする）
+        "gray": ["#1A1A1A", "#333333", "#666666", "#8C8C8C", "#B2B2B2", "#D6D6D6", "#EDEDED", "#F7F7F7"],
     },
     "fonts": {
         "heading": {"requested_family": "Noto Sans JP", "weight": 700, "fallback_families": ["Hiragino Sans", "sans-serif"]},

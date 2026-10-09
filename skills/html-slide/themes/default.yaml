@@ -1,12 +1,16 @@
-# 資料の既定の色。白の地・チャコールの文字・シアンの主役の色1つ（差し色は書かない＝主役の色と同じ）（2026-10-05 に青から替えた）
-# キーは background・ink・primary（必須）と accent・muted・surface・font（任意）。ほかの色は scripts/deck.py が作る
+# 資料の既定の色。DADS（デジタル庁デザインシステム）のシアンの段。白の地・Gray-800 の文字・シアンの主役の色1つ（差し色は書かない＝主役の色と同じ）
+# （2026-10-05 に青から替え、2026-10-10 に DADS の段へ）
+# キーは background・ink・primary（必須）と accent・muted・surface・font（任意）。ほかの色は scripts/deck.py が DADS の作り方（keycolors）で作る
 # background … スライドの地
-# ink        … 本文と見出しの文字
-# primary    … 主役の色。骨格（上の帯・小見出し・番号・章扉・矢羽根・連絡先）
+# ink        … 本文と見出しの文字（Gray-800）
+# primary    … 主役の色。骨格（小見出し・番号・章扉・矢羽根・連絡先）。ブランドの色を渡すと、同じ色相のまま明度だけを動かして 4.5:1 にする
+#              DADS のプリミティブの段そのまま（cyan-900）なら、その色相の段（セカンダリー・ターシャリー・淡い地）を使う
 # accent     … 差し色（任意）。台本の *語*・accent: true の項目・強調する棒と線。書かなければ primary と同じ
 #              例: 黄色が主役で青が差し色なら primary: "#f5a623"・accent: "#399dd1"
-# font       … 字体名（PPTX の字体名にもなる）。字体ファイルは設定（config.example.yaml を見る）の fonts で引く
+# muted      … 補足の文字（Gray-600）
+# font       … 字体名（PPTX の字体名にもなる）。字体ファイルは設定（config.example.yaml を見る）の fonts で引く。ファイルが分からなければ游ゴシックで組む
 background: "#ffffff"
-ink: "#404040"
-primary: "#0db4f2"
-font: "Yu Gothic"
+ink: "#333333"
+primary: "#006f83"
+muted: "#666666"
+font: "Noto Sans JP"

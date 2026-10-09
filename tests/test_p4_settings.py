@@ -161,9 +161,20 @@ class ThemeMappingTests(unittest.TestCase):
 
         engine_default = (SKILLS_DIR / "html-slide" / "themes" / "default.yaml").read_text(encoding="utf-8")
         theme = self.theme(PRESET_BRAND_CONFIG["colors"])
-        self.assertEqual(theme, {"background": "#FFFFFF", "ink": "#404040", "primary": "#0DB4F2"})
-        for key, value in theme.items():
-            self.assertIn(f'{key}: "{value.lower()}"', engine_default.lower(), key)
+        self.assertEqual(theme, {"background": "#FFFFFF", "ink": "#333333", "primary": "#0DB4F2"})
+        # 地と文字の色は、エンジンの既定のテーマ（DADS の白の地・Gray-800）と同じ（元の厳しさ）
+        for key in ("background", "ink"):
+            self.assertIn(f'{key}: "{theme[key].lower()}"', engine_default.lower(), key)
+        # 主役の色だけは、エンジンの既定（DADS のシアン cyan-900 #006f83）と同じにならない。ブランドの色（水色 #0DB4F2）は
+        # 入力の色としてそのまま渡し、エンジンが同じ色相のまま明度を動かして 4.5:1 にする（html-slide の ADR 0020）
+        self.assertIn('primary: "#006f83"', engine_default.lower())
+        import sys
+
+        sys.path.insert(0, str(SKILLS_DIR / "dads" / "scripts"))
+        import keycolors
+
+        key = keycolors.brand_key_colors(theme["primary"], theme["background"])["primary"]
+        self.assertTrue(key["ok"] and key["contrast_on_ground"] >= 4.5, key)
 
     def test_accent_is_passed_only_when_it_differs_and_info_is_not_passed(self) -> None:
         theme = self.theme({"primary": "#C8102E", "accent": "#1D4ED8", "info": "#0E7490"})
