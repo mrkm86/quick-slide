@@ -205,7 +205,7 @@
     "weight": "B",
     "line": 150,
     "min": 24,
-    "max": 28,
+    "max": 45,
     "origin": "proposal"
    },
    "table-cell": {
@@ -213,7 +213,7 @@
     "weight": "N",
     "line": 150,
     "min": 24,
-    "max": 28,
+    "max": 45,
     "origin": "proposal"
    },
    "chip": {

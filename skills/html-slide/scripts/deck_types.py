@@ -736,18 +736,19 @@ def t_agenda(s: Slide):
     hl = s.spec.get("highlight")
     if hl is not None and (not isinstance(hl, int) or not 1 <= hl <= len(its)):
         s.err(f"highlight は 1〜{len(its)} の整数")
-    rh = min(136, int((BODY_BOTTOM - top) / len(its)) // 8 * 8)
+    rh = min(s.gap(136), int((BODY_BOTTOM - top) / len(its)) // 8 * 8)
+    s.need, s.avail = rh * len(its), BODY_BOTTOM - top
     rows = []
     for i, it in enumerate(its):
         note = s.text("note", spec=it)
         nw = text_width(note, 28) + 40 if note else 0
         if nw > 640:
             s.err(f"items の {i + 1} 個目の note が長い（20字くらいまで）: {note}")
-        ts, _ = fit(it["title"], 45, CW - 120 - 48 - nw, what=f"items の {i + 1} 個目", lines=1, lh=1.4, min_size=32, bold=True)
+        ts, _ = s.fit("agenda-title", it["title"], s.g(45, 57), CW - 120 - 48 - nw, what=f"items の {i + 1} 個目", lines=1, lh=1.4, min_size=32, bold=True)
         cls = "agenda-row" + ("" if hl is None else (" on" if hl == i + 1 else " dim"))
         pad = "padding:0 24px;" if hl is not None else ""
         rows.append(f'<div class="{cls}" style="height:{px(rh)}; {pad}" {s.anim(0, "rise", 150 + 120 * i, f"目次{i + 1}")}>'
-                    f'<div class="agenda-no">{i + 1:02d}</div>'
+                    f'<div class="agenda-no" style="font-size:{ts}px">{i + 1:02d}</div>'
                     f'<div class="agenda-title" style="font-size:{ts}px">{rich(it["title"])}</div>'
                     + (f'<div class="agenda-note">{esc(note)}</div>' if note else "") + "</div>")
     return [head, f'<div class="agenda" style="{box(X0, top, CW)}">' + "".join(rows) + "</div>", source_line(s)]
@@ -850,27 +851,33 @@ def t_big_number(s: Slide):
     us = _unit_size(vs)
     main = [f'<div class="bn-row"><div class="bn-value" style="font-size:{vs}px">{esc(value)}</div>'
             + (f'<div class="bn-unit" style="font-size:{us}px">{esc(unit)}</div>' if unit else "") + "</div>"]
+    main_h = vs * 1.0
     if label:
-        ls, _ = fit(label, 36, mw, what="説明（label）", lines=2, lh=1.4, min_size=28, bold=True)
+        ls, ln = fit(label, s.g(36, 45), mw, what="説明（label）", lines=2, lh=1.4, min_size=28, bold=True)
         main.append(f'<div class="bn-label" style="font-size:{ls}px">{rich(label)}</div>')
+        main_h += 24 + ln * ls * 1.4
     if note:
-        ns, _ = fit(note, 28, mw, what="note", lines=2, lh=1.5, min_size=22)   # 注記の下限は 22（slide-local）
+        ns, nn = fit(note, s.g(28, 36), mw, what="note", lines=2, lh=1.5, min_size=22)   # 注記の下限は 22（slide-local）
         main.append(f'<div class="bn-item-text" style="font-size:{ns}px; margin-top:16px">{esc(note)}</div>')
+        main_h += 16 + nn * ns * 1.5
     parts = [head, f'<div class="bn-main" style="{box(X0, top, mw, BODY_BOTTOM - top)}">'
              f'<div {s.anim(1, "pop", 0, "大きな数字")}>' + "".join(main) + "</div></div>"]
     if side:
-        rows = []
+        rows, side_h = [], 0.0
         for i, it in enumerate(side):
             v = s.text("value", spec=it)
             vs = 57
             if v:
-                vs, _ = fit(v, 57, 640, what=f"side の {i + 1} 個目の value", lines=1, lh=1.4, min_size=45, bold=True)
-            fs, _ = fit(it["text"], 28, 640, what=f"side の {i + 1} 個目", lines=3, lh=1.5, min_size=24)
+                vs, _ = fit(v, s.g(57, 64), 640, what=f"side の {i + 1} 個目の value", lines=1, lh=1.4, min_size=45, bold=True)
+            fs, fn_ = fit(it["text"], s.g(28, 36), 640, what=f"side の {i + 1} 個目", lines=3, lh=1.5, min_size=24)
+            side_h += 2 + 2 * 24 + (vs * 1.4 if v else 0) + (8 if v else 0) + fn_ * fs * 1.5
             last = "border-bottom:2px solid var(--rule);" if i == len(side) - 1 else ""
             rows.append(f'<div class="bn-item" style="{last}" {s.anim(2, "rise", 150 * i, f"補足{i + 1}", item=True)}>'
                         + (f'<div class="bn-item-value" style="font-size:{vs}px">{esc(v)}</div>' if v else "")
                         + f'<div class="bn-item-text" style="font-size:{fs}px">{rich(it["text"])}</div></div>')
         parts.append(f'<div class="bn-side" style="{box(1120, top, 680, BODY_BOTTOM - top)}">' + "".join(rows) + "</div>")
+        main_h = max(main_h, side_h)
+    s.need, s.avail = main_h, BODY_BOTTOM - top
     parts.append(source_line(s))
     return parts
 
@@ -1084,17 +1091,18 @@ def t_bar_chart(s: Slide):
         s.err("callout は value（と text）のオブジェクト")
     right = col_x(9) - GUTTER if callout else X0 + CW     # 要点の枠は格子の右 4 列
     base = s.bottom - (112 if note else 72)
-    vh = 36 * 1.4 + 8
+    vs0 = s.g(36, 45)                                       # 値の文字（大きく組むときは上げる）
+    vh = vs0 * 1.4 + 8
     plot_h = base - top - vh - 8
     if plot_h < 200:
         s.err("見出しが高すぎてグラフの場所が足りない（見出しを短くするか sub を外す）")
     slot = (right - X0) / len(bars)
-    bw = min(160, slot * 0.56)
+    bw = min(s.gap(160), slot * 0.56)
     parts = [head, f'<div class="baseline" style="{box(X0, base, right - X0)}" {s.anim(0, "fade", 200, "グラフの軸")}></div>']
     for i, b in enumerate(bars):
         hl = bool(b.get("highlight"))
         shown = s.text("display", spec=b) or f"{num_label(b['value'])}{unit}"
-        vs, _ = fit(shown, 36, slot - 16, what=f"bars の {i + 1} 個目の表示", lines=1, lh=1.4, min_size=24, bold=True)
+        vs, _ = s.fit("bar-value", shown, vs0, slot - 16, what=f"bars の {i + 1} 個目の表示", lines=1, lh=1.4, min_size=24, bold=True)
         bh = max(4.0, b["value"] / vmax * plot_h)
         gx = X0 + i * slot
         color = "; color:var(--accent-text)" if hl else ""
@@ -1102,7 +1110,7 @@ def t_bar_chart(s: Slide):
                      f'{s.anim(1, "wipe-up", 120 * i, f"棒{i + 1}")}>'
                      f'<div class="bar-value" style="font-size:{vs}px{color}" data-name="値{i + 1}">{esc(shown)}</div>'
                      f'<div class="bar{" hl" if hl else ""}" style="width:{px(bw)}; height:{px(bh)}"></div></div>')
-        ls, _ = fit(b["label"], 28, slot - 16, what=f"bars の {i + 1} 個目の label", lines=1, lh=1.5, min_size=22, bold=hl)
+        ls, _ = s.fit("bar-label", b["label"], s.g(28, 32), slot - 16, what=f"bars の {i + 1} 個目の label", lines=1, lh=1.5, min_size=22, bold=hl)
         parts.append(f'<div class="bar-label{" hl" if hl else ""}" style="{box(gx, base + 16, slot)} font-size:{ls}px" '
                      f'{s.anim(0, "fade", 200, f"項目{i + 1}")}>{esc(b["label"])}</div>')
     if note:
@@ -1111,6 +1119,7 @@ def t_bar_chart(s: Slide):
     if callout:
         parts.append(callout_box(s, callout, top, base - top, s.anim(1, "fade", 120 * len(bars) + 300, "グラフの要点")))
     parts.append(source_line(s))
+    s.need, s.avail = (s.bottom - top) * len(bars) / 8, s.bottom - top     # グラフは高さを使い切る。横に詰まっていない（棒が少ない）ときだけ、文字と棒の太さを上げる
     return parts
 
 
@@ -1146,8 +1155,11 @@ def t_table(s: Slide):
     total = sum(weights)
     cws = [CW * v / total for v in weights]
     note_h = 40 if s.text("source") else 0
-    rh = min(112, int((s.bottom - top - note_h) / (len(rows) + 1)) // 8 * 8)
+    rh = min(s.gap(112), int((s.bottom - top - note_h) / (len(rows) + 1)) // 8 * 8)     # 行の高さ（大きく組むときは上限を広げる）
     fs0 = 28 if rh >= 64 else 24                       # 表のセルは Std-28N-150（下限 24）。行が低ければ 24
+    fs0 = s.g(fs0, 45)
+    while fs0 > 24 and fs0 * 1.5 + 16 > rh:            # 1行が行の高さに入る段まで
+        fs0 = step_down(fs0)
     max_lines = max(1, int((rh - 16) / (fs0 * 1.5)))
     out = []
     for r, row in enumerate([cols] + rows):
@@ -1156,14 +1168,15 @@ def t_table(s: Slide):
             v = num_label(v) if not isinstance(v, str) else v
             on = hl == c + 1                                  # 強める列は太字と太い縦の罫（色の地だけにしない）
             bold = r == 0 or c == 0 or on
-            fs, _ = fit(v, fs0, cws[c] - (56 if on else 48), what=f"表の {r} 行目 {c + 1} 列目" if r else f"columns の {c + 1} 個目",
-                        lines=max_lines, lh=1.5, min_size=24, bold=bold)
+            fs, _ = s.fit("table-th" if r == 0 else "table-td", v, fs0, cws[c] - (56 if on else 48),
+                          what=f"表の {r} 行目 {c + 1} 列目" if r else f"columns の {c + 1} 個目", lines=max_lines, lh=1.5, min_size=24, bold=bold)
             align = "flex-start" if c == 0 else "center"
             tal = "left" if c == 0 else "center"
             weight = " font-weight:700;" if bold else ""
             cells.append(f'<div class="td{" hl" if on else ""}" style="width:{px(cws[c])}; justify-content:{align}">'
                          f'<div style="font-size:{fs}px; text-align:{tal};{weight}">{rich(v)}</div></div>')
         out.append(f'<div class="tr{" th" if r == 0 else ""}" style="height:{px(rh)}">' + "".join(cells) + "</div>")
+    s.need, s.avail = rh * (len(rows) + 1) + note_h, s.bottom - top
     return [head, f'<div class="table" style="{box(X0, top, CW)}" {s.anim(1, "fade", 0, "表")}>' + "".join(out) + "</div>",
             source_line(s, top + rh * (len(rows) + 1) + 16)]
 
@@ -1269,7 +1282,8 @@ def t_quote(s: Slide):
         pre = [s.img(s.spec["image"], "image", "face", X0, (H - d) / 2, d, d, extra=f"position:absolute; border-radius:{FULL}px;",
                      anim=s.anim(0, "fade", 0, "引用の主の写真"))]
         qx, tw = X0 + d + 96, W - (X0 + d + 96) - X0
-    qs, _ = fit(q, 57, tw, what="引用（quote）", lines=4, lh=1.5, min_size=36, bold=True, tidy=True)
+    qs, qn = s.fit("quote", q, s.g(57, 80), tw, what="引用（quote）", lines=4, lh=1.5, min_size=36, bold=True, tidy=True)
+    need = 128 + qn * qs * 1.5                   # 引用符と引用の高さ。肩書きの行が足される
     inner = []
     if kicker:
         ks, _ = fit(kicker, 28, tw, what="kicker", lines=1, lh=1.5, min_size=28, bold=True)
@@ -1277,12 +1291,14 @@ def t_quote(s: Slide):
     inner.append(f'<div class="qmark" {s.anim(0, "fade", 0, "引用符")}>“</div>')
     inner.append(f'<div class="quote-text" style="font-size:{qs}px" {s.anim(0, "rise", 150, "引用")}>{rich(q)}</div>')
     if by or role:
-        bs, _ = fit(f"— {by}　{role}", 32, tw, what="by と position", lines=1, lh=1.4, min_size=24, bold=True)
+        bs, _ = fit(f"— {by}　{role}", s.g(32, 36), tw, what="by と position", lines=1, lh=1.4, min_size=24, bold=True)
+        need += 40 + bs * 1.4
         rs = step_down(bs, 1, 24) if bs > 24 else bs   # 肩書きは名前より1段小さく
         inner.append(f'<div class="quote-by" {s.anim(0, "fade", 600, "引用の主")}>'
                      + (f'<div class="quote-name" style="font-size:{bs}px">— {esc(by)}</div>' if by else "")
                      + (f'<div class="quote-role" style="font-size:{rs}px">{esc(role)}</div>' if role else "") + "</div>")
     od = " on-dark" if layout == "full" else ""
+    s.need, s.avail = need + (SPACE[1] + 42 if kicker else 0), BODY_BOTTOM - HEAD_TOP
     return pre + [f'<div class="quote{od}" style="{box(qx, HEAD_TOP, tw, BODY_BOTTOM - HEAD_TOP)}">' + "".join(inner) + "</div>",
                   source_line(s, on_dark=layout == "full")]
 
@@ -1554,9 +1570,11 @@ def t_kpi(s: Slide):
             s.err(f"items の {i + 1} 個目の trend は up / down / flat のどれか")
     avail = s.bottom - top
     vmax = (96 if n == 3 else 80) if not pre else (80 if n == 3 else 64)
+    vmax = s.g(vmax, 120 if n == 3 else 96)             # 数字は 3 つなら 120・4 つなら 96 まで（大きく組むとき）
     for drop in range(0, 6):                    # カードの高さが入るまで、全部のカードの文字を同じだけ段を下りる
         tiles, tallest = _kpi_tiles(s, its, cw, vmax, drop)
         if tallest <= avail:
+            s.need, s.avail = tallest, avail
             break
     else:
         s.err(f"数字のカードが高すぎて入らない（{tallest:.0f}px > {avail:.0f}px。label・note を短くするか見出しを1行にする）")
@@ -1576,7 +1594,7 @@ def _kpi_tiles(s: Slide, its, cw, vmax, drop):
         delta, note, trend = s.text("delta", spec=it), s.text("note", spec=it), it.get("trend")
         hl = bool(it.get("accent"))
         iw = inner_w(cw, hl)
-        ls, ln = fit(label, step_down(28, drop, 24), iw, what=f"{where}の label", lines=2, lh=1.5, min_size=24, bold=True)
+        ls, ln = s.fit("kpi-label", label, step_down(s.g(28, 36), drop, 24), iw, what=f"{where}の label", lines=2, lh=1.5, min_size=24, bold=True)
         vsz = step_down(vmax, drop, 57)
         for vs in (v for v in SCALE if v <= vsz):          # 数字と単位が1行に入る段まで下りる
             uw = text_width(unit, _unit_size(vs), True) + 16 if unit else 0
@@ -1595,11 +1613,11 @@ def _kpi_tiles(s: Slide, its, cw, vmax, drop):
                  + (f'<div class="kpi-unit" style="font-size:{us}px; line-height:{vlh}">{esc(unit)}</div>' if unit else "") + "</div>")
         if delta:
             d = TRENDS.get(trend, "") + delta
-            ds, _ = fit(d, step_down(28, drop, 24), iw, what=f"{where}の delta", lines=1, lh=1.5, min_size=24, bold=True)
+            ds, _ = fit(d, step_down(s.g(28, 36), drop, 24), iw, what=f"{where}の delta", lines=1, lh=1.5, min_size=24, bold=True)
             inner += f'<div class="kpi-delta" style="font-size:{ds}px">{esc(d)}</div>'
             h += 16 + ds * 1.5
         if note:
-            ns, nn = fit(note, 22, iw, what=f"{where}の note", lines=2, lh=1.5, min_size=22)
+            ns, nn = fit(note, s.g(22, 28), iw, what=f"{where}の note", lines=2, lh=1.5, min_size=22)
             inner += f'<div class="kpi-note" style="font-size:{ns}px">{esc(note)}</div>'
             h += 8 + nn * ns * 1.5
         tallest = max(tallest, h)
@@ -1655,15 +1673,16 @@ def t_line_chart(s: Slide):
     multi = len(series) > 1
     # 線の端に系列名（と、value_labels が none でなければ最後の値）を右に出す（名前は2行まで・幅 240 まで）。
     # 名前が長くて入らないときだけ、凡例に線種と点の形も写す
-    es, end_w, end_n = 28, 0.0, [1] * len(series)
+    es0 = s.g(28, 32)
+    es, end_w, end_n = es0, 0.0, [1] * len(series)
     end_labels = multi
     last_txt = [f"{num_label(sr['values'][-1], dec)}{unit}" for sr in series]
     if multi:
-        names_w = max(text_width(sr["name"], 28, True) for sr in series)
-        vals_w = max(text_width(x, 28, True) for x in last_txt) if show != "none" else 0
+        names_w = max(text_width(sr["name"], es0, True) for sr in series)
+        vals_w = max(text_width(x, es0, True) for x in last_txt) if show != "none" else 0
         ew = min(max(names_w, vals_w) + 8, 240)
         try:
-            es = min(fit(sr["name"], 28, ew, what="series の name", lines=2, lh=1.4, min_size=22, bold=True)[0] for sr in series)
+            es = min(fit(sr["name"], es0, ew, what="series の name", lines=2, lh=1.4, min_size=22, bold=True)[0] for sr in series)
             while show != "none" and max(text_width(x, es, True) for x in last_txt) > (ew - 8) * SAFE and es > 22:
                 es = step_down(es)                 # 最後の値（単位つき）も端の幅に入る段まで下りる
             if show != "none" and max(text_width(x, es, True) for x in last_txt) > (ew - 8) * SAFE:
@@ -1705,7 +1724,7 @@ def t_line_chart(s: Slide):
     if unit:
         parts.append(f'<div class="tick" style="{box(X0, pt - 56, 304)} text-align:left" data-name="単位">（{esc(unit)}）</div>')
     for i, lb in enumerate(labels):
-        ls, _ = fit(lb, 28, slot - 8, what=f"labels の {i + 1} 個目", lines=1, lh=1.5, min_size=22)
+        ls, _ = s.fit("lc-label", lb, s.g(28, 32), slot - 8, what=f"labels の {i + 1} 個目", lines=1, lh=1.5, min_size=22)
         parts.append(f'<div class="bar-label" style="{box(xs[i] - slot / 2, base + 16, slot)} font-size:{ls}px" '
                      f'{s.anim(0, "fade", 200, f"時点{i + 1}")}>{esc(lb)}</div>')
     marked = any(sr.get("highlight") for sr in series)
@@ -1717,7 +1736,7 @@ def t_line_chart(s: Slide):
     plain_i = 0
     for rank, k in enumerate(order):
         hl = bool(series[k].get("highlight")) if marked else k == 0
-        sw = 7 if hl else 5
+        sw = (7 if hl else 5) + (2 if s.grow else 0)        # 大きく組むときは線も太く
         dash = (None, f"{sw * 3} {sw * 2}", f"{sw} {sw * 1.2:g}")[k]
         color = s.pal["accent-mark"] if hl else (s.pal["ink"], s.pal["muted"])[plain_i % 2]
         plain_i += 0 if hl else 1
@@ -1766,7 +1785,7 @@ def t_line_chart(s: Slide):
                 continue                           # 最後の値は線の端の名前に添える
             v = sr["values"][i]
             shown = f"{num_label(v, dec)}{unit if show == 'last' else ''}"
-            vs, _ = fit(shown, 28, slot + 40, what=f"series の {k + 1} 本目の値", lines=1, lh=1.4, min_size=22, bold=True)
+            vs, _ = s.fit("lc-value", shown, s.g(28, 36), slot + 40, what=f"series の {k + 1} 本目の値", lines=1, lh=1.4, min_size=22, bold=True)
             col = "; color:var(--accent-text)" if hl else ""
             parts.append(f'<div class="pt-value" style="{box(xs[i] - slot / 2 - 20, y_of(v) - 56, slot + 40)} font-size:{vs}px{col}" '
                          f'{s.anim(1, "fade", 400 * rank + 500 + 40 * i, f"値{k + 1}-{i + 1}")}>{esc(shown)}</div>')
@@ -1795,6 +1814,7 @@ def t_line_chart(s: Slide):
     if callout:
         parts.append(callout_box(s, callout, top, base - top, s.anim(1, "fade", 400 * len(series) + 600, "グラフの要点")))
     parts.append(source_line(s))
+    s.need, s.avail = (s.bottom - top) * len(labels) / 12, s.bottom - top     # 棒グラフと同じ: 時点が少ないときだけ、文字と線の太さを上げる
     return parts
 
 
@@ -1807,8 +1827,8 @@ def t_team(s: Slide):
     two = n > 4
     gap = GUTTER
     cw = (CW - gap * (cols - 1)) / cols
-    av = 120 if two else 160
-    rows, cur = [], []
+    av = s.gap(120 if two else 160)                    # 頭文字の丸（写真のあるページは大きくしない）
+    rows, cur, hs, cur_h = [], [], [], 0.0
     for i, m in enumerate(ms):
         where = f"members の {i + 1} 人目"
         name, role, note = s.text("name", spec=m), s.text("role", spec=m), s.text("note", spec=m)
@@ -1820,20 +1840,27 @@ def t_team(s: Slide):
                 s.err(f"{where}の initials は2文字まで")
             face = (f'<div class="face-ini" style="width:{av}px; height:{av}px; border-radius:{FULL}px; '
                     f'font-size:{snap(av * 0.4)}px">{esc(ini)}</div>')                # 160 の丸に 64・120 の丸に 48
-        ns, _ = fit(name, 32 if two else 36, cw, what=f"{where}の name", lines=1, lh=1.4, min_size=28, bold=True)
+        ns, _ = s.fit("member-name", name, s.g(32 if two else 36, 45), cw, what=f"{where}の name", lines=1, lh=1.4, min_size=28, bold=True)
         inner = face + f'<div class="member-name" style="font-size:{ns}px">{esc(name)}</div>'
+        h = av + 24 + ns * 1.4
         if role:
-            rs, _ = fit(role, 28, cw, what=f"{where}の role", lines=1, lh=1.5, min_size=24, bold=True)
+            rs, _ = s.fit("member-role", role, s.g(28, 36), cw, under="member-name", what=f"{where}の role", lines=1, lh=1.5, min_size=24, bold=True)
             inner += f'<div class="member-role" style="font-size:{rs}px">{esc(role)}</div>'
+            h += 8 + rs * 1.5
         if note:
-            bs, _ = fit(note, 28, cw, what=f"{where}の note", lines=2 if two else 3, lh=1.5, min_size=24)
+            bs, bn = s.fit("member-note", note, s.g(28, 36), cw, under="member-name", what=f"{where}の note", lines=2 if two else 3, lh=1.5, min_size=24)
             inner += f'<div class="member-note" style="font-size:{bs}px">{rich(note)}</div>'
+            h += 16 + bn * bs * 1.5
+        cur_h = max(cur_h, h)
         cur.append(f'<div class="member" style="width:{px(cw)}" {s.anim(1, "rise", 120 * i, f"人{i + 1}", item=True)}>{inner}</div>')
         if len(cur) == cols:
             rows.append(cur)
-            cur = []
+            hs.append(cur_h)
+            cur, cur_h = [], 0.0
     if cur:
         rows.append(cur)
+        hs.append(cur_h)
+    s.need, s.avail = sum(hs) + 40 * (len(rows) - 1), BODY_BOTTOM - top
     body = "".join(f'<div class="row" style="gap:{gap}px; justify-content:center; align-items:flex-start;'
                    f'{" margin-top:40px;" if r else ""}">' + "".join(row) + "</div>" for r, row in enumerate(rows))
     return [head, f'<div class="center" style="{box(X0, top, CW, BODY_BOTTOM - top)}">{body}</div>', source_line(s)]
@@ -1889,11 +1916,11 @@ def t_matrix(s: Slide):
     band, quad_parts = 0, []
     for i, q in enumerate(quads):
         qw = hw - 48
-        ts, _ = fit(q["title"], 28, qw, what=f"quadrants の {i + 1} 個目", lines=1, lh=1.5, min_size=24, bold=True)
+        ts, _ = s.fit("mx-qtitle", q["title"], s.g(28, 36), qw, what=f"quadrants の {i + 1} 個目", lines=1, lh=1.5, min_size=24, bold=True)
         inner = f'<div class="mx-qtitle{" accent" if focus == i + 1 else ""}" style="font-size:{ts}px">{esc(q["title"])}</div>'
         qh = ts * 1.5
         if q.get("body"):
-            bs, _ = fit(q["body"], 24, qw, what=f"quadrants の {i + 1} 個目の body", lines=1, lh=1.5, min_size=22)
+            bs, _ = s.fit("mx-qbody", q["body"], s.g(24, 28), qw, under="mx-qtitle", what=f"quadrants の {i + 1} 個目の body", lines=1, lh=1.5, min_size=22)
             inner += f'<div class="mx-qbody" style="font-size:{bs}px">{esc(q["body"])}</div>'
             qh += 8 + bs * 1.5
         band = max(band, qh + 16)
@@ -1907,18 +1934,19 @@ def t_matrix(s: Slide):
     ax, ay = axes["x"], axes["y"]
     axis_parts, item_parts = [], []
     # 縦軸: 左の列に 上=high・中=label・下=low
-    yl = [(ay["high"], pt, "flex-start"), (f"↑ {ay['label']}", pt + hh - 40, "center"), (ay["low"], pb - 80, "flex-end")]
+    yh = 80 if not s.grow else 104                # 縦軸の言葉の箱の高さ（大きく組むと 2 行が 80 に入らない）
+    yl = [(ay["high"], pt, "flex-start"), (f"↑ {ay['label']}", pt + hh - yh / 2, "center"), (ay["low"], pb - yh, "flex-end")]
     for k, (txt, y, just) in enumerate(yl):
         if txt:
-            ys, _ = fit(txt, 26, lw, what="y の文字", lines=2, lh=1.5, min_size=22, bold=k == 1)
+            ys, _ = s.fit("mx-axis", txt, s.g(26, 32), lw, what="y の文字", lines=2, lh=1.5, min_size=22, bold=k == 1)
             cls = ' class="bold"' if k == 1 else ""
-            axis_parts.append(f'<div class="mx-ylab" style="{box(X0, y, lw, 80)} justify-content:{just}">'
+            axis_parts.append(f'<div class="mx-ylab" style="{box(X0, y, lw, yh)} justify-content:{just}">'
                          f'<div{cls} style="font-size:{ys}px">{esc(txt)}</div></div>')
     # 横軸: 下に 左=low・中=label・右=high
     third = pw / 3
     for k, (txt, al) in enumerate([(ax["low"], "left"), (f"{ax['label']} →", "center"), (ax["high"], "right")]):
         if txt:
-            xs_, _ = fit(txt, 26, third - 16, what="x の文字", lines=1, lh=1.5, min_size=22, bold=k == 1)
+            xs_, _ = s.fit("mx-axis", txt, s.g(26, 32), third - 16, what="x の文字", lines=1, lh=1.5, min_size=22, bold=k == 1)
             axis_parts.append(f'<div class="mx-xlab{" bold" if k == 1 else ""}" style="{box(px0 + third * k, pb + 16, third)} '
                          f'text-align:{al}; font-size:{xs_}px">{esc(txt)}</div>')
     hit = lambda a, b: a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
@@ -1927,7 +1955,7 @@ def t_matrix(s: Slide):
     sizes, dots = [], []
     for i, it in enumerate(its):
         cx, cy = ix0 + (ix1 - ix0) * it["x"] / 100, iy1 - (iy1 - iy0) * it["y"] / 100
-        ls, _ = fit(it["label"], 28, 320, what=f"items の {i + 1} 個目の label", lines=1, lh=1.5, min_size=24, bold=True)
+        ls, _ = s.fit("mx-label", it["label"], s.g(28, 36), 320, what=f"items の {i + 1} 個目の label", lines=1, lh=1.5, min_size=24, bold=True)
         r = 20 if it.get("accent") else 16          # 強める点は二重の輪（外 40・内 16）で、色だけでなく形でも示す
         box_ = (cx - r, cy - r, cx + r, cy + r)
         for j, o in enumerate(dots):
@@ -1979,6 +2007,7 @@ def t_matrix(s: Slide):
         inner += f'<div class="callout-text" style="font-size:{bs}px">{rich(ct)}</div>'
         parts.append(f'<div class="callout" style="{box(col_x(9), top, CALLOUT_W, pb - top)}" '
                      f'{s.anim(1, "fade", 150 * len(its) + 300, "図の要点")}>{inner}</div>')
+    s.need, s.avail = (pb - pt) * len(its) / 8, pb - pt           # 図は場所いっぱいに描く。点が少なく名前が離れているときだけ、文字を上げる
     parts.append(source_line(s))
     return parts
 
@@ -2138,16 +2167,17 @@ def _term(s: Slide, it: dict, role: str, width: float, where: str, *, result=Fal
     inner, h = [], 0.0
     icon = icon_of(s, it, where)
     if icon:
-        inner.append(icon_disc(icon, 128, 64, ground="var(--on-primary)" if result else "var(--tint)",
+        d = s.gap(128)                                   # 式の箱のアイコンの丸（大きく組むときは広げる）
+        inner.append(icon_disc(icon, d, d // 2, ground="var(--on-primary)" if result else "var(--tint)",
                                extra=" margin-bottom:24px;"))
-        h += 152
-    ts, tn = s.fit(f"{role}-title", it["title"], s.g(57 if result else 45, 57), width, what=f"{where}の title", lines=2, lh=1.4,
+        h += d + 24
+    ts, tn = s.fit(f"{role}-title", it["title"], s.g(57 if result else 45, 64), width, what=f"{where}の title", lines=2, lh=1.4,
                    min_size=32, bold=True, tidy=True)
     inner.append(f'<div class="eq-title" style="font-size:{ts}px">{rich(it["title"])}</div>')
     h += tn * ts * 1.4
     body = s.text("body", spec=it)
     if body:
-        bs, bn = s.fit(f"{role}-body", body, s.g(26, 28), width - (48 if result else 0), what=f"{where}の body", lines=2, lh=1.5,
+        bs, bn = s.fit(f"{role}-body", body, s.g(26, 36), width - (48 if result else 0), what=f"{where}の body", lines=2, lh=1.5,
                        min_size=24, bold=result)       # 答えの札は太字で、左右に 24px ずつの余白
         cls = "eq-chip" if result else "eq-body"
         inner.append(f'<div class="{cls}" style="font-size:{bs}px">{rich(body)}</div>')
@@ -2173,12 +2203,14 @@ def t_equation(s: Slide):
         tallest = max(tallest, h)
         if i:
             cells.append(f'<div class="eq-op" style="width:{op}px" {s.anim(i + 1, "pop", 0, f"＋{i}")}>＋</div>')
-        cells.append(f'<div class="card eq-box" style="width:{px(bw)}" {s.anim(i + 1, "rise", 100, f"要素{i + 1}", item=True)}>{inner}</div>')
+        cells.append(f'<div class="card eq-box" style="width:{bw:.2f}px" {s.anim(i + 1, "rise", 100, f"要素{i + 1}", item=True)}>{inner}</div>')
     inner, h = _term(s, res, "eq-res", iw, "result ", result=True)
     tallest = max(tallest, h)
     cells.append(f'<div class="eq-op" style="width:{op}px" {s.anim(n + 1, "pop", 0, "＝")}>＝</div>')
-    cells.append(f'<div class="eq-box eq-res" style="width:{px(bw)}" {s.anim(n + 1, "pop", 150, "答え")}>{inner}</div>')
+    cells.append(f'<div class="eq-box eq-res" style="width:{bw:.2f}px" {s.anim(n + 1, "pop", 150, "答え")}>{inner}</div>')
     box_h = max(360.0, tallest + 2 * 40 + 8)
+    if s.grow:                                           # 余るときは箱も背を伸ばす（中身が増えた分と、場所の 5〜9 割まで）
+        box_h = max(box_h, min(round(avail * (0.5 + 0.1 * s.grow) / 8) * 8, 360 + 96 * s.grow))
     if box_h > avail:
         s.err(f"中身が多すぎて入らない（箱の高さ {box_h:.0f}px・入るのは {avail:.0f}px。題・補足を短くする）")
     s.need, s.avail = box_h, avail
@@ -2198,7 +2230,7 @@ def t_hub(s: Slide):
     n = len(its)
     rows = (n + 1) // 2
     gap = 24
-    ch = min(200.0, (avail - gap * (rows - 1)) / rows)
+    ch = min(float(200 + 8 * s.grow), (avail - gap * (rows - 1)) / rows)
     if ch < 144:
         s.err(f"項目が多すぎて入らない（1つの高さ {ch:.0f}px。見出しを短くするか項目を減らす）")
     cw, d = 576, 320
@@ -2228,16 +2260,16 @@ def t_hub(s: Slide):
         x0 = X0 if side == 0 else X0 + CW - cw
         icon = icon_of(s, it, f"items の {i + 1} 個目")
         tw = cw - 64 - 2 * BORDER - (96 + 24 if icon else 0)
-        ts, _ = s.fit("hub-title", it["title"], s.g(36, 36), tw, what=f"items の {i + 1} 個目の title", lines=1, lh=1.4,
+        ts, _ = s.fit("hub-title", it["title"], s.g(36, 45), tw, what=f"items の {i + 1} 個目の title", lines=1, lh=1.4,
                       min_size=28, bold=True)
         txt = f'<div class="hub-title" style="font-size:{ts}px">{rich(it["title"])}</div>'
         body = s.text("body", spec=it)
         if body:
-            bs, _ = s.fit("hub-body", body, s.g(24, 28), tw, what=f"items の {i + 1} 個目の body", lines=1, lh=1.5, min_size=22)
+            bs, _ = s.fit("hub-body", body, s.g(24, 32), tw, what=f"items の {i + 1} 個目の body", lines=1, lh=1.5, min_size=22)
             txt += f'<div class="hub-body" style="font-size:{bs}px">{rich(body)}</div>'
         tag = s.text("tag", spec=it)
         if tag:
-            gs, _ = s.fit("hub-tag", tag, 22, tw - 32, what=f"items の {i + 1} 個目の tag", lines=1, lh=1.5, min_size=22, bold=True)
+            gs, _ = s.fit("hub-tag", tag, s.g(22, 28), tw - 32, what=f"items の {i + 1} 個目の tag", lines=1, lh=1.5, min_size=22, bold=True)
             txt += f'<div class="hub-tag" style="font-size:{gs}px">{esc(tag)}</div>'
         disc = icon_disc(icon, 96, 56, extra=" flex:none; margin-right:24px;") if icon else ""
         parts.append(f'<div class="card hub-item" style="{box(x0, y0, cw, ch)}" {s.anim(1, "rise", 200 + 120 * i, f"周り{i + 1}")}>'
@@ -2253,7 +2285,7 @@ def t_hub(s: Slide):
                      f'style="fill:none; stroke:var(--rule); stroke-width:2"/>')           # 接続線は rule・2px
     parts.insert(2, f'<svg class="hub-lines" width="{W}" height="{H}" viewBox="0 0 {W} {H}" {s.anim(1, "fade", 100, "つなぐ線")}>'
                  + "".join(lines) + "</svg>")
-    s.need, s.avail = avail, avail
+    s.need, s.avail = rows * ch + gap * (rows - 1), avail
     parts.append(source_line(s))
     return parts
 
@@ -2267,13 +2299,13 @@ def t_pairs(s: Slide):
         if text_width(v, 24, True) > 128:
             s.err(f"{w_} は短く（「NG」「OK」「before」「after」くらい）")
     n = len(its)
-    cols = 1 if n == 3 else 2
+    cols = 1 if n == 3 or (n == 2 and s.grow) else 2      # 2組は横に並べる。大きく組むときは箱が狭くて文字が上がらないので縦に2つ
     rows = (n + cols - 1) // cols
     gap = GUTTER if cols > 1 else 24
     rgap = 24
     avail = s.bottom - top
     pw = (CW - gap * (cols - 1)) / cols
-    ph = min(360.0, (avail - rgap * (rows - 1)) / rows)
+    ph = min(float(240 + 24 * s.grow if n == 2 and s.grow else 360), (avail - rgap * (rows - 1)) / rows)   # 縦に2つ並べるときだけ低い箱（大きく組まないときは今までの 360・Codex r6）
     if ph < 144:
         s.err(f"組が多すぎて入らない（1組の高さ {ph:.0f}px。見出しを短くするか組を減らす）")
     compact = ph < 264                          # 低い組（3組を縦に並べたとき）: 札を上に寄せ、アイコンを小さく
@@ -2288,7 +2320,7 @@ def t_pairs(s: Slide):
         x0 = X0 + (i % cols) * (pw + gap)
         y0 = gy + (i // cols) * (ph + rgap)
         icon = icon_of(s, it, f"items の {i + 1} 個目")
-        ls, _ = s.fit("pair-label", it["label"], 36, lw, what=f"items の {i + 1} 個目の label", lines=1, lh=1.4,
+        ls, _ = s.fit("pair-label", it["label"], s.g(36, 45), lw, what=f"items の {i + 1} 個目の label", lines=1, lh=1.4,
                       min_size=28, bold=True)
         left = ((ICON.svg(icon, 48 if compact else 64, "var(--primary-text)") if icon else "")
                 + f'<div class="pair-label" style="font-size:{ls}px">{esc(it["label"])}</div>')
@@ -2297,7 +2329,7 @@ def t_pairs(s: Slide):
         cells = []
         for k_, (key, cls, tag, mark, color) in enumerate((("before", "pair-bad", bad, "cross", "var(--error-2)"),
                                                             ("after", "pair-good", good, "check", "var(--success-2)"))):
-            fs, _ = s.fit(f"pair-{key}", it[key], s.g(28, 32), bw - 48, what=f"items の {i + 1} 個目の {key}", height=bh - (24 if compact else 48),
+            fs, _ = s.fit(f"pair-{key}", it[key], s.g(28, 45 if cols == 1 else 32), bw - 48, what=f"items の {i + 1} 個目の {key}", height=bh - (24 if compact else 48),
                           lh=1.5, min_size=24, bold=key == "after")
             bx = bx1 if k_ == 0 else bx2
             cells.append(f'<div class="pair-tag {cls}-tag" style="{box(bx, by - CHIP_H - 8)}">{ICON.svg(mark, 24, color)}'
@@ -2307,7 +2339,7 @@ def t_pairs(s: Slide):
                  '<polygon points="0,13 32,13 32,2 56,22 32,42 32,31 0,31" style="fill:var(--primary-mark)"/></svg>')
         parts.append(f'<div class="card pair" style="{box(x0, y0, pw, ph)}" {s.anim(i + 1, "rise", 0, f"組{i + 1}", item=True)}>'
                      f'<div class="pair-left" style="{box(40, 0, lw, phi)}">{left}</div>' + cells[0] + cells[1] + arrow + cells[2] + cells[3] + "</div>")
-    s.need, s.avail = avail, avail
+    s.need, s.avail = rows * ph + rgap * (rows - 1), avail
     parts.append(source_line(s))
     return parts
 
@@ -2363,7 +2395,7 @@ def _notice_boxes(s: Slide, its, drop: int, avail: float, gap: int):
             inner.append(f'<div class="nt-point"><div class="nt-mark" style="background-color:{line}; margin-top:{(ps * 1.5 - 16) / 2:.0f}px"></div>'
                          f'<div class="nt-text" style="font-size:{ps}px">{rich(p_)}</div></div>')
             h += 8 + pn * ps * 1.5
-        h += 2 * 32 + 2 * BORDER
+        h += 2 * 24 + 2 * BORDER
         total += h
         boxes.append(f'<div class="notice" style="width:{px(CW)}; border-color:{line}" {s.anim(i + 1, "rise", 0, f"お知らせ{i + 1}", item=True)}>'
                      f'<div class="nt-band" style="background-color:{line}"></div><div class="nt-main">' + "".join(inner) + "</div></div>")
@@ -2509,17 +2541,18 @@ def t_steps(s: Slide):
         cols, tallest = [], 0.0
         for i, it in enumerate(its):
             where = f"items の {i + 1} 個目"
-            ts, tn = s.fit("st-title", it["title"], 36 if n <= 4 else 32, cw, what=f"{where}の title", lines=2, lh=1.4, min_size=28, bold=True, tidy=True)
+            ts, tn = s.fit("st-title", it["title"], s.g(36 if n <= 4 else 32, 45), cw, what=f"{where}の title", lines=2, lh=1.4, min_size=28, bold=True, tidy=True)
             inner = (f'<div class="st-title" style="font-size:{ts}px">{rich(it["title"])}</div>')
             h = tn * ts * 1.4
             body = s.text("body", spec=it)
             if body:
-                bs, bn = s.fit("st-body", body, 28, cw, under="st-title", what=f"{where}の body", height=body_room - tn * ts * 1.4, lh=1.6, min_size=24)
+                bs, bn = s.fit("st-body", body, s.g(28, 36), cw, under="st-title", what=f"{where}の body", height=body_room - tn * ts * 1.4, lh=1.6, min_size=24)
                 inner += f'<div class="st-body" style="font-size:{bs}px">{rich(body)}</div>'
                 h += 8 + bn * bs * 1.6
             tallest = max(tallest, h)
             cols.append(inner)
         group = ST_CIRCLE + 16 + CHIP_H + 16 + tallest
+        s.need, s.avail = group, avail
         gy = top + max(0.0, (avail - group) / 2)
         for i, (inner, st) in enumerate(zip(cols, states)):
             x = X0 + i * (cw + GUTTER)
@@ -2532,7 +2565,7 @@ def t_steps(s: Slide):
     else:
         tw = CW - ST_CIRCLE - 32
         blocks, hs = [], []
-        size = 36 if n <= 4 else 32
+        size = s.g(36 if n <= 4 else 32, 45)
         for i, it in enumerate(its):
             where = f"items の {i + 1} 個目"
             ts, tn = s.fit("st-title", it["title"], size, tw - ST_CHIP_W - 16, what=f"{where}の title", lines=2, lh=1.4, min_size=28, bold=True)
@@ -2540,12 +2573,13 @@ def t_steps(s: Slide):
             h = max(CHIP_H, tn * ts * 1.4)
             inner = (f'<div class="st-line">{_step_chip(states[i])}<div class="st-title" style="font-size:{ts}px; margin-left:16px">{rich(it["title"])}</div></div>')
             if body:
-                bs, bn = s.fit("st-body", body, 28, tw, under="st-title", what=f"{where}の body", lines=2, lh=1.6, min_size=24)
+                bs, bn = s.fit("st-body", body, s.g(28, 36), tw, under="st-title", what=f"{where}の body", lines=2, lh=1.6, min_size=24)
                 inner += f'<div class="st-body" style="font-size:{bs}px; margin-top:8px">{rich(body)}</div>'
                 h += 8 + bn * bs * 1.6
             blocks.append(inner)
             hs.append(max(float(ST_CIRCLE), h))
-        gap = next((g for g in (40, 24) if sum(hs) + g * (n - 1) <= avail + 0.5), None)
+        s.need, s.avail = sum(hs) + 40 * (n - 1), avail
+        gap = next((g for g in (s.gap(40), 40, 24) if sum(hs) + g * (n - 1) <= avail + 0.5), None)
         if gap is None:
             s.err(f"段が高すぎて入らない（{sum(hs) + 24 * (n - 1):.0f}px・入るのは {avail:.0f}px。題・補足を短くするか段を減らす）")
         gy = top + (avail - sum(hs) - gap * (n - 1)) / 2
@@ -2580,7 +2614,8 @@ def takeaway_band(s: Slide) -> str:
 # 中身が少ないとき（型の見積もった高さが置ける高さの GROW_FILL 未満）は、文字を段で上り、間隔を広げて組み直す。
 # 上る段の数は GROW_STEPS の順に試す（役ごとの上限は Slide.g の hi）。
 # 画像のあるページは大きくしない（画像の枠の大きさが変わると、描いた絵の区画が変わる）
-GROWABLE = {"cards", "flow", "compare", "bullets", "closing", "timeline", "summary", "notice", "deflist"}
+GROWABLE = {"cards", "flow", "compare", "bullets", "closing", "timeline", "summary", "notice", "deflist",
+            "table", "bar-chart", "line-chart", "kpi", "big-number", "hub", "equation", "pairs", "steps", "matrix", "team", "agenda", "quote"}   # 画像のあるページは大きくしない（ADR 0022）
 GROW_STEPS = (4, 3, 2, 1)                # 上る段の数（多い順に試す。2 段までだと 28 → 36 で差が小さかった・ADR 0022）
 GROW_FILL = 0.8                        # これより埋まっていなければ大きく組むのを試す（0.7 から上げた・ADR 0022）
 GROW_MAX = 0.92                        # 大きく組んだ結果がここまで埋まるなら採る（前は GROW_FILL と同じで、6行の表などが一段も上がらなかった・ADR 0022）

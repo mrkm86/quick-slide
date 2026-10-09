@@ -370,7 +370,7 @@ def case_fit_size_applied():
     path, _ = build(one(kp, ["", ""]), "fit-kpi")
     html = path.read_text(encoding="utf-8")
     lab, dl, nt = _sizes(html, "kpi-label"), _sizes(html, "kpi-delta"), _sizes(html, "kpi-note")
-    assert lab and lab[0] < 28 and dl and dl[0] < 28 and nt and nt[0] == 22, (lab, dl, nt)   # 注記は 22 が下限（下りない）
+    assert lab and lab[0] < 28 and dl and dl[0] < 28 and nt and nt[0] <= 24, (lab, dl, nt)   # 注記は 22 が下限（大きく組むときは 24 まで上る）
     iw = T.inner_w(deck_types_cw(3))
     assert T.text_width("A" * 23, lab[0], True) <= iw * T.SAFE, "折れない語が1行に入る大きさになっていない"
     cv = {"type": "cover", "title": "t", "meta": ["あ" * 60]}
@@ -767,6 +767,46 @@ def case_grow():
                                                             {"label": "3段目", "title": "画像の意味＋人の目"}]}
     ts = _role_sizes(html_of(flow, "grow-flow"), "flow-title")
     assert len(set(ts)) == 1 and ts[0] > 36, f"短い矢羽根の題が大きくならない: {ts}"
+
+
+def case_grow_more_types():
+    """grow を広げた型（ADR 0022）: 中身が少ないときは文字が段を上り、詰まったページは元のまま（DADS の段の中）。"""
+    def html_of(slide, name):
+        path, _ = build(one(slide), name)
+        return pathlib.Path(path).read_text(encoding="utf-8").split("<section", 1)[1]
+    sizes = lambda h, c: [int(v) for v in re.findall(rf'class="{c}[^"]*" style="[^"]*?font-size:(\d+)px', h)]
+    ax = {"label": "軸", "low": "低", "high": "高"}
+    mem = lambda n: [{"name": f"人{i}", "role": "役割の例", "note": "ひとことの例を書く"} for i in range(n)]
+    cases = [
+        ("agenda", {"type": "agenda", "items": ["現状", "原因", "対策"]},
+         {"type": "agenda", "items": [{"title": f"六つの項目の{i}番目", "note": "補足"} for i in range(6)]}, "agenda-title", 45),
+        ("team", {"type": "team", "headline": "h", "members": mem(2)}, {"type": "team", "headline": "h", "members": mem(6)}, "member-name", 32),
+        ("hub", {"type": "hub", "headline": "h", "center": {"title": "中心"}, "items": [{"title": "a"}, {"title": "b"}, {"title": "c"}]},
+         {"type": "hub", "headline": "h", "center": {"title": "中心"}, "items": [{"title": f"部署{i}の名前", "body": "補足の文", "tag": "札"} for i in range(6)]}, "hub-title", 36),
+        ("bar-chart", {"type": "bar-chart", "headline": "h", "bars": [{"label": "a", "value": 1}, {"label": "b", "value": 2}, {"label": "c", "value": 3}]},
+         {"type": "bar-chart", "headline": "h", "bars": [{"label": f"部署{i}", "value": i} for i in range(1, 9)]}, "bar-label", 28),
+        ("matrix", {"type": "matrix", "headline": "h", "x": ax, "y": ax, "items": [{"label": "案A", "x": 75, "y": 75}, {"label": "案B", "x": 25, "y": 25}]},
+         {"type": "matrix", "headline": "h", "x": ax, "y": ax, "items": [{"label": f"案{i}", "x": 10 + 11 * i, "y": 10 + 11 * ((i * 3) % 8)} for i in range(8)]}, "mx-label", 28),
+        ("line-chart", {"type": "line-chart", "headline": "h", "labels": ["1", "2", "3", "4"], "series": [{"values": [1, 2, 3, 4]}]},
+         {"type": "line-chart", "headline": "h", "labels": [str(i) for i in range(12)], "series": [{"values": list(range(12))}]}, "bar-label", 28),
+        ("quote", {"type": "quote", "quote": "短い言葉。"}, None, "quote-text", 57),
+        ("equation", {"type": "equation", "headline": "h", "items": [{"title": "a"}, {"title": "b"}], "result": {"title": "c"}}, None, "eq-title", 45),
+        ("steps", {"type": "steps", "headline": "h", "current": 2, "items": [{"title": "a"}, {"title": "b"}, {"title": "c"}]}, None, "st-title", 36),
+        ("big-number", {"type": "big-number", "headline": "h", "value": "1", "label": "説明"}, None, "bn-label", 36),
+        ("kpi", {"type": "kpi", "headline": "h", "items": [{"label": "a", "value": "1"}, {"label": "b", "value": "2"}, {"label": "c", "value": "3"}]}, None, "kpi-label", 28),
+        ("pairs", {"type": "pairs", "headline": "h", "items": [{"label": "a", "before": "x", "after": "y"}, {"label": "b", "before": "x", "after": "y"}]}, None, "pair-label", 36),
+    ]
+    for name, few, many, cls, base in cases:
+        sz = sizes(html_of(few, f"gm-{name}-few"), cls)
+        assert sz and max(sz) > base and all(v in T.SCALE for v in sz), f"{name}: 少ないときに {cls} が {base} から上がらない: {sz}"
+        if many:
+            sz = sizes(html_of(many, f"gm-{name}-many"), cls)
+            assert sz and max(sz) <= base, f"{name}: 詰まったページが大きくなった: {sz}"
+    tbl = lambda n: {"type": "table", "headline": "h", "columns": ["a", "b", "c"], "rows": [["1", "2", "3"]] * n}
+    sz = lambda h: [int(v) for v in re.findall(r'<div class="td"[^>]*><div style="font-size:(\d+)px', h)]
+    assert max(sz(html_of(tbl(2), "gm-table-few"))) > 28 and max(sz(html_of(tbl(7), "gm-table-many"))) <= 28, "表"
+    nt = lambda n: {"type": "notice", "headline": "h", "items": [{"title": "題", "body": "本文"}] * n}
+    assert max(sizes(html_of(nt(1), "gm-notice"), "nt-title")) > 45, "notice"
 
 
 def case_diagram_types():
@@ -1700,6 +1740,10 @@ def case_dads_line_chart_marks():
     # Codex r4: 長い用語で用語の列が広がっても、説明が入らなければほかの幅で組む（前に組めた台本を止めない・ADR 0022）
     long_dl = {"type": "deflist", "headline": "用語", "items": [{"term": "語" * 18, "body": "文" * 80}] * 7}
     _secs(build(one(long_dl), "dl-long")[0])
+    # Codex r6: 2組の pairs は大きく組まないとき今までの箱の高さ（360）。4〜5行の文が入る（前に組めた台本を止めない）
+    for k in (4, 5):
+        t = "\n".join(["文"] * k)
+        _secs(build(one({"type": "pairs", "headline": "h", "items": [{"label": "a", "before": t, "after": t}] * 2}), f"pairs-tall-{k}")[0])
     # 非強調の線は rule 以上の濃さ（ink・muted）
     p = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
     assert deck.ratio(p["ink"], p["bg"]) >= deck.ratio(p["rule"], p["bg"]) and deck.ratio(p["muted"], p["bg"]) >= deck.ratio(p["rule"], p["bg"])
