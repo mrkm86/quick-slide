@@ -60,8 +60,8 @@
   // 下端にあるので popup は**上へ開く**。向きは器のクラスで宣言する（`SS.menu` が読む）。
   function menuButton(card, caps, onChanged) {
     var wrap = h("div", { class: "card__menu menu-anchor menu-anchor--up" });
-    var b = h("button", { class: "btn btn--icon btn--ghost", type: "button", "aria-label": "操作", "aria-haspopup": "menu", text: "⋮",
-      onclick: function (e) { e.stopPropagation(); SS.menu(b, SS.deckActions(card, caps, onChanged)); } });
+    var b = h("button", { class: "btn btn--icon btn--ghost", type: "button", "aria-label": "操作", "aria-haspopup": "menu",
+      onclick: function (e) { e.stopPropagation(); SS.menu(b, SS.deckActions(card, caps, onChanged)); } }, SS.icon("more_vert"));
     wrap.appendChild(b);
     return wrap;
   }

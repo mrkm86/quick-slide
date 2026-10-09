@@ -218,8 +218,10 @@
     var caption = text("p", "", "carousel__caption reason");
     var dots = h("div", { class: "carousel__dots" });
     var counter = text("span", "", "carousel__counter small muted");
-    var back = button("←", function () { move(-1); }, "btn--icon btn--ghost");
-    var forward = button("→", function () { move(1); }, "btn--icon btn--ghost");
+    var back = button("", function () { move(-1); }, "btn--icon btn--ghost");
+    var forward = button("", function () { move(1); }, "btn--icon btn--ghost");
+    back.appendChild(SS.icon("arrow_back"));
+    forward.appendChild(SS.icon("arrow_forward"));
     back.setAttribute("aria-label", "前の見本");
     forward.setAttribute("aria-label", "次の見本");
     var root = h("section", { class: "carousel", tabindex: "0", "aria-label": "配色の見本" },
@@ -511,7 +513,7 @@
         return result.item;
       });
     }
-    var menuButton = h("button", { class: "btn btn--icon btn--ghost", type: "button", "aria-label": "操作", "aria-haspopup": "menu", text: "⋮" });
+    var menuButton = h("button", { class: "btn btn--icon btn--ghost", type: "button", "aria-label": "操作", "aria-haspopup": "menu" }, SS.icon("more_vert"));
     menuButton.addEventListener("click", function () {
       var edit = entry.capabilities.edit, remove = entry.capabilities.delete;
       SS.menu(menuButton, [

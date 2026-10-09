@@ -128,21 +128,14 @@
 
   // カードの中身はヘッダの下に生えるので、印は中身が動く向きを指す。
   // 閉じている＝これから下へ伸びる、開いている＝これから上へ縮む
+  // 印はすべて Material Symbols（SS.icon。core.js）。名前は呼ぶ側の意味のまま、絵だけを DADS の組に揃える。
+  // 鉛筆は**先が左下**（2026-09-18、利用者の指示）。`✎` のような文字はフォントによって向きも太さも変わるので SVG にする。
+  // 参考画像を添える口に**絵文字を置かない**（2026-09-24、利用者「ここだけカラーアイコンって異色に見える」）。
+  // どれも `currentColor` で、ほかの印と同じ色に揃う
   function pageIcon(name) {
-    var paths = {
-      "eye-off": '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.8 10.8 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/>',
-      "panel-top-close": '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="m9 16 3-3 3 3"/>',
-      "panel-bottom-close": '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/><path d="m15 8-3 3-3-3"/>',
-      // 鉛筆は**先が左下**（2026-09-18、利用者の指示）。`✎` のような文字はフォントによって
-      // 向きも太さも変わるので、ほかの印と同じ SVG（lucide の pencil）に揃える
-      "pencil": '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
-      // 参考画像を添える口。**絵文字を置かない**（2026-09-24、利用者「ここだけカラーアイコンって
-      // 異色に見える」）。鉛筆を `✎` にしなかったのと同じ理由で、ほかの印と同じ線の太さ・同じ色
-      // （`currentColor`）に揃う SVG にする。絵文字はフォント任せで色まで持ってくる
-      "image": '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>'
-    };
-    return h("span", { class: "page-icon page-icon--" + name, "aria-hidden": "true", html:
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + paths[name] + "</svg>" });
+    var names = { "eye-off": "visibility_off", "panel-top-close": "expand_less", "panel-bottom-close": "expand_more",
+                  "pencil": "edit", "image": "image" };
+    return h("span", { class: "page-icon page-icon--" + name, "aria-hidden": "true" }, SS.icon(names[name]));
   }
 
   // ---- 止まっている帯と再開（判断はサーバの limit。画面では推測しない）----
@@ -474,7 +467,7 @@
       h("span", { class: "target", text: "デッキ全体への指示" }),
       // 何に使う欄かを常に書く。使えない理由はスライドに 1 か所（すぐ上の行）にあるので、ここには複製しない
       h("span", { class: "reason", text: "口調・配色などデッキ全体に効く指示" }),
-      h("span", { class: "muted small", text: "▾" }));
+      h("span", { class: "deck-instruction__caret" }, SS.icon("expand_more")));
     bar.addEventListener("click", function () {
       var open = box.classList.toggle("is-open");
       bar.setAttribute("aria-expanded", open ? "true" : "false");
@@ -934,7 +927,7 @@
       "aria-label": "ページ " + page.position + (page.title ? ": " + page.title : ""),
       dataset: { slide: page.slide_id, position: String(page.position), version: page.version_id } });
 
-    var menuBtn = h("button", { class: "btn btn--icon btn--ghost", type: "button", "aria-label": "ページの操作", "aria-haspopup": "menu", text: "⋮" });
+    var menuBtn = h("button", { class: "btn btn--icon btn--ghost", type: "button", "aria-label": "ページの操作", "aria-haspopup": "menu" }, SS.icon("more_vert"));
     var menuWrap = h("span", { class: "menu-anchor" }, menuBtn);
     menuBtn.addEventListener("click", function () {
       // 位置と件数は「いま画面に出ている並び」から取る（描いた時点の page.position は並べ替えで古くなる）
@@ -1011,12 +1004,12 @@
     // 「情報が多い」への答えは**捨てる**ではなく**畳む**。名前もサーバから貰う
     var det = detailsBlock(page);
     var recordLabel = cardWords().record_label || "";
-    var toggle = h("button", { class: "btn btn--small btn--ghost record-toggle", type: "button", "aria-expanded": "false",
-      text: "▸ " + recordLabel });
+    var toggle = h("button", { class: "btn btn--small btn--ghost record-toggle", type: "button", "aria-expanded": "false" },
+      SS.icon("expand_more"), recordLabel);
     toggle.addEventListener("click", function () {
       det.hidden = !det.hidden;
       toggle.setAttribute("aria-expanded", det.hidden ? "false" : "true");
-      toggle.textContent = (det.hidden ? "▸ " : "▾ ") + recordLabel;
+      toggle.replaceChildren(SS.icon(det.hidden ? "expand_more" : "expand_less"), recordLabel);
     });
     article.appendChild(toggle);
     article.appendChild(det);
@@ -1547,7 +1540,7 @@
 
       SS.clear(root);
       var screen = h("div", { class: "deck-screen" });
-      var deckMenuBtn = h("button", { class: "btn btn--icon", type: "button", "aria-label": "スライドの操作", "aria-haspopup": "menu", text: "⋮" });
+      var deckMenuBtn = h("button", { class: "btn btn--icon", type: "button", "aria-label": "スライドの操作", "aria-haspopup": "menu" }, SS.icon("more_vert"));
       // 形式ごとの**独立したボタン**を横に並べる（2026-09-18、利用者の指示。メニューをやめた。
       // 1 回押せば書き出しが始まるものを、2 回押させる形にしていた）。承認済みの初期提供範囲は
       // 全体のみで、ページを選ぶ書き出しはまだ無いので、出すのは形式の 2 つだけである。
