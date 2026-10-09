@@ -736,7 +736,7 @@ def case_grow():
     h = html_of(short, "grow-short")
     ts, bs = _role_sizes(h, "card-title"), _role_sizes(h, "card-body")
     assert len(set(ts)) == 1 and ts[0] > 36, f"短いカードの題が大きくならない: {ts}"
-    assert len(set(bs)) == 1 and bs[0] <= 36 and bs[0] < ts[0] and bs[0] > 32, f"本文が段を上がっていない・題や上限を越えた: {ts} {bs}"
+    assert len(set(bs)) == 1 and bs[0] <= 45 and bs[0] < ts[0] and bs[0] > 32, f"本文が段を上がっていない・題や上限（本文 45・ADR 0022）を越えた: {ts} {bs}"
     assert all(v in T.SCALE for v in ts + bs), "大きく組んでも DADS の段の外にならない"
     mixed = copy.deepcopy(short)
     mixed["items"][1]["title"] = "コラムに使わない／TOP には二度と使わない"
@@ -1697,6 +1697,9 @@ def case_dads_line_chart_marks():
     assert 'class="legend"' in s and 'class="end-name"' not in s, "高さが足りないのに端の名前を置いた"
     dl = _secs(build(one({"type": "deflist", "headline": "h", "items": [{"term": "a", "body": "b"}] * 4}), "dl-top")[0])[0]
     assert 'class="col" style="left:120px; top:' in dl and 'class="center"' not in dl, "deflist は見出しの下から始める"
+    # Codex r4: 長い用語で用語の列が広がっても、説明が入らなければほかの幅で組む（前に組めた台本を止めない・ADR 0022）
+    long_dl = {"type": "deflist", "headline": "用語", "items": [{"term": "語" * 18, "body": "文" * 80}] * 7}
+    _secs(build(one(long_dl), "dl-long")[0])
     # 非強調の線は rule 以上の濃さ（ink・muted）
     p = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
     assert deck.ratio(p["ink"], p["bg"]) >= deck.ratio(p["rule"], p["bg"]) and deck.ratio(p["muted"], p["bg"]) >= deck.ratio(p["rule"], p["bg"])

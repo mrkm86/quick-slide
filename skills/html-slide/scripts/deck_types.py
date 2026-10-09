@@ -229,6 +229,7 @@ class Slide:
         # 中身の下端。締めの帯（takeaway）があれば、その分だけ上がる（帯は BODY_BOTTOM の上に置く）
         self.bottom = BODY_BOTTOM - (TAKE_H + TAKE_GAP if spec.get("takeaway") else 0)
         self.caps: dict[str, int] = {}           # 並ぶ項目の同じ役の文字（カードの題など）の大きさの上限（build_slide がそろえる）
+        self.big_head = False                    # 1行に収まる見出しを 80 にするか（build_slide が画像のないページで立てる・ADR 0022）
         self.seen: dict[str, list[int]] = {}     # 役ごとに、組んだ文字の大きさ
         self.fx = spec.get("fx")
         if self.fx is not None and self.fx not in FX:
@@ -521,8 +522,15 @@ def header(s: Slide, default_headline=None, width=CW, default_kicker=None, top=H
     head = s.text("headline", required=default_headline is None, default=default_headline)
     sub = s.text("sub")
     # big: 図解の型（式・放射・対）の大きな見出し（ADR 0019）。言い切りの1文を、本文より先に目に入れる
-    hs, hn = fit(head, 80 if big else 64, width, what="見出し（headline）", lines=2, lh=1.4,
-                 min_size=64 if big else 45, bold=True, tidy=True)
+    # ほかの型も、80 で1行に収まる見出しは 80 にする（ADR 0022。1行なら本文の場所はほとんど減らない）。2行になるなら今までどおり 64 から
+    one = None
+    if not big and s.big_head and width == CW:
+        try:
+            one = fit(head, 80, width, what="見出し（headline）", lines=1, lh=1.4, min_size=80, bold=True)
+        except DeckError:
+            one = None
+    hs, hn = one or fit(head, 80 if big else 64, width, what="見出し（headline）", lines=2, lh=1.4,
+                        min_size=64 if big else 48, bold=True, tidy=True)   # 見出しの下限は 48（本文の上限 45 より大きく・ADR 0022）
     parts = [f'<div class="head" style="width:{px(width)}; top:{px(top)}">']
     h = 0.0
     if kicker:
@@ -921,13 +929,13 @@ def t_cards(s: Slide):
             inner.append(f'<div class="card-label" style="font-size:{ls}px">{esc(label)}</div>')
             room -= ls * 1.5 + 8
             h += ls * 1.5 + 8
-        ts, tn = s.fit("card-title", it["title"], s.g(45 if big else 36, 45), iw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.4,
+        ts, tn = s.fit("card-title", it["title"], s.g(45 if big else 36, 57), iw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.4,
                      min_size=32, bold=True, tidy=True)
         inner.append(f'<div class="card-title" style="font-size:{ts}px">{rich(it["title"])}</div>')
         room -= tn * ts * 1.4 + 16
         h += tn * ts * 1.4 + 16
         if body:
-            bs, bn = s.fit("card-body", body, s.g(32 if big else 28, 36), iw, under="card-title", what=f"items の {i + 1} 個目の body", height=room, lh=1.6, min_size=24)
+            bs, bn = s.fit("card-body", body, s.g(32 if big else 28, 45), iw, under="card-title", what=f"items の {i + 1} 個目の body", height=room, lh=1.6, min_size=24)
             inner.append(f'<div class="card-body" style="font-size:{bs}px">{rich(body)}</div>')
             h += bn * bs * 1.6
         tallest = max(tallest, h)
@@ -964,12 +972,12 @@ def t_flow(s: Slide):
             left -= CHIP_H + 16
         title, body = s.text("title", spec=it), s.text("body", spec=it)
         if title:
-            ts, tn = s.fit("flow-title", title, s.g(36 if big else 32, 45), tw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.4,
+            ts, tn = s.fit("flow-title", title, s.g(36 if big else 32, 57), tw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.4,
                          min_size=28, bold=True, tidy=True)
             inner.append(f'<div class="flow-title" style="font-size:{ts}px">{rich(title)}</div>')
             left -= tn * ts * 1.4 + 16
         if body:
-            bs, bn = s.fit("flow-body", body, s.g(28, 36), tw, under="flow-title", what=f"items の {i + 1} 個目の body", height=left, lh=1.6, min_size=24)
+            bs, bn = s.fit("flow-body", body, s.g(28, 45), tw, under="flow-title", what=f"items の {i + 1} 個目の body", height=left, lh=1.6, min_size=24)
             inner.append(f'<div class="flow-body" style="font-size:{bs}px">{rich(body)}</div>')
             left -= bn * bs * 1.6
         tallest = max(tallest, room - left)
@@ -1037,7 +1045,7 @@ def t_compare(s: Slide):
         if pts:
             per = room / len(pts) - 16
             for j, p in enumerate(pts):
-                fs, fn_ = s.fit("cmp-point", p["text"], s.g(32, 36), iw - 40, under="cmp-title", what=f"{side}.points の {j + 1} 個目", height=per, lh=1.5, min_size=24)
+                fs, fn_ = s.fit("cmp-point", p["text"], s.g(32, 45), iw - 40, under="cmp-title", what=f"{side}.points の {j + 1} 個目", height=per, lh=1.5, min_size=24)
                 h += 16 + fn_ * fs * 1.5
                 dot_y = (fs * 1.5 - 16) / 2
                 inner.append(f'<div class="cmp-point"><div class="cmp-dot" style="margin-top:{dot_y:.0f}px"></div>'
@@ -1293,12 +1301,12 @@ def _list_rows(s: Slide, its, width, room, numbered, step_each):
     rows, need = [], gap * (len(its) - 1)
     for i, it in enumerate(its):
         tw = width - lead
-        ts, tn = s.fit("li-title", it["title"], s.g(45, 45), tw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.4, min_size=32, bold=True, tidy=True)
+        ts, tn = s.fit("li-title", it["title"], s.g(45, 57), tw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.4, min_size=32, bold=True, tidy=True)
         inner = f'<div class="li-title" style="font-size:{ts}px">{rich(it["title"])}</div>'
         h = tn * ts * 1.4
         body = s.text("body", spec=it)
         if body:
-            bs, bn = s.fit("li-body", body, s.g(28, 36), tw, under="li-title", what=f"items の {i + 1} 個目の body", height=per - tn * ts * 1.4 - 8, lh=1.6, min_size=24)
+            bs, bn = s.fit("li-body", body, s.g(28, 45), tw, under="li-title", what=f"items の {i + 1} 個目の body", height=per - tn * ts * 1.4 - 8, lh=1.6, min_size=24)
             inner += f'<div class="li-body" style="font-size:{bs}px">{rich(body)}</div>'
             h += 8 + bn * bs * 1.6
         elif tn * ts * 1.4 > per:
@@ -1460,7 +1468,7 @@ def t_timeline(s: Slide):
     cols, tallest = [], 0.0
     for i, it in enumerate(its):
         ws, _ = s.fit("tl-when", it["when"], 36, tw, what=f"items の {i + 1} 個目の when", lines=1, lh=1.4, min_size=24, bold=True)
-        ts, tn = s.fit("tl-title", it["title"], s.g(36 if big else 32, 45), tw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.4,
+        ts, tn = s.fit("tl-title", it["title"], s.g(36 if big else 32, 57), tw, what=f"items の {i + 1} 個目の title", lines=2, lh=1.4,
                      min_size=28, bold=True, tidy=True)
         now = cur == i + 1
         mark = '<div class="tl-dot hl"><div class="tl-dot-in"></div></div>' if now else '<div class="tl-dot"></div>'   # いまは二重丸
@@ -1471,7 +1479,7 @@ def t_timeline(s: Slide):
         h = tn * ts * 1.4
         body = s.text("body", spec=it)
         if body:
-            bs, bn = s.fit("tl-body", body, s.g(28 if big else 24, 32), tw, under="tl-title", what=f"items の {i + 1} 個目の body", height=room - h - 8, lh=1.6, min_size=24)
+            bs, bn = s.fit("tl-body", body, s.g(28 if big else 24, 36), tw, under="tl-title", what=f"items の {i + 1} 個目の body", height=room - h - 8, lh=1.6, min_size=24)
             inner += f'<div class="tl-body" style="font-size:{bs}px">{rich(body)}</div>'
             h += 8 + bn * bs * 1.6
         tallest = max(tallest, h)
@@ -1507,12 +1515,12 @@ def t_summary(s: Slide):
             vs, _ = s.fit("sum-value", v, s.g(64, 64), cw, what=f"points の {i + 1} 個目の value", lines=1, lh=1.4, min_size=45, bold=True)
             inner += f'<div class="sum-value" style="font-size:{vs}px">{esc(v)}</div>'
             left -= vs * 1.4 + 8
-        ts, tn = s.fit("sum-title", p["title"], s.g(36, 45), cw, what=f"points の {i + 1} 個目の title", lines=3, lh=1.4, min_size=28, bold=True)
+        ts, tn = s.fit("sum-title", p["title"], s.g(36, 57), cw, what=f"points の {i + 1} 個目の title", lines=3, lh=1.4, min_size=28, bold=True)
         inner += f'<div class="sum-title" style="font-size:{ts}px">{rich(p["title"])}</div>'
         left -= tn * ts * 1.4 + 16
         body = s.text("body", spec=p)
         if body:
-            bs, bn = s.fit("sum-body", body, s.g(28, 36), cw, under="sum-title", what=f"points の {i + 1} 個目の body", height=left, lh=1.6, min_size=24)
+            bs, bn = s.fit("sum-body", body, s.g(28, 45), cw, under="sum-title", what=f"points の {i + 1} 個目の body", height=left, lh=1.6, min_size=24)
             left -= bn * bs * 1.6
             inner += f'<div class="sum-body" style="font-size:{bs}px">{rich(body)}</div>'
         tallest = max(tallest, room - left)
@@ -2345,7 +2353,7 @@ def _notice_boxes(s: Slide, its, drop: int, avail: float, gap: int):
                  f'<div class="nt-title" style="font-size:{ts}px">{rich(it["title"])}</div>']
         h = head_h + 8 + tn * ts * 1.4
         if body:
-            bs, bn = s.fit("nt-body", body, step_down(s.g(32 if n == 1 else 28, 36), drop, 24), iw, under="nt-title", what=f"{where}の body",
+            bs, bn = s.fit("nt-body", body, step_down(s.g(32 if n == 1 else 28, 45), drop, 24), iw, under="nt-title", what=f"{where}の body",
                            lines=3, lh=1.6, min_size=24)
             inner.append(f'<div class="nt-body" style="font-size:{bs}px">{rich(body)}</div>')
             h += 8 + bn * bs * 1.6
@@ -2396,23 +2404,33 @@ def t_deflist(s: Slide):
         s.err("items の icon は、書くなら全部の行に書く（用語の頭がそろわない）")
     n = len(its)
     avail = s.bottom - top
-    size = s.g(32 if n <= 6 else 28, 45)          # 6 行までは本文 32（7・8 行は 28）
+    size = s.g(32 if n <= 6 else 28, 57)          # 6 行までは本文 32（7・8 行は 28）
     ib = lead_icon_box(size) if icons[0] else 0
     lead = ib + 16 if ib else 0
-    longest = max(text_width(it["term"], 28, True) for it in its)
-    tcol = span(3) if longest + lead <= span(3) * SAFE else span(4)
-    bw = CW - tcol - GUTTER
+    longest = max(text_width(it["term"], size, True) for it in its)   # 組む大きさで測る（28 で測ると、大きく組んだとき長い用語が折れて全体が戻る）
+    first = next((k for k in (3, 4, 5) if longest + lead <= span(k) * SAFE), 5)
     row_max = avail / n
     pad = s.gap(16)                                    # 行の上下の余白（大きく組むときは広げる）
-    rows, total = [], 0.0
-    for i, it in enumerate(its):
-        where = f"items の {i + 1} 個目"
-        ts, tn = s.fit("dl", it["term"], size, tcol - lead, what=f"{where}の term", height=row_max - 2 * pad - BORDER, lh=1.5, min_size=24, bold=True)
-        bs, bn = s.fit("dl", it["body"], size, bw, what=f"{where}の body", height=row_max - 2 * pad - BORDER, lh=1.5, min_size=24)
-        total += max(tn * ts, bn * bs) * 1.5 + 2 * pad + BORDER
-        rows.append((it, ts, bs))
-    if total > avail + 0.5:
-        s.err(f"行が多すぎて入らない（{total:.0f}px・入るのは {avail:.0f}px。用語・説明を短くするか行を減らす）")
+    # 用語の列は、用語が1行に入る一番狭い幅から試す。説明が入らなければ、ほかの幅（狭い順）でも組む（説明が長い台本を止めない）
+    seen0 = list(s.seen.get("dl", []))
+    for k in [first] + [k for k in (3, 4, 5) if k != first]:
+        tcol = span(k)
+        bw = CW - tcol - GUTTER
+        s.seen["dl"] = list(seen0)
+        try:
+            rows, total = [], 0.0
+            for i, it in enumerate(its):
+                where = f"items の {i + 1} 個目"
+                ts, tn = s.fit("dl", it["term"], size, tcol - lead, what=f"{where}の term", height=row_max - 2 * pad - BORDER, lh=1.5, min_size=24, bold=True)
+                bs, bn = s.fit("dl", it["body"], size, bw, what=f"{where}の body", height=row_max - 2 * pad - BORDER, lh=1.5, min_size=24)
+                total += max(tn * ts, bn * bs) * 1.5 + 2 * pad + BORDER
+                rows.append((it, ts, bs))
+            if total > avail + 0.5:
+                s.err(f"行が多すぎて入らない（{total:.0f}px・入るのは {avail:.0f}px。用語・説明を短くするか行を減らす）")
+            break
+        except DeckError:
+            if k == ([first] + [k for k in (3, 4, 5) if k != first])[-1]:
+                raise
     out = []
     for i, (it, ts, bs) in enumerate(rows):
         pic = (f'<div style="display:flex; width:{ib}px; height:{ib}px; margin: {(ts * 1.5 - ib) / 2:.0f}px 16px 0 0; flex:none">'
@@ -2563,8 +2581,9 @@ def takeaway_band(s: Slide) -> str:
 # 上る段の数は GROW_STEPS の順に試す（役ごとの上限は Slide.g の hi）。
 # 画像のあるページは大きくしない（画像の枠の大きさが変わると、描いた絵の区画が変わる）
 GROWABLE = {"cards", "flow", "compare", "bullets", "closing", "timeline", "summary", "notice", "deflist"}
-GROW_STEPS = (2, 1)
-GROW_FILL = 0.7
+GROW_STEPS = (4, 3, 2, 1)                # 上る段の数（多い順に試す。2 段までだと 28 → 36 で差が小さかった・ADR 0022）
+GROW_FILL = 0.8                        # これより埋まっていなければ大きく組むのを試す（0.7 から上げた・ADR 0022）
+GROW_MAX = 0.92                        # 大きく組んだ結果がここまで埋まるなら採る（前は GROW_FILL と同じで、6行の表などが一段も上がらなかった・ADR 0022）
 
 # 型の棚: 名前 → (関数, 台本で使えるキー, 見出しの帯・下の文字・ページ番号を付けるか)
 HEAD_KEYS = {"kicker", "headline", "sub", "source"}
@@ -2624,15 +2643,24 @@ def build_slide(s: Slide) -> tuple[list[str], bool]:
         s.err("takeaway_icon は takeaway（結論の1行）と一緒に書く")
     if s.type in RETIRED_TYPES:
         s.warnings.append(f"{s.no}枚目: 型 {s.type} は退役した（{RETIRED_TYPES[s.type]}）。今までどおり描くが、新しい台本では使わない")
-    parts = _compose(s, fn)
+    s.big_head = not _has_image(s.spec)        # 画像のないページは、1行に収まる見出しを 80 に（ADR 0022）
+    try:
+        parts = _compose(s, fn)
+    except DeckError:
+        if not s.big_head:
+            raise
+        s.big_head = False                     # 大きな見出しで中身が入らなければ、今までの見出しで組む
+        parts = _compose(s, fn)
     if s.type in GROWABLE and not _has_image(s.spec) and s.need is not None and s.need < GROW_FILL * s.avail:
+        base = {k: min(v) for k, v in s.seen.items() if v}
         for f in GROW_STEPS:                    # 中身が少ないときは、文字を大きくして場所を使う。入る一番大きい倍率
             s.grow = f
             try:
                 grown = _compose(s, fn)
             except DeckError:
                 continue
-            if s.need is not None and s.need <= GROW_FILL * s.avail:
+            shrunk = any(min(v) < base[k] for k, v in s.seen.items() if v and k in base)
+            if s.need is not None and s.need <= GROW_MAX * s.avail and not shrunk:   # どれかの役が元より小さくなる段は採らない
                 parts = grown
                 break
         else:

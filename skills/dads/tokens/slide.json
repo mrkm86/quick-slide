@@ -133,10 +133,10 @@
     "size": 64,
     "weight": "B",
     "line": 140,
-    "min": 45,
-    "max": 64,
+    "min": 48,
+    "max": 80,
     "origin": "plan",
-    "note": "中身の型の見出し"
+    "note": "中身の型の見出し。80 で1行に収まる見出しは 80（拡張・ADR 0022）"
    },
    "diagram-heading": {
     "size": 80,
@@ -186,18 +186,18 @@
     "weight": "B",
     "line": 140,
     "min": 28,
-    "max": 45,
+    "max": 57,
     "origin": "plan",
-    "note": "36 か 45。常に本文の大きさ以上"
+    "note": "36 か 45。常に本文の大きさ以上。余白が余るページは 57 まで上る（ADR 0022）"
    },
    "body": {
     "size": 32,
     "weight": "N",
     "line": 150,
     "min": 24,
-    "max": 36,
+    "max": 45,
     "origin": "plan",
-    "note": "32 か 28。長い文は行高 160 も可",
+    "note": "32 か 28。長い文は行高 160 も可。余白が余るページは 45 まで上る（ADR 0022）",
     "line_alt": 160
    },
    "table-head": {
