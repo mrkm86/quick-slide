@@ -1740,6 +1740,12 @@ def case_dads_line_chart_marks():
     # Codex r4: 長い用語で用語の列が広がっても、説明が入らなければほかの幅で組む（前に組めた台本を止めない・ADR 0022）
     long_dl = {"type": "deflist", "headline": "用語", "items": [{"term": "語" * 18, "body": "文" * 80}] * 7}
     _secs(build(one(long_dl), "dl-long")[0])
+    # 大きく組んだ狭い箱で、禁則と文節の折り返しで行が1字延びて箱を越えた実例（3枚のカードの本文が 45 に上がった）
+    tight = {"type": "cards", "headline": "写真はコピーせず、台帳には情報だけを置く",
+             "items": [{"label": "読むだけ", "title": "写真フォルダと使用済み写真フォルダ", "body": "写真はコピーせず、本文も保存しない", "accent": True},
+                       {"label": "使用履歴", "title": "Excel にして置く", "body": "部のフォルダに置く（見る用）"},
+                       {"label": "タグ", "title": "2種類で付ける", "body": "フォルダ名から取る「場所・来歴」と、画像から作る「中身」"}]}
+    _secs(build(one(tight), "grow-kinsoku")[0])
     # Codex r6: 2組の pairs は大きく組まないとき今までの箱の高さ（360）。4〜5行の文が入る（前に組めた台本を止めない）
     for k in (4, 5):
         t = "\n".join(["文"] * k)

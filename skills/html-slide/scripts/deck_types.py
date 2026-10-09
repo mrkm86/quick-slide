@@ -249,6 +249,10 @@ class Slide:
                 size = min(size, ref)
         if role in self.caps:
             size, kw["tidy"] = min(size, self.caps[role]), False
+        # 大きく組むときは 1 行に入る字数が少なく、禁則（行頭の」、・行末の「）と文節の折り返しで行が1字ぶん延びることがある。
+        # 見積もりの幅から1字ぶん引いて余裕を持たせる（大きく組まないページの計算は変えない・ADR 0022）
+        if self.grow and width > 4 * size:
+            width = width - size
         v, n = fit(text, size, width, **kw)
         self.seen.setdefault(role, []).append(v)
         return v, n
