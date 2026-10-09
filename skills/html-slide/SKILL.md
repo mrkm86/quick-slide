@@ -34,7 +34,7 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 ## Workflow: deck（資料を作る）
 
 1. **ストーリー（何をどの順で言うか・枚数）は呼ぶ側が決める。** このスキルはストーリーの型を持たない（[ADR 0004](docs/adr/0004-no-story-templates.md)）。決まった流れが要る用途（社内の稟議・定例など）は、呼ぶ側のスキルが流れを決めて検品をかける
-2. [`references/deck-format.md`](references/deck-format.md) の「書く前に」の8つを読み、台本を書く。見本は [`examples/sample-deck.json`](examples/sample-deck.json)
+2. [`references/deck-format.md`](references/deck-format.md) の「書く前に」の9つを読み、台本を書く。見本は [`examples/sample-deck.json`](examples/sample-deck.json)
    - **見出しは主張で書く**（「現状」ではなく「会議の4割は決めずに終わっている」）
    - 1枚1メッセージ。話の筋は 結論 → 課題 → 原因 → 解決 → 効果 → 次の一手 が基本
    - `talk`（話す台本）は、1つ目が画面に入ったとき、2つ目以降が各クリックのとき。数が型の段の数と合わないと rc=2
