@@ -4,7 +4,7 @@
 選んだ型の描き方・このページの中身）。ただし quick-slide の企画ページ（題・意図・本文）ではなく、
 html-slide の台本の1枚（型と中身）から組む。
 
-- 型（TYPE_NOTES）は html-slide の型23種に1つずつ、何を載せるか（コンテンツ）だけを言う。構図は Codex に任せる（ADR 0005）
+- 型（TYPE_NOTES）は html-slide の型（26種）に1つずつ、何を載せるか（コンテンツ）だけを言う。構図は Codex に任せる（ADR 0005）
 - ロゴ・フッタの文字・ページ番号は描かせない。下端の帯を空けさせ、あとで PowerPoint の部品として上に置く（pptx_out.py）
 - プロンプトに入れるのは台本の中身だけ。ファイルのパスは入れない（参照画像は「添付の参照画像1」と順番で言う）
 """
@@ -58,10 +58,18 @@ TYPE_NOTES = {
     "matrix": "2軸で位置づける。横軸は x、縦軸は y（label・low・high）。items を x・y（0〜100）の位置に置く。"
               "quadrants があれば左上・右上・左下・右下の順に title・body。focus の象限を淡く塗る。accent が真の項目は目立たせる",
     "closing": "締め。主役は headline。items は次の一手（順に番号を付ける）、contact は連絡先。前向きで落ち着いた印象にする",
+    "equation": "式。items の要素を「＋」でつなぎ、「＝」の先に result（答え）を置く。要素はそれぞれ title・body の箱。"
+                "答えの箱は主役の色で塗って目立たせる",
+    "hub": "放射。中央に center（中心の役）を丸く置き、items を左右に分けて並べて中心と線でつなぐ。"
+           "各項目は title・body と、tag があれば小さな札",
+    "pairs": "対。items の各組で、label（何の話か）の横に before（よくない例）→ after（よい例）を矢印でつなぐ。"
+             "before は控えめに、after は目立たせる。bad_label・good_label は各箱に添える小さな札（既定は NG と OK）",
 }
 
 KEY_WORDS = ("キーの意味: kicker＝見出しの上の小さな名札、headline＝見出し（主張）、sub＝見出しの下のリード文、"
-             "source＝下端に小さく置く出典・注記、title・body＝項目の題と説明、label＝短い名札。"
+             "source＝下端に小さく置く出典・注記、title・body＝項目の題と説明、label＝短い名札、"
+             "icon＝その項目に添える線のアイコンの名前（名前は描かず、その意味の小さなアイコンを描く）、"
+             "takeaway＝中身の下に置く結論の1行の帯。"
              "キーの名前そのものは描かない")
 
 LAYOUT_WORDS = ("配置のキーの意味: layout＝置き方（split＝片側に写真・hero／full＝全面の写真・left／right＝写真の側・band＝上に横長の帯・"

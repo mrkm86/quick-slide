@@ -20,6 +20,7 @@ import pathlib
 import re
 
 import deck_art as ART
+import deck_icons as ICON
 
 W, H = 1920, 1080
 X0 = 120                 # 左右の余白
@@ -27,6 +28,7 @@ CW = W - 2 * X0          # 中身の幅 1680
 HEAD_TOP = 80
 BODY_GAP = 56            # 見出しと中身の間
 BODY_BOTTOM = 950        # 中身の下端（下の文字とページ番号は 1006 から）
+TAKE_H, TAKE_GAP = 88, 36    # 締めの帯（takeaway）の高さと、中身との間（ADR 0019）
 STEP_GAP = 600           # 段を data-delay に移すときの 1段ぶんの遅れ（ms）
 SAFE = 0.94              # 行の見積もりで使う幅の割合（ブラウザの禁則と文節の折り返しのぶんの余裕）
 MIN_PX = 22              # 型が出す文字の下限（11pt）
@@ -182,6 +184,8 @@ class Slide:
         self.grow = 1.0                          # 中身が少ないときに大きく組む倍率（build_slide が決める・GROW_STEPS）
         self.need: float | None = None           # 型が見積もった中身の高さ（px）。大きく組めるかの判断に使う
         self.avail: float | None = None          # 中身を置ける高さ（見出しの下から BODY_BOTTOM まで）
+        # 中身の下端。締めの帯（takeaway）があれば、その分だけ上がる（帯は BODY_BOTTOM の上に置く）
+        self.bottom = BODY_BOTTOM - (TAKE_H + TAKE_GAP if spec.get("takeaway") else 0)
         self.caps: dict[str, int] = {}           # 並ぶ項目の同じ役の文字（カードの題など）の大きさの上限（build_slide がそろえる）
         self.seen: dict[str, list[int]] = {}     # 役ごとに、組んだ文字の大きさ
         self.fx = spec.get("fx")
@@ -462,20 +466,23 @@ def placeholder_text(prompt: str, w: float, h: float) -> tuple[str, int]:
 
 # --- 部品 --------------------------------------------------------------------------
 
-def header(s: Slide, default_headline=None, width=CW, default_kicker=None, top=HEAD_TOP):
+def header(s: Slide, default_headline=None, width=CW, default_kicker=None, top=HEAD_TOP, big=False):
     """左上の見出し（kicker・headline・sub）。(HTML, 中身の上端) を返す。top は見出しの上端（上に写真の帯を置く型が下げる）。"""
     kicker = s.text("kicker", default=default_kicker)
     head = s.text("headline", required=default_headline is None, default=default_headline)
     sub = s.text("sub")
-    hs, hn = fit(head, 60, width, what="見出し（headline）", lines=2, lh=1.35, min_size=44, bold=True, tidy=True)
+    # big: 図解の型（式・放射・対）の大きな見出し（ADR 0019）。言い切りの1文を、本文より先に目に入れる
+    hs, hn = fit(head, 84 if big else 60, width, what="見出し（headline）", lines=2, lh=1.25 if big else 1.35,
+                 min_size=56 if big else 44, bold=True, tidy=True)
     parts = [f'<div class="head" style="width:{px(width)}; top:{px(top)}">']
     h = 0.0
     if kicker:
         ks, _ = fit(kicker, 28, width, what="kicker", lines=1, lh=1.4, bold=True)
         parts.append(f'<div class="kicker" style="font-size:{ks}px" data-name="小見出し">{esc(kicker)}</div>')
         h += ks * 1.4 + 12
-    parts.append(f'<h1 class="headline" style="font-size:{hs}px" {s.anim(0, "rise", 0, "見出し")}>{rich(head)}</h1>')
-    h += hn * hs * 1.35
+    lh = 1.25 if big else 1.35
+    parts.append(f'<h1 class="headline" style="font-size:{hs}px; line-height:{lh}" {s.anim(0, "rise", 0, "見出し")}>{rich(head)}</h1>')
+    h += hn * hs * lh
     if sub:
         ss, sn = fit(sub, 30, width, what="sub", lines=2, lh=1.5, min_size=24)
         parts.append(f'<div class="sub" style="font-size:{ss}px" {s.anim(0, "rise", 150, "リード")}>{rich(sub)}</div>')
@@ -549,6 +556,22 @@ def hero_layer(s: Slide, name: str):
     parts.append(f'<div class="veil-edge" style="{box(gx, 0, HERO_FADE, H)} background-image:linear-gradient({direction}, '
                  f'var({c0}), var({c1}));" data-name="幕の端"></div>')
     return parts, (140 if side == "left" else W - 140 - HERO_TW), HERO_TW, tone == "dark"
+
+
+def icon_of(s: Slide, it: dict, where: str) -> str | None:
+    """項目の icon（deck_icons の名前）。無ければ None、知らない名前は rc=2。"""
+    name = it.get("icon")
+    if name in (None, ""):
+        return None
+    if not isinstance(name, str) or name not in ICON.ICONS:
+        s.err(f"{where}の icon {name!r} は無い（使えるのは {', '.join(ICON.names())}）")
+    return name
+
+
+def icon_disc(name: str, d: float, icon: float, *, ground="var(--tint)", ink="var(--primary-strong)", extra="") -> str:
+    """丸い地の上のアイコン（d px の丸・icon px のアイコン）。"""
+    return (f'<div class="icon-disc" style="width:{d:g}px; height:{d:g}px; border-radius:{d / 2:g}px; '
+            f'background-color:{ground};{extra}">{ICON.svg(name, icon, ink)}</div>')
 
 
 def art_layer(s: Slide, x: int, w: int, name: str) -> list[str]:
@@ -764,13 +787,13 @@ def t_cards(s: Slide):
     カードの高さは中身の一番多い1枚に合わせ（最低 MIN_CARD_H）、中身の場所の上下中央に置く。
     """
     head, top = header(s)
-    its = s.items("items", 2, 4, ("title", "label", "body", "accent", "image"))
+    its = s.items("items", 2, 4, ("title", "label", "body", "accent", "image", "icon"))
     imaged = [bool(it.get("image")) for it in its]
     if any(imaged) and not all(imaged):
         s.err("items の image は、書くなら全部のカードに書く（並びがそろわない）")
     n, gap = len(its), 40
     cw = (CW - gap * (n - 1)) / n
-    avail = BODY_BOTTOM - top
+    avail = s.bottom - top
     iw = cw - 88
     big = n <= 3
     cards, tallest = [], 400.0                 # カードの最低の高さ（.card の min-height）
@@ -780,11 +803,18 @@ def t_cards(s: Slide):
         iw = cw - 88 - (6 if hl else 0)          # 強めたカードは枠 3px ずつ内側が狭い
         room = avail - 96 - (6 if hl else 0) - 36
         inner = ['<div class="card-bar"></div>']
+        h = 96 + 8 + 28 + (6 if hl else 0)      # 上下の padding・上の短い線とその下の間・強めた枠
+        icon = icon_of(s, it, f"items の {i + 1} 個目")
+        if icon and it.get("image"):
+            s.err("カードの icon と image は一緒に書かない（どちらか）")
+        if icon:                                # 上の短い線の代わりにアイコン（ADR 0019）
+            inner = [icon_disc(icon, 96, 56, extra=" margin-bottom:28px;")]
+            room -= 96 - 8
+            h += 96 - 8
         if it.get("image"):                     # カードの上に 16:9 の写真（全部のカードで同じ比）
             ih = iw * 9 / 16
             inner = [s.img(it["image"], f"item{i + 1}", "card-img", 0, 0, iw, ih, extra="position:static;")]
             room -= ih + 28 - 36
-        h = 96 + 8 + 28 + (6 if hl else 0)      # 上下の padding・上の短い線とその下の間・強めた枠
         if label:
             ls, _ = s.fit("card-label", label, s.g(28), iw, what=f"items の {i + 1} 個目の label", lines=1, bold=True)
             inner.append(f'<div class="card-label" style="font-size:{ls}px">{esc(label)}</div>')
@@ -814,7 +844,7 @@ def t_flow(s: Slide):
     its = s.items("items", 3, 5, ("label", "title", "body", "accent"), required=("label",))
     n, gap, ah, depth = len(its), 10, 120, 44
     cw = (CW - gap * (n - 1)) / n
-    avail = BODY_BOTTOM - top
+    avail = s.bottom - top
     marked = any(it.get("accent") for it in its)
     tint, accent = s.pal["tint"], s.pal["accent-strong"]     # 段の地は主役の色の淡い地。強める段は差し色で、文字を載せるので文字を載せる面の色
     room = avail - ah - 32
@@ -859,7 +889,7 @@ def t_compare(s: Slide):
         s.err("accent は right / left / none のどれか")
     arrow = s.spec.get("arrow", True)
     gap = 140 if arrow else 60
-    pw, avail = (CW - gap) / 2, BODY_BOTTOM - top
+    pw, avail = (CW - gap) / 2, s.bottom - top
     iw = pw - 104
     panels, tallest = [], 420.0                # 列の最低の高さ（.cmp の min-height）
     for i, side in enumerate(("left", "right")):
@@ -930,7 +960,7 @@ def t_bar_chart(s: Slide):
     if callout is not None and (not isinstance(callout, dict) or not callout.get("value")):
         s.err("callout は value（と text）のオブジェクト")
     right = 1220 if callout else X0 + CW
-    base = BODY_BOTTOM - (110 if note else 70)
+    base = s.bottom - (110 if note else 70)
     vh = 36 * 1.3 + 12
     plot_h = base - top - vh - 10
     if plot_h < 200:
@@ -989,7 +1019,7 @@ def t_table(s: Slide):
     total = sum(weights)
     cws = [CW * v / total for v in weights]
     note_h = 44 if s.text("source") else 0
-    rh = min(116, (BODY_BOTTOM - top - note_h) / (len(rows) + 1))
+    rh = min(116, (s.bottom - top - note_h) / (len(rows) + 1))
     fs0 = 32 if rh >= 96 else 30 if rh >= 80 else 26
     max_lines = max(1, int((rh - 12) / (fs0 * 1.4)))
     out = []
@@ -1132,7 +1162,10 @@ def t_quote(s: Slide):
 def _list_rows(s: Slide, its, width, room, numbered, step_each):
     """箇条書きの行（印か番号＋title＋body）。room に入らなければ DeckError。"""
     gap = s.g(44)
-    lead = 104 if numbered else 52
+    iconed = [bool(it.get("icon")) for it in its] if not numbered else []
+    if any(iconed) and not all(iconed):
+        s.err("items の icon は、書くなら全部の項目に書く（印の幅がそろわない）")
+    lead = 104 if numbered else 80 if any(iconed) else 52
     per = (room - gap * (len(its) - 1)) / len(its)
     rows, need = [], gap * (len(its) - 1)
     for i, it in enumerate(its):
@@ -1148,8 +1181,10 @@ def _list_rows(s: Slide, its, width, room, numbered, step_each):
         elif tn * ts * 1.45 > per:
             s.err(f"items が多すぎて入らない（{len(its)} 個）")
         need += max(h, 68 if numbered else 0)    # 番号の丸（.li-no）は 68px
+        icon = None if numbered else icon_of(s, it, f"items の {i + 1} 個目")
         mark = (f'<div class="li-no">{i + 1}</div>' if numbered
-                else f'<div class="li-mark" style="margin-top:{ts * 1.45 / 2 - 9:.0f}px"></div>')
+                else ICON.svg(icon, 52, "var(--primary-strong)").replace("<svg ", f'<svg class="li-icon" style="margin-top:{ts * 1.45 / 2 - 26:.0f}px" ', 1)
+                if icon else f'<div class="li-mark" style="margin-top:{ts * 1.45 / 2 - 9:.0f}px"></div>')
         a = s.anim(i + 1, "rise", 0, f"項目{i + 1}", item=True) if step_each else s.anim(0, "rise", 300 + 150 * i, f"項目{i + 1}")
         margin = f"margin-top:{gap}px;" if i else ""
         rows.append(f'<div class="li" style="{margin}" {a}>{mark}<div class="li-text">{inner}</div></div>')
@@ -1161,7 +1196,7 @@ def t_bullets(s: Slide):
     """箇条書き: 2〜5項目（見出しと本文）。image があれば脇に写真（side: right 既定・left、split: 1/3 既定・2/5・1/2）。
     1項目ずつクリックで出る。"""
     head, top = header(s)
-    its = s.items("items", 2, 5, ("title", "body"))
+    its = s.items("items", 2, 5, ("title", "body", "icon"))
     width, parts, lx = CW, [head], X0
     side, split = s.spec.get("side", "right"), s.spec.get("split", "1/3")
     if side not in ("left", "right"):
@@ -1171,13 +1206,13 @@ def t_bullets(s: Slide):
     if s.spec.get("image"):
         pw = {"1/3": 600, "2/5": 700, "1/2": 820}[split]
         px_ = X0 + CW - pw if side == "right" else X0
-        parts.append(s.img(s.spec["image"], "image", "side-img", px_, top, pw, BODY_BOTTOM - top, anim=s.anim(0, "fade", 200, "写真")))
+        parts.append(s.img(s.spec["image"], "image", "side-img", px_, top, pw, s.bottom - top, anim=s.anim(0, "fade", 200, "写真")))
         width = CW - pw - 80
         lx = X0 if side == "right" else X0 + pw + 80
     elif "side" in s.spec or "split" in s.spec:
         s.err("side・split は image があるときだけ")
-    parts.append(f'<div class="list" style="{box(lx, top, width, BODY_BOTTOM - top)}">'
-                 + _list_rows(s, its, width, BODY_BOTTOM - top, False, True) + "</div>")
+    parts.append(f'<div class="list" style="{box(lx, top, width, s.bottom - top)}">'
+                 + _list_rows(s, its, width, s.bottom - top, False, True) + "</div>")
     parts.append(source_line(s))
     return parts
 
@@ -1291,7 +1326,7 @@ def t_timeline(s: Slide):
     cur = s.spec.get("current")
     if cur is not None and (not isinstance(cur, int) or not 1 <= cur <= len(its)):
         s.err(f"current は 1〜{len(its)} の整数")
-    avail = BODY_BOTTOM - top
+    avail = s.bottom - top
     slot = CW / len(its)
     tw = slot - 48
     big = len(its) <= 4
@@ -1332,7 +1367,7 @@ def t_summary(s: Slide):
     label = s.text("label", default="根拠")
     n, gap = len(pts), 64
     cw = (CW - gap * (n - 1)) / n
-    avail = BODY_BOTTOM - top
+    avail = s.bottom - top
     room = avail - 40 - 6 - 28 - 34 * 1.4 - 16
     cols, tallest = [], 0.0
     for i, p in enumerate(pts):
@@ -1380,7 +1415,7 @@ def t_kpi(s: Slide):
     for i, it in enumerate(its):
         if it.get("trend") is not None and it["trend"] not in TRENDS:
             s.err(f"items の {i + 1} 個目の trend は up / down / flat のどれか")
-    avail = BODY_BOTTOM - top
+    avail = s.bottom - top
     vmax = (104 if n == 3 else 88) if not pre else (88 if n == 3 else 76)
     for k in (1.0, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6):   # カードの高さが入るまで、全部のカードを同じ割合で縮める
         tiles, tallest = _kpi_tiles(s, its, cw, vmax, k)
@@ -1470,7 +1505,7 @@ def t_line_chart(s: Slide):
     legend_h = 48 if len(series) > 1 else 0
     pl = X0 + 110
     pt = top + legend_h + 56
-    base = BODY_BOTTOM - (110 if note else 70)
+    base = s.bottom - (110 if note else 70)
     ph = base - pt
     if ph < 220:
         s.err("見出しが高すぎてグラフの場所が足りない（見出しを短くするか sub を外す）")
@@ -1626,7 +1661,7 @@ def t_matrix(s: Slide):
     lw = 200                                     # 縦軸の言葉の列
     px0 = X0 + lw + 24
     right = 1240 if callout else X0 + CW
-    pt, pb = top + 8, BODY_BOTTOM - 64
+    pt, pb = top + 8, s.bottom - 64
     pw, ph = right - px0, pb - pt
     if ph < 300:
         s.err("見出しが高すぎて図の場所が足りない（見出しを短くするか sub を外す）")
@@ -1848,6 +1883,192 @@ def t_annotate(s: Slide):
     return parts
 
 
+
+# --- 図解の型（ADR 0019）: 式・放射・対。見出しは大きく、箱の中は名詞＋短い補足 -------------------------------
+
+def _term(s: Slide, it: dict, role: str, width: float, where: str, *, result=False) -> tuple[str, float]:
+    """式の箱の中身（アイコン・題・補足）と高さの見積もり。"""
+    inner, h = [], 0.0
+    icon = icon_of(s, it, where)
+    if icon:
+        inner.append(icon_disc(icon, 120, 68, ground="var(--on-primary)" if result else "var(--tint)",
+                               extra=" margin-bottom:28px;"))
+        h += 148
+    ts, tn = s.fit(f"{role}-title", it["title"], s.g(56 if result else 42), width, what=f"{where}の title", lines=2, lh=1.3,
+                   min_size=30, bold=True, tidy=True)
+    inner.append(f'<div class="eq-title" style="font-size:{ts}px">{rich(it["title"])}</div>')
+    h += tn * ts * 1.3
+    body = s.text("body", spec=it)
+    if body:
+        bs, bn = s.fit(f"{role}-body", body, s.g(26), width - (44 if result else 0), what=f"{where}の body", lines=2, lh=1.45,
+                       min_size=22, bold=result)       # 答えの札は太字で、左右に 22px ずつの余白
+        cls = "eq-chip" if result else "eq-body"
+        inner.append(f'<div class="{cls}" style="font-size:{bs}px">{rich(body)}</div>')
+        h += 14 + bn * bs * 1.45 + (8 if result else 0)
+    return "".join(inner), h
+
+
+def t_equation(s: Slide):
+    """式: 2〜4つの要素を「＋」でつなぎ、「＝」の先に答え（result）を置く。要素は1つずつ、答えは最後にクリックで出る。"""
+    head, top = header(s, big=True)
+    its = s.items("items", 2, 4, ("title", "body", "icon"))
+    res = s.spec.get("result")
+    if not isinstance(res, dict):
+        s.err("result（答え）は {title, body, icon} のオブジェクトで書く")
+    res = s.items("result", 1, 1, ("title", "body", "icon"), spec={"result": [res]})[0]
+    n, op = len(its), 88
+    bw = (CW - op * n) / (n + 1)
+    iw = bw - 64
+    avail = s.bottom - top
+    cells, tallest = [], 0.0
+    for i, it in enumerate(its):
+        inner, h = _term(s, it, "eq", iw, f"items の {i + 1} 個目")
+        tallest = max(tallest, h)
+        if i:
+            cells.append(f'<div class="eq-op" style="width:{op}px" {s.anim(i + 1, "pop", 0, f"＋{i}")}>＋</div>')
+        cells.append(f'<div class="card eq-box" style="width:{px(bw)}" {s.anim(i + 1, "rise", 100, f"要素{i + 1}", item=True)}>{inner}</div>')
+    inner, h = _term(s, res, "eq-res", iw, "result ", result=True)
+    tallest = max(tallest, h)
+    cells.append(f'<div class="eq-op" style="width:{op}px" {s.anim(n + 1, "pop", 0, "＝")}>＝</div>')
+    cells.append(f'<div class="eq-box eq-res" style="width:{px(bw)}" {s.anim(n + 1, "pop", 150, "答え")}>{inner}</div>')
+    box_h = max(360.0, tallest + 112)
+    if box_h > avail:
+        s.err(f"中身が多すぎて入らない（箱の高さ {box_h:.0f}px・入るのは {avail:.0f}px。題・補足を短くする）")
+    s.need, s.avail = box_h, avail
+    return [head, f'<div class="center" style="{box(X0, top, CW, avail)}"><div class="row" style="height:{px(box_h)}">'
+            + "".join(cells) + "</div></div>", source_line(s)]
+
+
+def t_hub(s: Slide):
+    """放射: 中心（center）と、その周りの 3〜6 個（左右に分けて並べ、中心と線でつなぐ）。中心が先に出て、周りは1クリックで出る。"""
+    head, top = header(s, big=True)
+    cen = s.spec.get("center")
+    if not isinstance(cen, dict):
+        s.err("center（中心）は {title, body, icon} のオブジェクトで書く")
+    cen = s.items("center", 1, 1, ("title", "body", "icon"), spec={"center": [cen]})[0]
+    its = s.items("items", 3, 6, ("title", "body", "icon", "tag"))
+    avail = s.bottom - top
+    n = len(its)
+    rows = (n + 1) // 2
+    gap = 32
+    ch = min(200.0, (avail - gap * (rows - 1)) / rows)
+    if ch < 140:
+        s.err(f"項目が多すぎて入らない（1つの高さ {ch:.0f}px。見出しを短くするか項目を減らす）")
+    cw, d = 560, 320
+    cy = top + avail / 2
+    cx = X0 + CW / 2
+    parts = [head]
+    lines = []
+    for i, it in enumerate(its):
+        side = 0 if i < rows else 1
+        j = i if side == 0 else i - rows
+        rows_here = rows if side == 0 else n - rows
+        y0 = top + (avail - (rows_here * ch + (rows_here - 1) * gap)) / 2 + j * (ch + gap)
+        x0 = X0 if side == 0 else X0 + CW - cw
+        icon = icon_of(s, it, f"items の {i + 1} 個目")
+        tw = cw - 72 - (96 + 28 if icon else 0)
+        ts, _ = s.fit("hub-title", it["title"], s.g(38), tw, what=f"items の {i + 1} 個目の title", lines=1, lh=1.3,
+                      min_size=26, bold=True)
+        txt = f'<div class="hub-title" style="font-size:{ts}px">{rich(it["title"])}</div>'
+        body = s.text("body", spec=it)
+        if body:
+            bs, _ = s.fit("hub-body", body, s.g(24), tw, what=f"items の {i + 1} 個目の body", lines=1, lh=1.4, min_size=20)
+            txt += f'<div class="hub-body" style="font-size:{bs}px">{rich(body)}</div>'
+        tag = s.text("tag", spec=it)
+        if tag:
+            gs, _ = s.fit("hub-tag", tag, 22, tw - 28, what=f"items の {i + 1} 個目の tag", lines=1, lh=1.4, min_size=18, bold=True)
+            txt += f'<div class="hub-tag" style="font-size:{gs}px">{esc(tag)}</div>'
+        disc = icon_disc(icon, 96, 56, extra=" flex:none; margin-right:28px;") if icon else ""
+        parts.append(f'<div class="card hub-item" style="{box(x0, y0, cw, ch)}" {s.anim(1, "rise", 200 + 120 * i, f"周り{i + 1}")}>'
+                     f'{disc}<div class="hub-text">{txt}</div></div>')
+        # 線: 箱の内側の縁の中ほどから、中心の円の縁へ（中心へ向かう向き）
+        ex0 = x0 + cw if side == 0 else x0
+        ey0 = y0 + ch / 2
+        dx, dy = ex0 - cx, ey0 - cy
+        r = math.hypot(dx, dy) or 1
+        ex, ey = cx + dx / r * (d / 2 + 6), cy + dy / r * (d / 2 + 6)
+        k = 90 if side == 0 else -90
+        lines.append(f'<path d="M {ex0:.1f} {ey0:.1f} C {ex0 + k:.1f} {ey0:.1f}, {ex - k * 0.6:.1f} {ey:.1f}, {ex:.1f} {ey:.1f}" '
+                     f'style="fill:none; stroke:var(--bar); stroke-width:4; stroke-dasharray:4 8; stroke-linecap:round"/>')
+    parts.insert(1, f'<svg class="hub-lines" width="{W}" height="{H}" viewBox="0 0 {W} {H}" {s.anim(1, "fade", 100, "つなぐ線")}>'
+                 + "".join(lines) + "</svg>")
+    inner = ""
+    icon = icon_of(s, cen, "center ")
+    if icon:
+        inner += ICON.svg(icon, 88, "var(--primary-strong)")
+    cs_, _ = s.fit("hub-center", cen["title"], 32, d - 72, what="center の title", lines=2, lh=1.3, min_size=24, bold=True)
+    inner += f'<div class="hub-c-title" style="font-size:{cs_}px">{rich(cen["title"])}</div>'
+    body = s.text("body", spec=cen)
+    if body:
+        bs, _ = fit(body, 22, d - 72, what="center の body", lines=2, lh=1.4, min_size=18)
+        inner += f'<div class="hub-c-body" style="font-size:{bs}px">{rich(body)}</div>'
+    parts.append(f'<div class="card hub-center" style="{box(cx - d / 2, cy - d / 2, d, d)} border-radius:{d // 2}px;" '
+                 f'{s.anim(0, "pop", 200, "中心")}>{inner}</div>')
+    s.need, s.avail = avail, avail
+    parts.append(source_line(s))
+    return parts
+
+
+def t_pairs(s: Slide):
+    """対: よくない例 → よい例 を 2〜4 組（label・before・after・icon）。1組ずつクリックで出る。4組は 2×2、2組は横に2つ、3組は縦に3つ。"""
+    head, top = header(s, big=True)
+    its = s.items("items", 2, 4, ("label", "before", "after", "icon"), required=("label", "before", "after"))
+    bad, good = s.text("bad_label", default="NG"), s.text("good_label", default="OK")
+    for w_, v in (("bad_label", bad), ("good_label", good)):
+        if text_width(v, 20, True) > 160:
+            s.err(f"{w_} は短く（「NG」「OK」「before」「after」くらい）")
+    n = len(its)
+    cols = 1 if n == 3 else 2
+    rows = (n + cols - 1) // cols
+    gap = 32
+    avail = s.bottom - top
+    pw = (CW - gap * (cols - 1)) / cols
+    ph = min(360.0, (avail - gap * (rows - 1)) / rows)
+    if ph < 140:
+        s.err(f"組が多すぎて入らない（1組の高さ {ph:.0f}px。見出しを短くするか組を減らす）")
+    compact = ph < 260                          # 低い組（3組を縦に並べたとき）: 札を上に寄せ、アイコンを小さく
+    lw, aw = 180, 56
+    bw = (pw - 40 - lw - 24 - aw - 40 - 40) / 2
+    by = 32 if compact else 58
+    bh = ph - by - (24 if compact else 34)
+    gy = top + (avail - (rows * ph + (rows - 1) * gap)) / 2
+    parts = [head]
+    for i, it in enumerate(its):
+        x0 = X0 + (i % cols) * (pw + gap)
+        y0 = gy + (i // cols) * (ph + gap)
+        icon = icon_of(s, it, f"items の {i + 1} 個目")
+        ls, _ = s.fit("pair-label", it["label"], s.g(38), lw, what=f"items の {i + 1} 個目の label", lines=1, lh=1.3,
+                      min_size=26, bold=True)
+        left = ((ICON.svg(icon, 56 if compact else 80, "var(--primary-strong)") if icon else "")
+                + f'<div class="pair-label" style="font-size:{ls}px">{esc(it["label"])}</div>')
+        bx1 = 40 + lw + 24
+        bx2 = bx1 + bw + 20 + aw + 20
+        cells = []
+        for k_, (key, cls, tag) in enumerate((("before", "pair-bad", bad), ("after", "pair-good", good))):
+            fs, _ = s.fit(f"pair-{key}", it[key], s.g(30), bw - 48, what=f"items の {i + 1} 個目の {key}", height=bh - (24 if compact else 52),
+                          lh=1.45, min_size=22, bold=key == "after")
+            bx = bx1 if k_ == 0 else bx2
+            cells.append(f'<div class="pair-box {cls}" style="{box(bx, by, bw, bh)}"><div style="font-size:{fs}px">{rich(it[key])}</div></div>'
+                         f'<div class="pair-tag {cls}-tag" style="{box(bx + 16, by - 18)}">{esc(tag)}</div>')
+        arrow = (f'<svg class="abs-svg" style="{box(bx1 + bw + 20, by + bh / 2 - 22, aw, 44)}" width="{aw}" height="44" viewBox="0 0 56 44">'
+                 '<polygon points="0,13 32,13 32,2 56,22 32,42 32,31 0,31" style="fill:var(--primary)"/></svg>')
+        parts.append(f'<div class="card pair" style="{box(x0, y0, pw, ph)}" {s.anim(i + 1, "rise", 0, f"組{i + 1}", item=True)}>'
+                     f'<div class="pair-left" style="{box(40, 0, lw, ph)}">{left}</div>' + "".join(cells) + arrow + "</div>")
+    s.need, s.avail = avail, avail
+    parts.append(source_line(s))
+    return parts
+
+
+def takeaway_band(s: Slide) -> str:
+    """締めの帯（takeaway）: 中身の下に、結論を1行。最後の段と一緒に出る（クリックは増やさない）。"""
+    text = s.text("takeaway")
+    ts, _ = fit(text, 34, CW - 120, what="takeaway", lines=1, lh=1.3, min_size=26, bold=True)
+    w = min(CW, max(900.0, text_width(plain(text), ts, True) / SAFE + 120))
+    step = max(s.steps) if s.steps else 0
+    return (f'<div class="take" style="{box(X0 + (CW - w) / 2, BODY_BOTTOM - TAKE_H, w, TAKE_H)} font-size:{ts}px" '
+            f'{s.anim(step, "fade", 500, "締めの帯")}>{rich(text)}</div>')
+
+
 # 中身が少ないとき（型の見積もった高さが置ける高さの GROW_FILL 未満）は、文字と間隔を GROW_STEPS の倍率で大きくして組み直す。
 # 画像のあるページは大きくしない（画像の枠の大きさが変わると、描いた絵の区画が変わる）
 GROWABLE = {"cards", "flow", "compare", "bullets", "closing", "timeline", "summary"}
@@ -1882,7 +2103,16 @@ TYPES = {
     "gallery": (t_gallery, HEAD_KEYS | {"items", "layout"}, True),
     "figure": (t_figure, HEAD_KEYS | {"image", "caption"}, True),
     "annotate": (t_annotate, HEAD_KEYS | {"image", "items", "fit"}, True),
+    "equation": (t_equation, HEAD_KEYS | {"items", "result"}, True),
+    "hub": (t_hub, HEAD_KEYS | {"center", "items"}, True),
+    "pairs": (t_pairs, HEAD_KEYS | {"items", "bad_label", "good_label"}, True),
 }
+# 締めの帯（takeaway）を置ける型（見出しと中身の型。表紙・章扉・写真・引用・締めなど、それ自体が言い切りの型には置かない）。
+# 中身の高さを確かめていない型（big-number の補足・team の2段）にも置かない（帯に重なる）
+TAKEAWAY_TYPES = ("cards", "flow", "compare", "bullets", "timeline", "summary", "kpi", "bar-chart", "line-chart",
+                  "table", "matrix", "equation", "hub", "pairs")
+for _t in TAKEAWAY_TYPES:
+    TYPES[_t] = (TYPES[_t][0], TYPES[_t][1] | {"takeaway"}, TYPES[_t][2])
 
 
 def build_slide(s: Slide) -> tuple[list[str], bool]:
@@ -1908,6 +2138,8 @@ def build_slide(s: Slide) -> tuple[list[str], bool]:
         else:
             s.grow = 1.0
             parts = _compose(s, fn)
+    if s.spec.get("takeaway") not in (None, ""):
+        parts.append(takeaway_band(s))
     return parts, getattr(s, "chrome", chrome)
 
 

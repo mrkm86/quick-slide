@@ -182,6 +182,38 @@ def variants() -> list[dict]:
         V("closing", {"headline": "次は1月から、\n全部署に広げたい", "items": [{"title": "全社展開の承認", "body": "1月にご判断ください"}],
                       "contact": {"name": "経営企画部", "lines": ["内線 1234（架空）"]}, "image": im("s16-image.png")}, "右に写真", True),
     ]
+    eq = [{"icon": "clock", "title": "30分で切る", "body": "延長しない"}, {"icon": "list", "title": "議題は前日に", "body": "1行で書く"},
+          {"icon": "users", "title": "立って話す", "body": "10分の会議"}, {"icon": "doc", "title": "記録は1枚", "body": "決めたことだけ"}]
+    res = {"icon": "flag", "title": "半分の会議時間", "body": "先行チームで実測"}
+    hub = [{"icon": "building", "title": "設計部", "body": "確認会を25分に", "tag": "4週目"},
+           {"icon": "chat", "title": "営業部", "body": "読み合わせを文書に", "tag": "2週目"},
+           {"icon": "mail", "title": "総務部", "body": "連絡会を掲示に", "tag": "準備中"},
+           {"icon": "chart", "title": "集計", "body": "毎週金曜に共有", "tag": "事務局"},
+           {"icon": "users", "title": "現場の声", "body": "週1回の3問", "tag": "全員"},
+           {"icon": "shield", "title": "労務", "body": "残業との突き合わせ", "tag": "月1回"}]
+    pairs = [{"icon": "doc", "label": "議題", "before": "当日に口頭で", "after": "前日に1行で"},
+             {"icon": "clock", "label": "時間", "before": "終わるまで続ける", "after": "30分で切る"},
+             {"icon": "users", "label": "出席", "before": "関係者を全員", "after": "決める人だけ"},
+             {"icon": "check", "label": "決定", "before": "持ち帰って検討", "after": "その場で決める"}]
+    out += [
+        V("equation", {"headline": "短い会議 ＝ 30分＋議題＋立って話す", "items": eq[:2], "result": res}, "要素2つ"),
+        V("equation", {"headline": "短い会議 ＝ 30分＋議題＋立って話す", "items": eq[:3], "result": res,
+                       "takeaway": "3つがそろうと、会議は半分になる"}, "要素3つ・締めの帯"),
+        V("equation", {"headline": "短い会議は、4つのルールの足し算", "items": eq, "result": res}, "要素4つ"),
+        V("hub", {"headline": "事務局が、3つの部署の試行をつなぐ", "center": {"icon": "hub", "title": "事務局", "body": "ルールと集計"},
+                  "items": hub[:3]}, "周り3つ"),
+        V("hub", {"headline": "事務局が、3つの部署の試行をつなぐ", "center": {"icon": "hub", "title": "事務局", "body": "ルールと集計"},
+                  "items": hub[:4], "takeaway": "集計は毎週金曜、全員に共有する"}, "周り4つ・締めの帯"),
+        V("hub", {"headline": "事務局が、関わる人と仕組みをつなぐ", "center": {"icon": "hub", "title": "事務局"}, "items": hub}, "周り6つ"),
+        V("pairs", {"headline": "会議は、2つの直しで短くなる", "items": pairs[:2]}, "2組"),
+        V("pairs", {"headline": "会議は、3つの直しで短くなる", "items": pairs[:3], "takeaway": "どれも、今日から変えられる"}, "3組・締めの帯"),
+        V("pairs", {"headline": "会議は、4つの直しで短くなる", "items": pairs, "bad_label": "いま", "good_label": "これから"}, "4組・札を替える"),
+        V("cards", {"headline": "会議は**3つのルール**で短くできる", "items": [{"icon": "clock", "title": "30分で切る", "body": "延長しない"},
+                    {"icon": "list", "title": "議題は前日に", "body": "1行で書く"}, {"icon": "users", "title": "立って話す", "body": "10分の会議"}],
+                    "takeaway": "3つを同時に始める"}, "アイコン・締めの帯"),
+        V("bullets", {"headline": "現場へのお願いは**3つだけ**", "items": [{"icon": "calendar", "title": "予定表に議題を書く"},
+                      {"icon": "clock", "title": "30分で閉じる"}, {"icon": "chat", "title": "週1回の3問に答える"}]}, "アイコン"),
+    ]
     return out
 
 

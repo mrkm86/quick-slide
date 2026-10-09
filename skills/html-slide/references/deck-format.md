@@ -5,7 +5,7 @@
 [`../examples/image-deck.json`](../examples/image-deck.json)（画像の型と置き方を全部使う・画像は `examples/images/`）。出す HTML は [`contract.md`](contract.md) の決まりに沿う。
 **ストーリー（何をどの順で言うか・枚数）は台本を書く側が決める。** このスキルはストーリーの型を持たない（[ADR 0004](../docs/adr/0004-no-story-templates.md)）。迷ったら「書く前に」の 3. の筋に沿う。
 
-## 書く前に（80点を外さないための9つ）
+## 書く前に（80点を外さないための10）
 
 1. **見出しは主張で書く。** 名札（「現状」「課題」）にしない。「会議の時間は3年で1.4倍に増えた」のように、その1枚で言いたいことを1文で。名札は `kicker` に置く
 2. **1枚1メッセージ。** 言いたいことが2つあれば2枚に分ける
@@ -18,8 +18,10 @@
 9. **型は中身の形で選び、同じ型を続けない。** 順番のある段は `flow`、並列の要点は `cards`、観点×項目は `table`、2軸の位置づけは `matrix`、時期は `timeline`、
    一番言いたい1文は `statement`、冒頭の結論と根拠は `summary`、数字は 4. のとおり。順番の無い並びを `flow` にしない。
    同じ型を3枚続けない。1つの型は表紙・締めを除いた枚数の3分の1まで。10枚を超えたら話の区切りに `section`（か `agenda` の再掲）を入れる
+10. **箱の中は名詞と短い補足まで。** 文で説明しない。題は全角10字まで、補足は20字まで（「文字起こし／Whisper・MLX」）。
+   言い切りは見出しに、結論の1行は `takeaway` に置く。構成要素は `equation`、中心と周りは `hub`、直し方は `pairs`、並列の要点には `icon` を添える
 
-> 6〜8 は、見本の台本を3ラウンド検品して実際に落ちた点。9 は、13枚の台本で7種しか使わず矢羽根が4枚に偏った実例から。
+> 6〜8 は、見本の台本を3ラウンド検品して実際に落ちた点。10 は、文で埋めた箱が冗長に見えた実例から。9 は、13枚の台本で7種しか使わず矢羽根が4枚に偏った実例から。
 
 ## 一番外
 
@@ -42,6 +44,7 @@
 | `talk` | 話す台本（文字の配列）。**1つ目は画面に入ったとき、2つ目以降は各クリックのときに話すこと**。省けば空 |
 | `transition` | `morph`（既定）／`fade`／`none`。1枚目の既定は `fade` |
 | `steps` | `false` にすると、その1枚のクリックをなくす（全部が自動で順に出る。`talk` は1つにする） |
+| `takeaway` | 中身の下に置く**結論の1行の帯**（全角でおよそ40字まで）。最後のクリックと一緒に出る（クリックは増えない）。中身の型（`cards`・`flow`・`compare`・`bullets`・`timeline`・`summary`・`kpi`・`bar-chart`・`line-chart`・`table`・`matrix`・`equation`・`hub`・`pairs`）だけ |
 | `fx` | 並びの1つずつ（カード・矢羽根・比較の列・箇条書きの項目・大きな数字の補足・要約の根拠・指標・人）の出方を変える: `rise`・`fade`・`pop`・`wipe-right` など（contract.md の語彙） |
 
 **文字の大きさ**は型が決める。項目が少なくて場所が余るページ（並びの型で画像の無いもの）は、型が文字を大きくして組む。並ぶ項目の題・本文の大きさはそろう（[ADR 0018](../docs/adr/0018-grow-sparse-pages.md)）。
@@ -91,6 +94,9 @@
 | `team` | 体制や人を、写真（無ければ頭文字の丸）・名前・役割で並べる（2〜6人） | 1 |
 | `matrix` | 2×2 で位置づける（選択肢の比較・優先度・競合の位置） | 1 |
 | `closing` | 締め。次の一手（1〜4）と連絡先 | 0 |
+| `equation` | 式で言い切る（A＋B＋C＝D・構成要素とその結果）。要素2〜4と答え | 要素の数＋1 |
+| `hub` | 中心と周り（司令塔と道具・1つの仕組みと関わる人や部品 3〜6） | 1 |
+| `pairs` | よくない例 → よい例 を 2〜4 組（直し方・やり方の違い） | 組の数 |
 
 ## 型ごとのキー
 
@@ -107,12 +113,12 @@
 | `section` | `title`★・`subtitle`・`number`（省くと章扉の通し番号）・`label`（「CHAPTER」など）・`image`（あれば右半分に写真、無ければ左に主役の色の帯）・`layout`・`text_side`・`tone`・`motif`（cover と同じ。`hero` で全面の写真、`graphic` で右半分を図形で飾る） |
 | `statement` | `headline`★（主張・3行まで）・`body`（補足・3行）・`kicker` |
 | `big-number` | `value`★（数字の文字）・`unit`（単位）・`label`（説明・2行）・`note`・`side`（`{value, text}`・0〜3） |
-| `cards` | `items`★（`{label, title★, body, accent, image}`・2〜4）。`accent: true` の1枚を強める。`image` はカードの上に 16:9 で、書くなら全部のカードに |
+| `cards` | `items`★（`{label, title★, body, accent, image, icon}`・2〜4）。`accent: true` の1枚を強める。`image` はカードの上に 16:9 で、書くなら全部のカードに |
 | `flow` | `items`★（`{label★, title, body, accent}`・3〜5）。`label` は矢羽根の中の短い語（「課題」）。既定で最後の段を強める |
 | `compare` | `left`★・`right`★（`{label, title, points: [文字…], image}`・points は5つまで。`image` は列の上に 16:9 で、書くなら両方に＝ビフォー・アフター）・`accent`（`right` 既定／`left`／`none`）・`arrow`（既定 true） |
 | `bar-chart` | `bars`★（`{label★, value★（0以上の数）, highlight, display}`・2〜8）・`unit`（値の後ろに付ける）・`max`（軸の上限）・`note`（グラフの注記）・`callout`（`{value, text}` 右に要点） |
 | `table` | `columns`★（2〜5）・`rows`★（各行は columns と同じ数・1〜7行）・`highlight`（強める列・1から）・`widths`（列の幅の比） |
-| `bullets` | `items`★（文字か `{title, body}`・2〜5）・`image`（脇に写真）・`side`（写真の側 `right` 既定・`left`）・`split`（写真の幅 `1/3` 既定＝600・`2/5`＝700・`1/2`＝820） |
+| `bullets` | `items`★（文字か `{title, body, icon}`・2〜5。icon は書くなら全部の項目に）・`image`（脇に写真）・`side`（写真の側 `right` 既定・`left`）・`split`（写真の幅 `1/3` 既定＝600・`2/5`＝700・`1/2`＝820） |
 | `timeline` | `items`★（`{when★, title★, body}`・3〜6）・`current`（今の時期・1から） |
 | `photo` | `image`★・`headline`★・`layout`（`full` 既定／`left`／`right`／`band`＝上に横長の写真の帯 1920×480、下に見出しと本文。下の文字・ページ番号も出す）・`split`（left・right の写真の幅 `1/2` 既定＝960・`2/5`＝768・`1/3`＝640）・`kicker`・`body`・`caption`（写真の出典） |
 | `quote` | `quote`★（4行まで）・`by`（誰の）・`position`（肩書き。`role` は章の ID に使う）・`kicker`・`layout`（`plain` 既定／`full`＝全面の写真に一様な暗幕を敷いて白い文字。帯・ページ番号は出さない／`portrait`＝左に人物の丸い写真）・`image`（full・portrait で必須） |
@@ -124,7 +130,17 @@
 | `kpi` | `items`★（`{label★, value★, unit, delta（前年比など）, trend（up・down・flat → ▲▼→）, note, accent}`・3〜4）・`image`（上に現場の写真の帯 1920×340。見出しと数字はその下） |
 | `line-chart` | `labels`★（横軸の時点・3〜12）・`series`★（`{name, values★（labels と同じ数）, highlight}`・1〜3。2本以上は `name` 必須）・`unit`・`min`（既定 0。負の値があれば必須）・`max`（省くと切りのよい上限）・`note`・`callout`（`{value, text}`）・`value_labels`（`all`／`last`／`none`。既定は1本で8時点までなら all、ほかは last） |
 | `team` | `members`★（`{name★, role, note, image, initials}`・2〜6）。`image` が無ければ `initials`（省くと名前の1文字目）の丸。5〜6人は3人ずつ2段 |
+| `equation` | `items`★（`{title★, body, icon}`・2〜4）・`result`★（`{title★, body, icon}`・答え。主役の色で塗った箱。`body` は札になる）。見出しは大きく出る |
+| `hub` | `center`★（`{title★, body, icon}`・中心の丸）・`items`★（`{title★, body, icon, tag}`・3〜6。左右に分けて並べ、中心と線でつなぐ。title・body・tag はそれぞれ1行）。見出しは大きく出る |
+| `pairs` | `items`★（`{label★, before★, after★, icon}`・2〜4。label は何の話か・before はよくない例・after はよい例。どれも短く）・`bad_label`（既定「NG」）・`good_label`（既定「OK」）。見出しは大きく出る |
 | `matrix` | `x`★・`y`★（`{label★, low, high}`）・`items`★（`{label★, x★, y★（0〜100）, accent}`・1〜8）・`quadrants`（`{title, body}` を 左上・右上・左下・右下 の順に4つ）・`focus`（淡く塗る象限・同じ順で1〜4）・`callout`（`{title, text}` 右に要点） |
+
+### アイコン（`icon`）
+
+`cards`・`bullets`・`equation`・`hub`・`pairs` の項目に、線のアイコンを名前で添えられる（[ADR 0019](../docs/adr/0019-diagram-types-icons-takeaway.md)）。
+PPTX では図形のまま（色はテーマの主役の色）。合う名前が無ければ書かない。カードは icon と image のどちらか。
+
+doc（書類・原稿）・list（一覧・手順）・checklist（決まり・確かめること）・code（プログラム）・chart（数字・グラフ）・trend（伸び・増える）・scissors（切る・削る）・image（写真・画像）・video（動画・再生）・mic（声・話す）・speaker（音）・captions（字幕・文字）・chat（会話・相談）・mail（連絡・メール）・sparkle（強調・仕上げ・AI）・bulb（思いつき・アイデア）・target（目標・狙い）・flag（決めたこと・到達点）・check（できた・よい）・cross（やめる・よくない）・alert（注意・困りごと）・search（探す・調べる）・folder（フォルダ・置き場）・layers（重ねる・仕組み）・gear（設定・仕組み）・shield（守る・安全）・lock（鍵・閉じる）・link（つなぐ）・refresh（繰り返す・見直す）・upload（入れる・出す）・download（受け取る）・calendar（日付・予定）・clock（時間）・yen（お金・費用）・user（人・担当）・users（人たち・チーム）・building（会社・建物）・laptop（パソコン・手元）・phone（スマホ）・cloud（外のサービス・クラウド）・book（学ぶ・手引き）・pin（場所）・star（おすすめ・大事）・rocket（始める・速く）・hub（司令塔・まとめ役）
 
 ### 画像
 

@@ -188,7 +188,7 @@ class SettingsScreensTest(unittest.TestCase):
         self.assertEqual(page.errors, [])
 
     def test_style_types_engine_style_and_image_look(self) -> None:
-        page = self.open("/settings/styles", "document.querySelectorAll('.pattern-choice').length === 24", "型の一覧が出ること")
+        page = self.open("/settings/styles", "document.querySelectorAll('.pattern-choice').length === 27", "型の一覧が出ること")
         page.eval("Array.from(document.querySelectorAll('.settings-list button')).find(b => b.textContent.indexOf('新しい') >= 0).click()")
         page.until("document.querySelector('.settings-editor h2').textContent.indexOf('複写') >= 0", what="複写の欄")
         self.assertTrue(page.eval("document.querySelector('.pattern-choice input[value=auto]').checked"), "新しく作るときはおまかせ")

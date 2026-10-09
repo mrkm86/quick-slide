@@ -146,6 +146,12 @@ def case_default_clicks():
             assert i["clicks"] == len(s["items"]), (t, i["clicks"])
         elif t == "big-number":
             assert i["clicks"] == (2 if s.get("side") else 1)
+        elif t == "equation":
+            assert i["clicks"] == len(s["items"]) + 1, (t, i["clicks"])
+        elif t == "hub":
+            assert i["clicks"] == 1, (t, i["clicks"])
+        elif t == "pairs":
+            assert i["clicks"] == len(s["items"]), (t, i["clicks"])
 
 
 def case_contract_attrs():
@@ -424,6 +430,13 @@ def minimal(type_: str, role: dict) -> dict:
                                  for i in (1, 2, 3)]}
     if type_ == "cards":
         return head | {"items": [{"label": f"{{ラベル{i}}}", "title": f"{{要点{i}}}", "body": "{説明}"} for i in (1, 2, 3)]}
+    if type_ == "equation":
+        return head | {"items": [{"title": f"{{要素{i}}}", "body": "{補足}"} for i in (1, 2, 3)], "result": {"title": "{答え}", "body": "{札}"}}
+    if type_ == "hub":
+        return head | {"center": {"title": "{中心}", "body": "{補足}"},
+                       "items": [{"title": f"{{周り{i}}}", "body": "{補足}", "tag": "{札}"} for i in (1, 2, 3, 4)]}
+    if type_ == "pairs":
+        return head | {"items": [{"label": f"{{名札{i}}}", "before": "{よくない例}", "after": "{よい例}"} for i in (1, 2, 3)]}
     if type_ == "flow":
         return head | {"items": [{"label": f"{{段{i}}}", "title": f"{{段{i}の要点}}", "body": "{説明}"} for i in (1, 2, 3, 4)]}
     if type_ == "compare":
@@ -733,6 +746,46 @@ def case_grow():
                                                             {"label": "3段目", "title": "画像の意味＋人の目"}]}
     ts = _role_sizes(html_of(flow, "grow-flow"), "flow-title")
     assert len(set(ts)) == 1 and ts[0] > 40, f"短い矢羽根の題が大きくならない: {ts}"
+
+
+def case_diagram_types():
+    """図解の型・アイコン・締めの帯（ADR 0019）: 見出しは大きい・締めの帯は最後の段と一緒に出て中身はその上で止まる・
+    アイコンは図形の SVG・知らないアイコンと置けない型の締めの帯と、箇条書きのアイコンの書き漏れは rc=2。"""
+    import deck_icons as ICON
+    sc = {"title": "t", "slides": [
+        {"type": "equation", "headline": "短い会議 ＝ 30分＋議題", "items": [{"icon": "clock", "title": "30分"}, {"title": "議題"}],
+         "result": {"title": "半分", "body": "実測"}, "takeaway": "2つがそろうと半分になる"},
+        {"type": "cards", "headline": "見出し", "items": [{"icon": "search", "title": "探す"}, {"title": "見せる"}]},
+        {"type": "bullets", "headline": "見出し", "items": [{"icon": "alert", "title": "a"}, {"icon": "clock", "title": "b"}]}]}
+    path, info = build(sc, "diagram")
+    secs = pathlib.Path(path).read_text(encoding="utf-8").split("<section")[1:]
+    assert info["slides"][0]["clicks"] == 3, info["slides"][0]
+    m = re.search(r'class="headline" style="font-size:(\d+)px', secs[0])
+    assert int(m.group(1)) > 60, f"図解の型の見出しが大きくない: {m.group(1)}"
+    take = re.search(r'<div class="take" style="left:[\d.]+px; top:([\d.]+)px;[^"]*"([^>]*)>', secs[0])
+    assert take and float(take.group(1)) == T.BODY_BOTTOM - T.TAKE_H, take and take.group(1)
+    assert 'data-step="3"' in take.group(2), f"締めの帯は最後の段（3）と一緒に出る: {take.group(2)}"
+    box_top = re.search(r'class="center" style="left:120px; top:([\d.]+)px; width:1680px; height:([\d.]+)px', secs[0])
+    assert float(box_top.group(1)) + float(box_top.group(2)) <= T.BODY_BOTTOM - T.TAKE_H - T.TAKE_GAP + 0.5, "中身が帯に重なる"
+    assert "stroke:var(--primary-strong)" in secs[1] and 'class="icon-disc"' in secs[1], "カードのアイコン"
+    assert secs[2].count('class="li-icon"') == 2
+    assert len(ICON.ICONS) >= 40 and all(" " not in k for k in ICON.ICONS)
+    for bad, words in (({"type": "cards", "headline": "h", "items": [{"icon": "unicorn", "title": "a"}, {"title": "b"}]}, "unicorn"),
+                       ({"type": "statement", "headline": "h", "takeaway": "x"}, "知らないキー"),
+                       ({"type": "team", "headline": "h", "members": [{"name": "a"}, {"name": "b"}], "takeaway": "x"}, "知らないキー"),
+                       ({"type": "equation", "headline": "h", "items": [{"title": "A"}, {"title": "B"}, {"title": "C"}, {"title": "D"}],
+                         "result": {"title": "答え", "body": "あいうえおかきくけこさしすせそたちつてとなにぬねの"}}, "長すぎて"),
+                       ({"type": "bullets", "headline": "h", "items": [{"icon": "alert", "title": "a"}, {"title": "b"}]}, "全部の項目"),
+                       ({"type": "equation", "headline": "h", "items": [{"title": "a"}, {"title": "b"}]}, "result"),
+                       ({"type": "hub", "headline": "h", "center": {"title": "c"}, "items": [{"title": "a"}, {"title": "b"}]}, "3〜6"),
+                       ({"type": "pairs", "headline": "h", "items": [{"label": "a", "before": "x"}, {"label": "b", "before": "x", "after": "y"}]}, "after"),
+                       ({"type": "cards", "headline": "h", "items": [{"icon": "clock", "image": {"prompt": "x"}, "title": "a"},
+                                                                    {"icon": "clock", "image": {"prompt": "y"}, "title": "b"}]}, "どちらか")):
+        try:
+            build(one(bad), "diagram-bad", placeholder=True)
+            raise AssertionError(f"通ってしまった: {bad}")
+        except T.DeckError as e:
+            assert words in str(e), (bad, str(e))
 
 
 def case_overlay_contrast():

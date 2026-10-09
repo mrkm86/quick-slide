@@ -54,7 +54,15 @@ TYPES = {
     "gallery": (HEAD_KEYS | {"items", "layout"}, True, ("headline", "items")),
     "figure": (HEAD_KEYS | {"image", "caption"}, True, ("headline", "image")),
     "annotate": (HEAD_KEYS | {"image", "items", "fit"}, True, ("headline", "image", "items")),
+    "equation": (HEAD_KEYS | {"items", "result"}, True, ("headline", "items", "result")),
+    "hub": (HEAD_KEYS | {"center", "items"}, True, ("headline", "center", "items")),
+    "pairs": (HEAD_KEYS | {"items", "bad_label", "good_label"}, True, ("headline", "items")),
 }
+# 締めの帯（takeaway）を置ける型（html-slide の deck_types.TAKEAWAY_TYPES と同じ）
+TAKEAWAY_TYPES = ("cards", "flow", "compare", "bullets", "timeline", "summary", "kpi", "bar-chart", "line-chart",
+                  "table", "matrix", "equation", "hub", "pairs")
+for _t in TAKEAWAY_TYPES:
+    TYPES[_t] = (TYPES[_t][0] | {"takeaway"}, TYPES[_t][1], TYPES[_t][2])
 
 # 型ごとの「配置の指定」のキー（一番外だけ）。文字としては描かせず、描き方の指示として別に渡す（prompt.py）。
 # 同じ名前でも型によって中身のことがある（big-number の side は脇の数字・bullets の side は写真の側）ので、型ごとに持つ
