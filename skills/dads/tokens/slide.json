@@ -124,10 +124,10 @@
     "size": 96,
     "weight": "B",
     "line": 140,
-    "min": 64,
+    "min": 48,
     "max": 96,
     "origin": "extension",
-    "note": "表紙・章扉の題。80 → 64 へ段を下りる"
+    "note": "表紙・章扉の題。80 → 64 → 57 → 48（DADS の Display の範囲）へ段を下りる"
    },
    "heading": {
     "size": 64,
@@ -151,7 +151,7 @@
     "size": 96,
     "weight": "B",
     "line": 140,
-    "min": 64,
+    "min": 48,
     "max": 120,
     "origin": "proposal",
     "note": "主張の 1 文。段は 80・96・120 のどれか（拡張）"

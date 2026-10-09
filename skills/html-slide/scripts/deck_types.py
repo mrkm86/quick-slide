@@ -702,7 +702,7 @@ def t_cover(s: Slide):
     elif layout == "graphic":
         parts += art_layer(s, 1040, 880, "表紙の図形")
         tw = 816
-    ts, _ = fit(title, 96, tw, what="題（title）", lines=3, lh=1.4, min_size=64, bold=True, tidy=True)   # Ext-96B-140（80 → 64 へ下りる）
+    ts, _ = fit(title, 96, tw, what="題（title）", lines=3, lh=1.4, min_size=48, bold=True, tidy=True)   # Ext-96B-140（80 → 64 → DADS の Display の下端 48 へ下りる）
     inner = []
     if label:
         ls, _ = fit(label, 28, tw, what="label", lines=1, lh=1.5, min_size=28, bold=True)
@@ -782,7 +782,7 @@ def t_section(s: Slide):
             side.append(f'<div class="sec-no on-primary" style="font-size:{ns}px" {s.anim(0, "fade", 0, "章の番号")}>{esc(number)}</div>')
         parts.append(f'<div class="sec-text" style="{box(X0, 0, 440, H)}">' + "".join(side) + "</div>")
         x, tw, size, no_cls, label, number = 760, 1040, 80, None, None, None
-    ts, _ = fit(title, size, tw, what="章題（title）", lines=3, lh=1.4, min_size=64 if size == 80 else 45, bold=True, tidy=True)
+    ts, _ = fit(title, size, tw, what="章題（title）", lines=3, lh=1.4, min_size=48 if size == 80 else 45, bold=True, tidy=True)
     inner = []
     if label:
         ls, _ = fit(label, 28, tw, what="label", lines=1, lh=1.5, min_size=28, bold=True)
@@ -806,7 +806,7 @@ def t_statement(s: Slide):
     head = s.text("headline", required=True)
     kicker, body = s.text("kicker"), s.text("body")
     tw = 1496
-    hs, _ = fit(head, 96, tw, what="主張（headline）", lines=3, lh=1.4, min_size=64, bold=True, tidy=True)
+    hs, _ = fit(head, 96, tw, what="主張（headline）", lines=3, lh=1.4, min_size=48, bold=True, tidy=True)
     inner = []
     if kicker:
         ks, _ = fit(kicker, 28, tw, what="kicker", lines=1, lh=1.5, min_size=28, bold=True)
