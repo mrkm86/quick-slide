@@ -1996,7 +1996,8 @@ def t_hub(s: Slide):
     icon = icon_of(s, cen, "center ")
     if icon:
         inner += ICON.svg(icon, 88, "var(--primary-strong)")
-    cs_, _ = s.fit("hub-center", cen["title"], 32, d - 72, what="center の title", lines=2, lh=1.3, min_size=24, bold=True)
+    cs_, _ = s.fit("hub-center", cen["title"], 32, d - 72, what="center の title", lines=2, lh=1.3, min_size=24, bold=True,
+                   tidy=True)                    # 1文字だけの行を作らない（「しく／み」）
     inner += f'<div class="hub-c-title" style="font-size:{cs_}px">{rich(cen["title"])}</div>'
     body = s.text("body", spec=cen)
     if body:
