@@ -50,6 +50,24 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _link_file(src: Path, dst: Path) -> None:
+    """dst に src を張る（ハードリンク。別のボリュームなら写す）。JSON は写す: エンジンは絵に添えた JSON を
+    その場で書き換える（`html-slide` の `_sidecar`）ので、張ると複製側の直しが元の控えまで書き換えてしまう。"""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if src.suffix == ".json":
+        shutil.copyfile(src, dst)
+        return
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copyfile(src, dst)
+
+
+def _link_tree(src: Path, dst: Path) -> None:
+    """フォルダを、ファイルはハードリンクで写す（控えは書き換えないので、張っても元が変わらない）。"""
+    shutil.copytree(src, dst, copy_function=lambda s, d: _link_file(Path(s), Path(d)), symlinks=False)
+
+
 def _write_json_atomic(path: Path, obj: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
@@ -114,29 +132,102 @@ class DeckManagementMixin(StoreBase):
     # --- 複製 ---
     def duplicate_deck(self, deck_id: str, *, title: str | None = None) -> dict[str, Any]:
         """新デッキ（draft / 非ピン / 非アーカイブ、`origin_deck_id`）を作る。モード・ブランド・スタイル・
-        メタデータ・タグを写す。ページ（台本の版・描いた回）を写すのは P2。"""
+        メタデータ・タグと、**いま見えている姿**（見せる回とその台本・ページの絵）を写す。
+
+        写すのは見せる回（`shown_run`）1 つと、その回の台本の版 1 つだけ（版の履歴は写さない。複製は今の姿から始まる）。
+        ファイルはハードリンクで張る（回の控え・ページの絵はどちらも書き換えない）。描いた絵のキャッシュの区画は
+        `render/caches.seed_duplicate` が後から引き継ぐ（エンジンの置き場の決まりを知っている側）。
+        まだ描き終えた回の無いデッキは、ページなしで写す。"""
         if title is not None and (not isinstance(title, str) or not title.strip()):
             raise ValidationError("decks.title は空にできない")
-        with self.transaction():
-            src = self._get("decks", deck_id)
-            if src["deleted_at"] is not None:
-                raise NotFoundError("削除済みデッキは複製できません")
-            new_title = title if title is not None else f"{src['title']}のコピー"
-            new = self.create_deck(
-                new_title,
-                mode=src["mode"],
-                brand_revision_id=src["brand_revision_id"],
-                style_revision_id=src["style_revision_id"],
-                subtitle=src["subtitle"],
-                purpose=src["purpose"],
-                audience=src["audience"],
-                origin_deck_id=deck_id,
-            )
-            new_id = new["id"]
-            for t in self.deck_tags(deck_id):
-                self._exec("INSERT OR IGNORE INTO deck_tags(deck_id,tag_id) VALUES(?,?)", (new_id, t["id"]))
-            self.append_event("deck_duplicated", {"deck_id": new_id, "origin_deck_id": deck_id, "pages": 0}, deck_id=new_id)
-            return self.deck(new_id)
+        made: list[Path] = []
+        try:
+            with self.transaction():
+                src = self._get("decks", deck_id)
+                if src["deleted_at"] is not None:
+                    raise NotFoundError("削除済みデッキは複製できません")
+                new_title = title if title is not None else f"{src['title']}のコピー"
+                new = self.create_deck(
+                    new_title,
+                    mode=src["mode"],
+                    brand_revision_id=src["brand_revision_id"],
+                    style_revision_id=src["style_revision_id"],
+                    subtitle=src["subtitle"],
+                    purpose=src["purpose"],
+                    audience=src["audience"],
+                    origin_deck_id=deck_id,
+                )
+                new_id = new["id"]
+                for t in self.deck_tags(deck_id):
+                    self._exec("INSERT OR IGNORE INTO deck_tags(deck_id,tag_id) VALUES(?,?)", (new_id, t["id"]))
+                made.append(self.root.deck_dir(new_id))
+                pages = self._duplicate_pages(deck_id, new_id, made)
+                self.append_event("deck_duplicated", {"deck_id": new_id, "origin_deck_id": deck_id, "pages": pages},
+                                  deck_id=new_id)
+                return self.deck(new_id)
+        except BaseException:
+            for d in made:                          # 行が戻ったので、張ったファイルも片付ける
+                shutil.rmtree(d, ignore_errors=True) if d.is_dir() else d.unlink(missing_ok=True)
+            raise
+
+    def _duplicate_pages(self, deck_id: str, new_id: str, made: list[Path]) -> int:
+        """見せる回とその台本を新デッキへ写す（`duplicate_deck` のトランザクションの中）。写したページの数。"""
+        run = self.shown_run(deck_id)
+        if run is None or not run["script_id"]:
+            return 0
+        script = self.script(run["script_id"])
+        now = self.now()
+        # 台本の版（1 にする）と、台本のフォルダの添えた画像（台本の path が相対で指す）
+        src_scripts, dst_scripts = self.root.scripts_dir(deck_id), self.root.scripts_dir(new_id)
+        raw = self.script_path(script).read_bytes()
+        rel = f"decks/{new_id}/scripts/1.json"
+        _link_file(self.script_path(script), self.root.root / rel)
+        if (src_scripts / "attachments").is_dir():
+            _link_tree(src_scripts / "attachments", dst_scripts / "attachments")
+        sid = self.new_id()
+        self._exec(
+            "INSERT INTO scripts(id,deck_id,version,path,sha256,written_by,writer_backend,intake_id,instruction,round,"
+            " check_rc,check_notes_json,page_count,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (sid, new_id, 1, rel, hashlib.sha256(raw).hexdigest(), "screen", None, None, None, None,
+             script["check_rc"], json.dumps(script["check_notes"], ensure_ascii=False), script["page_count"], now))
+        page_of: dict[str, str] = {}               # 元の page_id → 新しい page_id（台本の id は同じ）
+        for sp in self.script_pages(script["id"]):
+            pid = self._page_id(new_id, sp["key"], now)
+            page_of[sp["page_id"]] = pid
+            self._exec("INSERT INTO script_pages(script_id,page_no,page_id,type,title,body,content_sha256,hidden)"
+                       " VALUES(?,?,?,?,?,?,?,?)",
+                       (sid, sp["page_no"], pid, sp["type"], sp["title"], sp["body"], sp["content_sha256"],
+                        1 if sp["hidden"] else 0))
+        self._exec("INSERT INTO deck_heads(deck_id,script_id,updated_at) VALUES(?,?,?)", (new_id, sid, now))
+        # 描いた回（番号 1・描き終えた）。控えのフォルダはハードリンクで写す（書き出しの PPTX・PDF もここから配る）
+        rid = self.new_id()
+        _link_tree(self.root.run_dir(deck_id, run["id"]), self.root.run_dir(new_id, rid))
+        self._exec(
+            "INSERT INTO runs(id,deck_id,number,script_id,mode,engine,args_json,state,progress_json,engine_result_json,"
+            " record_json,rc,message,failure_kind,out_dir,created_at,started_at,ended_at,updated_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (rid, new_id, 1, sid, run["mode"], run["engine"], json.dumps(run["args"], ensure_ascii=False), "done",
+             json.dumps(run["progress"], ensure_ascii=False), None, json.dumps(run["record"], ensure_ascii=False),
+             run["rc"], run["message"], run["failure_kind"], f"decks/{new_id}/runs/{rid}", now, now, now, now))
+        made.append(self.root.assets_dir / "decks" / new_id)   # 失敗したときの片付け用（写している途中の半端なファイルも）
+        n = 0
+        for rp in self._all("SELECT * FROM run_pages WHERE run_id=? ORDER BY page_no", (run["id"],)):
+            aid = None
+            if rp["asset_id"]:
+                a = self._get("assets", rp["asset_id"])
+                src_file = self.root.root / a["relative_path"]
+                if a["state"] == "ready" and src_file.is_file():
+                    arel = self.root.page_asset_rel(new_id, rid, rp["page_no"])
+                    _link_file(src_file, self.root.root / arel)
+                    aid = self.register_asset(relative_path=arel, media_type=a["media_type"], sha256=a["sha256"],
+                                              bytes_=a["bytes"], width=a["width"], height=a["height"])["id"]
+            state = rp["state"] if aid or rp["state"] != "ready" else "failed"
+            self._exec("INSERT INTO run_pages(run_id,page_no,page_id,asset_id,state,warnings_json,content_sha256,picture_sha256)"
+                       " VALUES(?,?,?,?,?,?,?,?)",
+                       (rid, rp["page_no"], page_of.get(rp["page_id"]) if rp["page_id"] else None, aid, state,
+                        rp["warnings_json"], rp["content_sha256"], rp["picture_sha256"]))
+            n += 1
+        return n
 
     # --- ごみ箱へ移動 ---
     def delete_deck_to_trash(self, deck_id: str) -> dict[str, Any]:

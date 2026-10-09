@@ -486,6 +486,15 @@ def route_duplicate(server: "QuickSlideServer", req: "Request") -> "Response":
         _live_deck_row(server.store, req.params["deck_id"])
         new = server.store.duplicate_deck(req.params["deck_id"], title=title)
         card = _card_of(server.store, new["id"])
+    from ..render.caches import forget_duplicate_cache, seed_duplicate
+
+    try:                                          # 描いた絵を複製の区画へ（できなければ次に描くとき描き直すだけ）
+        seed_duplicate(server.root, new["id"], server.tools.extra_env)
+    except Exception:  # noqa: BLE001
+        try:
+            forget_duplicate_cache(server.root, new["id"])   # 元のデッキの区画を指したまま残さない
+        except Exception:  # noqa: BLE001
+            pass
     return _json(201, {"deck": card, "origin_deck_id": req.params["deck_id"]})
 
 

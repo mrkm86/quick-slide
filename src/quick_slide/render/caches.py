@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import time
 import types
 from pathlib import Path
 from typing import Any
@@ -51,9 +52,10 @@ def _places(skill: str):
         return None
 
 
-def engine_config(root: DataRoot, skill: str) -> dict[str, Any]:
-    """エンジンの設定（このサーバの置き場の `engines/<スキル>/config.yaml`。環境変数 `<スキル>_CONFIG` が先）。"""
-    env = os.environ.get(skill.upper().replace("-", "_") + "_CONFIG")
+def engine_config(root: DataRoot, skill: str, env: dict[str, str] | None = None) -> dict[str, Any]:
+    """エンジンの設定（このサーバの置き場の `engines/<スキル>/config.yaml`。環境変数 `<スキル>_CONFIG` が先）。
+    `env` を渡せばその環境で引く（エンジンに渡す子の環境。既定は今の環境）。"""
+    env = (os.environ if env is None else env).get(skill.upper().replace("-", "_") + "_CONFIG")
     path = Path(env).expanduser() if env else root.root / "engines" / skill / "config.yaml"
     if not path.is_file():
         return {}
@@ -133,3 +135,89 @@ def remove_areas(areas: list[Path]) -> list[str]:
         except OSError as exc:
             failed.append(exc.__class__.__name__)
     return failed
+
+
+def seed_duplicate(root: DataRoot, deck_id: str, extra_env: dict[str, str] | None = None) -> int:
+    """複製したデッキ（`store.duplicate_deck`）のプレゼンの描いた絵を、そのデッキの区画へ引き継ぐ。張った枚数。
+
+    html-slide は生成の枠の絵を台本のフォルダごとの区画（`gen-<鍵>.png`）から引くので、複製の台本のフォルダは
+    空の区画になり、次に描くとき全部の絵を Codex で描き直してしまう。写した回の控え（`pictures/gen-*`）を、
+    複製の台本のフォルダの区画へ張っておく（鍵は描く指示から作るので、中身が同じなら同じ鍵でそのまま使われる）。
+
+    1. 先に、写した回の記録（`deck-info.json`・`pictures/index.json`）の `cache` を複製の区画に書き換える（置き換えで
+       書く。元の回とファイルを共有しない）。版から戻すとき控えの絵をこの `cache` へ戻すので、元のデッキの区画を
+       指したままだと元のデッキのキャッシュを書き換えてしまう。ここが済めば、2 が失敗しても描き直しになるだけ
+    2. 区画を作って絵を張る（添えた JSON は写す。エンジンが JSON をその場で書き換えるため）。失敗したら、書きかけの
+       一時ファイルを消して例外を上げる（張れた絵はそのまま使われる）
+
+    区画の根っこは、**エンジンに渡す子の環境**での置き場の決まり（`HTML_SLIDE_CACHE` → 設定の `cache_dir` → 既定）。
+    `extra_env` はワーカーが子に足す環境（`Tools.extra_env`）。相対の指定は、エンジンが動くフォルダ（`work/`）から。
+    ピッチは描くときに控えから区画へ並べ直す（`worker/pipeline._pitch_fallback`）ので、ここでは何もしない。
+    """
+    from ..childenv import child_env
+    from .workspace import _copy, _link, pitch_area_for, write_json
+
+    owner = root.scripts_dir(deck_id).resolve()
+    jobs: list[tuple[Path, Path]] = []
+    for run_dir in sorted((root.deck_dir(deck_id) / "runs").glob("*")):
+        info_path = run_dir / "deck-info.json"
+        cache = _read_json(info_path).get("cache")
+        if isinstance(cache, str) and cache:
+            jobs.append((run_dir, Path(cache)))
+    if not jobs:
+        return 0
+    env = child_env(home=root.root, extra=extra_env)
+    base: Path | None = None
+    try:
+        if env.get("HTML_SLIDE_CACHE"):
+            base = Path(env["HTML_SLIDE_CACHE"]).expanduser()
+        else:
+            places = _places("html-slide")
+            cfg = engine_config(root, "html-slide", env)
+            if cfg.get("cache_dir"):
+                base = Path(str(cfg["cache_dir"])).expanduser()
+            elif places is not None:
+                base = Path(places.cache_root("html-slide", {})).expanduser()
+    except Exception:  # noqa: BLE001
+        base = None
+    if base is not None and not base.is_absolute():
+        base = root.work_dir(deck_id) / base     # エンジンは work/ で動く（`render/runner.py`）
+    area = pitch_area_for(owner, (base / "x") if base is not None else jobs[0][1])   # エンジンの cache.area_path と同じ名前
+    for run_dir, _ in jobs:                      # 1. 記録を先に
+        for rec in (run_dir / "deck-info.json", run_dir / "pictures" / "index.json"):
+            data = _read_json(rec)
+            if data.get("cache"):
+                data["cache"] = str(area)
+                write_json(rec, data)
+    n = 0
+    try:                                         # 2. 絵を張る
+        area.mkdir(parents=True, exist_ok=True)
+        (area / STAMP).write_text(json.dumps({"owner": str(owner), "used": time.strftime("%Y-%m-%dT%H:%M:%S")},
+                                             ensure_ascii=False) + "\n", encoding="utf-8")
+        for run_dir, _ in jobs:
+            for f in sorted((run_dir / "pictures").glob("gen-*")):
+                if f.name.endswith(".tmp") or (area / f.name).exists():
+                    continue
+                (_copy if f.suffix == ".json" else _link)(f, area / f.name)
+                n += f.suffix == ".png"
+    except BaseException:
+        for tmp in area.glob("*.tmp") if area.is_dir() else []:
+            tmp.unlink(missing_ok=True)
+        raise
+    return n
+
+
+def forget_duplicate_cache(root: DataRoot, deck_id: str) -> None:
+    """引き継ぎ（`seed_duplicate`）が記録を書き換える前に止まったときの守り: 写した回の記録から `cache` を外す
+    （元のデッキの区画を指したまま残さない。版から戻すときは区画が分からないので絵を戻さず、描き直すだけになる）。"""
+    from .workspace import write_json
+
+    for run_dir in sorted((root.deck_dir(deck_id) / "runs").glob("*")):
+        for rec in (run_dir / "deck-info.json", run_dir / "pictures" / "index.json"):
+            data = _read_json(rec)
+            if not data.get("cache"):
+                continue
+            owner = _read_json(Path(str(data["cache"])) / STAMP).get("owner")
+            if owner != str(root.scripts_dir(deck_id).resolve()):   # このデッキの区画でなければ外す
+                data.pop("cache")
+                write_json(rec, data)

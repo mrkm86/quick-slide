@@ -99,6 +99,34 @@ class EditBase(unittest.TestCase):
             self.assertEqual(p["display"]["key"], "ready", p)
         self.assertFalse(view["live"]["working"])
 
+    def duplicate_and_rebuild(self, deck: str) -> str:
+        """複製して、同じ姿か（ページ・絵・書き出し）確かめ、複製を組み直す。複製の id を返す。"""
+        src_view = self.view(deck)
+        r = self.fx.post(f"/api/decks/{deck}/duplicate", {"title": "写し"})
+        self.assertEqual(r.status, 201, r.body)
+        new = r.json()["deck"]["id"]
+        view = self.view(new)
+        self.assertEqual([(p["key"], p["title"], p["hidden"]) for p in view["pages"]],
+                         [(p["key"], p["title"], p["hidden"]) for p in src_view["pages"]], "複製はいまの姿のページを持つ")
+        for p in view["pages"]:
+            if not p["hidden"]:
+                self.assertEqual(p["display"]["key"], "ready", p)
+                self.assertEqual(len(p["versions"]), 1, "版の履歴は写さない")
+        with self.fx.server.store_lock:
+            a, b = self.fx.store.shown_run(deck), self.fx.store.shown_run(new)
+        self.assertEqual((self.fx.root.run_dir(new, b["id"]) / "deck.pptx").read_bytes(),
+                         (self.fx.root.run_dir(deck, a["id"]) / "deck.pptx").read_bytes())
+        self.assert_screen_matches_pptx(new)
+        calls = self.codex_calls()
+        r = self.fx.post(f"/api/decks/{new}/rebuild", {})
+        self.assertEqual(r.status, 200, r.body)
+        run = self.wait(new)
+        self.assertEqual(run["state"], "done", run["message"])
+        self.assertEqual(self.drawn_pages(calls), [], "複製を組み直しても絵は描き直さない（控えから引き継ぐ）")
+        self.assert_screen_matches_pptx(new)
+        self.assertEqual([p["key"] for p in self.view(deck)["pages"]], [p["key"] for p in src_view["pages"]], "元は変わらない")
+        return new
+
     def page_bytes(self, data_bytes: bytes, data: dict) -> dict[str, str]:
         """台本の版のファイルの中の、ページごとの文字（同じ書き方で書いたときの断片）。"""
         text = data_bytes.decode("utf-8")
@@ -152,6 +180,37 @@ class PitchEditTests(EditBase):
         # 2 回目の回もエンジンは同じ作業フォルダに描き、回のフォルダに控える
         self.assertTrue((self.fx.root.run_dir(deck, run["id"]) / "deck.pptx").is_file())
         self.assertTrue((self.fx.root.run_dir(deck, run["id"]) / "pictures" / "p-seven.png").is_file())
+
+    def test_duplicate_that_fails_midway_leaves_nothing(self) -> None:
+        deck = self.make_deck()
+        store = self.fx.store
+        assets = self.fx.root.assets_dir / "decks"
+        before = {p.name for p in assets.iterdir()}
+        decks_before = {p.name for p in self.fx.root.decks_dir.iterdir()}
+        real, calls = store.register_asset, []
+
+        def broken(**kw):
+            calls.append(1)
+            if len(calls) == 3:
+                raise OSError("容量不足のつもり")
+            return real(**kw)
+
+        store.register_asset = broken
+        try:
+            with self.fx.server.store_lock, self.assertRaises(OSError):
+                store.duplicate_deck(deck)
+        finally:
+            store.register_asset = real
+        self.assertEqual({p.name for p in assets.iterdir()}, before, "写しかけの絵が残った")
+        self.assertEqual({p.name for p in self.fx.root.decks_dir.iterdir()}, decks_before, "写しかけのデッキの置き場が残った")
+        with self.fx.server.store_lock:
+            self.assertEqual([d for d in store.recent_decks(50) if d.get("origin_deck_id") == deck], [])
+
+    def test_duplicate_copies_pages_and_rebuild_draws_nothing(self) -> None:
+        deck = self.make_deck()
+        self.instruct(deck, [3], "見出しを変えて")
+        self.assertEqual(self.wait(deck)["state"], "done")
+        self.duplicate_and_rebuild(deck)
 
     def test_second_pitch_run_with_one_changed_page_draws_only_that_page(self) -> None:
         """キャッシュの区画を回をまたいで使う（P2 は回ごとに新しい区画で、全ページを描き直していた）。"""
@@ -415,6 +474,40 @@ class PresentationEditTests(EditBase):
     def gen_files(self) -> dict[str, float]:
         root = Path(self.tools.extra_env["HTML_SLIDE_CACHE"])
         return {str(p): p.stat().st_ino for p in root.rglob("gen-*.png") if "history" not in p.parts}
+
+    def test_duplicate_copies_pages_and_rebuild_draws_nothing(self) -> None:
+        deck = self.make_deck()
+        gens = len(self.gen_files())
+        new = self.duplicate_and_rebuild(deck)
+        self.assertEqual(len(self.gen_files()), gens * 2, "複製の区画に同じ絵が張られた（描いてはいない）")
+        with self.fx.server.store_lock:
+            ra, rb = self.fx.store.shown_run(deck), self.fx.store.shown_run(new)
+        ca = json.loads((self.fx.root.run_dir(deck, ra["id"]) / "deck-info.json").read_text())["cache"]
+        cb = json.loads((self.fx.root.run_dir(new, rb["id"]) / "deck-info.json").read_text())["cache"]
+        self.assertNotEqual(ca, cb, "複製の回の記録は複製の区画を指す")
+        a_files = {p.name: (p.stat().st_ino, p.read_bytes()) for p in Path(ca).glob("gen-*")}
+        a_pics = {p.name: p.read_bytes() for p in (self.fx.root.run_dir(deck, ra["id"]) / "pictures").glob("*")}
+        # 複製の 8 枚目の絵だけ直す → 複製の最初の版へ戻す。元のデッキの区画と控えは 1 バイトも変わらない
+        self.instruct(new, [8], "絵だけ夜にして")
+        self.assertEqual(self.wait(new)["state"], "done")
+        p8 = next(p for p in self.view(new)["pages"] if p["key"] == "p-eight")
+        r = self.fx.post(f"/api/decks/{new}/adopt", {"choices": {p8["slide_id"]: p8["versions"][-1]["id"]}})
+        self.assertEqual(r.status, 200, r.body)
+        self.assertEqual(self.wait(new)["state"], "done")
+        self.assertEqual({p.name: (p.stat().st_ino, p.read_bytes()) for p in Path(ca).glob("gen-*")}, a_files,
+                         "複製の版を戻しても、元のデッキの区画は変わらない")
+        self.assertEqual({p.name: p.read_bytes() for p in (self.fx.root.run_dir(deck, ra["id"]) / "pictures").glob("*")},
+                         a_pics, "複製の直しで、元の回の控え（絵に添えた JSON を含む）は変わらない")
+        for path in (f"/api/decks/{deck}/delete", f"/api/decks/{deck}/purge"):   # 元を完全に消しても複製は残る
+            r = self.fx.post(path, {})
+            self.assertEqual(r.status, 200, r.body)
+        for p in self.view(new)["pages"]:
+            self.assertEqual(self.fx.get(p["image_url"]).status, 200)
+        self.assertEqual(len(self.gen_files()), gens, "元の区画だけが消え、複製の区画は残る")
+        calls = self.codex_calls()
+        self.assertEqual(self.fx.post(f"/api/decks/{new}/rebuild", {}).status, 200)
+        self.assertEqual(self.wait(new)["state"], "done")
+        self.assertEqual(self.drawn_pages(calls), [], "元を消したあとも、複製は描き直さない")
 
     def test_revise_7_and_8_keeps_other_slots_and_restore(self) -> None:
         deck = self.make_deck()
