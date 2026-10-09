@@ -1,0 +1,657 @@
+{
+ "$doc": "スライド用ローカルデザインシステムのトークン。仕様は references/slide-local.md。slide.css は scripts/build_slide_css.py がこのファイルから作る（直接編集しない）。origin は dads=DADS の値そのまま・plan=計画で決めた値・extension=スライド用の拡張・proposal=実装側の提案（未決）",
+ "version": "1",
+ "canvas": {
+  "width": 1920,
+  "height": 1080,
+  "unit": "css-px"
+ },
+ "font": {
+  "family": "'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif",
+  "mono": "'Noto Sans Mono', monospace",
+  "weight": {
+   "N": 400,
+   "B": 700
+  }
+ },
+ "type": {
+  "scale": [
+   {
+    "px": 200,
+    "origin": "extension"
+   },
+   {
+    "px": 160,
+    "origin": "extension"
+   },
+   {
+    "px": 120,
+    "origin": "extension"
+   },
+   {
+    "px": 96,
+    "origin": "extension"
+   },
+   {
+    "px": 80,
+    "origin": "extension"
+   },
+   {
+    "px": 64,
+    "origin": "dads"
+   },
+   {
+    "px": 57,
+    "origin": "dads"
+   },
+   {
+    "px": 48,
+    "origin": "dads"
+   },
+   {
+    "px": 45,
+    "origin": "dads"
+   },
+   {
+    "px": 36,
+    "origin": "dads"
+   },
+   {
+    "px": 32,
+    "origin": "dads"
+   },
+   {
+    "px": 28,
+    "origin": "dads"
+   },
+   {
+    "px": 26,
+    "origin": "dads"
+   },
+   {
+    "px": 24,
+    "origin": "dads"
+   },
+   {
+    "px": 22,
+    "origin": "dads"
+   },
+   {
+    "px": 20,
+    "origin": "dads"
+   },
+   {
+    "px": 16,
+    "origin": "dads"
+   }
+  ],
+  "line_height": {
+   "100": 1,
+   "120": 1.2,
+   "130": 1.3,
+   "140": 1.4,
+   "150": 1.5,
+   "160": 1.6,
+   "170": 1.7,
+   "175": 1.75
+  },
+  "letter_spacing_em": {
+   "200": 0,
+   "160": 0,
+   "120": 0,
+   "96": 0,
+   "80": 0,
+   "64": 0,
+   "57": 0,
+   "48": 0,
+   "45": 0,
+   "36": 0.01,
+   "32": 0.01,
+   "28": 0.01,
+   "26": 0.02,
+   "24": 0.02,
+   "22": 0.02,
+   "20": 0.02,
+   "16": 0.02
+  },
+  "floor": {
+   "body": 24,
+   "note": 22,
+   "watermark": 16
+  },
+  "roles": {
+   "cover-title": {
+    "size": 96,
+    "weight": "B",
+    "line": 140,
+    "min": 64,
+    "max": 96,
+    "origin": "extension",
+    "note": "表紙・章扉の題。80 → 64 へ段を下りる"
+   },
+   "heading": {
+    "size": 64,
+    "weight": "B",
+    "line": 140,
+    "min": 45,
+    "max": 64,
+    "origin": "plan",
+    "note": "中身の型の見出し"
+   },
+   "diagram-heading": {
+    "size": 80,
+    "weight": "B",
+    "line": 140,
+    "min": 64,
+    "max": 80,
+    "origin": "plan",
+    "note": "図解の型の大見出し（拡張の 80）"
+   },
+   "statement": {
+    "size": 96,
+    "weight": "B",
+    "line": 140,
+    "min": 64,
+    "max": 120,
+    "origin": "proposal",
+    "note": "主張の 1 文。段は 80・96・120 のどれか（拡張）"
+   },
+   "big-number": {
+    "size": 160,
+    "weight": "B",
+    "line": 100,
+    "min": 96,
+    "max": 200,
+    "origin": "proposal",
+    "note": "大きな数字。1 行だけ（行高 100）。段は 96〜200（拡張）"
+   },
+   "kicker": {
+    "size": 28,
+    "weight": "B",
+    "line": 150,
+    "min": 28,
+    "max": 28,
+    "origin": "plan"
+   },
+   "subtitle": {
+    "size": 32,
+    "weight": "N",
+    "line": 150,
+    "min": 28,
+    "max": 32,
+    "origin": "plan"
+   },
+   "box-title": {
+    "size": 36,
+    "weight": "B",
+    "line": 140,
+    "min": 28,
+    "max": 45,
+    "origin": "plan",
+    "note": "36 か 45。常に本文の大きさ以上"
+   },
+   "body": {
+    "size": 32,
+    "weight": "N",
+    "line": 150,
+    "min": 24,
+    "max": 36,
+    "origin": "plan",
+    "note": "32 か 28。長い文は行高 160 も可",
+    "line_alt": 160
+   },
+   "table-head": {
+    "size": 28,
+    "weight": "B",
+    "line": 150,
+    "min": 24,
+    "max": 28,
+    "origin": "proposal"
+   },
+   "table-cell": {
+    "size": 28,
+    "weight": "N",
+    "line": 150,
+    "min": 24,
+    "max": 28,
+    "origin": "proposal"
+   },
+   "chip": {
+    "size": 24,
+    "weight": "B",
+    "line": 100,
+    "min": 22,
+    "max": 24,
+    "origin": "extension",
+    "note": "DADS の Oneline（行高 100）を 24 に伸ばしたもの"
+   },
+   "note": {
+    "size": 22,
+    "weight": "N",
+    "line": 150,
+    "min": 22,
+    "max": 22,
+    "origin": "plan",
+    "note": "注記・出典・フッター・画像のキャプション"
+   },
+   "watermark": {
+    "size": 16,
+    "weight": "N",
+    "line": 170,
+    "min": 16,
+    "max": 16,
+    "origin": "plan",
+    "note": "透かし。DADS の下限 16"
+   }
+  }
+ },
+ "space": {
+  "steps": {
+   "1": 8,
+   "2": 16,
+   "3": 24,
+   "4": 40,
+   "5": 64
+  },
+  "page_margin_x": 120,
+  "page_margin_y": 64,
+  "page_margin_y_origin": "proposal",
+  "unit": 8
+ },
+ "grid": {
+  "columns": 12,
+  "column": 96,
+  "gutter": 48,
+  "width": 1680,
+  "margin": 120,
+  "span": {
+   "1": 96,
+   "2": 240,
+   "3": 384,
+   "4": 528,
+   "5": 672,
+   "6": 816,
+   "7": 960,
+   "8": 1104,
+   "9": 1248,
+   "10": 1392,
+   "11": 1536,
+   "12": 1680
+  }
+ },
+ "radius": {
+  "0": 0,
+  "8": 8,
+  "12": 12,
+  "16": 16,
+  "24": 24,
+  "32": 32,
+  "full": 9999
+ },
+ "radius_roles": {
+  "card": 16,
+  "photo": 8,
+  "chip": 9999,
+  "badge": 9999
+ },
+ "elevation": {
+  "1": "0 2px 8px 1px rgba(0,0,0,0.1), 0 1px 5px 0 rgba(0,0,0,0.3)",
+  "2": "0 2px 12px 2px rgba(0,0,0,0.1), 0 1px 6px 0 rgba(0,0,0,0.3)",
+  "3": "0 4px 16px 3px rgba(0,0,0,0.1), 0 1px 6px 0 rgba(0,0,0,0.3)",
+  "4": "0 6px 20px 4px rgba(0,0,0,0.1), 0 2px 6px 0 rgba(0,0,0,0.3)",
+  "5": "0 8px 24px 5px rgba(0,0,0,0.1), 0 2px 10px 0 rgba(0,0,0,0.3)",
+  "6": "0 10px 30px 6px rgba(0,0,0,0.1), 0 3px 12px 0 rgba(0,0,0,0.3)",
+  "7": "0 12px 36px 7px rgba(0,0,0,0.1), 0 3px 14px 0 rgba(0,0,0,0.3)",
+  "8": "0 14px 40px 7px rgba(0,0,0,0.1), 0 3px 16px 0 rgba(0,0,0,0.3)"
+ },
+ "elevation_roles": {
+  "flat": "none",
+  "badge": "2"
+ },
+ "stroke": {
+  "line": 2,
+  "line_bold": 4,
+  "origin": "proposal"
+ },
+ "icon": {
+  "label_to_box": {
+   "20": 32,
+   "22": 32,
+   "24": 32,
+   "26": 32,
+   "28": 32,
+   "32": 40,
+   "36": 48,
+   "45": 56
+  },
+  "front": [
+   48,
+   64,
+   96
+  ],
+  "origin": "proposal"
+ },
+ "color": {
+  "ground": {
+   "hex": "#ffffff",
+   "dads": "--color-neutral-white",
+   "use": "スライドの地"
+  },
+  "ground-alt": {
+   "hex": "#f2f2f2",
+   "dads": "--color-neutral-solid-gray-50",
+   "use": "淡い面（カード・比較の列の地）"
+  },
+  "text": {
+   "hex": "#333333",
+   "dads": "--color-neutral-solid-gray-800",
+   "use": "本文・見出しの文字"
+  },
+  "text-muted": {
+   "hex": "#666666",
+   "dads": "--color-neutral-solid-gray-600",
+   "use": "補足の文字"
+  },
+  "text-faint": {
+   "hex": "#767676",
+   "dads": "--color-neutral-solid-gray-536",
+   "use": "透かし（4.5:1 の境）"
+  },
+  "border": {
+   "hex": "#767676",
+   "dads": "--color-neutral-solid-gray-536",
+   "use": "枠・罫（どの地の上でも 3:1 以上）"
+  },
+  "border-weak": {
+   "hex": "#949494",
+   "dads": "--color-neutral-solid-gray-420",
+   "use": "枠・罫（白の地の上だけ 3:1）"
+  },
+  "decor": {
+   "hex": "#e6e6e6",
+   "dads": "--color-neutral-solid-gray-100",
+   "use": "装飾の面・線だけ（情報を持たせない・コントラストの対象外）"
+  },
+  "key-primary": {
+   "hex": "#006f83",
+   "dads": "--color-primitive-cyan-900",
+   "use": "主役の色。骨格・強調・文字にも使える"
+  },
+  "key-secondary": {
+   "hex": "#00a3bf",
+   "dads": "--color-primitive-cyan-600",
+   "use": "同色相の明。非テキスト（面・図形）だけ。文字に使うなら 4.5:1 を測り直す"
+  },
+  "key-tertiary": {
+   "hex": "#006173",
+   "dads": "--color-primitive-cyan-1000",
+   "use": "同色相の暗。文字・強い線"
+  },
+  "key-background": {
+   "hex": "#e9f7f9",
+   "dads": "--color-primitive-cyan-50",
+   "use": "同色相のごく淡い地"
+  },
+  "on-primary": {
+   "hex": "#ffffff",
+   "dads": "--color-neutral-white",
+   "use": "key-primary・key-tertiary・意味の色（-2）の上の文字"
+  },
+  "link": {
+   "hex": "#006f83",
+   "dads": "--color-primitive-cyan-900",
+   "use": "リンクの文字（下線と組む。訪問済みの色は持たない）"
+  },
+  "success-1": {
+   "hex": "#259d63",
+   "dads": "--color-semantic-success-1",
+   "use": "成功の枠・図形（3:1）"
+  },
+  "success-2": {
+   "hex": "#197a4b",
+   "dads": "--color-semantic-success-2",
+   "use": "成功の文字・アイコン・塗り（4.5:1）"
+  },
+  "error-1": {
+   "hex": "#ec0000",
+   "dads": "--color-semantic-error-1",
+   "use": "エラーの枠・図形（3:1）"
+  },
+  "error-2": {
+   "hex": "#ce0000",
+   "dads": "--color-semantic-error-2",
+   "use": "エラーの文字・アイコン・塗り（4.5:1）"
+  },
+  "warning-yellow-1": {
+   "hex": "#b78f00",
+   "dads": "--color-semantic-warning-yellow-1",
+   "use": "警告（黄）の枠・図形（3:1）"
+  },
+  "warning-yellow-2": {
+   "hex": "#927200",
+   "dads": "--color-semantic-warning-yellow-2",
+   "use": "警告（黄）の文字・アイコン・塗り（4.5:1）"
+  },
+  "warning-orange-1": {
+   "hex": "#fb5b01",
+   "dads": "--color-semantic-warning-orange-1",
+   "use": "警告（橙）の枠・図形（3:1）"
+  },
+  "warning-orange-2": {
+   "hex": "#c74700",
+   "dads": "--color-semantic-warning-orange-2",
+   "use": "警告（橙）の文字・アイコン・塗り（4.5:1）"
+  },
+  "photo-band": {
+   "hex": "rgba(0,0,0,0.6)",
+   "dads": "--color-neutral-opacity-gray-600",
+   "use": "写真の上の文字の下に敷く帯。上の白文字は、下の写真が真っ白でも 5.7:1"
+  }
+ },
+ "contrast": [
+  {
+   "fg": "text",
+   "bg": "ground",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "text",
+   "bg": "ground-alt",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "text",
+   "bg": "key-background",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "text-muted",
+   "bg": "ground",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "text-muted",
+   "bg": "ground-alt",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "text-muted",
+   "bg": "key-background",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "text-faint",
+   "bg": "ground",
+   "min": 4.5,
+   "why": "文字（透かし）"
+  },
+  {
+   "fg": "key-primary",
+   "bg": "ground",
+   "min": 4.5,
+   "why": "文字にも使う"
+  },
+  {
+   "fg": "key-primary",
+   "bg": "key-background",
+   "min": 4.5,
+   "why": "文字にも使う"
+  },
+  {
+   "fg": "key-primary",
+   "bg": "ground-alt",
+   "min": 4.5,
+   "why": "文字にも使う"
+  },
+  {
+   "fg": "key-tertiary",
+   "bg": "ground",
+   "min": 4.5,
+   "why": "文字にも使う"
+  },
+  {
+   "fg": "key-tertiary",
+   "bg": "key-background",
+   "min": 4.5,
+   "why": "文字にも使う"
+  },
+  {
+   "fg": "link",
+   "bg": "ground",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "link",
+   "bg": "key-background",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "on-primary",
+   "bg": "key-primary",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "on-primary",
+   "bg": "key-tertiary",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "on-primary",
+   "bg": "success-2",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "on-primary",
+   "bg": "error-2",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "on-primary",
+   "bg": "warning-yellow-2",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "on-primary",
+   "bg": "warning-orange-2",
+   "min": 4.5,
+   "why": "文字"
+  },
+  {
+   "fg": "key-secondary",
+   "bg": "ground",
+   "min": 3.0,
+   "why": "非テキスト"
+  },
+  {
+   "fg": "key-tertiary",
+   "bg": "ground",
+   "min": 3.0,
+   "why": "非テキスト"
+  },
+  {
+   "fg": "border",
+   "bg": "ground",
+   "min": 3.0,
+   "why": "非テキスト"
+  },
+  {
+   "fg": "border",
+   "bg": "ground-alt",
+   "min": 3.0,
+   "why": "非テキスト"
+  },
+  {
+   "fg": "border",
+   "bg": "key-background",
+   "min": 3.0,
+   "why": "非テキスト"
+  },
+  {
+   "fg": "border-weak",
+   "bg": "ground",
+   "min": 3.0,
+   "why": "非テキスト"
+  },
+  {
+   "fg": "success-1",
+   "bg": "ground",
+   "min": 3.0,
+   "why": "非テキスト"
+  },
+  {
+   "fg": "error-1",
+   "bg": "ground",
+   "min": 3.0,
+   "why": "非テキスト"
+  },
+  {
+   "fg": "warning-yellow-1",
+   "bg": "ground",
+   "min": 3.0,
+   "why": "非テキスト"
+  },
+  {
+   "fg": "warning-orange-1",
+   "bg": "ground",
+   "min": 3.0,
+   "why": "非テキスト"
+  },
+  {
+   "fg": "success-2",
+   "bg": "ground",
+   "min": 4.5,
+   "why": "文字・アイコン"
+  },
+  {
+   "fg": "error-2",
+   "bg": "ground",
+   "min": 4.5,
+   "why": "文字・アイコン"
+  },
+  {
+   "fg": "warning-yellow-2",
+   "bg": "ground",
+   "min": 4.5,
+   "why": "文字・アイコン"
+  },
+  {
+   "fg": "warning-orange-2",
+   "bg": "ground",
+   "min": 4.5,
+   "why": "文字・アイコン"
+  }
+ ]
+}
