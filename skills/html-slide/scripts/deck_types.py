@@ -846,7 +846,7 @@ def t_big_number(s: Slide):
         ls, _ = fit(label, 36, mw, what="説明（label）", lines=2, lh=1.4, min_size=28, bold=True)
         main.append(f'<div class="bn-label" style="font-size:{ls}px">{rich(label)}</div>')
     if note:
-        ns, _ = fit(note, 28, mw, what="note", lines=2, lh=1.5, min_size=24)
+        ns, _ = fit(note, 28, mw, what="note", lines=2, lh=1.5, min_size=22)   # 注記の下限は 22（slide-local）
         main.append(f'<div class="bn-item-text" style="font-size:{ns}px; margin-top:16px">{esc(note)}</div>')
     parts = [head, f'<div class="bn-main" style="{box(X0, top, mw, BODY_BOTTOM - top)}">'
              f'<div {s.anim(1, "pop", 0, "大きな数字")}>' + "".join(main) + "</div></div>"]
@@ -888,7 +888,7 @@ def t_cards(s: Slide):
     if any(imaged) and not all(imaged):
         s.err("items の image は、書くなら全部のカードに書く（並びがそろわない）")
     n, gap = len(its), GUTTER
-    cw = (CW - gap * (n - 1)) / n
+    cw = (CW - gap * (n - 1)) // n         # 整数に切り下げる（px() が丸めて上げると、並べた行が版の幅を越える）
     avail = s.bottom - top
     big = n <= 3
     cards, tallest = [], 400.0                 # カードの最低の高さ（.card の min-height）
@@ -944,7 +944,7 @@ def t_flow(s: Slide):
     head, top = header(s)
     its = s.items("items", 3, 5, ("label", "title", "body", "accent", "badge"), required=("label",))
     n, gap, ah, depth = len(its), 8, 120, 48
-    cw = (CW - gap * (n - 1)) / n
+    cw = (CW - gap * (n - 1)) // n         # 整数に切り下げる（小数の幅を丸めて上げると、並べた行が版の幅を 1〜2px 越える）
     avail = s.bottom - top
     marked = any(it.get("accent") for it in its)
     tint, accent = s.pal["tint"], s.pal["accent-strong"]     # 段の地は主役の色の淡い地（縁は primary-mark の線）。強める段は差し色で、文字を載せるので文字を載せる面の色
@@ -1495,7 +1495,7 @@ def t_summary(s: Slide):
     pts = s.items("points", 2, 3, ("title", "body", "value"))
     label = s.text("label", default="根拠")
     n, gap = len(pts), GUTTER
-    cw = (CW - gap * (n - 1)) / n
+    cw = (CW - gap * (n - 1)) // n         # 整数に切り下げる（px() が丸めて上げると、並べた行が版の幅を越える）
     avail = s.bottom - top
     room = avail - 8 - 24 - 28 * 1.5 - 16
     cols, tallest = [], 0.0
@@ -1540,7 +1540,7 @@ def t_kpi(s: Slide):
         head, top = header(s)
     its = s.items("items", 3, 4, ("label", "value", "unit", "delta", "trend", "note", "accent", "badge"), required=("label", "value"))
     n, gap = len(its), GUTTER
-    cw = (CW - gap * (n - 1)) / n
+    cw = (CW - gap * (n - 1)) // n         # 整数に切り下げる（px() が丸めて上げると、並べた行が版の幅を越える）
     for i, it in enumerate(its):
         if it.get("trend") is not None and it["trend"] not in TRENDS:
             s.err(f"items の {i + 1} 個目の trend は up / down / flat のどれか")
@@ -1988,7 +1988,7 @@ def t_gallery(s: Slide):
     if layout == "collage":
         return [head] + _collage(s, its, top) + [source_line(s)]
     n, gap = len(its), GUTTER
-    cw = (CW - gap * (n - 1)) / n
+    cw = (CW - gap * (n - 1)) // n         # 整数に切り下げる（px() が丸めて上げると、並べた行が版の幅を越える）
     avail = BODY_BOTTOM - top
     caps = [s.text("caption", spec=it) for it in its]
     cap_h = (16 + 2 * 26 * 1.5) if any(caps) else 0
