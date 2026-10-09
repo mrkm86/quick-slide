@@ -2396,7 +2396,7 @@ def t_deflist(s: Slide):
         s.err("items の icon は、書くなら全部の行に書く（用語の頭がそろわない）")
     n = len(its)
     avail = s.bottom - top
-    size = s.g(32 if n <= 5 else 28, 45)
+    size = s.g(32 if n <= 6 else 28, 45)          # 6 行までは本文 32（7・8 行は 28）
     ib = lead_icon_box(size) if icons[0] else 0
     lead = ib + 16 if ib else 0
     longest = max(text_width(it["term"], 28, True) for it in its)
