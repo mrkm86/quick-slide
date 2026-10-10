@@ -699,6 +699,8 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
   padding-left: var(--space-2);
   border-left: 1px solid var(--color-border);
   cursor: pointer;
+  flex-wrap: wrap;   /* 作り直しを選べない理由（editbox__forced）は、チェックと文の下の行に回す */
+  row-gap: var(--space-1);
 }
 .editbox__prompt-tools > .btn:last-child {
   margin-left: auto;
@@ -706,7 +708,7 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .editbox__prompt-tools > span:empty { flex: 1 1 0; }
 .editbox__remake input { margin: 0; }
 .editbox__remake input:disabled { cursor: not-allowed; }
-.editbox__forced { color: var(--color-text-muted); }
+.editbox__forced { flex: 1 0 100%; color: var(--color-text-muted); }   /* チェックと押し合って4行に折れないよう、下の行に全幅で */
 .editbox__why { margin: 0; color: var(--color-error); }
 .editbox__why:empty { display: none; }
 /* 「まだ何も書いていない」だけの行は、その欄に入るまで出さない（同じ1文がカードの数だけ並ぶのを避ける）。
