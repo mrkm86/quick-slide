@@ -455,6 +455,7 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
   background: var(--color-neutral-solid-gray-800); color: var(--color-neutral-white);
   font-size: var(--font-size-14); line-height: var(--line-height-130); font-weight: var(--font-weight-700); text-align: center; font-variant-numeric: tabular-nums;
 }
+.thumb__num { justify-self: start; }   /* 余った幅で札が横に伸びない（スマホのページ一覧の板で黒い帯になった） */
 .thumb__pic { aspect-ratio: 16 / 9; background: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: var(--border-radius-8); overflow: hidden; }
 .thumb__pic img { width: 100%; height: 100%; object-fit: cover; }
 /* 掴んで動かす間、文字が選ばれたり縮小画像が「画像をドラッグ」で持ち去られたりしないように */
@@ -677,6 +678,8 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
    常に出すと 10 ページのスライドで同じ 1 文が 11 回並ぶ（実ブラウザで撮って分かった） */
 .editbox__note { display: none; margin: 0; color: var(--color-text-muted); }
 .editbox:focus-within .editbox__note, .editbox--drop .editbox__note { display: block; }
+/* 指で操作する端末では、ドラッグ&ドロップ・⌘V の案内は使えないので出さない（画像は左の画像ボタンから選ぶ） */
+@media (pointer: coarse) { .editbox:focus-within .editbox__note { display: none; } }
 .editbox--drop { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); }
 .editbox__file { display: none; }
 .editbox__attach { row-gap: var(--space-2); }
@@ -1152,7 +1155,7 @@ html.is-locked { overflow: hidden; }
   .thumbs__head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) var(--space-2) 0 var(--space-3); }
   .thumbs__head h2 { font-size: var(--font-size-20); }
   .panel__follow { display: none; }   /* 板では「見ているページに追従」は使わない（押した「直す」のページだけを出す） */
-  .thumb { min-height: var(--tap); grid-template-columns: auto minmax(0, 200px); }
+  .thumb { min-height: var(--tap); grid-template-columns: auto minmax(0, 1fr); }   /* 余りは絵の列へ（番号の札は伸ばさない） */
   @media (prefers-reduced-motion: reduce) { .panel, .thumbs { transition: none; } }
 }
 

@@ -29,7 +29,8 @@
   </div>
 </header>
 <div class="workspace-status">
-  <span id="server-state" class="muted small" aria-live="polite">サーバを確認しています…</span>
+  <!-- 稼働中は出さない（利用者の判断。2026-10-11）。問題があるときだけ文を出す（app.js） -->
+  <span id="server-state" class="muted small" aria-live="polite" hidden>サーバを確認しています…</span>
   <div class="workspace-status__action">
     <!-- 新しいスライドはボタンにしない（利用者の決定。入口は会話。docs/adr/0020 §7 追記）。
          文言の正本は server/vocabulary.py の NEW_DECK_NOTICE（tests/p6/test_ui_static.py が一致を固定）。

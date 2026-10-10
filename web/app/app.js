@@ -49,6 +49,7 @@
   fetch("/api/health").then(function (r) { return r.json(); }).then(function (j) {
     var el = document.getElementById("server-state");
     el.textContent = j && j.ok ? "サーバ稼働中" : "サーバの応答はありますが、保存先に問題があります";
+    el.hidden = !!(j && j.ok);   // 稼働中は出さない。問題があるときだけ見せる
     // 再起動の結果（前の設定に戻したなら、その理由を残る通知で）
     var last = j && j.restart;
     if (restartedId && last && last.restart_id === restartedId) {
@@ -61,7 +62,7 @@
         text: "設定を効かせるには再起動が必要です" });
       el.parentNode.insertBefore(link, el.nextSibling);
     }
-  }).catch(function () { document.getElementById("server-state").textContent = "サーバに接続できません"; });
+  }).catch(function () { var el = document.getElementById("server-state"); el.textContent = "サーバに接続できません"; el.hidden = false; });
 
   // attach（launch トークンは 1 回で消費される。結果は通知で伝え、拒否されたときの文面はサーバの日本語をそのまま出す）
   if (launchId && token) {
