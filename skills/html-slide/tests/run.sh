@@ -128,6 +128,7 @@ deck "matrix: 名前は点・ほかの名前・区切り線と重ならないよ
 deck "line-chart: 点の形と線種で系列を区別・線の端に名前・入らなければ凡例に線種と点の形も写す" dads_line_chart_marks
 deck "DOM 順（hub は中心 → 周り・pairs は札 → 文）・pairs の札は語とアイコン・takeaway はアイコンつき" dads_reading_order
 deck "新しい型（notice・deflist・steps）: 種類・状態を形と語で示す・クリックは枠・行・段ごと・誤りは rc=2" dads_new_types
+deck "モーフは退役（ADR 0023）: 切り替えは fade・none だけ・台本とスタイルの morph は fade で描いて警告・PPTX にモーフを書かない" no_morph
 deck "退役の仕組み（RETIRED_TYPES・RETIRED_LOOKS）: 描いて警告・deck-format に載せない・surface: white は line と同じ" retired
 
 # --- 画像の枠を Codex で埋める（ADR 0011・偽物の codex） ---

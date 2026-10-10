@@ -38,7 +38,9 @@ SKILL = pathlib.Path(__file__).resolve().parent.parent
 THEMES = SKILL / "themes"
 TEMPLATE = SKILL / "templates" / "deck.html"
 MODES = ("talk", "handout")
-TRANSITIONS = ("morph", "fade", "none")
+TRANSITIONS = ("fade", "none")
+# 退役した切り替え（ADR 0023）。モーフ（変形）はブラウザの発表の画面で同じに再現できないため、外した。古い台本に書いてあれば fade として描き、警告する
+RETIRED_TRANSITIONS = {"morph": "fade"}
 TOP_KEYS = {"title", "theme", "mode", "footer", "page_numbers", "outline", "slides"}
 THEME_KEYS = {"background", "ink", "primary", "accent", "muted", "surface", "font", "font_files"}
 DEFAULT_FONT, FALLBACK_FONT = "Noto Sans JP", "Yu Gothic"   # 既定の字体（DADS）と、そのファイルが無いときの字体（ADR 0020）
@@ -628,7 +630,10 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
                              "（prompt を書けば Codex で描いて埋める）")
         clicks = s.clicks if steps_on else 0
         talk = talk_lines(no, spec, clicks)
-        tr = spec.get("transition") or ("fade" if no == 1 or mode == "handout" else "morph")
+        tr = spec.get("transition") or "fade"
+        if tr in RETIRED_TRANSITIONS:
+            img_warns.append(f"{no}枚目（{spec.get('type')}）: transition: {tr} は退役した（ブラウザで再現できない・{RETIRED_TRANSITIONS[tr]} に替えて描く）。台本から外す")
+            tr = RETIRED_TRANSITIONS[tr]
         if tr not in TRANSITIONS:
             raise DeckError(f"{no}枚目（{spec.get('type')}）: transition は {' / '.join(TRANSITIONS)} のどれか")
         if mode == "handout":

@@ -128,7 +128,7 @@ def case_sample_ok():
     for s, i in zip(sc["slides"], info["slides"]):
         assert len(s["talk"]) == i["clicks"] + 1, (s["type"], i)
     assert (path.parent / "assets").is_dir()
-    assert info["slides"][0]["transition"] == "fade" and info["slides"][1]["transition"] == "morph"
+    assert info["slides"][0]["transition"] == "fade" and info["slides"][1]["transition"] == "fade"
 
 
 def case_default_clicks():
@@ -160,7 +160,7 @@ def case_contract_attrs():
     secs = parse(path)
     assert len(secs) == len(info["slides"])
     for n, (sec, i) in enumerate(zip(secs, info["slides"]), 1):
-        assert sec["attrs"].get("data-transition") in ("morph", "fade", "none"), n
+        assert sec["attrs"].get("data-transition") in ("fade", "none"), n
         clicks = len({v for v in sec["steps"] if v >= 1})
         assert clicks == i["clicks"], (n, clicks, i)
         assert sec["notes"].count("［クリック］") == clicks, (n, sec["notes"])
@@ -1295,7 +1295,7 @@ def case_style_apply():
     assert "layout" not in st[4] and "layout" not in st[5], (st[4], st[5])
     assert "layout" not in st[6], f"2枚のギャラリーに collage を当てた: {st[6]}"
     assert all(st[n].get("fx") == "fade" for n in st), "fx の既定が全ページに入っていない"
-    assert tr[1] == "fade" and tr[2] == "morph" and tr[7] == "fade", f"切り替え: {tr}"
+    assert tr[1] == "fade" and tr[2] == "fade" and tr[7] == "fade", f"切り替え: {tr}"
     _, info = build(sc, "style-visual-handout", style="visual", mode="handout")
     assert not any("transition" in x["styled"] for x in info["slides"]), "handout に切り替えの既定を当てた"
     q = {"title": "t", "slides": [{"type": "quote", "quote": "言葉", "image": img}]}
@@ -1848,6 +1848,29 @@ def case_retired():
     css = lambda p: re.search(r"/\* look \*/|\.card, \.cmp, \.kpi, \.callout \{[^}]*\}", pathlib.Path(p).read_text(encoding="utf-8")).group(0)
     assert css(h_white) == css(h_line) and "box-shadow" not in css(h_white), "white は line と同じに描く（影を出さない）"
     assert DS.RETIRED_LOOKS == {("surface", "white"): "line"}
+
+
+def case_no_morph():
+    """モーフは退役（ADR 0023）: 切り替えの既定は全部 fade（handout は none）。台本・スタイルに morph が書いてあれば fade で描いて警告する。
+    PPTX にモーフは出ない。"""
+    sc = {"title": "t", "slides": [{"type": "statement", "headline": "a"}, {"type": "statement", "headline": "b"},
+                                   {"type": "statement", "headline": "c", "transition": "none"}, {"type": "statement", "headline": "d", "transition": "morph"}]}
+    _, info = build(sc, "nomorph")
+    assert [x["transition"] for x in info["slides"]] == ["fade", "fade", "none", "fade"], info["slides"]
+    ws = [w for w in info["warnings"] if "退役" in w and "morph" in w]
+    assert len(ws) == 1 and ws[0].startswith("4枚目"), info["warnings"]
+    _, info = build(sc, "nomorph-handout", mode="handout")
+    assert {x["transition"] for x in info["slides"]} == {"none"}
+    _, info = build({"title": "t", "slides": sc["slides"][:2]}, "nomorph-style", style=_style("m", "name: m\nmotion: {transition: morph}\n"))
+    assert [x["transition"] for x in info["slides"]] == ["fade", "fade"] and any("motion.transition" in w and "退役" in w for w in info["warnings"]), info
+    import deck_style as DS
+    assert DS.TRANSITIONS == ("fade", "none") and DS.RETIRED_TRANSITIONS == {"morph": "fade"} and deck.RETIRED_TRANSITIONS == {"morph": "fade"}
+    assert "morph" not in (STYLES_VISUAL := (SKILL / "styles" / "visual.yaml").read_text(encoding="utf-8")), "組み込みのスタイルに morph が残っている"
+    import pptx_writer as PW
+    assert not hasattr(PW, "MORPH"), "モーフの書き出しが残っている"
+    fmt = (SKILL / "references" / "deck-format.md").read_text(encoding="utf-8")
+    row = next(l for l in fmt.splitlines() if l.startswith("| `transition` |"))
+    assert "退役" in row and "`fade`（既定）" in row, row
 
 
 CASES = {k[5:]: v for k, v in globals().items() if k.startswith("case_")}

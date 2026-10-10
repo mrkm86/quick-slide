@@ -13,7 +13,7 @@ image_look: photo               # Codex で描く画像の枠の画風（ADR 001
 expects_images: [cover, section, closing]   # 画像を置くのが基本の型。image が無ければ警告する
 motion:
   fx: fade
-  transition: morph
+  transition: fade
 look:                           # 見た目の調子（文字の大きさ・余白は変えない）
   background: tint              # 地に強調色をうっすら
   surface: line                 # カード・比較の列・KPI は白に枠線（白に影の white は退役・ADR 0020）

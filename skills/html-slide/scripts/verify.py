@@ -44,7 +44,7 @@ def read_pptx(pptx) -> list[dict]:
         if nt:
             notes = "".join(re.findall(r"<a:t>([^<]*)</a:t>", z.read("ppt/notesSlides/" + nt.group(1)).decode()))
         out.append({"no": no, "clicks": s.count('nodeType="clickEffect"'), "notes_clicks": notes.count(CLICK),
-                    "effects": len(re.findall(r'presetClass="entr"', s)), "morph": "p159:morph" in s})
+                    "effects": len(re.findall(r'presetClass="entr"', s)), "morph": "p159:morph" in s})   # モーフは退役（ADR 0023）。出ていたら NG
     return out
 
 
@@ -81,7 +81,7 @@ def verify(pptx, odp: bool = False, report=None) -> dict:
     pptx = Path(pptx)
     slides = read_pptx(pptx)
     for s in slides:
-        s["ok"] = s["clicks"] == s["notes_clicks"]
+        s["ok"] = s["clicks"] == s["notes_clicks"] and not s["morph"]      # モーフは退役（ADR 0023）。出ていたら NG
     res = {"slides": slides, "ok": all(s["ok"] for s in slides), "odp": None}
     if odp:
         rp = Path(report) if report else find_report(pptx)

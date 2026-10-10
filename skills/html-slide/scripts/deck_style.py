@@ -11,7 +11,7 @@ html-slide のスタイルは、**決まった項目の値だけ**を持つ（�
     expects_images: [cover, section] # 任意。画像を置くのが基本の型。image が無ければ警告する（止めない）
     motion:                          # 任意。動きの既定
       fx: fade                       # 並びの出方（台本の fx が勝つ）
-      transition: morph              # 切り替え（台本の transition が勝つ。1枚目は fade・mode: handout は動きなし）
+      transition: fade               # 切り替え（台本の transition が勝つ。fade か none。morph は退役・mode: handout は動きなし）
 
 - 知らないキー・知らない型・その型に無い変化形・選べない値は rc=2（DeckError）
 - 画像が要る変化形は、そのページに画像があるときだけ当てる（無いページは型の既定のまま。止めない）
@@ -41,7 +41,9 @@ LOOK = {
 # 退役した変化形（look の項目, 値）→ 代わりの値。YAML には今までどおり書けて、代わりの値と同じに描くが、読んだときに注意を出し、
 # 台本の書き方（deck-format.md）・台本係の一覧には載せない（ADR 0020・0021）。white は白に影（0 8px 28px）で、影は elevation の番号の丸だけにしたため
 RETIRED_LOOKS = {("surface", "white"): "line"}
-TRANSITIONS = ("morph", "fade", "none")
+TRANSITIONS = ("fade", "none")
+# 退役した切り替え（motion.transition）→ 代わりの値。YAML には今までどおり書け、代わりの値で描き、読んだとき注意を出す（ADR 0023）
+RETIRED_TRANSITIONS = {"morph": "fade"}
 HALVES = ("1/2", "2/5", "1/3")
 
 # 型 → 変化形のキー → 選べる値（deck_types の各型が受ける値と同じ）
@@ -103,6 +105,11 @@ def load(spec: str | None) -> dict:
         raise DeckError(f"{path}: motion に書けるのは fx と transition だけ")
     if "fx" in motion and motion["fx"] not in T.FX:
         raise DeckError(f"{path}: motion.fx は {' / '.join(T.FX)} のどれか（{motion['fx']!r}）")
+    retired_motion = []
+    if motion.get("transition") in RETIRED_TRANSITIONS:
+        new = RETIRED_TRANSITIONS[motion["transition"]]
+        retired_motion.append(f"スタイル {d['name'].strip()}: motion.transition: {motion['transition']} は退役した（ブラウザで再現できない・{new} で描く）。{new} に書き換える")
+        motion = {**motion, "transition": new}
     if "transition" in motion and motion["transition"] not in TRANSITIONS:
         raise DeckError(f"{path}: motion.transition は {' / '.join(TRANSITIONS)} のどれか（{motion['transition']!r}）")
     look = {} if d.get("look") is None else d["look"]
@@ -121,7 +128,7 @@ def load(spec: str | None) -> dict:
         raise DeckError(f"{path}: expects_images は型の名前の配列で書く（{expects!r}）")
     retired = [f"スタイル {d['name'].strip()}: look.{k}: {v} は退役した（{RETIRED_LOOKS[(k, v)]} と同じに描く）。{RETIRED_LOOKS[(k, v)]} に書き換える"
                for k, v in look.items() if (k, v) in RETIRED_LOOKS]
-    return {"name": d["name"].strip(), "description": (d.get("description") or "").strip(), "retired": retired,
+    return {"name": d["name"].strip(), "description": (d.get("description") or "").strip(), "retired": retired + retired_motion,
             "defaults": defaults, "motion": motion, "look": look, "path": path,
             "image_look": d.get("image_look"), "expects_images": tuple(expects)}
 

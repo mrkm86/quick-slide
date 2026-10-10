@@ -638,7 +638,8 @@ function installLib() {
 function contractMain() {
   const H = window.__HP;
   const FX = ['rise', 'fade', 'pop', 'wipe-right', 'wipe-left', 'wipe-up', 'wipe-down', 'wheel'];
-  const TRANS = ['morph', 'fade', 'none'];
+  const TRANS = ['fade', 'none'];
+  const RETIRED_TRANS = { morph: 'fade' };      // 退役（ADR 0023）: ブラウザで再現できない。fade として読み、注意を出す
   const violations = [];
   const sections = [...document.querySelectorAll('section[data-slide]')];
   const V = (slide, el, rule, detail, level = 'error', stop = null) => violations.push({
@@ -675,7 +676,11 @@ function contractMain() {
     const o = sec.getBoundingClientRect();
     if (Math.abs(o.width - 1920) > 1 || Math.abs(o.height - 1080) > 1)
       V(no, sec, 'slide-size', `section の大きさが ${o.width}×${o.height}（1920×1080 にする）`);
-    const tr = sec.getAttribute('data-transition') || (si === 0 ? 'fade' : 'morph');
+    let tr = sec.getAttribute('data-transition') || 'fade';
+    if (RETIRED_TRANS[tr]) {
+      V(no, sec, 'retired-transition', `data-transition="${tr}" は退役した（ブラウザで再現できない。${RETIRED_TRANS[tr]} として読む）`, 'warn');
+      tr = RETIRED_TRANS[tr];
+    }
     if (!TRANS.includes(tr)) V(no, sec, 'bad-transition', `data-transition="${tr}"（${TRANS.join(' / ')} のどれか）`);
     const asides = [...sec.querySelectorAll('aside.notes')];
     const notes = asides.map(notesText).filter(Boolean).join('\n');

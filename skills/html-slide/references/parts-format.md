@@ -8,7 +8,7 @@
   "version": 1, "mode": "contract | hyperframes", "source": "/abs/path/index.html",
   "size": {"w": 1920, "h": 1080}, "title": "…",
   "slides": [{
-    "id": "s1", "transition": "morph | fade | none", "notes": "…［クリック］…",
+    "id": "s1", "transition": "fade | none", "notes": "…［クリック］…",
     "background": {"type": "solid", "color": {…}} | {"type": "grad", "angle": 160, "stops": [{"color": {…}, "pos": 0}, …]},
     "prims": [ … 部品（重なり順・奥から手前） … ],
     "units": {"u1": {"step": 1, "fx": "pop", "delay": 0, "keep": null, "name": "card-a"}},
@@ -27,7 +27,7 @@
 | `step` | `null` = 最初から出ている / `0` = 画面に入ったら自動 / `N` = N 段目のクリック |
 | `fx` | `rise` / `fade` / `pop` / `wheel` / `wipe-right` / `wipe-left` / `wipe-up` / `wipe-down`（wipe の向きは「描く向き」） |
 | `delay` | 同じ段の中の遅れ（ms） |
-| `keep` | 図形名を `!!keep` にする（モーフで画面をまたぐ） |
+| `keep` | 図形名を `!!keep` にする（画面をまたいで同じ部品だと分かる名前） |
 | `name` | 図形名（keep が無いとき） |
 
 contract では `data-step` を持つ一番外側の要素、無ければ `data-keep`・`data-name` を持つ一番近い要素が単位になる。

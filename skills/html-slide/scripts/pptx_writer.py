@@ -5,9 +5,9 @@
 - 動き: step 0 は画面に入ったら自動（最初の段を onBegin ＋ afterEffect）、step N は N 回目のクリック
   （同じ段は withEffect で、data-delay の小さい順）。段の番号は飛んでいても詰めて数える
 - 出方（fx）: rise＝浮上 / fade＝フェード / pop＝ズーム（少し行き過ぎて戻る）/ wheel＝ホイール / wipe-*＝ワイプ
-- data-keep は図形名 `!!名前`（モーフが画面をまたいで対応させる）
+- data-keep は図形名 `!!名前`（画面をまたいで同じ部品だと分かる名前。モーフは退役したので、名前だけ）
 - data-keep="watermark"（透かし）は、選べない・動かせない・書き換えられない部品にする（a:spLocks。消すには［選択］ウィンドウから）
-- 切り替え: morph（mc:AlternateContent で、モーフ未対応のアプリはフェード）/ fade / none
+- 切り替え: fade / none（モーフは退役・ADR 0023。morph と渡されたら fade）
 - 文字: 1行は折り返さず真ん中に置く。複数行は要素の幅で折り返し、行送りを pt の固定値にする（余白0・上揃え）。
   文節で折る（word-break: auto-phrase など）文字だけは、ブラウザが折り返した所に改行（a:br）を入れて固定する
 
@@ -428,11 +428,6 @@ class Timing:
         return etree.fromstring(xml)
 
 
-MORPH = (f'<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:p="{NS_P}">'
-         '<mc:Choice xmlns:p159="http://schemas.microsoft.com/office/powerpoint/2015/09/main" '
-         'xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" Requires="p159">'
-         '<p:transition spd="slow" p14:dur="800"><p159:morph option="byObject"/></p:transition></mc:Choice>'
-         '<mc:Fallback><p:transition spd="med"><p:fade/></p:transition></mc:Fallback></mc:AlternateContent>')
 FADE = f'<p:transition xmlns:p="{NS_P}" spd="med"><p:fade/></p:transition>'
 
 
@@ -524,11 +519,11 @@ def build_slide(prs, s, si, line_breaks=False):
         effs = sorted(by_step[st], key=lambda e: e[0])          # 同じ遅れなら重なり順（sorted は安定）
         groups.append(("auto" if st == 0 else "click", effs))
     tim = Timing().build(groups)
-    tr = s.get("transition") or ("fade" if si == 0 else "morph")
+    tr = s.get("transition") or "fade"
+    if tr == "morph":                                  # 退役（ADR 0023）。モーフは書き出さず、fade にする
+        tr = "fade"
     el = slide._element
-    if tr == "morph":
-        el.append(etree.fromstring(MORPH))
-    elif tr == "fade":
+    if tr == "fade":
         el.append(etree.fromstring(FADE))
     if tim is not None:
         el.append(tim)

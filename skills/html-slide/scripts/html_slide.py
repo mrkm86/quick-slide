@@ -560,7 +560,7 @@ def deck_args(d) -> None:
     d.add_argument("--theme", help="default / forest / warm / テーマの YAML")
     d.add_argument("--style", help="standard（既定・説明・報告・社内資料向け）／visual（ビジュアル寄り・プレゼン・ピッチ向け）／カスタムスタイルの YAML（ADR 0005）")
     d.add_argument("--mode", choices=("talk", "handout"),
-                   help="talk（既定・話す資料。クリックで出る・モーフ）／handout（配る資料。動きも切り替えも付けない）。台本の mode より優先")
+                   help="talk（既定・話す資料。クリックで出る）／handout（配る資料。動きも切り替えも付けない）。台本の mode より優先")
     d.add_argument("--logo", help="ロゴの画像（PNG・JPEG）。高さ 44px・幅 329px の枠へ縦横比を保って収める（引き伸ばさない）")
     d.add_argument("--logo-position", choices=list(deck.LOGO_POSITIONS), default="bottom-right",
                    help="ロゴを置く角（既定 bottom-right）。ふさがったページは、右下 → 左下・左下 → 右下・右上 → 右下へ逃がし、それもだめなら置かない")

@@ -10,7 +10,7 @@ extract.mjs --mode hyperframes の結果（単位ごとに GSAP で出る時刻 
 - 縦（portrait）の動画は扱わない（ValueError → render が rc=2）
 - 見出しは画面をまたいでモーフさせる（!!heading）。外枠（ボード・桟・キャラ・演台）は extract が !! 付きで置く
 - 絵の中の文字は、あとから出る箱の上に載っていれば、その箱と一緒に出す（箱の地に隠れないように）
-- 切り替え: 1枚目と章カードの前後はフェード、ほかはモーフ
+- 切り替え: 全部フェード（モーフは退役・ADR 0023）
 - ノート: 文ごとに1行。クリックのある文の頭に［クリック］
 
 html-video 自体には触らない（焼いたものを読むだけ）。
@@ -168,8 +168,7 @@ def convert(parts: dict, script: dict, build: dict | None = None) -> dict:
             units[f"{sid}-heading"]["keep"] = "heading"
         # ノート・切り替え
         s["notes"] = "\n".join((CLICK if li in per_line else "") + ln.get("text", "") for li, ln in enumerate(lines))
-        prev_ch = si > 0 and layouts[si - 1] == "chapter"
-        s["transition"] = "fade" if si == 0 or layouts[si] == "chapter" or prev_ch else "morph"
+        s["transition"] = "fade"
         s["layout"] = layouts[si]
     parts["title"] = script.get("title") or parts.get("title") or ""
     parts["mode"] = "hyperframes"
