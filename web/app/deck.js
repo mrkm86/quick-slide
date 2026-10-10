@@ -461,25 +461,11 @@
     return { available: false, reason: blocked[0].can_minor.reason || words.remake_forced_reason };
   }
 
+  // デッキ全体への指示の欄。パネルの「デッキ全体」タブに置く（バーも畳みも持たない。いつでも開いている欄）
   function deckInstruction(caps, reasonIds, opts) {
-    var box = h("section", { class: "deck-instruction is-compact", "aria-label": "デッキ全体への指示" });
-    var bar = h("button", { class: "deck-instruction__bar", type: "button", "aria-expanded": "false" },
-      h("span", { class: "target", text: "デッキ全体への指示" }),
-      // 何に使う欄かを常に書く。使えない理由はスライドに 1 か所（すぐ上の行）にあるので、ここには複製しない
-      h("span", { class: "reason", text: "口調・配色などデッキ全体に効く指示" }),
-      h("span", { class: "deck-instruction__caret" }, SS.icon("expand_more")));
-    bar.addEventListener("click", function () {
-      var open = box.classList.toggle("is-open");
-      bar.setAttribute("aria-expanded", open ? "true" : "false");
-    });
-    box.appendChild(bar);
     opts = opts || {};
-    box.appendChild(h("div", { class: "deck-instruction__body" },
-      editbox(caps, "デッキ全体", { deck: true, reasonId: reasonIds && reasonIds.deck_instruction,
-        canMinor: opts.canMinor, onSubmit: opts.onSubmit })));
-    // 選んだ数ページに 1 つの指示（P3）。**選んでいる間だけ出す**（同じ器の中なので、スクロールしても見える）
-    if (opts.pagesBox) { box.appendChild(opts.pagesBox); }
-    return box;
+    return editbox(caps, "デッキ全体", { deck: true, reasonId: reasonIds && reasonIds.deck_instruction,
+      canMinor: opts.canMinor, onSubmit: opts.onSubmit });
   }
 
   // ---- 選んだ数ページへの指示（P3）----
@@ -802,14 +788,15 @@
       // 前者はチェックを入れて（今の絵から離れる形にして）欄へ、後者は欄へ連れて行くだけ
       var again = describedBy(SS.disabledButton(caps, "regenerate", "btn--small"), reasonIds, "regenerate");
       again.addEventListener("click", function () {
-        var box = article.querySelector(".editbox");
+        if (article.__open) { article.__open(); }   // 直す欄はパネルにある。そのページの分を出してから触る
+        var box = article.__tools && article.__tools.querySelector(".editbox");
         var mode = box && box.querySelector(".editbox__remake-box");
         if (mode && !mode.disabled && !mode.checked) { mode.checked = true; mode.dispatchEvent(new Event("change")); }
         var ta = box && box.querySelector("textarea");
         if (ta) { ta.focus(); }
       });
       empty.appendChild(h("div", { class: "editbox__row" }, again,
-        h("button", { class: "btn btn--small", type: "button", text: "指示を変えて作り直す", onclick: function () { var ta = article.querySelector("textarea"); if (ta) { ta.focus(); } } })));
+        h("button", { class: "btn btn--small", type: "button", text: "指示を変えて作り直す", onclick: function () { if (article.__open) { article.__open(); } var ta = article.__tools && article.__tools.querySelector("textarea"); if (ta) { ta.focus(); } } })));
     }
     return empty;
   }
@@ -821,20 +808,23 @@
   // 使えないときは **null を返してボタンごと消す**（無効にして理由を添えない。決定⑦）。
   // 画面が「作っています」と言っている横に「ここに足せます」があると、同じ画面が 2 つのことを
   // 同時に言うことになる（ADR 0043 と同じ判断）。**理由はサーバが持っている**（口は必ず断る。決定⑧）。
-  function insertGap(afterSlideId, ctx, data, reload) {
+  function insertGap(afterSlideId, ctx, data, reload, onlyWaiting) {
     var words = insertWords();
+    // 末尾の口だけは「いまの最後のページ」を送る瞬間に読む（並べ替えで最後が替わるため）。ほかは固定の ID
+    var afterOf = typeof afterSlideId === "function" ? afterSlideId : function () { return afterSlideId; };
     var waiting = (data.pending_inserts || []).filter(function (t) {
-      return (t.after_slide_id || null) === afterSlideId;
+      return (t.after_slide_id || null) === afterOf();
     })[0];
     if (waiting) {
       // 押した隙間が、企画が返るまでの間も画面に残る（利用者の選択 A）。
-      return h("div", { class: "gap gap--waiting", "data-after": afterSlideId || "" },
+      return h("div", { class: "gap gap--waiting", "data-after": afterOf() || "" },
         h("span", { class: "gap__spinner", "aria-hidden": "true" }),
         h("span", { class: "gap__waiting", role: "status", text: words.waiting || "考えています…" }));
     }
+    if (onlyWaiting) { return null; }   // 待っていない隙間は、末尾の口と各ページのメニューからだけ開く
     var cap = (ctx.caps && ctx.caps.insert_page) || {};
     if (!cap.available) { return null; }
-    var gap = h("div", { class: "gap", "data-after": afterSlideId || "" });
+    var gap = h("div", { class: "gap", "data-after": afterOf() || "" });
     // 「＋」だけだと何のボタンか分からない（2026-09-24、利用者が実物を見て指摘）。
     // **語は出す。小さくするのは字の大きさと枠であって、意味ではない。**
     var label = cap.label || "ページを追加";
@@ -890,7 +880,7 @@
       send.disabled = true;
       cancel.disabled = true;
       SS.api("/api/decks/" + data.deck.id + "/pages/insert", { method: "POST", body: {
-        after_slide_id: afterSlideId, text: ta.value.trim(), attachments: readAttachments(form),
+        after_slide_id: afterOf(), text: ta.value.trim(), attachments: readAttachments(form),
         lock_version: data.deck.lock_version
       } }).then(function (r) {
         if (r && r.message) { SS.toast(r.message); }
@@ -917,13 +907,13 @@
   }
 
   // ---- 1 ページ ----
+  // 中央の列に出すのは**スライドと 1 行だけ**（選ぶ・番号・題・直す・⋮）。直す指示の欄・版の絵・見比べ・記録は
+  // `article.__tools` にまとめて作り、パネルが「いま直しているページ」の分だけを出す（節点をそのまま移すので、
+  // 書きかけの文・添えた画像・開いた記録は、パネルが別のページに替わっても消えない）。
   function pageArticle(page, ctx) {
     var caps = ctx.caps;
     var d = page.display;
-    var collapseKey = "slide-card-collapsed:" + page.slide_id;
-    var savedCollapse = sessionStorage.getItem(collapseKey);
-    var collapsed = savedCollapse === null ? !!page.hidden : savedCollapse === "1";
-    var article = h("article", { class: "page" + (page.hidden ? " page--hidden" : "") + (collapsed ? " page--collapsed" : ""), id: "page-" + page.slide_id,
+    var article = h("article", { class: "page" + (page.hidden ? " page--hidden" : ""), id: "page-" + page.slide_id,
       "aria-label": "ページ " + page.position + (page.title ? ": " + page.title : ""),
       dataset: { slide: page.slide_id, position: String(page.position), version: page.version_id } });
 
@@ -932,12 +922,15 @@
     menuBtn.addEventListener("click", function () {
       // 位置と件数は「いま画面に出ている並び」から取る（描いた時点の page.position は並べ替えで古くなる）
       var pos = ctx.positionOf(page.slide_id);
+      var ins = SS.cap(ctx.caps, "insert_page");
       SS.menu(menuBtn, [
         { label: "画像をコピー", disabled: !page.image_url, reason: "コピーできる画像がありません", onSelect: function () { copyImage(page, article, pos); } },
         { label: "画像を保存", disabled: !page.image_url, reason: "保存できる画像がありません", onSelect: function () {
           var a = h("a", { href: page.image_url, download: "slide-" + pos + ".png" }); document.body.appendChild(a); a.click(); a.remove(); recordCopy("save", true, null);
         } },
         "-",
+        { label: "このページの後ろにページを追加", disabled: !ins.available, reason: ins.reason,
+          onSelect: function () { ctx.addAfter(page.slide_id); } },
         { label: "このページを複製", disabled: !SS.cap(ctx.caps, "duplicate_page").available,
           reason: SS.cap(ctx.caps, "duplicate_page").reason, onSelect: function () { ctx.duplicatePage(page.slide_id); } },
         { label: page.hidden ? "このページを表示にする" : "このページを非表示にする", danger: !page.hidden,
@@ -949,40 +942,18 @@
       ]);
     });
 
-    // ヘッダは 1 行。**状態の印と状態名はここに常設する**（枠の中に置くと、絵が出た瞬間に空枠ごと
-    // 消えて、絵ができ上がったのかどうかが読めなくなる）。版は「v3」の文字だけ（一覧は右の版スタックが見せる）
-    var collapseButton = h("button", { class: "btn btn--icon btn--ghost page__collapse", type: "button",
-      "aria-label": collapsed ? "ページを開く" : "ページを閉じる", "aria-expanded": collapsed ? "false" : "true",
-      title: collapsed ? "ページを開く" : "ページを閉じる" },
-      pageIcon(collapsed ? "panel-bottom-close" : "panel-top-close"));
-    collapseButton.addEventListener("click", function () {
-      collapsed = !collapsed;
-      article.classList.toggle("page--collapsed", collapsed);
-      sessionStorage.setItem(collapseKey, collapsed ? "1" : "0");
-      collapseButton.setAttribute("aria-expanded", collapsed ? "false" : "true");
-      collapseButton.setAttribute("aria-label", collapsed ? "ページを開く" : "ページを閉じる");
-      collapseButton.title = collapsed ? "ページを開く" : "ページを閉じる";
-      collapseButton.replaceChildren(pageIcon(collapsed ? "panel-bottom-close" : "panel-top-close"));
-    });
-
-    // 選ぶ（P3: 選んだ数ページに 1 つの指示）。押せるかは指示の口と同じ答え（`pages_instruction`）
+    // 選ぶ（P3: 選んだ数ページに 1 つの指示）。押せるかは指示の口と同じ答え（`pages_instruction`）。
+    // 目立たせない: 行の左に小さく置き、選んだら上にまとめての操作の帯が出る
     var pick = h("input", { type: "checkbox", class: "page__select-box", dataset: { slide: page.slide_id },
       "aria-label": "ページ " + page.position + " " + (instructionWords().select_label || ""),
       disabled: !SS.cap(caps, "pages_instruction").available });
     pick.checked = !!(ctx.isSelected && ctx.isSelected(page.slide_id));
     pick.addEventListener("change", function () { if (ctx.toggleSelect) { ctx.toggleSelect(page.slide_id, pick.checked); } });
     var pickLabel = h("label", { class: "page__select", title: instructionWords().select_label || "" }, pick);
-    article.appendChild(h("header", { class: "page__head" },
-      pickLabel,
-      h("span", { class: "page__num", text: String(page.position) }),
-      h("span", { class: "page__title", text: page.title || "" }),
-      page.hidden ? h("span", { class: "page__hidden-mark", "aria-label": "非表示", title: "非表示" }, pageIcon("eye-off")) : null,
-      h("span", { class: "page__head-spacer" }),
-      collapseButton,
-      page.source_kind !== "generated" ? h("span", { class: "chip page__origin", text: page.source_kind_label }) : null,
-      h("span", { class: "page__state" }, mark(d), h("span", { class: "page__state-label", text: d.label })),
-      h("span", { class: "page__ver muted small", text: "v" + page.version }),
-      menuWrap));
+
+    var fixBtn = h("button", { class: "btn btn--small page__edit", type: "button",
+      "aria-label": "ページ " + page.position + " を直す" }, SS.icon("edit"), h("span", { text: "直す" }));
+    fixBtn.addEventListener("click", function () { ctx.openTools(page.slide_id, fixBtn); });
 
     var frame = h("figure", { class: "frame frame--" + d.key, "aria-label": "ページ " + page.position + "（" + d.label + "）" });
     if (page.image_url) {
@@ -990,16 +961,30 @@
     } else {
       frame.appendChild(frameEmpty(d, caps, article, ctx.reasonIds));
     }
-    // スライドと版スタックを横に並べる器。列の幅は CSS が決める（画面に幅の数字を書かない）
-    article.appendChild(h("div", { class: "page__stage" }, frame, versionStack(page, ctx)));
-    // 比較ビューは画像のある版が 2 つ以上あるページだけに出す。
-    var comparison = compareBox(page, null);
-    if (comparison) { article.appendChild(comparison); }
+    // スライドの下の 1 行。**状態の印と状態名は枠の中と実況が持つ**（絵が出ても追う）ので、ここでは隠してある（CSS）
+    article.appendChild(h("div", { class: "page__stage" }, frame));
+    article.appendChild(h("header", { class: "page__head" },
+      pickLabel,
+      h("span", { class: "page__num", text: String(page.position) }),
+      h("span", { class: "page__title", text: page.title || "" }),
+      page.hidden ? h("span", { class: "page__hidden-mark", title: "非表示" }, pageIcon("eye-off"), h("span", { text: "非表示" })) : null,
+      page.source_kind !== "generated" ? h("span", { class: "chip page__origin", text: page.source_kind_label }) : null,
+      h("span", { class: "page__state" }, mark(d), h("span", { class: "page__state-label", text: d.label })),
+      h("span", { class: "page__ver muted small", text: "v" + page.version }),
+      h("span", { class: "page__head-spacer" }),
+      fixBtn,
+      menuWrap));
 
-    article.appendChild(editbox(caps, "ページ " + page.position,
+    // ---- パネルに出す分（直す欄・版・見比べ・記録）----
+    var tools = h("div", { class: "page-tools" + (page.hidden ? " page-tools--hidden" : ""), dataset: { slide: page.slide_id } });
+    tools.appendChild(editbox(caps, "ページ " + page.position,
       { reasonId: ctx.reasonIds && ctx.reasonIds.page_instruction,
         canMinor: page.can_minor, currentImage: page.image_url,
         onSubmit: function (box, btn) { ctx.submit(page.slide_id, box, btn); } }));
+    tools.appendChild(versionStack(page, ctx));
+    // 比較ビューは画像のある版が 2 つ以上あるページだけに出す。
+    var comparison = compareBox(page, null);
+    if (comparison) { tools.appendChild(comparison); }
 
     // 「情報が多い」への答えは**捨てる**ではなく**畳む**。名前もサーバから貰う
     var det = detailsBlock(page);
@@ -1011,8 +996,10 @@
       toggle.setAttribute("aria-expanded", det.hidden ? "false" : "true");
       toggle.replaceChildren(SS.icon(det.hidden ? "expand_more" : "expand_less"), recordLabel);
     });
-    article.appendChild(toggle);
-    article.appendChild(det);
+    tools.appendChild(toggle);
+    tools.appendChild(det);
+    article.__tools = tools;
+    article.__open = function () { ctx.openTools(page.slide_id, fixBtn); };
     return article;
   }
 
@@ -1162,6 +1149,58 @@
     list.addEventListener("dragstart", function (e) { e.preventDefault(); });
   }
 
+  // ---- 引き出す板（タブレットの引き出し・スマホの下からの板。DADS のドロワー／モーダルダイアログの作法）----
+  // 開いている間: フォーカスを板の中に閉じ込める（Tab は端で折り返す）・Esc と背景の押下で閉じる・背景はスクロールさせない・
+  // 閉じたら開いたボタンへフォーカスを戻す（そのボタンが消えていれば `fallback()` が返す先へ）。
+  // 板そのものの出し入れ（位置・動き）は CSS の `.is-open` が決める。ここは振る舞いだけ。
+  function makeSheet(el, backdrop, cfg) {
+    cfg = cfg || {};
+    var trigger = null, opened = false;
+    function focusables() {
+      var sel = 'a[href],button:not(:disabled),input:not(:disabled):not([type="hidden"]):not([type="file"]),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"])';
+      return Array.prototype.filter.call(el.querySelectorAll(sel), function (n) { return !!(n.offsetWidth || n.offsetHeight || n.getClientRects().length); });
+    }
+    el.addEventListener("keydown", function (e) {
+      if (!opened) { return; }
+      if (e.key === "Escape") {
+        if (document.querySelector(".menu")) { return; }   // 開いているメニューを閉じるのが先
+        e.preventDefault(); e.stopPropagation(); close(true); return;
+      }
+      if (e.key !== "Tab") { return; }
+      var f = focusables();
+      if (!f.length) { e.preventDefault(); return; }
+      var first = f[0], last = f[f.length - 1], at = document.activeElement;
+      if (e.shiftKey && (at === first || !el.contains(at))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (at === last || !el.contains(at))) { e.preventDefault(); first.focus(); }
+    });
+    backdrop.addEventListener("click", function () { close(true); });
+    function open(from) {
+      if (opened) { return; }
+      opened = true;
+      trigger = from || document.activeElement;
+      el.classList.add("is-open");
+      backdrop.hidden = false;
+      document.documentElement.classList.add("is-locked");
+      if (cfg.onOpen) { cfg.onOpen(); }
+      var f = focusables();
+      if (f.length) { f[0].focus({ preventScroll: true }); }
+    }
+    function close(restore) {
+      if (!opened) { return; }
+      opened = false;
+      el.classList.remove("is-open");
+      backdrop.hidden = true;
+      document.documentElement.classList.remove("is-locked");
+      if (cfg.onClose) { cfg.onClose(); }
+      if (restore) {
+        var t = trigger && trigger.isConnected ? trigger : (cfg.fallback ? cfg.fallback() : null);
+        if (t && t.focus) { t.focus({ preventScroll: true }); }
+      }
+      trigger = null;
+    }
+    return { open: open, close: close, isOpen: function () { return opened; } };
+  }
+
   // ---- 左のサムネイル一覧 ----
   // Alt + 矢印で 1 段動かす。素の矢印は焦点の移動とスクロールで埋まっているので使わない
   // （見ようとしただけで構成が変わるのを避ける）。掴む操作は enableDragReorder が足す。
@@ -1177,6 +1216,10 @@
     // **掴めることは案内しない**（2026-09-11、利用者の決定）: プレゼンソフトと操作感が同じなので、
     // 案内文も取っ手の印も置かず、操作そのもので分かるようにする。掴む仕組み・Alt + 矢印は残す。
     // 並べ替えられないスライドでは理由を 1 行だけ出し、一覧からその行を指す（黙って動かないのを避ける）
+    // タブレット・スマホでは左の列をやめ、この器が「ページ一覧」の板として出る（頭と閉じるボタンはそのとき見える）
+    aside.appendChild(h("div", { class: "thumbs__head" }, h("h2", { text: "ページ一覧" }),
+      h("button", { class: "btn btn--icon btn--ghost", type: "button", "aria-label": "ページ一覧を閉じる",
+        onclick: function () { if (ctx.closeThumbs) { ctx.closeThumbs(); } } }, SS.icon("close"))));
     var ol = h("ol", { class: "thumbs__list" });
     if (!canReorder.available && canReorder.reason) { ol.setAttribute("aria-describedby", "reorder-why"); }
     pages.forEach(function (p) {
@@ -1241,27 +1284,39 @@
     if (head.textContent !== message) { head.textContent = message; }
   }
 
+  // 進み具合の札（上の帯の 1 つ。「13/13 完成」）。語（完成・生成中・待機・要対応）はサーバの counts.labels のまま。
+  // 色だけに頼らず、生成中・要対応があるときは語と件数も札の中に出す。件数の細かい並びは title、
+  // 「いま何をしているか」の 1 文（サーバが作る headline）は読み上げ用に残す（画面では数え直さない・U11）
   function progressBand(counts) {
-    var band = h("div", { class: "notice progress-band", role: "status", "aria-live": "polite" },
-      h("p", { class: "progress-band__text" }),
-      h("p", { class: "progress-band__groups small" }));
-    paintBand(band, counts);
-    return band;
+    var chip = h("span", { class: "deck-progress", role: "status", "aria-live": "polite" },
+      h("span", { class: "deck-progress__text" }, h("span", { class: "deck-progress__count" }), h("span", { class: "deck-progress__rest" })),
+      h("span", { class: "visually-hidden deck-progress__headline" }));
+    paintBand(chip, counts);
+    return chip;
   }
 
-  function paintBand(band, counts) {
-    if (!band || !counts) { return; }
+  function paintBand(chip, counts) {
+    if (!chip || !counts) { return; }
     var labels = groupLabels(counts);
     var total = counts.total || 0;
-    var head = band.querySelector(".progress-band__text");
-    // 1 行目の**文はサーバが作る**（「画像を生成しています。…」を含む。正本は vocabulary.progress_headline）。
-    // 画面は出すだけで、いま作っている最中かどうかの判断も文の組み立てもしない（U9 / U11）
-    var text = counts.headline
-      || (total ? total + " ページ中 " + (counts.ready || 0) + " ページが" + (labels.ready || "ready") : "ページなし");
-    if (head.textContent !== text) { head.textContent = text; }
-    var line = band.querySelector(".progress-band__groups");
-    var parts = GROUP_ORDER.map(function (g) { return (labels[g] || g) + " " + (counts[g] || 0); }).join(" · ");
-    if (line.textContent !== parts) { line.textContent = parts; }
+    var count = (counts.ready || 0) + "/" + total;
+    var parts = [count + " " + (labels.ready || "")];
+    ["generating", "waiting", "failed"].forEach(function (g) { if (counts[g]) { parts.push((labels[g] || g) + " " + counts[g]); } });
+    var text = parts.join("・");
+    var kind = counts.failed ? "failed" : (((counts.generating || 0) + (counts.waiting || 0)) ? "working" : "done");
+    var cls = "deck-progress deck-progress--" + kind;
+    if (chip.className !== cls) { chip.className = cls; }
+    var line = GROUP_ORDER.map(function (g) { return (labels[g] || g) + " " + (counts[g] || 0); }).join(" · ");
+    if (chip.title !== line) { chip.title = line; }
+    // 幅の足りない画面では「完成」の語を畳む（CSS）。読み上げには全文を残す
+    var rest = text.slice(count.length);
+    var c = chip.querySelector(".deck-progress__count"), r = chip.querySelector(".deck-progress__rest");
+    if (c.textContent !== count) { c.textContent = count; }
+    if (r.textContent !== rest) { r.textContent = rest; }
+    if (chip.getAttribute("aria-label") !== text) { chip.setAttribute("aria-label", text); }
+    var head = chip.querySelector(".deck-progress__headline");
+    var headline = counts.headline || "";
+    if (head.textContent !== headline) { head.textContent = headline; }
   }
 
   // ---- 取り直した状態を、その場のページに当てる（画面は作り直さない: スクロール位置と選択を保つ）----
@@ -1322,6 +1377,7 @@
       }
     }
     paintThumb(pctx, page, d, n, pos);
+    if (pctx.onPage) { pctx.onPage(page.slide_id); }   // パネルの頭（番号・題・小さな絵）
   }
 
   function paintThumb(pctx, page, d, n, position) {
@@ -1505,6 +1561,7 @@
         mutate(SS.api("/api/decks/" + deckId + "/pages/" + slideId + "/visibility", { method: "POST", body: { hidden: hidden, lock_version: lockVersion } }).then(function (r) { if (r.message) { SS.toast(r.message); } }));
       };
       ctx.scrollTo = function (slideId) {
+        if (ctx.closeThumbs) { ctx.closeThumbs(false); }   // 一覧の板から選んだら、板を閉じてから動く（背景の固定を外す）
         var el = document.getElementById("page-" + slideId);
         if (el) { el.scrollIntoView({ behavior: SS.reducedMotion ? "auto" : "smooth", block: "start" }); }
       };
@@ -1518,9 +1575,10 @@
       // 終わったときの知らせも 1 行だけ（同日の指示。文は `vocabulary.EXPORT_WORDS`）
       ctx.exportDeck = function (btn, format) {
         var words = exportWords();
-        var original = btn.textContent;
+        var labelEl = btn.querySelector(".btn__label") || btn;   // 札の文字だけを替える（アイコンを消さない）
+        var original = labelEl.textContent;
         btn.disabled = true;
-        btn.textContent = words.building || original;
+        labelEl.textContent = words.building || original;
         SS.api("/api/decks/" + deckId + "/exports", { method: "POST", body: { format: format } }).then(function (r) {
           // 見せている回にその形式が無いときは、サーバが描き直してから配る（P5）。時間内に終わらなければ
           // URL は無く「作っています」の 1 文だけが来る（もう一度押してもらう）
@@ -1533,25 +1591,46 @@
           a.click();
           a.remove();
         }).catch(SS.toastError).finally(function () {
-          btn.disabled = false;
-          btn.textContent = original;
+          btn.disabled = !SS.cap(caps, "export").available;
+          labelEl.textContent = original;
         });
       };
 
       SS.clear(root);
+      document.documentElement.classList.remove("is-locked");   // 前の画面で板が開いたままだったときの固定を外す
       var screen = h("div", { class: "deck-screen" });
-      var deckMenuBtn = h("button", { class: "btn btn--icon", type: "button", "aria-label": "スライドの操作", "aria-haspopup": "menu" }, SS.icon("more_vert"));
-      // 形式ごとの**独立したボタン**を横に並べる（2026-09-18、利用者の指示。メニューをやめた。
-      // 1 回押せば書き出しが始まるものを、2 回押させる形にしていた）。承認済みの初期提供範囲は
-      // 全体のみで、ページを選ぶ書き出しはまだ無いので、出すのは形式の 2 つだけである。
-      // **可否は 1 つ（`caps.export`）を 2 つのボタンが分け合う。** 文言だけが形式ごとに変わる
-      // （その正本もサーバの `vocabulary.export_formats`）。名前を付けて持つのは、答えが変わったら
-      // `paintCaps` が同じボタンに当て直すためで、作り直さない
-      var exportButtons = {};
-      ["pdf", "pptx"].forEach(function (format) {
-        var b = SS.disabledButton(caps, "export", "btn--export btn--export-" + format, exportFormatLabel(format));
-        b.addEventListener("click", function () { ctx.exportDeck(b, format); });
-        exportButtons[format] = describedBy(b, reasons.ids, "export");
+      // 描画ごとに document / window / matchMedia / IntersectionObserver へ足したものは、画面が外れたら全部外す。
+      // 外さないと、描き直しや一覧との往復のたびに溜まり、外された画面（全ページの入力欄を含む）を握り続ける
+      var cleanups = [];
+      var disposed = false;
+      var dispose = function () {
+        if (disposed) { return; }
+        disposed = true;
+        cleanups.forEach(function (fn) { try { fn(); } catch (err) { /* 後片付けの失敗で画面を止めない */ } });
+        cleanups = [];
+        if (disposer) { disposer.disconnect(); disposer = null; }
+      };
+      var disposer = null;
+      var deckMenuBtn = h("button", { class: "btn btn--icon btn--ghost deck-menu-btn", type: "button", "aria-label": "スライドの操作", "aria-haspopup": "menu" }, SS.icon("more_vert"));
+      // 書き出しは**ボタン 1 つ**。押すと形式（PDF・PPTX。語の正本はサーバの `vocabulary.export_formats`）のメニューが開く。
+      // **可否は 1 つ（`caps.export`）**。答えが変わったら `paintCaps` が同じボタンに当て直すので、作り直さない。
+      // 幅が足りない画面（スマホ）では字を畳んでアイコンだけにする（`aria-label` が名前）
+      var exportBtn = h("button", { class: "btn btn--export deck-export", type: "button", "aria-haspopup": "menu", "aria-label": "書き出し" },
+        SS.icon("download"), h("span", { class: "btn__label", text: "書き出し" }));
+      var applyExportCap = function () {
+        var c = SS.cap(caps, "export");
+        exportBtn.disabled = !c.available;
+        if (c.available) { exportBtn.removeAttribute("aria-disabled"); exportBtn.removeAttribute("title"); }
+        else { exportBtn.setAttribute("aria-disabled", "true"); exportBtn.setAttribute("title", c.reason || ""); }
+        describedBy(exportBtn, reasons.ids, "export");
+      };
+      applyExportCap();
+      exportBtn.addEventListener("click", function () {
+        var c = SS.cap(caps, "export");
+        SS.menu(exportBtn, ["pdf", "pptx"].map(function (format) {
+          return { label: exportFormatLabel(format), disabled: !c.available, reason: c.reason,
+                   onSelect: function () { ctx.exportDeck(exportBtn, format); } };
+        }));
       });
       // タイトルはその場で直せる（2026-09-18、利用者の指示）。**モーダルを開かない。**
       // 名前を変える口は前からあり（`POST /api/decks/<id>/title`。カードのメニュー「名前を変更」が使う）、
@@ -1559,7 +1638,7 @@
       //
       // 見出しの h1 と入力欄を入れ替えるのではなく、**同じ箱の中で 2 つを出し入れする**（`hidden`）。
       // 入れ替えると、実況の当て直しが掴んでいる要素が途中で消えて、書きかけの題が飛ぶ。
-      var titleText = h("h1", { text: deck.title });
+      var titleText = h("h1", { text: deck.title, title: deck.title });
       var titleInput = h("input", { class: "deck-title-input", type: "text", value: deck.title,
                                     "aria-label": "スライドの名前", maxlength: String(deckLimits().title || 200) });
       var titlePencil = h("button", { class: "btn btn--icon btn--ghost deck-title-edit", type: "button",
@@ -1584,6 +1663,7 @@
             deck.title = r.deck.title;          // サーバが整えた形を正とする（前後の空白など）
             lockVersion = r.deck.lock_version;
             titleText.textContent = deck.title;
+            titleText.title = deck.title;
             showTitleInput(false);
           })
           .catch(function (e) { SS.toastError(e); showTitleInput(true); })   // 断られたら書きかけのまま残す
@@ -1595,6 +1675,25 @@
         else if (e.key === "Escape") { e.preventDefault(); showTitleInput(false); }
       });
       titleInput.addEventListener("blur", commitTitle);
+
+      // 引き出す板の状態は後ろで作る（メニューと上の帯が先に参照するので、名前だけ先に置く）
+      var thumbsSheet = null, panelSheet = null;
+      var onPageHook = function () {};   // パネルの頭の当て直し（パネルを作ったあとで本物に替わる）
+      var onPageHook = function () {};   // パネルの頭の当て直し（パネルを作ったあとで本物に替わる）
+      var mq = window.matchMedia ? window.matchMedia("(min-width: 1024px)") : { matches: true };
+      var isSide = function () { return !!mq.matches; };   // 幅 1024 以上: 右に固定のパネル。それ未満は引き出す板
+
+      // ---- 上の帯（1 行）: 戻る・題・進み具合の札・書き出し・⋮ ----
+      // 「13 ページ・ブランド: 既定」「ピン留め」は ⋮ のメニューの頭へ畳んだ。大きな進みの箱は札へ畳んだ。
+      var pband = data.pages.length ? progressBand(data.counts) : null;
+      var deckBar = h("header", { class: "deck-bar" },
+        h("a", { class: "deck-bar__back", href: "/slides", "data-nav": true, "aria-label": "スライド一覧へ戻る" },
+          SS.icon("arrow_back"), h("span", { class: "deck-bar__back-text", text: "一覧" })),
+        titleBox,
+        pband,
+        h("span", { class: "deck-actions" },
+          h("span", { class: "menu-anchor" }, exportBtn),
+          h("span", { class: "menu-anchor" }, deckMenuBtn)));
       // この画面は名前を鉛筆でその場で直せるので、メニューには「名前を変更」を出さない（2026-09-18）
       // 「設定を替えて組み直す」（P5）: いまの台本のまま、ブランド・スタイルを選び直して組み直す。
       // 押せるかはサーバの `capabilities.rebuild`（メニューを開いたときの答えを読む）
@@ -1603,54 +1702,61 @@
         var rb = SS.cap(caps, "rebuild");
         items.unshift({ label: rb.label, disabled: !rb.available, reason: rb.reason,
                         onSelect: function () { openRebuild(deckId, reload); } }, "-");
-        SS.menu(deckMenuBtn, items);
+        var ins = SS.cap(caps, "insert_page");
+        var head = [];
+        // 左の列が無い画面では、ここが番号へ飛ぶ入口になる
+        if (!isSide()) { head.push({ label: "ページ一覧", disabled: !order.length, onSelect: function () { thumbsSheet.open(deckMenuBtn); } }); }
+        head.push({ label: ins.label || "ページを追加", disabled: !ins.available, reason: ins.reason,
+                    onSelect: function () { ctx.addAfter(order.length ? order[order.length - 1] : null); } }, "-");
+        SS.menu(deckMenuBtn, head.concat(items));
+        var ul = document.querySelector(".menu");
+        if (ul) {
+          var brand = deck.brand ? "ブランド: " + deck.brand.name : "";
+          ul.insertBefore(h("li", { class: "menu__info", role: "presentation" },
+            [deck.pinned ? "ピン留め" : "", data.revision ? pageCountText(data.pages) : "ページなし", brand].filter(Boolean).join(" ・ ")), ul.firstChild);
+        }
       });
-      // 3 段に積む（2026-09-18、利用者の指示）: パンくず / **大きいタイトルと同じ段の右端に書き出し** /
-      // 状態・構成・ブランド。副題（`subtitle` / `purpose`）はここに出さないことにした
-      // （企画の言い直しで、タイトルのすぐ下で二度読ませる価値がない）。値は API に残っている
-      screen.appendChild(h("div", { class: "deck-head" },
-        h("p", { class: "crumbs" }, h("a", { href: "/", "data-nav": true, text: "ホーム" }), " / ", h("a", { href: "/slides", "data-nav": true, text: "スライド" })),
-        h("div", { class: "deck-title-row" },
-          titleBox,
-          h("span", { class: "deck-actions" },
-            exportButtons.pdf,
-            exportButtons.pptx,
-            h("span", { class: "menu-anchor" }, deckMenuBtn))),
-        h("div", { class: "deck-meta" },
-          // スライドの状態の印は出さない（2026-09-18、利用者「いらないね」）。状態は 3 つあるが
-          // （語の正本は vocabulary.py）、**切り替える口が画面のどこにも無い**ので、どのスライドも
-          // 永久に同じ 1 つを表示するだけだった。状態を切り替える機能を作る日に戻す
-          deck.pinned ? h("span", { class: "chip", text: "ピン留め" }) : null,
-          data.revision ? h("span", { class: "muted small deck-revision", text: pageCountText(data.pages) }) : h("span", { class: "muted small", text: "ページなし" }),
-          h("span", { class: "muted small", text: deck.brand ? "ブランド: " + deck.brand.name : "" }))));
+      screen.appendChild(deckBar);
 
       // 企画の帯はいちばん上。待っている人がまず読むのは「いま何をしているか」である
       var planBand = planningBand(data.planning);
       screen.appendChild(planBand);
       var band = limitBanner(data.limit, ctx);
       if (band) { screen.appendChild(band); }
-      var pband = data.pages.length ? progressBand(data.counts) : null;
-      if (pband) { screen.appendChild(pband); }
-      // 再開のボタンは進みの帯のすぐ下（止まっている帯の中のボタンと同じ「状態の文のすぐ下」に置く）
+      // 再開のボタンは止まっている帯のすぐ下（帯の中のボタンと同じ「状態の文のすぐ下」に置く）
       var rrow = resumeRow(data.limit, ctx);
       if (rrow) { screen.appendChild(rrow); }
       // まだ使えない操作の理由は、ここに 1 か所だけ（同じ文が押せない部品の数だけ並ぶのを避ける）
       if (reasons.node) { screen.appendChild(reasons.node); }
 
-      var body = h("div", { class: "deck-body" });
-      var aside = thumbsAside(data.pages, caps, ctx);
-      body.appendChild(aside);
       // ---- 選んだ数ページ（P3）。選んだ印は画面だけが持つ（読み込み直すと外れる）----
+      // 入口は各ページの行の小さなチェック。選んだら上に帯が出て、「まとめて直す」でパネルの「選択中」タブが開く
+      var words = instructionWords();
       var selected = [];
       ctx.isSelected = function (sid) { return selected.indexOf(sid) >= 0; };
+      var selText = h("span", { class: "selection-bar__text" });
+      var selEdit = h("button", { class: "btn btn--small btn--primary", type: "button", text: "まとめて直す" });
+      var selClear = h("button", { class: "btn btn--small", type: "button", text: words.selection_clear || "選択を解除" });
+      var selBar = h("div", { class: "selection-bar", hidden: true, role: "region", "aria-label": "選んだページ" }, selText, selEdit, selClear);
       var pagesBox = pagesInstruction(caps, reasons.ids, {
         onSubmit: function (box, btn) { ctx.submitPages(box, btn); },
         onClear: function () { ctx.clearSelection(); } });
+      var setTab = function () {};   // パネルを作ったあとで本物に替わる
+      var selTab = null;
       var paintSelection = function () {
         selected = selected.filter(function (sid) { return order.indexOf(sid) >= 0; });
         var positions = selected.map(function (sid) { return ctx.positionOf(sid); }).sort(function (a, b) { return a - b; });
         pagesBox.__set(positions);
         screen.querySelectorAll(".page__select-box").forEach(function (b) { b.checked = selected.indexOf(b.dataset.slide) >= 0; });
+        var has = positions.length > 0;
+        selBar.hidden = !has;
+        screen.classList.toggle("has-selection", has);   // 左の列とパネルは、帯の分だけ下に留まる（重ならない）
+        selText.textContent = (words.pages_target || "{pages}").replace("{pages}", positions.join("・"));
+        if (selTab) {
+          selTab.hidden = !has;
+          selTab.textContent = "選択中（" + positions.length + "）";
+          if (!has && selTab.getAttribute("aria-selected") === "true") { setTab("page"); }
+        }
       };
       ctx.toggleSelect = function (sid, on) {
         var i = selected.indexOf(sid);
@@ -1659,30 +1765,226 @@
         paintSelection();
       };
       ctx.clearSelection = function () { selected = []; paintSelection(); };
-      var instr = deckInstruction(caps, reasons.ids, { canMinor: deckCanMinor(data.pages),
-        onSubmit: function (box, btn) { ctx.submitDeck(box, btn); }, pagesBox: pagesBox });
-      body.appendChild(instr);
+      selClear.addEventListener("click", function () { ctx.clearSelection(); });
+      screen.appendChild(selBar);
+
+      var body = h("div", { class: "deck-body" });
+      var aside = thumbsAside(data.pages, caps, ctx);
+      body.appendChild(aside);
+      var deckBox = deckInstruction(caps, reasons.ids, { canMinor: deckCanMinor(data.pages),
+        onSubmit: function (box, btn) { ctx.submitDeck(box, btn); } });
       var pagesEl = h("section", { class: "pages", "aria-label": "ページ" });
       if (!data.pages.length) {
         pagesEl.appendChild(h("div", { class: "empty", text: "このスライドにはまだページがありません。" }));
       }
-      // 実況で差分を当てるための参照（slide_id → 枠・サムネ・いま出している状態）
+      // 実況で差分を当てるための参照（slide_id → 枠・サムネ・直す欄の束・いま出している状態）
       var nodes = {};
-      // 隙間に足す（P11。ADR 0048）。**先頭の隙間は after_slide_id = null**
-      SS.append(pagesEl, insertGap(null, ctx, data, reload));
+      // 隙間に足す（P11。ADR 0048）。隙間ごとの「＋ページを追加」はやめた（スライドの間に毎回出ると見づらい）。
+      // 入口は列の最後の 1 か所・⋮ のメニュー・各ページのメニュー。企画を待っている隙間（押した位置）だけは、
+      // これまでどおり押した位置に出す。先頭の隙間は after_slide_id = null
+      var lastId = function () { return order.length ? order[order.length - 1] : null; };
+      SS.append(pagesEl, insertGap(null, ctx, data, reload, true));
       data.pages.forEach(function (p) {
         var art = pageArticle(p, ctx);
-        nodes[p.slide_id] = { article: art, frame: art.querySelector(".frame"), title: p.title || "",
+        nodes[p.slide_id] = { article: art, tools: art.__tools, frame: art.querySelector(".frame"), title: p.title || "",
           stateLabel: p.display.label, headKey: p.display.key + "|" + p.display.label,
           sig: p.image_url ? null : emptySig(p.display, 0) };
         pagesEl.appendChild(art);
-        SS.append(pagesEl, insertGap(p.slide_id, ctx, data, reload));
+        SS.append(pagesEl, insertGap(p.slide_id, ctx, data, reload, true));
       });
+      var endGap = insertGap(lastId, ctx, data, reload);
+      if (endGap) { endGap.classList.add("gap--end"); pagesEl.appendChild(endGap); }
+      // 指定のページの後ろに足す欄を開く（⋮ のメニューから）。末尾は常設の口を開く。それ以外は欄をその場で作る
+      ctx.addAfter = function (afterId) {
+        var gap = (afterId === lastId() && endGap) ? endGap : pagesEl.querySelector('.gap:not(.gap--end)[data-after="' + (afterId || "") + '"]');
+        if (!gap) {
+          gap = insertGap(afterId, ctx, data, reload);
+          if (!gap) { return; }
+          gap.classList.add("gap--ondemand");   // 閉じたら跡を残さない（CSS）
+          var art = afterId && nodes[afterId] ? nodes[afterId].article : null;
+          if (art) { art.insertAdjacentElement("afterend", gap); } else { pagesEl.insertBefore(gap, pagesEl.firstChild); }
+        }
+        var openBtn = gap.querySelector(".gap__add");
+        if (openBtn && !openBtn.hidden) { openBtn.click(); }
+        else { var gta = gap.querySelector("textarea"); if (gta) { gta.focus(); } }
+        gap.scrollIntoView({ block: "center", behavior: "auto" });
+      };
       body.appendChild(pagesEl);
+
+      // ---- 右のパネル（PC: 固定の列 / タブレット: 右から出る引き出し / スマホ: 下から出る板）----
+      // 中身は「選んだページの部品をそのまま移す」: 各ページの `tools`（直す欄・版・見比べ・記録）は作った瞬間から
+      // 目に見えない置き場（store）にあり、パネルは出すページの分を**移すだけ**。作り直さないので、
+      // 実況の当て直し（版・可否・絵）も書きかけの文も、ページを替えても今までどおり届く・残る。
+      var store = h("div", { class: "tools-store", hidden: true });
+      var panelBackdrop = h("div", { class: "sheet-backdrop", hidden: true });
+      var thumbsBackdrop = h("div", { class: "sheet-backdrop", hidden: true });
+      var pCount = h("span", { class: "panel__count" });
+      var pTitle = h("span", { class: "panel__title" });
+      var pPic = h("span", { class: "panel__pic", "aria-hidden": "true" });
+      var pHeading = h("span", { class: "panel__heading" });   // 「デッキ全体」「選んだページ」のタブでは、ページの頭の代わりにこれを出す
+      var follow = h("button", { class: "btn btn--small btn--ghost panel__follow", type: "button", text: "見ているページに合わせる", hidden: true });
+      var closeBtn = h("button", { class: "btn btn--icon btn--ghost panel__close", type: "button", "aria-label": "パネルを閉じる" }, SS.icon("close"));
+      var tabDefs = [["page", "このページ"], ["deck", "デッキ全体"], ["sel", "選択中"]];
+      var tabEls = {}, paneEls = {};
+      var tablist = h("div", { class: "panel-tabs", role: "tablist", "aria-label": "直す対象" });
+      var slot = h("div", { class: "panel__slot" });
+      var noPage = h("p", { class: "reason", text: "直せるページがまだありません。" });
+      noPage.hidden = !!data.pages.length;
+      tabDefs.forEach(function (d) {
+        var t = h("button", { class: "panel-tab", type: "button", role: "tab", id: "panel-tab-" + d[0], text: d[1],
+          "aria-controls": "panel-pane-" + d[0], "aria-selected": "false", tabindex: "-1" });
+        tabEls[d[0]] = t;
+        paneEls[d[0]] = h("div", { class: "panel__pane", role: "tabpanel", id: "panel-pane-" + d[0], "aria-labelledby": t.id, hidden: true });
+        tablist.appendChild(t);
+      });
+      selTab = tabEls.sel;
+      selTab.hidden = true;
+      paneEls.page.appendChild(noPage);
+      paneEls.page.appendChild(slot);
+      paneEls.deck.appendChild(h("p", { class: "reason", text: "口調・配色などデッキ全体に効く指示" }));
+      paneEls.deck.appendChild(deckBox);
+      paneEls.sel.appendChild(pagesBox);
+      var activeTab = "page";
+      setTab = function (name) {
+        if (name === "sel" && selTab.hidden) { name = "page"; }
+        activeTab = name;
+        if (typeof panel !== "undefined" && panel) {
+          panel.dataset.tab = name;
+          pHeading.textContent = name === "deck" ? "デッキ全体を直す" : name === "sel" ? "選んだページをまとめて直す" : "";
+        }
+        tabDefs.forEach(function (d) {
+          var on = d[0] === name;
+          tabEls[d[0]].setAttribute("aria-selected", on ? "true" : "false");
+          tabEls[d[0]].tabIndex = on ? 0 : -1;
+          paneEls[d[0]].hidden = !on;
+        });
+      };
+      tablist.addEventListener("click", function (e) {
+        var t = e.target.closest && e.target.closest(".panel-tab");
+        if (t) { setTab(t.id.replace("panel-tab-", "")); }
+      });
+      // 矢印・Home・End でタブを移る（DADS のタブ。移ったら選ぶ）
+      tablist.addEventListener("keydown", function (e) {
+        var keys = { ArrowLeft: -1, ArrowRight: 1, Home: "first", End: "last" };
+        if (!(e.key in keys)) { return; }
+        var shown = tabDefs.map(function (d) { return tabEls[d[0]]; }).filter(function (t) { return !t.hidden; });
+        var i = shown.indexOf(document.activeElement);
+        if (i < 0) { return; }
+        var j = keys[e.key] === "first" ? 0 : keys[e.key] === "last" ? shown.length - 1 : (i + keys[e.key] + shown.length) % shown.length;
+        e.preventDefault();
+        shown[j].focus();
+        setTab(shown[j].id.replace("panel-tab-", ""));
+      });
+      var panel = h("aside", { class: "panel", id: "deck-panel", "aria-label": "直す" },
+        h("div", { class: "panel__head" },
+          h("div", { class: "panel__target" }, pPic, h("div", { class: "panel__target-text" }, pCount, pTitle)),
+          pHeading, follow, closeBtn),
+        tablist,
+        h("div", { class: "panel__scroll" }, paneEls.page, paneEls.deck, paneEls.sel));
+      body.appendChild(panel);
+      Object.keys(nodes).forEach(function (sid) { store.appendChild(nodes[sid].tools); });
+
+      var activeSlide = null, shown = null, pinned = false, lastTrigger = null;
+      var paintPanelHead = function () {
+        var n = activeSlide && nodes[activeSlide];
+        follow.hidden = !pinned;
+        if (!n) { pCount.textContent = ""; pTitle.textContent = ""; SS.clear(pPic); return; }
+        pCount.textContent = ctx.positionOf(activeSlide) + " / " + order.length;
+        pTitle.textContent = n.title;
+        var src = n.frame.querySelector("img");
+        var cur = pPic.querySelector("img");
+        if (src) {
+          if (!cur) { pPic.appendChild(h("img", { src: src.getAttribute("src"), alt: "" })); }
+          else if (cur.getAttribute("src") !== src.getAttribute("src")) { cur.setAttribute("src", src.getAttribute("src")); }
+        } else if (cur) { cur.remove(); }
+      };
+      var showTools = function (sid) {
+        if (shown && shown.parentNode === slot) { store.appendChild(shown); }
+        var n = nodes[sid];
+        shown = n ? n.tools : null;
+        if (shown) { slot.appendChild(shown); }
+        activeSlide = sid;
+        paintPanelHead();
+      };
+      onPageHook = function (sid) { if (sid === activeSlide) { paintPanelHead(); } };
+      if (data.pages.length) { showTools(data.pages[0].slide_id); }
+      setTab(data.pages.length ? "page" : "deck");
+      follow.addEventListener("click", function () { pinned = false; if (current) { showTools(current); } else { paintPanelHead(); } });
+      // 書きかけを打ち始めたら、そのページに留める（スクロールで別のページに替わって、打っている欄が消えないように）
+      panel.addEventListener("input", function (e) {
+        if (!pinned && activeTab === "page" && e.target.closest && e.target.closest(".page-tools")) { pinned = true; paintPanelHead(); }
+      });
+
+      // 開閉。PC は右の列（開閉を localStorage に覚える。読めなくても動く）、それ未満は板
+      var readPref = function () { try { var v = localStorage.getItem("qs-deck-panel"); return v === null ? true : v === "1"; } catch (err) { return true; } };
+      var savePref = function (v) { try { localStorage.setItem("qs-deck-panel", v ? "1" : "0"); } catch (err) { /* 覚えられなくても動く */ } };
+      var sideOpen = readPref();
+      var fallbackFocus = function () {
+        var n = activeSlide && nodes[activeSlide];
+        return n ? n.article.querySelector(".page__edit") : deckMenuBtn;
+      };
+      panelSheet = makeSheet(panel, panelBackdrop, { fallback: fallbackFocus });
+      thumbsSheet = makeSheet(aside, thumbsBackdrop, { fallback: function () { return deckMenuBtn; } });
+      ctx.closeThumbs = function (restore) { if (thumbsSheet.isOpen()) { thumbsSheet.close(restore !== false); } };
+      var applyLayout = function () {
+        if (isSide()) {
+          panelSheet.close(false);
+          thumbsSheet.close(false);
+          panel.classList.toggle("is-open", sideOpen);
+          body.dataset.panel = sideOpen ? "open" : "closed";
+          panel.removeAttribute("role");
+          panel.removeAttribute("aria-modal");
+        } else {
+          if (!panelSheet.isOpen()) { panel.classList.remove("is-open"); }
+          body.dataset.panel = "closed";
+          panel.setAttribute("role", "dialog");
+          panel.setAttribute("aria-modal", "true");
+        }
+      };
+      var openPanel = function (trigger, focusInput) {
+        lastTrigger = trigger || document.activeElement;
+        if (isSide()) { sideOpen = true; savePref(true); applyLayout(); }
+        else { panelSheet.open(lastTrigger); }
+        if (focusInput) {
+          var ta = panel.querySelector(".panel__pane:not([hidden]) textarea");
+          var t = ta || panel.querySelector(".panel-tab[aria-selected=\"true\"]");
+          if (t) { t.focus({ preventScroll: true }); }
+        }
+      };
+      var closePanel = function () {
+        if (isSide()) {
+          sideOpen = false; savePref(false); applyLayout();
+          var t = lastTrigger && lastTrigger.isConnected ? lastTrigger : fallbackFocus();
+          if (t && t.focus) { t.focus({ preventScroll: true }); }
+        } else { panelSheet.close(true); }
+      };
+      closeBtn.addEventListener("click", closePanel);
+      // 押して選んだページは、選び直すまで固定（スクロールで勝手に替わらない）
+      ctx.openTools = function (sid, trigger) {
+        pinned = true;
+        showTools(sid);
+        setTab("page");
+        openPanel(trigger, true);
+      };
+      selEdit.addEventListener("click", function () { setTab("sel"); openPanel(selEdit, true); });
+      var onMq = function () {
+        if (!screen.isConnected) { dispose(); return; }
+        applyLayout();
+      };
+      if (mq.addEventListener) {
+        mq.addEventListener("change", onMq);
+        cleanups.push(function () { mq.removeEventListener("change", onMq); });
+      }
+      applyLayout();
+      paintSelection();
+
       screen.appendChild(body);
+      screen.appendChild(store);
+      screen.appendChild(panelBackdrop);
+      screen.appendChild(thumbsBackdrop);
       root.appendChild(screen);
 
-      // 右のスクロールに合わせて、見えているページのサムネイルを強調する
+      // 見ているページを追う。サムネの強調と、固定していないときのパネルの中身に使う
       var current = null;
       var setCurrent = function (slideId) {
         if (slideId === current) { return; }
@@ -1690,8 +1992,10 @@
         aside.querySelectorAll(".thumb").forEach(function (b) {
           var on = b.dataset.slide === slideId;
           b.classList.toggle("thumb--current", on);
-          if (on) { b.setAttribute("aria-current", "true"); b.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" }); } else { b.removeAttribute("aria-current"); }
+          if (on) { b.setAttribute("aria-current", "true"); if (isSide()) { b.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" }); } } else { b.removeAttribute("aria-current"); }
         });
+        // 固定していない間は、真ん中に来たスライドの分を出す。操作中（パネルにフォーカスがある）は替えない
+        if (!pinned && slideId !== activeSlide && !panel.contains(document.activeElement)) { showTools(slideId); }
       };
       if ("IntersectionObserver" in window) {
         var ratios = {};
@@ -1700,20 +2004,17 @@
           var best = null, bestR = 0;
           data.pages.forEach(function (p) { var r = ratios[p.slide_id] || 0; if (r > bestR) { bestR = r; best = p.slide_id; } });
           if (best) { setCurrent(best); }
-        }, { threshold: [0, 0.25, 0.5, 0.75, 1], rootMargin: "-" + (document.querySelector(".topbar").offsetHeight + 44 + 16) + "px 0px -20% 0px" });
+        }, { threshold: [0, 0.25, 0.5, 0.75, 1], rootMargin: "-" + (deckBar.offsetHeight + 8) + "px 0px -20% 0px" });
         pagesEl.querySelectorAll(".page").forEach(function (el) { io.observe(el); });
+        cleanups.push(function () { io.disconnect(); });
       }
+      // 画面が差し替わったら（別のデッキ・別の画面・描き直し）、上の後片付けを 1 回だけ走らせる
+      if (window.MutationObserver) {
+        disposer = new MutationObserver(function () { if (!screen.isConnected) { dispose(); } });
+        disposer.observe(root, { childList: true });
+      }
+      cleanups.push(function () { document.documentElement.classList.remove("is-locked"); });
       if (data.pages.length) { setCurrent(data.pages[0].slide_id); }
-
-      // 全体指示: スクロールで 1 行に縮む（先頭付近では開いた状態）
-      // 狭い画面（900px 未満）では 1 行に縮んだ状態を既定にする（UI.md §6「狭い画面」）
-      var onScroll = function () {
-        var compact = window.scrollY > 24 || window.innerWidth < 900;
-        instr.classList.toggle("is-compact", compact);
-      };
-      window.addEventListener("resize", onScroll, { passive: true });
-      window.addEventListener("scroll", onScroll, { passive: true });
-      onScroll();
 
       // ---- 実況をつなぐ（開いた瞬間の静止画にしない）----
       var noticed = {};
@@ -1745,10 +2046,10 @@
         noticed[key] = true;
         screen.insertBefore(h("div", { class: "notice notice--warn live-notice", role: "status" },
           h("p", { text: message }),
-          h("p", null, h("button", { class: "btn btn--small", type: "button", text: "再読み込み", onclick: function () { SS.render(); } }))), body);
+          h("p", null, h("button", { class: "btn btn--small", type: "button", text: "再読み込み", onclick: function () { SS.render(); } }))), selBar);
       };
       var pctx = { caps: caps, nodes: nodes, aside: aside, positionOf: ctx.positionOf, grabbed: null,
-                   reasonIds: reasons.ids, justAdopted: {}, capsGen: 0 };
+                   reasonIds: reasons.ids, justAdopted: {}, capsGen: 0, onPage: function (sid) { onPageHook(sid); } };
       var watchCfg = null;      // 実況の設定（下で作る。送信のあとに乗せ直すために名前を付けて持つ）
       var candidates = {};      // 前の取り直しで「まだ絵になっていない候補版」があったページ
       var grew = false;         // 0 枚だった画面にページが出来たので描き直しを頼んだ（二度頼まない）
@@ -1762,7 +2063,7 @@
       // 採用は毎回 lock_version を上げるので、答えを待たずに次を押すと 2 回目が必ず断られる
       var stackBusy = function (slideId, busy, pressed) {
         var n = nodes[slideId];
-        var stack = n && n.article.querySelector(".versions");
+        var stack = n && n.tools.querySelector(".versions");
         if (stack) {
           stack.querySelectorAll(".version").forEach(function (b) {
             if (busy && !b.disabled) { b.dataset.held = "1"; b.disabled = true; }
@@ -1778,7 +2079,7 @@
       var paintVersions = function (page) {
         var n = nodes[page.slide_id];
         if (!n) { return; }
-        var old = n.article.querySelector(".versions");
+        var old = n.tools.querySelector(".versions");
         var more = old && old.querySelector(".versions__more");
         var older = !!(more && more.getAttribute("aria-expanded") === "true");
         var focused = old && old.contains(document.activeElement) ? document.activeElement.dataset.version : null;
@@ -1786,7 +2087,7 @@
         var next = versionStack(page, ctx);
         if (older) { var m2 = next.querySelector(".versions__more"); if (m2) { m2.click(); } }
         next.querySelector(".versions__said").textContent = said;   // 押した結果の 1 行は消さない
-        if (old) { old.replaceWith(next); } else { n.article.querySelector(".page__stage").appendChild(next); }
+        if (old) { old.replaceWith(next); } else { n.tools.querySelector(".editbox").insertAdjacentElement("afterend", next); }
         if (focused) {
           var back = next.querySelector('.version[data-version="' + focused + '"]');
           if (back && !back.disabled) { back.focus({ preventScroll: true }); }   // 続けて選べるようにする
@@ -1797,7 +2098,7 @@
         n.article.dataset.version = page.version_id;
         // 見比べの器も同じ版の並びから作り直す（絵だけ替わって器が古い版を映すと嘘になる）。
         // **開いていたか・どの版と見比べていたかは持ち越す**（見比べの最中に勝手に片付けない）
-        var oldBox = n.article.querySelector(".compare-box");
+        var oldBox = n.tools.querySelector(".compare-box");
         var oldPanel = oldBox && oldBox.querySelector(".compare");
         if (oldBox) {
           oldBox.replaceWith(compareBox(page, { open: !oldPanel.hidden, partner: oldPanel.dataset.partner }));
@@ -1831,14 +2132,12 @@
         var next = screenReasons(freshCaps);
         if (reasons.node && next.node) { reasons.node.replaceWith(next.node); }
         else if (reasons.node) { reasons.node.remove(); }
-        else if (next.node) { screen.insertBefore(next.node, body); }
+        else if (next.node) { screen.insertBefore(next.node, selBar); }
         reasons = next;
         ctx.reasonIds = next.ids;
         pctx.reasonIds = next.ids;
         // 2 つのボタンが 1 つの可否を分け合うので、当て直すのも 2 つとも（文言は形式のまま保つ）
-        Object.keys(exportButtons).forEach(function (format) {
-          describedBy(SS.applyCap(exportButtons[format], caps, "export", exportFormatLabel(format)), next.ids, "export");
-        });
+        applyExportCap();
         // 並べ替えの可否は列全体に効く（理由は列の下に 1 行。サムネは title で読める）
         var canReorder = SS.cap(caps, "reorder_pages");
         var why = aside.querySelector(".thumbs__why");
@@ -1858,17 +2157,17 @@
         (freshPages || []).forEach(function (p) { minor[p.slide_id] = p.can_minor; });
         var setBox = function (box, key) {
           if (!box) { return; }
-          var card = box.closest(".page");
+          var card = box.closest(".page-tools");
           var canMinor = card ? minor[card.dataset.slide] : (freshPages ? deckCanMinor(freshPages) : null);
           box.__caps(SS.cap(freshCaps, key), canMinor || null, next.ids[key]);
         };
-        setBox(instr.querySelector(".deck-instruction__body .editbox"), "deck_instruction");
+        setBox(deckBox, "deck_instruction");
         // 選んだ数ページの欄は、絵を土台にするかをページごとに台本係とエンジンが決めるので、チェックを固定しない
         pagesBox.__box.__caps(SS.cap(freshCaps, "pages_instruction"), { available: true, reason: null }, next.ids.pages_instruction);
         var canPick = SS.cap(freshCaps, "pages_instruction").available;
         screen.querySelectorAll(".page__select-box").forEach(function (b) { b.disabled = !canPick; });
         Object.keys(nodes).forEach(function (sid) {
-          setBox(nodes[sid].article.querySelector(".editbox"), "page_instruction");
+          setBox(nodes[sid].tools.querySelector(".editbox"), "page_instruction");
         });
       };
 
@@ -1910,7 +2209,7 @@
           paintBand(pband, r.counts);
           paintPageCount(r.revision, r.pages);
           // 何が起きたかはサーバの文をそのまま出す（同じ版をもう一度押したときも本文が違う）
-          var back = nodes[slideId] && nodes[slideId].article.querySelector(".versions__said");
+          var back = nodes[slideId] && nodes[slideId].tools.querySelector(".versions__said");
           if (back) { back.textContent = r.message || ""; }
         }, function (e) {
           adopting[slideId] = false;
@@ -1948,10 +2247,13 @@
           if (n.article.dataset.position !== pos) { n.article.dataset.position = pos; }
           var pn = n.article.querySelector(".page__num");
           if (pn && pn.textContent !== pos) { pn.textContent = pos; }
-          var target = n.article.querySelector(".editbox .target");
+          var target = n.tools.querySelector(".editbox .target");
           if (target) { target.textContent = "ページ " + pos; }
+          var fix = n.article.querySelector(".page__edit");
+          if (fix) { fix.setAttribute("aria-label", "ページ " + pos + " を直す"); }
           n.frame.setAttribute("aria-label", "ページ " + pos + "（" + n.stateLabel + "）");
         });
+        paintPanelHead();
       };
 
       var orderInList = function () {
@@ -1976,6 +2278,7 @@
           if (thumb && thumb.parentNode) { thumbList.appendChild(thumb.parentNode); }
           if (nodes[sid]) { pagesEl.appendChild(nodes[sid].article); }
         });
+        if (endGap) { pagesEl.appendChild(endGap); }   // 末尾の口は、並べ替えても最後に居る
         renumber();
         if (active && active.focus && document.activeElement !== active && document.contains(active)) {
           active.focus({ preventScroll: true });
@@ -2188,12 +2491,12 @@
         shownLimit = sig;
         var next = limitBanner(l, ctx);
         if (band) { band.remove(); }
-        if (next) { screen.insertBefore(next, pband || body); }
+        if (next) { screen.insertBefore(next, selBar); }
         band = next;
         // 帯と脇のボタンは**同じ 1 つの値の反対側**なので、必ず一緒に作り直す（二重にも 0 にもしない）
         var nextRow = resumeRow(l, ctx);
         if (rrow) { rrow.remove(); }
-        if (nextRow) { screen.insertBefore(nextRow, reasons.node || body); }
+        if (nextRow) { screen.insertBefore(nextRow, reasons.node || selBar); }
         rrow = nextRow;
       };
       // 送った指示から出た候補版の進み。**/progress の `candidates` はまだ出来ていない版だけ**を返すので、
@@ -2204,7 +2507,7 @@
         (list || []).forEach(function (c) {
           now[c.slide_id] = true;
           var n = nodes[c.slide_id];
-          var row = n && n.article.querySelector('.version[data-version="' + c.version_id + '"]');
+          var row = n && n.tools.querySelector('.version[data-version="' + c.version_id + '"]');
           var state = row && row.querySelector(".version__state");
           // 状態の語はサーバの display をそのまま出す（画面では作らない）
           if (state && state.textContent !== c.display.label) { state.textContent = c.display.label; }

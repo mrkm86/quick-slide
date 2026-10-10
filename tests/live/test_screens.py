@@ -72,7 +72,7 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
                              "!!document.querySelector('.deck-screen .pages .empty')", "スライドの画面が出ること")
             self.assertEqual(page.eval("document.querySelector('.deck-title h1').textContent"), deck["title"])
             # ページが無いうちは、直す・書き出しは押せない（理由が 1 か所に出る）
-            self.assertTrue(page.eval("document.querySelector('.btn--export-pdf').disabled"))
+            self.assertTrue(page.eval("document.querySelector('.deck-export').disabled"))
             self.assertIn("まだページがありません", page.eval("document.querySelector('.screen-reasons').textContent"))
 
     def test_settings_screens(self) -> None:
@@ -92,13 +92,13 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
                   " i.value = '名前を変えたプレゼン'; i.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'})); })()")
         page.until("document.querySelector('.deck-title h1').textContent === '名前を変えたプレゼン'", what="名前が変わること")
         # メニューから複製
-        page.eval("document.querySelector('.deck-actions .menu-anchor button').click()")
+        page.eval("document.querySelector('.deck-actions .btn--icon').click()")
         page.until("!!document.querySelector('.menu')", what="メニュー")
         page.eval("Array.from(document.querySelectorAll('.menu button')).find(b => b.textContent === '複製').click()")
         page.until("Array.from(document.querySelectorAll('.toast')).some(t => t.textContent.indexOf('複製しました') >= 0)", what="複製の知らせ")
         # メニューからごみ箱へ（確認は通す）
         page.eval("window.confirm = function () { return true; }")
-        page.eval("document.querySelector('.deck-actions .menu-anchor button').click()")
+        page.eval("document.querySelector('.deck-actions .btn--icon').click()")
         page.until("!!document.querySelector('.menu')", what="メニュー")
         page.eval("Array.from(document.querySelectorAll('.menu button')).find(b => b.textContent.indexOf('削除') === 0).click()")
         page.until("location.pathname === '/' && document.querySelectorAll('#view .card').length >= 1", what="ホームへ戻ること")

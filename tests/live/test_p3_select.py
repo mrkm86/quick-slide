@@ -68,9 +68,10 @@ class SelectPagesAndInstructTest(unittest.TestCase):
         # 読み込み直さずに、見出しと絵と版スタックが替わる
         page.until("(function(){ var t = " + TITLES + "; return t[6].endsWith('（直し）') && t[7].endsWith('（直し）'); })()",
                    seconds=90, what="7・8 枚目の見出しが替わる")
+        # 版の絵は右のパネルの「ページごとの直す束」（.page-tools）にある。ページの並びは中央の列で引く
         page.until("(function(){ var a = document.querySelectorAll('.pages article.page');"
-                   " return a[6].querySelectorAll('.versions__list li').length === 2"
-                   " && a[7].querySelectorAll('.versions__list li').length === 2; })()", seconds=60,
+                   " var n = function (i) { return document.querySelectorAll('.page-tools[data-slide=\"' + a[i].dataset.slide + '\"] .versions__list li').length; };"
+                   " return n(6) === 2 && n(7) === 2; })()", seconds=60,
                    what="7・8 枚目の版スタックに新しい版")
         page.until("(function(){ var i = " + IMAGES + "; return i[6] !== " + repr(before_imgs[6]) +
                    " && i[7] !== " + repr(before_imgs[7]) + "; })()", seconds=60, what="7・8 枚目の絵が替わる")
@@ -81,8 +82,7 @@ class SelectPagesAndInstructTest(unittest.TestCase):
                 continue
             self.assertEqual(after_imgs[i], before_imgs[i], f"{i + 1} 枚目の絵は替わらない")
             self.assertEqual(after_titles[i], before_titles[i])
-        self.assertEqual(page.eval("document.querySelectorAll('.pages article.page')[0]"
-                                   ".querySelectorAll('.versions__list li').length"), 1)
+        self.assertEqual(page.eval("document.querySelectorAll('.page-tools[data-slide=\"' + document.querySelectorAll('.pages article.page')[0].dataset.slide + '\"] .versions__list li').length"), 1)
         self.assertEqual(page.eval("document.querySelectorAll('.live-notice').length"), 0,
                          "自分の直しを「ほかの場所で変わった」と言わない")
         time.sleep(1.0)

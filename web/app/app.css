@@ -249,7 +249,7 @@ fieldset:disabled button { cursor: not-allowed; }
 
 /* ---- 通知・メニュー ---- */
 /* 通知（DADS のお知らせ）: 下の隅に出る帯。濃い地に白い字。操作つきは残す */
-.toasts { position: fixed; left: 50%; bottom: var(--space-5); transform: translateX(-50%); display: flex; flex-direction: column; gap: var(--space-2); z-index: 60; max-width: min(560px, calc(100vw - 32px)); }
+.toasts { position: fixed; left: 50%; bottom: var(--space-5); transform: translateX(-50%); display: flex; flex-direction: column; gap: var(--space-2); z-index: 80; max-width: min(560px, calc(100vw - 32px)); }
 .toast {
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-2) var(--space-3) var(--space-2) var(--space-5); border-radius: var(--radius-2);
@@ -416,27 +416,6 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 
 /* ---- 縦スクロールの実況・編集画面（UI.md §6）---- */
 .deck-screen { max-width: none; }
-/* 見出しは 3 段（パンくず / タイトル + 書き出し / 状態・構成・ブランド）。2026-09-18 */
-.deck-head { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); }
-/* パンくず（DADS: リンク・区切り・現在地） */
-.deck-head .crumbs { font-size: var(--font-size-16); margin: 0; }
-.deck-title-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-/* タイトルは大きく（Std-36B-140）。狭いときは折り返す（`min-width: 0` が無いと長い題で右端のボタンを押し出す） */
-.deck-title { flex: 1 1 320px; min-width: 0; display: flex; align-items: center; gap: var(--space-2); }
-.deck-title h1 { min-width: 0; font-size: var(--font-size-36); line-height: var(--line-height-140); letter-spacing: 0.01em; overflow-wrap: anywhere; }
-/* 鉛筆はタイトルに寄り添う。キーボードで辿れる間は必ず見える（薄くしない: 薄いとコントラストを割る） */
-.deck-title-edit { color: var(--color-text-muted); }
-.deck-title:hover .deck-title-edit, .deck-title-edit:focus-visible { color: var(--ink); }
-/* その場の書き換え。h1 と同じ大きさにして、押した瞬間に字が飛び跳ねないようにする */
-.deck-title-input {
-  flex: 1 1 auto; min-width: 0; font: inherit; font-family: var(--font-heading);
-  font-size: var(--font-size-36); font-weight: var(--font-weight-700); letter-spacing: 0.01em; line-height: var(--line-height-140);
-  color: var(--color-text); background: var(--color-surface);
-  padding: 0 var(--space-2);
-}
-.deck-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
-.deck-meta { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-
 /* ごみ箱の見出し。左に「空けられる容量」と断り、右端に「空にする」。
    狭いときは 2 段に折り返す（`min-width` を持たせない） */
 .trash-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
@@ -444,18 +423,8 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .trash-head__actions { display: flex; align-items: center; gap: var(--space-2); }
 /* まだ使えない操作の理由はスライドに 1 か所（押せない部品ごとに同じ文を並べない） */
 .screen-reasons { margin: 0 0 var(--space-4); display: grid; gap: 2px; }
-.deck-body {
-  display: grid;
-  grid-template-columns: var(--thumbs-w) minmax(0, 1fr);
-  grid-template-areas: "thumbs instr" "thumbs pages";
-  column-gap: var(--space-5);
-  row-gap: var(--space-4);
-  align-items: start;
-}
-
 /* 左: サムネイル一覧（固定幅・独立スクロール） */
 .thumbs {
-  grid-area: thumbs;
   position: sticky; top: calc(var(--topbar-h) + var(--space-3));
   max-height: calc(100vh - var(--topbar-h) - var(--space-5));
   overflow-y: auto; overflow-x: hidden;
@@ -524,49 +493,19 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .mark--generating, .mark--adjusting { border-color: var(--color-info); color: var(--color-info); animation: ss-pulse var(--motion-pulse) ease-in-out infinite; }
 .mark--queued_slot, .mark--queued_rate_limit, .mark--retry_backoff, .mark--paused, .mark--unstarted { border-style: dashed; }
 
-/* 一番上: デッキ全体への指示（スクロールで 1 行に縮んで上に留まる） */
-.deck-instruction {
-  grid-area: instr;
-  position: sticky; top: calc(var(--topbar-h) + var(--space-3)); z-index: 10;
-  max-width: var(--stage-max-w);
-  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-3);
-  box-shadow: var(--elevation-1);
-}
-.deck-instruction__bar {
-  display: flex; align-items: center; gap: var(--space-3);
-  min-height: var(--instr-compact-h); padding: 0 var(--space-3);
-  cursor: pointer; border: 0; background: transparent; width: 100%; text-align: left; border-radius: var(--radius-3);
-}
-.deck-instruction__bar .target { font-weight: var(--font-weight-700); }
-.deck-instruction__bar .reason { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.deck-instruction__caret { display: inline-flex; color: var(--color-text-muted); }
-.deck-instruction.is-open .deck-instruction__caret svg { transform: rotate(180deg); }
-.deck-instruction__body { padding: 0 var(--space-3) var(--space-3); }
-.deck-instruction.is-compact:not(.is-open) .deck-instruction__body { display: none; }
-/* 選んだ数ページへの指示（P3）。全体の指示と同じ器の中に出すので、縮んでいても選んだら見える */
-.deck-instruction__pages { padding: var(--space-3); border-top: 1px solid var(--color-border); }
-.deck-instruction__pages[hidden] { display: none; }
-
 /* 右: スライドが縦に 1 列 */
-.pages { grid-area: pages; display: flex; flex-direction: column; gap: var(--space-6); max-width: var(--stage-max-w); min-width: 0; }
+.pages { display: flex; flex-direction: column; gap: var(--space-6); max-width: var(--stage-max-w); min-width: 0; }
 .page {
   scroll-margin-top: calc(var(--topbar-h) + var(--instr-compact-h) + var(--space-5));
   padding: var(--space-3); background: var(--color-surface); border: 1px solid var(--color-border);
   border-radius: var(--radius-3);
 }
-.page--collapsed .page__stage,
-.page--collapsed .editbox,
-.page--collapsed .versions__compare,
-.page--collapsed .compare,
-.page--collapsed .record-toggle,
-.page--collapsed .record { display: none; }
 .page--hidden .page__stage { opacity: .4; filter: grayscale(1); pointer-events: none; }
-.page--hidden .editbox,
-.page--hidden .versions__compare,
-.page--hidden .compare,
-.page--hidden .record-toggle,
-.page--hidden .record { display: none; }
-.page__head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); flex-wrap: wrap; }
+.page-tools--hidden .editbox,
+.page-tools--hidden .versions__compare,
+.page-tools--hidden .compare,
+.page-tools--hidden .record-toggle,
+.page-tools--hidden .record { display: none; }
 /* ページを選ぶ（P3）。番号の左に置く。押せる範囲は 44×44 */
 .page__select { display: inline-flex; align-items: center; justify-content: center; width: var(--tap); height: var(--tap); margin: -10px 0 -10px -10px; cursor: pointer; }
 .page__select-box { width: 24px; height: 24px; margin: 0; cursor: pointer; }
@@ -584,16 +523,6 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .page__origin,
 .page__state,
 .page__ver { display: none; }
-/* スライド（主役）と版の縦スタックを横に並べる。狭い画面では下に回る（末尾のメディアクエリ） */
-.page__stage {
-  display: grid;
-  grid-template-areas: "slide versions";
-  grid-template-columns: minmax(0, var(--slide-max-w)) var(--versions-w);
-  gap: var(--space-3);
-  align-items: start;
-}
-.page__stage .frame { grid-area: slide; }
-
 /* 版の縦スタック（スライドの右。新しいものが上）。**絵で見分けるのが本命**なので、
    押せない間も絵は薄くしない（押せないことは cursor と理由の文で伝える） */
 .versions { grid-area: versions; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
@@ -730,8 +659,8 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 }
 .editbox__prompt textarea:focus-visible { outline: 0; box-shadow: none; }
 .editbox__prompt-tools {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   min-height: 56px;
@@ -762,6 +691,7 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 /* 作り直しの切り替え（チェック箱 + 文字を 1 つのラベルに。ラベル全体が押せる範囲で、高さは 44 以上） */
 .editbox__remake {
   display: inline-flex;
+  flex: 1 1 192px;   /* 狭い欄では次の行へ回す（1 文字ずつ縦に並ばない） */
   min-width: 0;
   min-height: var(--tap);
   align-items: center;
@@ -771,8 +701,9 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
   cursor: pointer;
 }
 .editbox__prompt-tools > .btn:last-child {
-  margin-left: var(--space-2);
+  margin-left: auto;
 }
+.editbox__prompt-tools > span:empty { flex: 1 1 0; }
 .editbox__remake input { margin: 0; }
 .editbox__remake input:disabled { cursor: not-allowed; }
 .editbox__forced { color: var(--color-text-muted); }
@@ -848,32 +779,6 @@ details > summary:hover { color: var(--color-primitive-blue-900); text-decoratio
   .home-hero { min-height: 264px; padding: 24px; grid-template-columns: 1.1fr 1fr; }
   .home-hero h1 { font-size: var(--font-size-36); }
   .home-hero__description { max-width: 24em; }
-  .deck-body {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "instr" "thumbs" "pages";
-    row-gap: var(--space-3);
-  }
-  .deck-instruction { max-width: none; }
-  .thumbs {
-    position: sticky; top: calc(var(--topbar-h) + var(--space-3) + var(--instr-compact-h) + var(--space-2));
-    max-height: none; overflow-x: auto; overflow-y: hidden;
-    flex-direction: row; align-items: center; z-index: 9;
-  }
-  .thumbs__list { flex-direction: row; padding: var(--space-1) var(--space-2); }
-  .thumb { grid-template-columns: auto; width: auto; min-width: var(--tap); min-height: var(--tap); padding: 6px 12px; touch-action: pan-x; }
-  .thumbs__reorder { padding: var(--space-2) var(--space-3); white-space: nowrap; border-left: 1px solid var(--color-border); }
-  /* まだ何も言っていないときは仕切りごと出さない（横帯の右端に 1px の縦線だけが残るのを避ける） */
-  .thumbs__reorder:not(:has(p:not(:empty))) { display: none; }
-  /* 横帯では**絵を出さない**（18px に縮めた絵は読めない）。番号の札だけを並べ、重ねずに置く */
-  .thumb__pic { display: none; }
-  .pages { max-width: none; }
-  /* 版スタックはスライドの下へ回す（左のサムネ一覧が横帯になる作法に揃える） */
-  .page__stage { grid-template-areas: "slide" "versions"; grid-template-columns: minmax(0, 1fr); }
-  /* 横帯にしても**版の絵は消さない**。ページは番号と状態で見分けられるが、
-     版は絵しか見分ける手がかりが無い（v2 と v3 の違いは絵の違いである） */
-  .versions__list { flex-direction: row; overflow-x: auto; padding-bottom: var(--space-1); }
-  .versions__list li { flex: 0 0 144px; }
-  .page { scroll-margin-top: calc(var(--topbar-h) + var(--instr-compact-h) + 56px + var(--space-5)); }
   .compare__pair { grid-template-columns: 1fr; }
   .cards { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
   .card--row .card__thumb { flex-basis: 184px; }
@@ -900,7 +805,6 @@ details > summary:hover { color: var(--color-primitive-blue-900); text-decoratio
     border-radius: calc(var(--border-radius-16) - 1px) calc(var(--border-radius-16) - 1px) 0 0; }
   .card--row .card__body { padding-right: 72px; }
   .toolbar input[type="search"] { flex-basis: 100%; }
-  .deck-title h1, .deck-title-input { font-size: var(--font-size-28); }
 }
 
 /* P5 settings: colors are theme tokens, dimensions below are UI layout only. */
@@ -1095,3 +999,204 @@ details > summary:hover { color: var(--color-primitive-blue-900); text-decoratio
 /* チェックを含むラベルは、箱と字を 1 行の真ん中に揃え、ラベル全体を押せる範囲（高さ 44 以上）にする */
 label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--tap); cursor: pointer; }
 .topnav a:focus-visible { outline-offset: -4px; box-shadow: inset 0 0 0 6px var(--color-primitive-yellow-300); }
+
+
+/* ================= スライドの画面（見る と 直す を分ける）=================
+   上の帯 1 行 / 中央はスライドと 1 行だけ / 直す欄・版・見比べ・記録は右のパネル（PC）か引き出す板（タブレット・スマホ）。
+   値は DADS のトークンだけ。ブレークポイント: 1024 以上＝PC、768〜1023＝タブレット、767 以下＝スマホ。 */
+:root { --deckbar-h: 64px; --panel-w: 384px; --deck-pad: 24px; }
+body[data-route="deck"] .topbar { position: static; }
+body[data-route="deck"] .workspace-status { display: none; }   /* 帯を 1 行に詰めるため、稼働表示はこの画面では出さない */
+body[data-route="deck"] main { max-width: 1680px; padding: 0 var(--deck-pad) 56px; }
+html.is-locked { overflow: hidden; }
+
+/* 上の帯（DADS のヘッダー: 戻る・題・札・ボタン） */
+.deck-bar {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: var(--space-2);
+  min-height: var(--deckbar-h); margin: 0 calc(-1 * var(--deck-pad)); padding: var(--space-2) var(--deck-pad);
+  background: var(--color-surface); border-bottom: 1px solid var(--color-border);
+}
+.deck-bar__back:any-link {
+  display: inline-flex; align-items: center; gap: var(--space-1); flex: none; min-height: var(--tap); padding: 0 var(--space-2);
+  color: var(--ink); text-decoration: none; border-radius: var(--radius-2); white-space: nowrap;
+}
+.deck-bar__back:hover { background: var(--brand-soft); color: var(--ink); text-decoration: underline; text-decoration-thickness: 1px; }
+.deck-title { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--space-1); }
+/* 題は 1 行（Std-20B-150）。はみ出しは … で省き、全文は title 属性と名前を変える欄で読める */
+.deck-title h1 { min-width: 0; font-size: var(--font-size-20); line-height: var(--line-height-150); letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deck-title-input { font-size: var(--font-size-20); line-height: var(--line-height-150); letter-spacing: 0.02em; min-height: var(--tap); }
+.deck-title-edit { flex: none; }
+.deck-actions { display: flex; align-items: center; gap: var(--space-1); flex: none; }
+.deck-export { min-width: 0; min-height: var(--tap); padding: 0 var(--space-3); }
+/* 進み具合の札（DADS のチップラベル）。完成・生成中・要対応は語と件数で言い、色は補助 */
+.deck-progress {
+  display: inline-flex; align-items: center; flex: none; min-height: 32px; padding: 3px var(--space-2);
+  border: 1px solid var(--color-neutral-solid-gray-700); border-radius: var(--border-radius-8); background: var(--color-neutral-white);
+  color: var(--ink); font-size: var(--font-size-16); line-height: 1; white-space: nowrap;
+}
+.deck-progress--done { border-color: var(--color-primitive-green-800); background: var(--color-primitive-green-50); color: var(--color-primitive-green-900); }
+.deck-progress--working { border-color: var(--color-primitive-blue-700); background: var(--color-primitive-blue-50); color: var(--color-primitive-blue-800); }
+.deck-progress--failed { border-color: var(--color-primitive-red-900); background: var(--color-primitive-red-50); color: var(--color-primitive-red-900); font-weight: var(--font-weight-700); }
+.menu .menu__info { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); color: var(--color-text-muted); line-height: var(--line-height-150); }
+
+/* 帯の下の知らせ（企画・止まっている・再開・使えない理由） */
+.deck-screen > .notice, .deck-screen > .deck-resume, .deck-screen > .screen-reasons { margin: var(--space-3) 0 0; }
+
+/* まとめて直す帯（ページを選んだときだけ。上の帯の下に留まる） */
+.selection-bar {
+  position: sticky; top: var(--deckbar-h); z-index: 25;
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2);
+  margin-top: var(--space-2); padding: var(--space-2) var(--space-3);
+  background: var(--brand-soft); border: 1px solid var(--brand); border-radius: var(--radius-2);
+}
+.selection-bar[hidden] { display: none; }
+.selection-bar__text { margin-right: auto; font-weight: var(--font-weight-700); }
+
+/* 3 つの領域: 左に小さな絵の列・中央にスライド・右にパネル（PC） */
+.deck-body {
+  display: grid; grid-template-columns: 232px minmax(0, 1fr) var(--panel-w);
+  column-gap: var(--space-5); align-items: start; margin-top: var(--space-3);
+}
+.deck-body[data-panel="closed"] { grid-template-columns: 232px minmax(0, 1fr); }
+.thumbs { grid-column: 1; top: calc(var(--deckbar-h) + var(--space-3)); max-height: calc(100vh - var(--deckbar-h) - var(--space-5)); max-height: calc(100dvh - var(--deckbar-h) - var(--space-5)); }
+.thumbs__head { display: none; }
+.pages { grid-column: 2; width: 100%; max-width: 1200px; justify-self: center; gap: var(--space-5); }
+.deck-body[data-panel="closed"] .pages { max-width: 1280px; }
+
+/* スライドの列。**スライドと 1 行だけ**（選ぶ・番号・題・直す・⋮） */
+.page { padding: 0; background: none; border: 0; border-radius: 0; scroll-margin-top: calc(var(--deckbar-h) + var(--space-3)); }
+.page__stage { display: block; }
+.page__head { display: flex; align-items: center; gap: var(--space-2); min-height: 56px; padding-top: var(--space-1); }
+.page__select { margin: 0 -8px 0 -10px; }
+.page__select-box { border-color: var(--color-neutral-solid-gray-536); }
+.page__title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page__head-spacer { display: none; }
+.page__hidden-mark { display: inline-flex; align-items: center; gap: var(--space-1); flex: none; color: var(--color-text-muted); }
+.page__edit { flex: none; }
+.page--hidden .page__stage { opacity: .4; }
+
+/* 末尾の「ページを追加」。ほかの位置は ⋮ のメニューから開く（閉じたら跡を残さない） */
+.gap { margin: 0; min-height: 0; align-items: stretch; }
+.gap--end { align-items: center; margin-top: var(--space-2); }
+.gap--ondemand:has(> .gap__form[hidden]) { display: none; }
+.gap__add { color: var(--color-primitive-blue-1000); text-decoration: underline; text-underline-offset: 3px; font-weight: var(--font-weight-700); }
+
+/* 右のパネル（DADS のタブ・ドロワー）。PC は列、閉じていれば出さない */
+.panel {
+  display: none; grid-column: 3; flex-direction: column; min-height: 0;
+  position: sticky; top: calc(var(--deckbar-h) + var(--space-3));
+  height: calc(100vh - var(--deckbar-h) - var(--space-5)); height: calc(100dvh - var(--deckbar-h) - var(--space-5));
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-3); overflow: hidden;
+}
+.panel.is-open { display: flex; }
+.panel__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-2) var(--space-2) var(--space-3); }
+.panel__target { display: flex; align-items: center; gap: var(--space-3); flex: 1 1 0; min-width: 0; }
+.panel__heading { flex: 1 1 0; min-width: 0; font-size: var(--font-size-20); font-weight: var(--font-weight-700); line-height: var(--line-height-150); }
+.panel__heading:empty, .panel[data-tab="deck"] .panel__target, .panel[data-tab="sel"] .panel__target { display: none; }
+.panel__pic { flex: none; width: 64px; aspect-ratio: 16 / 9; overflow: hidden; background: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 4px; }
+.panel__pic img { width: 100%; height: 100%; object-fit: cover; }
+.panel__target-text { display: grid; min-width: 0; line-height: var(--line-height-150); }
+.panel__count { color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+.panel__title { font-weight: var(--font-weight-700); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel__follow { order: 5; margin-left: var(--space-1); }
+.panel__follow[hidden] { display: none; }
+.panel__close { flex: none; }
+.panel-tabs { display: flex; padding: 0 var(--space-2); border-bottom: 1px solid var(--color-border); overflow-x: auto; }
+.panel-tab {
+  flex: none; min-height: 48px; padding: 0 12px; margin: 0 0 -1px -1px; cursor: pointer; white-space: nowrap;
+  border: 1px solid var(--color-border); border-top: 5px solid var(--color-border); background: var(--color-neutral-solid-gray-50);
+  color: var(--ink); font-size: var(--font-size-16); line-height: 1; border-radius: 0;
+}
+.panel-tab:hover { background: var(--brand-soft); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.panel-tab[aria-selected="true"] { background: var(--color-neutral-white); border-top-color: var(--color-key-900); border-bottom-color: var(--color-neutral-white); font-weight: var(--font-weight-700); }
+.panel-tab[hidden] { display: none; }
+.panel__scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--space-3); }
+.panel__pane[hidden] { display: none; }
+.panel__pane > .reason { margin-bottom: var(--space-2); }
+.panel__pane:focus-visible { outline-offset: -4px; }
+.deck-instruction__pages { padding: 0; border: 0; }
+
+/* パネルの中身（選んだページの直す欄・版・見比べ・記録） */
+.page-tools { display: flex; flex-direction: column; gap: var(--space-3); }
+.page-tools .editbox { margin-top: 0; }
+.page-tools .versions__head { display: block; font-weight: var(--font-weight-700); }
+.page-tools .versions__list { flex-direction: row; flex-wrap: wrap; }
+.page-tools .versions__list li { flex: 0 0 calc(50% - var(--space-1)); min-width: 0; }
+.page-tools .record-toggle { align-self: flex-start; margin-top: 0; }
+.page-tools .record { margin-top: 0; }
+.compare__pair { grid-template-columns: 1fr; }
+
+/* 引き出す板の背景（タブレット・スマホ） */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 65; background: var(--color-overlay); }
+.sheet-backdrop[hidden] { display: none; }
+
+/* タブレット（768〜1023）: 左の列なし。パネルは右から出る引き出し。ページ一覧は下からの板 */
+@media (max-width: 1023px) {
+  .deck-body, .deck-body[data-panel="closed"] { display: block; }
+  .pages { max-width: none; }
+  .panel {
+    display: flex; position: fixed; z-index: 70; top: 0; right: 0; bottom: 0; left: auto; height: auto;
+    width: min(400px, 92vw); border-width: 0 0 0 1px; border-radius: 0; box-shadow: var(--elevation-5);
+    transform: translateX(100%); visibility: hidden; transition: transform var(--motion-fast) ease-out, visibility 0s linear var(--motion-fast);
+  }
+  .panel.is-open { transform: none; visibility: visible; transition-delay: 0s; }   /* 開くときは即座に見える（フォーカスを移せる）。閉じるときだけ動きの後に隠す */
+  .thumbs {
+    position: fixed; z-index: 70; top: auto; left: 0; right: 0; bottom: 0; max-height: 75vh; max-height: 75dvh;
+    border-width: 1px 0 0; border-radius: var(--border-radius-16) var(--border-radius-16) 0 0; box-shadow: var(--elevation-5);
+    transform: translateY(100%); visibility: hidden; transition: transform var(--motion-fast) ease-out, visibility 0s linear var(--motion-fast);
+  }
+  .thumbs.is-open { transform: none; visibility: visible; transition-delay: 0s; }
+  .thumbs__head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) var(--space-2) 0 var(--space-3); }
+  .thumbs__head h2 { font-size: var(--font-size-20); }
+  .panel__follow { display: none; }   /* 板では「見ているページに追従」は使わない（押した「直す」のページだけを出す） */
+  .thumb { min-height: var(--tap); grid-template-columns: auto minmax(0, 200px); }
+  @media (prefers-reduced-motion: reduce) { .panel, .thumbs { transition: none; } }
+}
+
+/* スマホ（767 以下）: スライドが縦に並ぶだけ。直すは下から出る板 */
+@media (max-width: 767px) {
+  :root { --deckbar-h: 56px; --deck-pad: 16px; --topbar-h: 56px; }
+  .deck-bar { gap: var(--space-1); }
+  .deck-bar__back-text { display: none; }
+  .deck-bar__back:any-link { padding: 0; margin-left: -4px; justify-content: center; min-width: var(--tap); }
+  .deck-export { width: var(--tap); padding: 0; }
+  .deck-progress--done .deck-progress__rest { display: none; }
+  .deck-export .btn__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .pages { gap: var(--space-4); }
+  .panel {
+    top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 88vh; max-height: 88dvh;
+    border-width: 1px 0 0; border-radius: var(--border-radius-16) var(--border-radius-16) 0 0;
+    transform: translateY(100%);
+  }
+  .panel.is-open { transform: none; }
+  .page-tools .versions__list li { flex-basis: calc(50% - var(--space-1)); }
+  .panel__scroll { padding: var(--space-3) var(--space-3) var(--space-5); }
+}
+body[data-route="deck"] .topbar { padding: 0 var(--deck-pad); }
+.page__select, .page__num { flex: none; }
+.deck-screen.has-selection { --sel-h: 64px; }
+.thumbs, .panel { top: calc(var(--deckbar-h) + var(--sel-h, 0px) + var(--space-3)); }
+.thumbs { max-height: calc(100vh - var(--deckbar-h) - var(--sel-h, 0px) - var(--space-5)); max-height: calc(100dvh - var(--deckbar-h) - var(--sel-h, 0px) - var(--space-5)); }
+.panel { height: calc(100vh - var(--deckbar-h) - var(--sel-h, 0px) - var(--space-5)); height: calc(100dvh - var(--deckbar-h) - var(--sel-h, 0px) - var(--space-5)); }
+.page { scroll-margin-top: calc(var(--deckbar-h) + var(--sel-h, 0px) + var(--space-3)); }
+@media (max-width: 1023px) {
+  .thumbs, .panel { top: auto; }
+  .panel { top: 0; height: auto; }
+  .thumbs { max-height: 75dvh; }
+}
+@media (max-width: 767px) { .panel { top: auto; } .deck-screen.has-selection { --sel-h: 96px; } }
+
+/* スマホ: 上の帯は 2 段（1 段目: 戻る・札・書き出し・⋮ / 2 段目: 題）。題を全幅で読ませ、2 行まで・はみ出しは …。
+   帯は縦を取るので、スクロールで流す（まとめて直す帯だけが上に留まる） */
+@media (max-width: 767px) {
+  :root { --deckbar-h: 0px; }
+  .deck-bar { position: static; flex-wrap: wrap; row-gap: 0; }
+  .deck-bar__back:any-link { order: 1; }
+  .deck-bar > .deck-progress { order: 2; margin-left: auto; }
+  .deck-actions { order: 3; }
+  .deck-title { order: 4; flex: 1 1 100%; align-items: flex-start; padding-bottom: var(--space-1); }
+  .deck-title h1 { flex: 0 1 auto; font-size: var(--font-size-20); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; padding-top: 6px; }
+  .deck-title-input { font-size: var(--font-size-20); }
+  .deck-title-edit { margin-top: 0; }
+}

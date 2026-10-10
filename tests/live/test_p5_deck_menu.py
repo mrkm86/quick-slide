@@ -43,9 +43,13 @@ class DeckMenuExportAndRebuildTest(unittest.TestCase):
         self.assertEqual(first["state"], "done", first["message"])
         page = self.br.open(f"{self.fx.base_url}/slides/{deck}")
         page.until("document.querySelectorAll('.pages article.page .frame img').length === 4", seconds=30, what="4 ページ")
-        self.assertFalse(page.eval("document.querySelector('.btn--export-pdf').disabled"))
-        self.assertFalse(page.eval("document.querySelector('.btn--export-pptx').disabled"))
-        page.eval("document.querySelector('.btn--export-pdf').click()")
+        # 書き出しはボタン 1 つ。押すと形式（PDF・PPTX）のメニューが開く
+        self.assertFalse(page.eval("document.querySelector('.deck-export').disabled"))
+        page.eval("document.querySelector('.deck-export').click()")
+        page.until("Array.from(document.querySelectorAll('.menu button')).map(b => b.textContent).join() === 'PDF,PPTX'",
+                   what="書き出しのメニューに PDF と PPTX")
+        self.assertFalse(page.eval("Array.from(document.querySelectorAll('.menu button')).some(b => b.disabled)"))
+        page.eval("Array.from(document.querySelectorAll('.menu button')).find(b => b.textContent === 'PDF').click()")
         page.until("Array.from(document.querySelectorAll('.toast')).some(t => t.textContent.indexOf('ダウンロードしました') >= 0)",
                    seconds=30, what="書き出しの知らせ")
         with self.fx.server.store_lock:
