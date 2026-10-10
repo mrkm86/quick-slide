@@ -39,6 +39,7 @@ from ..scriptdoc import (
     screen_pages,
 )
 from ..settings import Settings
+from ..writer import jlint as JLINT
 from ..writer.backends import WriterFailed, ask, choose_backend
 from ..writer.prompt import ContractMissing, build_prompt
 from .tools import Tools
@@ -357,6 +358,9 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
                           intake_id=intake["id"], run_id=run_id, round_no=round_no)
         ctx.call(store.set_run_state, run_id, "checking", progress=_writer_progress(round_no, rounds, backend, "checking"))
         own = page_id_problems(slides) + LOOK.type_problems(slides, args)
+        # 日本語の検査（絵文字・前置き）。最後の回は止めずに記録だけ（リンターのせいで 1 冊が作れなくなるのを避ける）
+        jl_ng, jl_notes = JLINT.problems_and_notes(slides, enforce=round_no < rounds)
+        own += jl_ng
         if outline and len(slides) != len(outline):
             own.append(f"NG: 構成は {len(outline)} ページ（`## N.` の見出しの数）なのに、台本は {len(slides)} ページ。"
                        "構成のページ割りどおり、見出し 1 つを 1 ページにして、順番も変えずに書き直す")
@@ -366,7 +370,7 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
             continue
         result = check_candidate(ctx, engine, run, data)
         ctx.call(store.set_script_check, script["id"], -1 if result.rc is None else result.rc,
-                 result.problems + result.warnings)
+                 result.problems + result.warnings + jl_notes)
         if result.stopped:
             return fail("サーバを止めたので、台本を確かめるのを中断しました。もう一度会話から頼んでください。", "stopped")
         if result.rc == 0:

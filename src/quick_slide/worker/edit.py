@@ -42,6 +42,7 @@ from ..scriptdoc import (
     screen_pages,
     slides_of,
 )
+from ..writer import jlint as JLINT
 from ..writer.backends import WriterFailed, ask, choose_backend
 from ..writer.patch import apply_revision, insert_after, parse_insert, parse_revision
 from ..writer.prompt import ContractMissing, build_insert_prompt, build_revision_prompt
@@ -295,13 +296,16 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
         changed = {str(x.get("id")) for x in slides_of(result.data) if before.get(str(x.get("id"))) != dumps(x)}
         ids = page_id_problems(slides_of(result.data)) + LOOK.type_problems(
             slides_of(result.data), run["args"], only=changed)
+        # 日本語の検査（絵文字・前置き）。直したページだけ。最後の回は止めずに記録だけ
+        jl_ng, jl_notes = JLINT.problems_and_notes(slides_of(result.data), enforce=round_no < rounds, only=changed)
+        ids += jl_ng
         if ids:
             ctx.call(store.set_script_check, candidate["id"], 2, ids)
             previous, problems = answer, ids
             continue
         checked = check_candidate(ctx, engine, run, result.data)
         ctx.call(store.set_script_check, candidate["id"], -1 if checked.rc is None else checked.rc,
-                 checked.problems + checked.warnings)
+                 checked.problems + checked.warnings + jl_notes)
         if checked.stopped:
             return fail("サーバを止めたので、台本を確かめるのを中断しました。もう一度頼んでください。", "stopped")
         if checked.rc == 0:

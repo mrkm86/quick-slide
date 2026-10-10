@@ -5,6 +5,7 @@
     FAKE_WRITER_LOG     呼ばれるたびに 1 つ JSON を書くフォルダ（必須）
     FAKE_WRITER_MODE    ok（既定）/ invalid_first（1 回目はエンジンの検査で止まる台本・2 回目から正しい）/
                         no_ids_first（1 回目はページの id が無い台本）/
+                        emoji_first（1 回目は文字に絵文字が入った台本）/ always_emoji（どの回も絵文字入り）/
                         always_invalid / garbage_first（1 回目は JSON ではない文）/ auth（ログインしていない）/
                         rate（利用枠に達した）/ slow（FAKE_WRITER_SLEEP 秒待ってから答える）
     FAKE_WRITER_IMAGES  0 にすると画像の枠を置かない
@@ -211,6 +212,10 @@ def answer_for(kind: str, prompt: str) -> tuple[str | None, str | None]:
         script = valid_script()
         for page in script["slides"]:
             page.pop("id")
+        return json.dumps(script, ensure_ascii=False), None
+    if MODE == "always_emoji" or (MODE == "emoji_first" and n == 0):
+        script = valid_script()
+        script["slides"][2]["items"][0]["title"] = "✅ 25分を基本にする"
         return json.dumps(script, ensure_ascii=False), None
     if MODE == "garbage_first" and n == 0:
         return "ごめんなさい、台本は書けません。", None

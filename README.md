@@ -91,6 +91,11 @@ Quick Slide はログインを代わりにしない（`--doctor` がコマンド
 
 作業に入る前に [AGENTS.md](AGENTS.md) を読むこと。
 
+## 同梱している第三者のソフトウェア
+
+- **yomiyasu**（日本語の文章のリンター・MIT）— 台本係が書いた台本の検査に使う。写しとライセンス文（`LICENSE`・`UNICODE-LICENSE.txt`）、版と更新の手順は
+  [`src/quick_slide/vendor/yomiyasu/`](src/quick_slide/vendor/yomiyasu/README.md)
+
 ## ライセンス
 
 未定。
