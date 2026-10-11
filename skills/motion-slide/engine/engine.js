@@ -264,6 +264,27 @@
     K = Math.min(innerWidth / 1920, innerHeight / 1080);
     stage.style.transform = `translate(${-960 * K}px,${-540 * K}px) scale(${K})`;
   }
+  // 場面ごとの script・hook（台本 JSON から組んだとき、<script type="application/json" id="ms-scenes"> に入っている）。
+  // どちらも本体だけを new Function で文法検査してから、場面ごとに1つの関数にまとめる。
+  // 検査で通った本体は括弧が釣り合っているので、本体の外へ出る書き方（} で閉じて続きを書く）は文法の誤りで落ち、その場面だけが動かない
+  function loadSceneCode() {
+    // 共通の script（id="ms-shared"・JSON の文字列）。<script> 要素にして実行するので、const・function はこれまでどおりグローバルに置かれる
+    try {
+      const shared = JSON.parse($("ms-shared")?.textContent || "null");
+      if (typeof shared === "string" && shared.trim()) { const el = document.createElement("script"); el.textContent = shared; document.head.appendChild(el); }
+    } catch (e) { console.error("共通の script を読めない", e); }
+    let code = {};
+    try { code = JSON.parse($("ms-scenes")?.textContent || "{}"); } catch (e) { console.error("ms-scenes が読めない", e); return; }
+    for (const [id, c] of Object.entries(code)) {
+      try {
+        const script = typeof c.script === "string" ? c.script : "", hook = typeof c.hook === "string" ? c.hook : null;
+        if (script) new Function("MS", script);
+        if (hook !== null) new Function("b", "x", hook);
+        const fn = new Function("MS", script + "\n;return " + (hook !== null ? "(b, x) => {\n" + hook + "\n}" : "null") + ";")(window.MS);
+        if (hook !== null) { if (typeof fn === "function") HOOKS[id] = fn; else console.error(`場面 ${id} の script が途中で return している（hook が登録できない）`); }
+      } catch (e) { console.error(`場面 ${id} の script・hook を読めない: ${e.name}: ${e.message}`); }
+    }
+  }
   function init() {
     Object.assign(CFG, JSON.parse($("ms-config")?.textContent || "{}"));
     LOGO = JSON.parse($("ms-logo")?.textContent || "null");
@@ -277,6 +298,7 @@
     }));
     bgm = $("bgm");
     buildChrome(); addEventListener("resize", fit); fit();
+    loadSceneCode();
     READY.forEach(f => f());
     addEventListener("keydown", e => {
       if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;

@@ -6,9 +6,10 @@ description: クリックで「拍」が進む Web プレゼン（Motion Slide�
 # motion-slide — クリックで拍が進む Web プレゼン（HTML 1枚）
 
 台本の HTML（場面×拍）→ `build.py` がエンジン・色・ロゴ・BGM を埋め込む → HTML 1枚 → `check.py` が全拍を開いて検査。
+場面ごとの台本（JSON）から作る入口が `scripts/motion_slide.py`（Quick Slide が html-slide と同じ扱いで呼ぶ。[`references/deck-format.md`](references/deck-format.md)・[ADR 0003](docs/adr/0003-scene-script-json-and-quick-slide-entry.md)）。
 **初版（2026-10-06）。** 参考にした Web プレゼンの分析と見本2本の知見を固めたもの。使いながら直していく前提。
 
-> **ドキュメント**: 台本の書き方（決まり・部品・作り方の原則）は [`references/authoring.md`](references/authoring.md)、効果音と BGM は [`references/sound.md`](references/sound.md)、動画にするのは [`references/video.md`](references/video.md)、設計判断は [`docs/adr/`](docs/adr/)。
+> **ドキュメント**: 場面ごとの台本（JSON）は [`references/deck-format.md`](references/deck-format.md)。台本 HTML の書き方（決まり・部品・作り方の原則）は [`references/authoring.md`](references/authoring.md)、効果音と BGM は [`references/sound.md`](references/sound.md)、動画にするのは [`references/video.md`](references/video.md)、設計判断は [`docs/adr/`](docs/adr/)。
 > **テスト**: `bash tests/run.sh`
 > **出荷検品**: [`INSPECTION.md`](INSPECTION.md)（画面型）。検品役が読むのは `<出力先>/check/inspect.md`。
 > 指摘を受けたら、手順を直したうえで `FEEDBACK.md` に記録する（無ければ作る。無いうちは置かない）。
@@ -18,7 +19,9 @@ description: クリックで「拍」が進む Web プレゼン（Motion Slide�
 | 状況 | 入口 |
 |---|---|
 | 記事・資料・講座から Motion Slide を作る | **Workflow: make** |
-| 書いた台本を1枚にまとめる | `scripts/build.py <deck.html>` |
+| 場面ごとの台本（JSON）を検査する・1枚にまとめる | `scripts/motion_slide.py check --script <script.json>`・`deck --script <script.json> --out <フォルダ>` |
+| 今の台本 HTML を場面ごとの JSON に分ける | `scripts/split.py <deck.html> --out <script.json>` |
+| 書いた台本（HTML）を1枚にまとめる | `scripts/build.py <deck.html>` |
 | 全部の拍を開いて崩れを数える・一覧画像を出す | `scripts/check.py <index.html>` |
 | 自動再生をそのまま動画（mp4）にする | `scripts/record.py <index.html>`（[`references/video.md`](references/video.md)） |
 | 自動再生の時刻表を見る（BGM を合わせるとき） | `scripts/timeline.py <deck.html>` |
@@ -43,12 +46,21 @@ description: クリックで「拍」が進む Web プレゼン（Motion Slide�
 7. 渡すのは `index.html` 1枚。Chrome / Edge で開く（Slack・Teams のプレビューでは動かない）。操作: クリック・→・Space で進む ／ ← 戻る ／ O 一覧 ／ P 自動再生 ／ M 消音 ／ N 話す台本 ／ F 全画面
 8. 動画も要るなら `record.py <出力先>/index.html` → `video.mp4`（効果音・BGM つき。動画の長さの約 3.5 倍かかるので裏で回す）
 
+### 場面ごとの台本（JSON）から作る
+
+`motion_slide.py check --script <script.json>`（形の検査 → 組み立て → 全拍の検査。`--quick` は形だけ・`--strict` は警告も NG）→
+`deck --script <script.json> --out <フォルダ>`（`index.html`・`deck.html`・`build.json`・`deck-info.json`・`slides/slide-NN.png`・`thumbs.png`・`inspect.md`・`check/`）。
+NG は stderr の `NG: N枚目（id s3）: …`。rc は 0 / 2（台本の誤り・検査の NG）/ 4（Playwright・Pillow・PyYAML・Chrome が無い）。台本係は [`references/deck-format.md`](references/deck-format.md) の「書く前に」を読む。
+この経路は html-slide の `check` / `deck` と同じ口（`--script` `--out` `--theme` `--logo` `--format` など。`--style` ほか motion-slide に無い引数は読み飛ばす）。PPTX・PDF は作らない。
+
 ## 構成
 
 | パス | 中身 |
 |---|---|
 | `engine/engine.js` `engine/engine.css` | エンジン（場面×拍・道しるべ・一覧・自動再生・効果音・BGM・線・飛ぶ・表）。build が埋め込む |
 | `templates/deck.html` | 台本の雛形（出す・照らす・線を引く・飛ぶ・表・LIVE を一通り） |
+| `scripts/motion_slide.py` `scripts/deckjson.py` | 場面ごとの台本（JSON）の入口（`check`・`deck`）と、形の検査・組み立て |
+| `scripts/split.py` | 今の台本 HTML → 場面ごとの JSON（手本づくり・往復の確かめ） |
 | `scripts/build.py` | 台本 → HTML 1枚（色は html-slide のテーマ・ロゴは config） |
 | `scripts/check.py` | 全拍の検査・拍ごとの画像・場面ごとの一覧・`inspect.md` |
 | `scripts/timeline.py` | 自動再生の時刻表（拍の切り替わりの秒） |
@@ -58,7 +70,7 @@ description: クリックで「拍」が進む Web プレゼン（Motion Slide�
 
 ## 制約・落とし穴
 
-- **PPTX にはしない**（このスキルの出口は HTML 1枚）。PPTX が要る用途は html-slide。拍を1枚ずつ平らにして PPTX にする試作はあるが、このスキルには未取り込み
+- **PPTX にはしない**（このスキルの出口は HTML 1枚。PPTX にしやすいように動きを絞ることもしない）。PPTX が要る用途は html-slide
 - **字体は端末のもの**（游明朝・游ゴシック → ヒラギノ）。Windows と Mac で字幅が少し違うので、詰めすぎない
 - **音は最初のクリックかキーのあとで鳴る**（ブラウザの決まり）。自動再生ボタンも1回のクリックに数える
 - **拍の状態は冪等に書く。** 「進んだときだけ」の演出（飛ぶ・数え上げ）は `x.step` / `x.fwd` で分け、飛ばずに来たら最初から着いている見た目にする（一覧から飛んだとき・戻ったときに崩れる）
