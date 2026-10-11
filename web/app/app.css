@@ -1231,3 +1231,15 @@ body[data-route="deck"] .topbar { padding: 0 var(--deck-pad); }
   .deck-title-input { font-size: var(--font-size-20); }
   .deck-title-edit { margin-top: 0; }
 }
+
+/* ページの行: 再生（▶）・直す（鉛筆）・⋮ はどれも 44px の字なしの薄いボタン */
+.page__play, .page__edit { flex: none; }
+.page__play:disabled { cursor: not-allowed; color: var(--color-neutral-solid-gray-420); }
+/* ページを再生するダイアログ（発表の画面を 16:9 の枠に埋め込む） */
+.dlg--play { width: min(1040px, 94vw, calc((90dvh - 190px) * 16 / 9 + 32px)); }
+.play { display: grid; gap: var(--space-2); }
+.play__stage { aspect-ratio: 16 / 9; background: var(--color-neutral-black); border-radius: var(--border-radius-8); overflow: hidden; }
+.play__frame { display: block; width: 100%; height: 100%; border: 0; }
+.play__bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.play__hint { margin: 0; color: var(--color-text-muted); }
+@media (max-width: 767px) { .dlg--play { width: auto; } .play__bar { flex-wrap: wrap; } }

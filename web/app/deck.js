@@ -905,9 +905,18 @@
     pick.addEventListener("change", function () { if (ctx.toggleSelect) { ctx.toggleSelect(page.slide_id, pick.checked); } });
     var pickLabel = h("label", { class: "page__select", title: instructionWords().select_label || "" }, pick);
 
-    var fixBtn = h("button", { class: "btn btn--small page__edit", type: "button",
-      "aria-label": "ページ " + page.position + " を直す" }, SS.icon("edit"), h("span", { text: "直す" }));
+    // 行の操作は鉛筆（直す）・▶（再生）・⋮ の 3 つ。どれも字を持たない薄いボタンで、名前は aria-label
+    var fixBtn = h("button", { class: "btn btn--icon btn--ghost page__edit", type: "button", title: "直す",
+      "aria-label": "ページ " + page.position + " を直す" }, SS.icon("edit"));
     fixBtn.addEventListener("click", function () { ctx.openTools(page.slide_id, fixBtn); });
+    // そのページだけを動きつきで再生する（html-slide・モーション。非表示のページには出さない）。
+    // 絵がまだ無いページは押せない（`paintPlay` が実況で当て直す）
+    var playBtn = null;
+    if (ctx.canPlay && !page.hidden) {
+      playBtn = h("button", { class: "btn btn--icon btn--ghost page__play", type: "button",
+        "aria-label": "ページ " + page.position + " を再生" }, SS.icon("play_arrow"));
+      playBtn.addEventListener("click", function () { ctx.openPlay(page.slide_id, playBtn); });
+    }
 
     var frame = h("figure", { class: "frame frame--" + d.key, "aria-label": "ページ " + page.position + "（" + d.label + "）" });
     if (page.image_url) {
@@ -926,6 +935,7 @@
       h("span", { class: "page__state" }, mark(d), h("span", { class: "page__state-label", text: d.label })),
       h("span", { class: "page__ver muted small", text: "v" + page.version }),
       h("span", { class: "page__head-spacer" }),
+      playBtn,
       fixBtn,
       menuWrap));
     article.appendChild(h("div", { class: "page__stage" }, frame));
@@ -1085,6 +1095,34 @@
     // ここで断つ。**画面が dataTransfer を使うのは「外から来た画像」を受けるときだけ**という
     // 切り分けは保ったまま（並べ替えは何も setData しない）
     list.addEventListener("dragstart", function (e) { e.preventDefault(); });
+  }
+
+  // ---- ページを再生するダイアログの中身 ----
+  // 発表の画面をそのまま埋め込む（`/slides/<deck>/present?s=<slide_id>&embed=1`。そのページ 1 枚・段ごとの再生・操作は
+  // クリック・→・Space）。再生の仕組みを作り直さない。同じオリジンの発表の画面とだけ postMessage する:
+  // 閉じて（Esc を中で押したとき）を受け、最初からを送る。差出人の window とオリジンを確かめる
+  function playView(deckId, slideId) {
+    var frame = h("iframe", { class: "play__frame", title: "ページの再生", allow: "autoplay",
+      src: "/slides/" + deckId + "/present?s=" + encodeURIComponent(slideId) + "&embed=1" });
+    var replay = h("button", { class: "btn", type: "button" }, SS.icon("replay"), h("span", { text: "最初から" }));
+    var el = h("div", { class: "play" },
+      h("div", { class: "play__stage" }, frame),
+      h("div", { class: "play__bar" },
+        h("p", { class: "play__hint small", text: "クリック・→・Space で進みます" }), replay));
+    var focusFrame = function () { try { frame.contentWindow.focus(); } catch (e) { /* 中に入れない */ } };
+    replay.addEventListener("click", function () {
+      if (frame.contentWindow) { frame.contentWindow.postMessage({ qs: "present-embed", v: 1, type: "replay" }, location.origin); }
+      focusFrame();
+    });
+    frame.addEventListener("load", focusFrame);
+    var onMessage = function (e) {
+      var d = e.data;
+      if (e.source !== frame.contentWindow || e.origin !== location.origin) { return; }
+      if (d && typeof d === "object" && d.qs === "present-embed" && d.v === 1 && d.type === "close" && el.__close) { el.__close(); }
+    };
+    window.addEventListener("message", onMessage);
+    return { el: el, focus: focusFrame, dispose: function () { window.removeEventListener("message", onMessage); },
+             setClose: function (fn) { el.__close = fn; } };
   }
 
   // ---- ダイアログの殻（題・閉じる・中身の置き場）。出し入れと焦点は `makeSheet` が持つ ----
@@ -1491,6 +1529,7 @@
       var seenRevision = function (id) { if (id) { revisionId = id; ownRevisions[id] = true; } };
       seenRevision(revisionId);
       ctx.order = function () { return order; };
+      ctx.canPlay = deck.mode === "presentation" || deck.mode === "motion";   // 画像で描くモード（pitch）には出さない
       ctx.visibleCount = function () { return data.pages.filter(function (p) { return !p.hidden; }).length; };
       ctx.positionOf = function (slideId) { return order.indexOf(slideId) + 1; };
       // 発表の画面の番号（非表示・絵の無いページを抜いた何番目か）。そのページが発表に出ないときは 0
@@ -1897,7 +1936,17 @@
           nodes[sid].article.classList.toggle("page--editing", mode === "page" && sid === activeSlide);
         });
       };
-      onPageHook = function () { if (mode) { paintPanel(); } };
+      // ▶ は絵のあるページだけ押せる（絵が来たら実況で押せるようにする）
+      var paintPlay = function (sid) {
+        var n = nodes[sid], b = n && n.article.querySelector(".page__play");
+        if (!b) { return; }
+        var ok = !!n.frame.querySelector("img");
+        b.disabled = !ok;
+        if (ok) { b.removeAttribute("aria-disabled"); b.title = "再生"; }
+        else { b.setAttribute("aria-disabled", "true"); b.title = "絵ができたら再生できます"; }
+      };
+      Object.keys(nodes).forEach(paintPlay);
+      onPageHook = function (sid) { paintPlay(sid); if (mode) { paintPanel(); } };
       // 欄をスロットに移す（前の欄は置き場へ戻す）。書きかけの文は節点ごと動くので消えない
       var mount = function (node) {
         var cur = slot.firstElementChild;
@@ -2013,7 +2062,7 @@
       var dialog = null;   // { kind, sid, shell, sheet, view, state }
       var dialogTitle = function (kind, sid) {
         var n = nodes[sid];
-        return (kind === "versions" ? "版を選ぶ" : "このページの記録") + "　ページ " + ctx.positionOf(sid) + (n && n.title ? "　" + n.title : "");
+        return (kind === "versions" ? "版を選ぶ" : kind === "play" ? "再生" : "このページの記録") + "　ページ " + ctx.positionOf(sid) + (n && n.title ? "　" + n.title : "");
       };
       var openDialog = function (kind, sid, trigger) {
         var n = nodes[sid];
@@ -2022,19 +2071,25 @@
         var shell = dialogShell(dialogTitle(kind, sid), "dlg--" + kind);
         var d = { kind: kind, sid: sid, shell: shell, view: null, state: { pick: null } };
         if (kind === "versions") { d.view = versionsView(ctx, n.page, d.state); shell.body.appendChild(d.view.el); }
+        else if (kind === "play") { d.pv = playView(deckId, sid); shell.body.appendChild(d.pv.el); d.cleanup = d.pv.dispose; d.focus = d.pv.focus; }
         else { shell.body.appendChild(detailsBlock(n.page)); }
         screen.appendChild(shell.backdrop);
         screen.appendChild(shell.el);
         d.sheet = makeSheet(shell.el, shell.backdrop, {
           fallback: function () { return nodes[sid] ? nodes[sid].article.querySelector(".page__edit") : deckMenuBtn; },
-          onClose: function () { shell.el.remove(); shell.backdrop.remove(); if (dialog === d) { dialog = null; } } });
+          onClose: function () {
+            if (d.cleanup) { d.cleanup(); }
+            shell.el.remove(); shell.backdrop.remove(); if (dialog === d) { dialog = null; } } });
+        if (d.pv) { d.pv.setClose(function () { d.sheet.close(true); }); }
         shell.closeBtn.addEventListener("click", function () { d.sheet.close(true); });
         dialog = d;
         d.sheet.open(trigger);
         var pressed = shell.el.querySelector('.version[aria-pressed="true"]');
         if (pressed) { pressed.focus({ preventScroll: true }); }
+        if (d.focus) { d.focus(); }
       };
       ctx.openVersions = function (sid, trigger) { openDialog("versions", sid, trigger); };
+      ctx.openPlay = function (sid, trigger) { openDialog("play", sid, trigger); };
       ctx.openRecord = function (sid, trigger) { openDialog("record", sid, trigger); };
       ctx.closeDialog = function () { if (dialog) { dialog.sheet.close(true); } };
       ctx.pageOf = function (sid) { return nodes[sid] ? nodes[sid].page : null; };
@@ -2297,6 +2352,8 @@
           if (eb && eb.__target) { eb.__target("ページ " + pos); }
           var fix = n.article.querySelector(".page__edit");
           if (fix) { fix.setAttribute("aria-label", "ページ " + pos + " を直す"); }
+          var play = n.article.querySelector(".page__play");
+          if (play) { play.setAttribute("aria-label", "ページ " + pos + " を再生"); }
           n.frame.setAttribute("aria-label", "ページ " + pos + "（" + n.stateLabel + "）");
         });
         paintSelection();   // 選んだページの見出し（番号）も動く

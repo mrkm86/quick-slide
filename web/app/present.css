@@ -136,3 +136,12 @@ body { font: var(--font-weight-400) var(--font-size-16)/var(--line-height-150) v
 
 /* 外枠の面は操作の部品ではない（キーを受けるために焦点を置くだけ）ので、焦点の縁は出さない */
 .pr__stage:focus-visible { outline: none; box-shadow: none; }
+
+/* ---- 埋め込み（編集の画面の「ページを再生」）: ページ送り・一覧・全画面・編集へ戻るは出さない。進み具合の小さな字だけ残す ---- */
+.pr--embed .pr__nav button, .pr--embed .pr__tools, .pr--embed .pr__progress { display: none; }
+.pr--embed .pr__bar { justify-content: flex-end; padding: 8px 12px; background: none; pointer-events: none; }
+.pr--embed .pr__count { min-width: 0; font-size: var(--font-size-14); color: var(--pr-muted); }
+.pr--embed .pr__count small { font-size: var(--font-size-14); }
+.pr--embed.is-idle .pr__bar { opacity: 1; }
+.pr--embed { padding: 0; }
+.pr--embed .pr__stage { width: 100%; height: 100%; aspect-ratio: auto; }

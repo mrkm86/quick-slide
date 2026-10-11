@@ -275,6 +275,28 @@
   var prevBtn = $("prev"), nextBtn = $("next"), countEl = $("count"), listBtn = $("list-btn"), fsBtn = $("fs-btn"), exitLink = $("exit");
   var fill = $("progress-fill"), live = $("live"), listEl = $("list"), listItems = $("list-items"), listClose = $("list-close");
 
+  // 埋め込み（編集の画面の「ページを再生」のダイアログ）: ?embed=1&s=<slide_id> で、そのページ 1 枚だけを段ごとに再生する。
+  // ページ送り・一覧・全画面・編集へ戻るは出さない。Esc は親へ「閉じて」と知らせ、親からは「最初から」を受ける
+  // （どちらも同じオリジンの親だけ。差出人の window とオリジンを確かめる）
+  var embed = new URLSearchParams(location.search).get("embed") === "1" && window.parent !== window;
+  var embedIdx = 0;
+  if (embed) { root.classList.add("pr--embed"); }
+  function toParent(type) {
+    try { window.parent.postMessage({ qs: "present-embed", v: 1, type: type }, location.origin); } catch (e) { /* 親が居ない */ }
+  }
+  function replay() {
+    if (!mounted || !embed) { return; }
+    cur = embedIdx;
+    step = 0;
+    rendered = true;
+    render(1);
+  }
+  window.addEventListener("message", function (e) {
+    var d = e.data;
+    if (!embed || e.source !== window.parent || e.origin !== location.origin) { return; }
+    if (d && typeof d === "object" && d.qs === "present-embed" && d.v === 1 && d.type === "replay") { replay(); }
+  });
+
   var data = null, adapter = null, pages = [], cur = 0, step = 0, mounted = false, rendered = false, idleTimer = null, listOpener = null;
 
   setButton(prevBtn, "arrow_back", "前へ", "pr-btn--wide");
@@ -331,11 +353,11 @@
     var total = pages.length, n = stepsHere();
     var label = stepLabel(n);
     countEl.textContent = "";
-    countEl.appendChild(document.createTextNode((cur + 1) + " / " + total));
+    if (!embed) { countEl.appendChild(document.createTextNode((cur + 1) + " / " + total)); }
     if (label) { countEl.appendChild(el("small", "", label)); }
     fill.style.width = (total > 1 ? (cur / (total - 1)) * 100 : 100) + "%";
-    var atEnd = cur === total - 1 && step >= n;
-    var atStart = cur === 0 && step === 0;
+    var atEnd = (embed || cur === total - 1) && step >= n;
+    var atStart = (embed || cur === 0) && step === 0;
     nextBtn.hidden = atEnd;           // 前後が無いときは無効にせず出さない（DADS のページナビゲーション）
     prevBtn.hidden = atStart;
     var title = pages[cur].title;
@@ -343,16 +365,18 @@
       say("ページ " + (cur + 1) + " / " + total + (title ? ": " + title : "") + (label ? "（" + label + "）" : ""));
     }
     document.title = (title ? title + " - " : "") + (data ? data.deck.title : "発表") + "（" + (cur + 1) + " / " + total + "）";
-    var url = new URL(location.href);
-    url.searchParams.delete("s");
-    url.searchParams.set("p", String(cur + 1));
-    try { history.replaceState(null, "", url.pathname + url.search); } catch (e) { /* 履歴を書けない環境 */ }
+    if (!embed) {
+      var url = new URL(location.href);
+      url.searchParams.delete("s");
+      url.searchParams.set("p", String(cur + 1));
+      try { history.replaceState(null, "", url.pathname + url.search); } catch (e) { /* 履歴を書けない環境 */ }
+    }
     markList();
   }
 
   function go(i, s, dir) {
     if (!mounted) { return; }
-    i = Math.max(0, Math.min(i, pages.length - 1));
+    i = embed ? embedIdx : Math.max(0, Math.min(i, pages.length - 1));
     s = Math.max(0, Math.min(s, adapter.steps(i)));
     if (rendered && i === cur && s === step) { return; }
     var d = dir === undefined ? (i === cur ? (s > step ? 1 : -1) : (i > cur ? 1 : -1)) : dir;
@@ -363,16 +387,18 @@
   }
   function next() {
     if (step < stepsHere()) { go(cur, step + 1, 1); }
-    else if (cur < pages.length - 1) { go(cur + 1, 0, 1); }
+    else if (!embed && cur < pages.length - 1) { go(cur + 1, 0, 1); }
   }
   function prev() {
     if (step > 0) { go(cur, step - 1, -1); }
-    else if (cur > 0) { go(cur - 1, adapter.steps(cur - 1), -1); }   // 戻ると、前のページは全部出した姿
+    else if (!embed && cur > 0) { go(cur - 1, adapter.steps(cur - 1), -1); }   // 戻ると、前のページは全部出した姿
   }
   function jump(i) { go(i, 0, 0); }
   // 中のエンジンが自分で動いた（中でのクリック・キー・自動再生）。外枠の位置を合わせる（中へは送り返さない）
   function syncFromInner(i, s) {
     if (!mounted || !adapter) { return; }
+    // 埋め込みでは、中のエンジンが別の場面へ進んでも、再生するページに引き戻す（そのページだけを見せる）
+    if (embed && i !== embedIdx) { adapter.show(embedIdx, step, 0); return; }
     i = Math.max(0, Math.min(i, pages.length - 1));
     s = Math.max(0, Math.min(s, adapter.steps(i)));
     if (rendered && i === cur && s === step) { return; }
@@ -384,6 +410,7 @@
   // 中で押された、外枠が持つキー（一覧・全画面・Esc・End）。外枠にフォーカスがあるときの同じキーと同じ動き
   function forwardedKey(key) {
     if (!mounted || listIsOpen()) { return; }
+    if (embed) { if (key === "Escape") { toParent("close"); } return; }
     switch (key) {
       case "o": case "O": openList(); break;
       case "f": case "F": toggleFullscreen(); break;
@@ -507,10 +534,12 @@
       else if (key === "o" || key === "O") { e.preventDefault(); closeList(); }
       return;
     }
+    if (embed && key === "Escape") { e.preventDefault(); toParent("close"); return; }
     if (!mounted) {
       if (key === "Escape" && data) { location.assign(data.edit_url); }
       return;
     }
+    if (embed && (key === "o" || key === "O" || key === "f" || key === "F" || key === "Home" || key === "End")) { return; }
     // ボタン・リンクにフォーカスがあるときの Enter / Space は、そのボタンの操作（ページ送りに奪わない）
     var onControl = e.target && e.target.closest && e.target.closest("button, a");
     switch (key) {
@@ -559,7 +588,7 @@
   // ---- 画面を消さない（Wake Lock。使えなければ何もしない） ----
   var lock = null;
   function keepAwake() {
-    if (!navigator.wakeLock || document.visibilityState !== "visible") { return; }
+    if (embed || !navigator.wakeLock || document.visibilityState !== "visible") { return; }
     navigator.wakeLock.request("screen").then(function (l) {
       lock = l;
       l.addEventListener("release", function () { if (lock === l) { lock = null; } });
@@ -573,6 +602,7 @@
     var sid = q.get("s");                       // ページの id（編集の画面の「ここから発表」）。見つからなければ ?p、それも無ければ 1 ページ目
     if (sid) {
       for (var k = 0; k < pages.length; k++) { if (pages[k].slide_id === sid) { return k; } }
+      if (embed) { return -1; }
     }
     var p = parseInt(q.get("p"), 10);
     return isNaN(p) ? 0 : Math.max(0, Math.min(p - 1, pages.length - 1));
@@ -592,6 +622,8 @@
       mounted = true;
       root.setAttribute("data-state", "ready");
       cur = startPage();
+      if (embed && cur < 0) { showMessage("このページは再生できません。"); return; }
+      embedIdx = cur;
       step = 0;
       rendered = true;
       render(cur === 0 ? 1 : 0);   // 最初のページは地から出す。途中のページから始めるときは飛ぶ
