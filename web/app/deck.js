@@ -972,8 +972,8 @@
     } else {
       frame.appendChild(frameEmpty(d, caps, article, ctx.reasonIds));
     }
-    // スライドの下の 1 行。**状態の印と状態名は枠の中と実況が持つ**（絵が出ても追う）ので、ここでは隠してある（CSS）
-    article.appendChild(h("div", { class: "page__stage" }, frame));
+    // スライドの上の 1 行（題 → スライドの順。下に置くと、次のページの題と前のスライドが組に見えた・2026-10-11）。
+    // **状態の印と状態名は枠の中と実況が持つ**（絵が出ても追う）ので、ここでは隠してある（CSS）
     article.appendChild(h("header", { class: "page__head" },
       pickLabel,
       h("span", { class: "page__num", text: String(page.position) }),
@@ -985,6 +985,7 @@
       h("span", { class: "page__head-spacer" }),
       fixBtn,
       menuWrap));
+    article.appendChild(h("div", { class: "page__stage" }, frame));
 
     // ---- パネルに出す分（直す欄・版・見比べ・記録）----
     var tools = h("div", { class: "page-tools" + (page.hidden ? " page-tools--hidden" : ""), dataset: { slide: page.slide_id } });
