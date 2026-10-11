@@ -1,6 +1,6 @@
 ---
 name: motion-slide
-description: クリックで「拍」が進む Web プレゼン（Motion Slide）を HTML 1枚で作るスキル。場面×拍の台本 HTML を書けば、エンジンが道しるべ（パンくず・拍の点・章のレール・ここまでの言葉）・一覧・話す台本・自動再生・効果音（Web Audio の合成）・BGM（MIDI を macOS 内蔵音源で鳴らした m4a）を足し、外へ何も取りに行かない HTML 1枚にする。値がカードから表のマスへ飛ぶ・線でつなぐ・手書きの丸・その場で触れる LIVE の部品・キー付きの表が使える。色は html-slide のテーマ（既定は default）。全部の拍を Chrome で開いて、はみ出し・切れ・重なり・泣き別れを数える検査つき。「モーションスライド」「Motion Slide」「動くプレゼン」「Web プレゼン」「クリックで進む HTML」「Stage みたいなスライド」「記事をモーションスライドに」「コラムを動くスライドに」「motion-slide」等で発動。※編集できる PPTX が要るなら html-slide、画像生成で描く1枚絵の資料は image-slide、mp4 の解説動画は html-video の領分。
+description: クリックで「拍」が進む Web プレゼン（Motion Slide）を HTML 1枚で作るスキル。場面×拍の台本 HTML を書けば、エンジンが道しるべ（パンくず・拍の点・章のレール・ここまでの言葉）・一覧・話す台本・自動再生・効果音（Web Audio の合成）・BGM（MIDI を macOS 内蔵音源で鳴らした m4a）を足し、外へ何も取りに行かない HTML 1枚にする。値がカードから表のマスへ飛ぶ・線でつなぐ・手書きの丸・その場で触れる LIVE の部品・キー付きの表が使える。色は html-slide のテーマ（既定は default）。全部の拍を Chrome で開いて、はみ出し・切れ・重なり・泣き別れを数える検査つき。「モーションスライド」「Motion Slide」「動くプレゼン」「Web プレゼン」「クリックで進む HTML」「記事をモーションスライドに」「コラムを動くスライドに」「motion-slide」等で発動。※編集できる PPTX が要るなら html-slide、画像生成で描く1枚絵の資料は image-slide、mp4 の解説動画は html-video の領分。
 ---
 
 # motion-slide — クリックで拍が進む Web プレゼン（HTML 1枚）
