@@ -38,6 +38,8 @@ class SetupBase(unittest.TestCase):
         self.tmp = temp_dir(self, "qs-setup-")
         self.home = self.tmp / "home"
         self.home.mkdir()
+        self.chromium = self.tmp / "chromium-bin"
+        self.chromium.write_text("")
         self.qs = self.home / ".quick-slide"
         self.fakebin = self.tmp / "bin"
         self.fakebin.mkdir()
@@ -46,7 +48,9 @@ class SetupBase(unittest.TestCase):
         env = {"HOME": str(self.home), "PATH": os.pathsep.join([str(self.fakebin), *tool_dirs()]),
                "LANG": "ja_JP.UTF-8", "PYTHONDONTWRITEBYTECODE": "1", "TMPDIR": str(self.tmp),
                "IMAGE_SLIDE_CODEX": str(FAKE_CODEX), "FAKE_CODEX_LOG": str(self.tmp / "codex-log"),
-               "QUICK_SLIDE_CLAUDE": str(FAKES / "fake_claude.py")}
+               "QUICK_SLIDE_CLAUDE": str(FAKES / "fake_claude.py"),
+               # 偽物の Playwright（モーションに要る。本物の Chromium を探さない・入れない）。既定は入っている
+               "PYTHONPATH": str(FAKES / "playwright_stub"), "FAKE_PLAYWRIGHT_CHROMIUM": str(self.chromium)}
         env.update(extra)
         return env
 
@@ -90,6 +94,24 @@ class DoctorTests(SetupBase):
         c = self.checks(out)
         self.assertEqual((c["puppeteer-core"]["level"], c["puppeteer-core"]["source"]), ("ok", "env"))
         self.assertEqual((c["chrome"]["level"], c["chrome"]["source"]), ("ok", "env"))
+
+    def test_motion_needs_playwright_and_its_chromium_only_for_motion(self) -> None:
+        # 入っている（既定の偽物）: モーションは使える
+        rc, text, out = self.run_tool("--doctor")
+        c = self.checks(out)
+        self.assertEqual((c["playwright"]["level"], c["playwright-chromium"]["level"]), ("ok", "ok"))
+        self.assertEqual(c["playwright"]["needed_for"], ["motion"])
+        self.assertTrue(out["ready"]["motion"])
+        # Chromium が無い: モーションだけが使えない（プレゼン・ピッチの可否には効かない）
+        rc, text, out = self.run_tool("--doctor", FAKE_PLAYWRIGHT_CHROMIUM="")
+        c = self.checks(out)
+        self.assertEqual((c["playwright"]["level"], c["playwright-chromium"]["level"]), ("ok", "ng"))
+        self.assertEqual(c["playwright-chromium"]["needed_for"], ["motion"])
+        self.assertIn("モーションを使わないなら要りません", c["playwright-chromium"]["fix"])
+        self.assertFalse(out["ready"]["motion"])
+        self.assertEqual(out["ready"]["presentation"], c["font"]["level"] != "ng" and c["node"]["level"] != "ng"
+                         and c["puppeteer-core"]["level"] != "ng" and c["chrome"]["level"] != "ng")
+        self.assertIn("モーション（まだ）", text)
 
     def test_codex_logged_out_and_no_writer(self) -> None:
         rc, text, out = self.run_tool("--doctor", FAKE_CODEX_LOGGEDOUT="1", QUICK_SLIDE_CLAUDE="")
@@ -179,6 +201,20 @@ class SetupTests(SetupBase):
         rc2, text2, out2 = self.run_tool("--setup", "--yes", FAKE_NPM_LOG=str(log))
         self.assertEqual(out2["installed"], [])
         self.assertEqual(len(log.read_text().splitlines()), 2)
+
+    def test_setup_plans_the_motion_chromium_when_it_is_missing(self) -> None:
+        self.fake_npm()
+        log = self.tmp / "playwright-log"
+        installed = self.tmp / "chromium-installed"
+        rc, text, out = self.run_tool("--setup", FAKE_NPM_LOG=str(self.tmp / "npm-log"), FAKE_PLAYWRIGHT_CHROMIUM="")
+        self.assertEqual(out["planned"], ["puppeteer-core", "chrome", "playwright-chromium"])
+        self.assertIn("-m playwright install chromium", text)
+        rc, text, out = self.run_tool("--setup", "--yes", FAKE_NPM_LOG=str(self.tmp / "npm-log"),
+                                      FAKE_PLAYWRIGHT_CHROMIUM=str(installed), FAKE_PLAYWRIGHT_INSTALLS=str(installed),
+                                      FAKE_PLAYWRIGHT_LOG=str(log))
+        # Chromium の確かめは「あるか」だけ。偽物のインストーラがファイルを置いたので、入れ終えたあとは使える
+        self.assertEqual(json.loads(log.read_text().splitlines()[0]), ["install", "chromium"])
+        self.assertTrue(out["ready"]["motion"], out["checks"])
 
     def test_yes_alone_is_an_input_error(self) -> None:
         rc, _, out = self.run_tool("--yes")

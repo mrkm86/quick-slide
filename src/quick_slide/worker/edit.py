@@ -24,11 +24,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .. import motion
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, engine_for
 from ..render import look as LOOK
 from ..render import workspace as W
-from ..render.runner import DEPENDENCY_MESSAGE, DOCTOR_HINT, check_prerequisites
+from ..render.runner import DOCTOR_HINT, check_prerequisites, dependency_message
 from ..scriptdoc import (
     HIDDEN_KEY,
     deep,
@@ -52,6 +53,7 @@ from .pipeline import (
     _writer_progress,
     check_candidate,
     import_recorded,
+    lint_view,
     render_and_import,
     settle_look,
 )
@@ -201,7 +203,7 @@ def _writer(ctx: Context, run: dict[str, Any], req: dict[str, Any]) -> tuple[str
 def _pictures(ctx: Context, deck_id: str, mode: str, keys: list[str]) -> dict[str, Any]:
     """直せる絵: ピッチは描き終えた絵があるページ（"あり"）、プレゼンは描いた生成の枠の名前の並び。"""
     shown = ctx.call(ctx.store.shown_run, deck_id)
-    if shown is None:
+    if shown is None or mode == "motion":   # モーションには直せる絵が無い
         return {}
     rows = {r["key"]: r for r in ctx.call(ctx.store.run_pages, shown["id"]) if r.get("key")}
     out: dict[str, Any] = {}
@@ -280,6 +282,8 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
                 continue
             return fail(exc.message, "writer_" + exc.kind)
         del prompt
+        if motion.is_motion(run["args"]):
+            answer = motion.normalize_answer(answer)
         result, own = parse_and_apply(answer)
         if own:
             previous, problems = answer, own
@@ -297,7 +301,8 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
         ids = page_id_problems(slides_of(result.data)) + LOOK.type_problems(
             slides_of(result.data), run["args"], only=changed)
         # 日本語の検査（絵文字・前置き）。直したページだけ。最後の回は止めずに記録だけ
-        jl_ng, jl_notes = JLINT.problems_and_notes(slides_of(result.data), enforce=round_no < rounds, only=changed)
+        jl_ng, jl_notes = JLINT.problems_and_notes(lint_view(run["args"], slides_of(result.data)),
+                                                   enforce=round_no < rounds, only=changed)
         ids += jl_ng
         if ids:
             ctx.call(store.set_script_check, candidate["id"], 2, ids)
@@ -318,7 +323,7 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
             problems = _engine_problems(checked.problems or ["NG: 検査で止まった（理由の行が取れなかった）"], result.data)
             continue
         if checked.rc == RC_DEPENDENCY:
-            return fail(DEPENDENCY_MESSAGE, "dependency", checked.rc)
+            return fail(dependency_message(engine), "dependency", checked.rc)
         return fail("台本を確かめられませんでした（エンジンの検査が動きませんでした）。" + DOCTOR_HINT, "check", checked.rc)
     return fail(f"直した台本を {rounds} 回確かめましたが、エンジンの決まりに合いませんでした。指示を短くするか、もう一度頼んでください。",
                 "script")
@@ -389,7 +394,7 @@ def _insert(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
                                    skills_dir=ctx.tools.skills_dir, previous=previous, problems=problems)
 
     def parse_and_apply(answer):
-        pages, summary, problems = parse_insert(answer, script=data, attachments=rels)
+        pages, summary, problems = parse_insert(answer, script=data, attachments=rels, mode=engine.mode)
         if problems:
             return None, problems
         return EditResult(data=insert_after(data, anchor, pages), plan=RenderPlan(), summary=summary,
@@ -406,7 +411,16 @@ def _duplicate(ctx: Context, deck_id: str, req: dict[str, Any], data: dict[str, 
     at = next(i for i, s in enumerate(slides) if isinstance(s, dict) and s.get("id") == key)
     copy = deep(slides[at])
     copy.pop(HIDDEN_KEY, None)
-    copy["id"] = fresh_id(key, {str(s.get("id")) for s in slides_of(data)})
+    scene_ids = {str(s.get("id")) for s in slides_of(data)}
+    if mode == "motion":
+        # 場面の id・中の要素の id・stage の要素の id は、まとめて 1 つの使用済みの集合（DOM の id は台本全体で重ねられない）。
+        # 場面の採番も要素の採番も、この集合を避ける。場面の中の要素の id・それを引く CSS・script・hook も付け替える
+        used = scene_ids | motion.element_ids(data.get("stage"), *(s.get("html") for s in slides_of(data)))
+        new_id = fresh_id(key, used)
+        copy = motion.duplicate_scene(copy, new_id, used)
+    else:
+        copy["id"] = fresh_id(key, scene_ids)
+        new_id = copy["id"]
     plan = RenderPlan()
     if mode == "pitch":
         plan.aliases[copy["id"]] = key   # 同じ中身なので同じ鍵。区画の絵を写せば描き直さない
@@ -485,7 +499,7 @@ def _restore(ctx: Context, deck_id: str, req: dict[str, Any], data: dict[str, An
         got = W.pitch_picture(old_dir, key, legacy_no=no)
         if got is not None:
             plan.seeds[key] = got
-    else:
+    elif mode == "presentation":
         plan.restore_presentation.append((old_dir, key))
     return EditResult(data={**data, "slides": slides}, plan=plan, summary="前の版に戻しました。",
                       routes={key: "restore"})

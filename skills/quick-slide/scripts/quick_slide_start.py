@@ -55,8 +55,8 @@ ENV_HOME = "QUICK_SLIDE_HOME"
 # 「実体」の目印。この 1 ファイルの有無だけで判定する
 ENTRY_POINT = Path("src") / "quick_slide" / "server" / "__main__.py"
 
-MODES = ("presentation", "pitch")
-STYLES = {"presentation": ("standard", "visual"), "pitch": ("visual", "standard", "infographic")}
+MODES = ("presentation", "pitch", "motion")
+STYLES = {"presentation": ("standard", "visual"), "pitch": ("visual", "standard", "infographic"), "motion": ("standard",)}
 IMAGE_LOOKS = ("photo", "illustration", "handdrawn")
 
 # 会話の識別子を採る環境変数。**ここに定数を足さないこと**（定数を渡すと全部の会話が 1 つに潰れる）
@@ -410,7 +410,8 @@ def conversation_message(body: dict[str, Any]) -> str:
     title = body.get("deck_title") or "無題のスライド"
     if body.get("resolution") == "resent":
         return f"同じ内容をさっき受け付けたスライド「{title}」を開きます。"
-    mode = "プレゼン（編集できて動く PPTX）" if body.get("mode") == "presentation" else "ピッチ（1 枚ずつ絵で描く資料）"
+    mode = {"presentation": "プレゼン（編集できて動く PPTX）", "pitch": "ピッチ（1 枚ずつ絵で描く資料）",
+            "motion": "モーション（クリックで拍が進む Web プレゼン）"}.get(body.get("mode"), "プレゼン（編集できて動く PPTX）")
     return f"新しいスライド「{title}」を{mode}で作り始めました。台本を書いて描き終えると、画面にページが出ます。"
 
 
@@ -591,10 +592,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--manuscript-file", help="原稿（Markdown, UTF-8）のファイル")
     p.add_argument("--title", help="スライドの仮の題（title_hint）")
     p.add_argument("--mode", choices=MODES, default="presentation",
-                   help="presentation（既定・編集できて動く PPTX）／pitch（1 枚ずつ画像生成で丸ごと描く）。あとから替えられない")
-    p.add_argument("--style", help="presentation: standard（既定）/ visual。pitch: visual（既定）/ standard / infographic")
+                   help="presentation（既定・編集できて動く PPTX）／pitch（1 枚ずつ画像生成で丸ごと描く）／"
+                        "motion（クリックで拍が進む Web プレゼン。HTML 1枚で、PPTX・PDF には書き出せない）。あとから替えられない")
+    p.add_argument("--style", help="presentation: standard（既定）/ visual。pitch: visual（既定）/ standard / infographic。motion: standard だけ")
     p.add_argument("--image-look", choices=IMAGE_LOOKS, help="絵の画風（資料全体で 1 つ）。省けばスタイルが決める")
-    p.add_argument("--no-images", action="store_true", help="画像の枠を置かない（図と文字だけで組む）")
+    p.add_argument("--no-images", action="store_true", help="画像の枠を置かない（図と文字だけで組む。motion は常に置かない）")
     p.add_argument("--purpose", help="目的")
     p.add_argument("--audience", help="想定の読み手")
     p.add_argument("--style-note", help="作風の一言")

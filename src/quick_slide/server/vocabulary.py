@@ -46,8 +46,8 @@ PAGE_STATE_GROUPS: dict[str, str] = {
 GROUP_LABELS: dict[str, str] = {"ready": "完成", "generating": "生成中", "waiting": "待機", "failed": "要対応"}
 
 DECK_STATUS_LABELS: dict[str, str] = {"draft": "下書き", "review": "レビュー中", "final": "確定"}
-# モード（作るときに決め、あとから替えない）。プレゼン＝html-slide・ピッチ＝image-slide
-DECK_MODE_LABELS: dict[str, str] = {"presentation": "プレゼン", "pitch": "ピッチ"}
+# モード（作るときに決め、あとから替えない）。プレゼン＝html-slide・ピッチ＝image-slide・モーション＝motion-slide
+DECK_MODE_LABELS: dict[str, str] = {"presentation": "プレゼン", "pitch": "ピッチ", "motion": "モーション"}
 
 EDIT_MODE_LABELS: dict[str, str] = {"minor": "微修正", "remake": "作り直し"}
 
@@ -123,7 +123,7 @@ INSTRUCTION_WORDS: dict[str, str] = {
 }
 
 # 書き出しで選べる形式の表示名
-EXPORT_FORMAT_LABELS: dict[str, str] = {"pdf": "PDF", "pptx": "PPTX"}
+EXPORT_FORMAT_LABELS: dict[str, str] = {"pdf": "PDF", "pptx": "PPTX", "html": "HTML（1枚）"}
 
 # 書き出しの待機・完了で出す固定文
 EXPORT_WORDS: dict[str, str] = {
@@ -237,6 +237,7 @@ PLANNING_MESSAGES: dict[str, str] = {
     "finishing": "仕上げています（PPTX・PDF・ページの画像）。",
     "images": "画像を描いています（{done}/{total}）。",
     "compose": "スライドを組んでいます。",
+    "motion": "全部の拍を開いて確かめながら組んでいます（拍の数に応じて数分かかります）。",
 }
 
 

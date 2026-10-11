@@ -16,6 +16,8 @@ import json
 import re
 from typing import Any
 
+from . import motion
+
 PAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 HIDDEN_KEY = "_hidden"
 INFOGRAPHIC_KEY = "infographic"
@@ -116,7 +118,9 @@ def screen_pages(args: dict[str, Any], data: dict[str, Any]) -> list[dict[str, A
         return [{"no": 1, "key": INFOGRAPHIC_KEY, "type": "infographic", "title": title.replace("**", ""),
                  "body": "\n\n".join(headline_of(s) for s in visible), "hidden": False,
                  "content_sha": content_sha(visible)}]
-    return [{"no": i, "key": str(s["id"]), "type": str(s.get("type") or ""), "title": headline_of(s), "body": body_of(s),
+    scene = motion.is_motion(args)   # モーションは場面（型は持たない。文字は場面の HTML の見える文字）
+    return [{"no": i, "key": str(s["id"]), "type": "scene" if scene else str(s.get("type") or ""),
+             "title": headline_of(s), "body": motion.body_of(s) if scene else body_of(s),
              "hidden": is_hidden(s), "content_sha": content_sha(s)} for i, s in enumerate(slides, 1)]
 
 

@@ -3,6 +3,7 @@
 - `GET /slides/<デッキ>/present`（`?p=<番号>`）           発表の画面（`web/app/present.html`。編集の画面とは別の HTML・JS・CSS）
 - `GET /api/decks/<デッキ>/present`                      発表に要るもの（ページの並び・絵・エンジン・段の数・回の HTML の在りか）
 - `GET /present/<デッキ>/<回>/deck.html`                 html-slide の回の HTML（仕切りの中で開く。下の CSP を付ける）
+- `GET /present/<デッキ>/<回>/index.html`                motion-slide の回の HTML 1枚（仕切りの中で開く。motion 用の CSP を付ける）
 - `GET /present/<デッキ>/<回>/assets/<画像>`・`fonts/<字体>`  その HTML が読むもの（回のフォルダの `present/` の控えだけ）
 
 見せる版は、編集の画面でいま見せている版（`shown_run`＝描き終えた一番新しい回）。非表示のページは並びに入れない。
@@ -18,6 +19,17 @@
 - `sandbox allow-scripts`（直接開かれても同一オリジンにならない。API・セッションに触れない）
 
 外枠は `<iframe sandbox="allow-scripts">`（`allow-same-origin` なし）で開き、postMessage でつなぐ。
+
+**motion-slide の HTML 1枚（index.html）の安全設定**（`motion_csp`）。エンジンは場面の hook・script を `new Function` で読み、
+共通 script を JSON から script 要素にして実行するので `script-src` に `'unsafe-inline' 'unsafe-eval'` が要る。外へ何も
+取りに行かない HTML（画像・字体・音は `data:`）なので、ほかは閉じる:
+
+- `default-src 'none'`・`style-src 'unsafe-inline'`・`img-src data: 'self'`・`media-src data: 'self' blob:`・`font-src data: 'self'`
+- `script-src 'unsafe-inline' 'unsafe-eval'` と橋渡しのスクリプト 1 本のパス（`/static/present-motion-frame.js`）
+- `base-uri 'none'`・`form-action 'none'`・`frame-ancestors 'self'`・`sandbox allow-scripts`（同一オリジンにならない。API・セッションに触れない）
+
+編集の画面と html-slide の CSP は変えない。橋渡しは中のエンジン（`window.MS`）と外枠を postMessage でつなぐ
+（ページ＝場面・段＝拍。中の状態の変化を外枠へ返す）。
 """
 
 from __future__ import annotations
@@ -39,6 +51,7 @@ if TYPE_CHECKING:  # 実行時は app.py の末尾で遅延 import される（�
     from .app import QuickSlideServer, Request, Response
 
 PLAYER_PATH = "/static/present-frame.js"
+MOTION_PLAYER_PATH = "/static/present-motion-frame.js"
 EDIT_URL = "/slides/{deck_id}"
 NO_PAGES_MESSAGE = "見せられるページがまだありません。ページができてから開いてください。"
 
@@ -65,6 +78,30 @@ def frame_csp(host: str) -> str:
         "frame-ancestors 'self'",
         "sandbox allow-scripts",
     ))
+
+
+def motion_csp(host: str) -> str:
+    """仕切りの中の motion-slide の HTML 1枚に付ける CSP（理由はこのファイルの冒頭）。"""
+    return "; ".join((
+        "default-src 'none'",
+        f"script-src 'unsafe-inline' 'unsafe-eval' http://{host}{MOTION_PLAYER_PATH}",
+        "style-src 'unsafe-inline'",
+        "img-src data: 'self'",
+        "media-src data: 'self' blob:",
+        "font-src data: 'self'",
+        "base-uri 'none'",
+        "form-action 'none'",
+        "frame-ancestors 'self'",
+        "sandbox allow-scripts",
+    ))
+
+
+def motion_document(html: str) -> str:
+    """motion-slide の HTML 1枚に、橋渡しのスクリプト（`present-motion-frame.js`）を 1 本だけ足す（他は書き換えない）。"""
+    tag = f'<script src="{MOTION_PLAYER_PATH}"></script>'
+    if _BODY_END.search(html):
+        return _BODY_END.sub(lambda m: tag + m.group(0), html, count=1)
+    return html + tag
 
 
 def frame_document(html: str, base: str, fonts_dir: Path) -> str:
@@ -99,6 +136,17 @@ def _steps(run_dir: Path) -> dict[int, int]:
     return out
 
 
+def _clicks(run_dir: Path) -> dict[int, int]:
+    """ページ（回の何枚目か）→ クリックの数（拍の数 - 1）。回の `deck-info.json`（motion-slide の記録）から。読めなければ空。"""
+    rec = W.read_json(run_dir / "deck-info.json")
+    out: dict[int, int] = {}
+    for row in rec.get("slides") or []:
+        if isinstance(row, dict) and isinstance(row.get("no"), int):
+            clicks = row.get("clicks")
+            out[row["no"]] = clicks if isinstance(clicks, int) and not isinstance(clicks, bool) and clicks >= 0 else 0
+    return out
+
+
 def present_view(server: "QuickSlideServer", deck_id: str) -> dict[str, Any]:
     """発表に要るもの。錠は呼ぶ側が取る。"""
     store = server.store
@@ -120,8 +168,13 @@ def present_view(server: "QuickSlideServer", deck_id: str) -> dict[str, Any]:
     head = store.head_script(deck_id)
     hidden = {p["page_id"] for p in store.script_pages(head["id"]) if p["hidden"]} if head else set()
     run_dir = server.root.run_dir(deck_id, shown["id"])
-    steps = _steps(run_dir)
-    has_html = (run_dir / W.PRESENT / "deck.html").is_file() if engine.mode == "presentation" else False
+    if engine.mode == "motion":
+        steps = _clicks(run_dir)   # 場面＝ページ・拍＝段（1 拍目が段 0。クリックの数が段の数）
+        html_name = "index.html"
+    else:
+        steps = _steps(run_dir)
+        html_name = "deck.html"
+    has_html = (run_dir / W.PRESENT / html_name).is_file() if engine.mode in ("presentation", "motion") else False
     pages = []
     for p in store.run_pages(shown["id"]):
         if p["page_id"] in hidden or p["state"] != "ready" or p["asset_state"] != "ready" or not p["asset_id"]:
@@ -138,7 +191,7 @@ def present_view(server: "QuickSlideServer", deck_id: str) -> dict[str, Any]:
     out["pages"] = pages
     out["message"] = None if pages else NO_PAGES_MESSAGE
     if has_html and pages:
-        out["html"] = {"url": f"/present/{deck_id}/{shown['id']}/deck.html", "sections": len(steps) or None}
+        out["html"] = {"url": f"/present/{deck_id}/{shown['id']}/{html_name}", "sections": len(steps) or None}
     return out
 
 
@@ -174,6 +227,11 @@ def route_present_file(server: "QuickSlideServer", req: "Request") -> "Response"
     if resolved is None or data is None:
         raise not_found()
     Response = _response()
+    if rel == "index.html":
+        host = (req.header("host") or "").strip().lower()    # 検査済み（app._check_host）
+        body = motion_document(data.decode("utf-8", errors="replace")).encode("utf-8")
+        return Response(200, body, content_type=resolved.content_type,
+                        headers=(("Content-Security-Policy", motion_csp(host)),))
     if rel == "deck.html":
         host = (req.header("host") or "").strip().lower()    # 検査済み（app._check_host）
         base = f"/present/{deck_id}/{run_id}"

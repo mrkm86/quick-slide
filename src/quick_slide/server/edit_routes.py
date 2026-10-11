@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from ..engines import engine_for
 from ..enums import EDIT_SOURCES, ORIGIN_RUNTIMES
 from ..errors import NotFoundError, ValidationError
 from ..scriptdoc import one_page
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
 STRUCTURE_CHANGED = "このスライドの構成が、ほかの場所で変わりました。再読み込みしてから、もう一度操作してください。"
 INFOGRAPHIC_REASON = "1 枚にまとめるスタイル（infographic）では、ページを足す・並べ替える・隠す・複製することはできません。"
 QUEUED_TAIL = "前の直しが終わってから始めます。"
+NO_IMAGES_REASON = "モーションの場面には画像を添えられません（図は場面の中で描きます）。指示の文だけで送ってください。"
 
 
 def _body(req: "Request") -> dict[str, Any]:
@@ -73,10 +75,12 @@ def _text(server: "QuickSlideServer", body: dict[str, Any], *, required: str) ->
     return text.strip()
 
 
-def _attachments(store: Any, body: dict[str, Any]) -> list[str]:
+def _attachments(store: Any, body: dict[str, Any], row: dict[str, Any] | None = None) -> list[str]:
     raw = body.get("attachments") or []
     if not isinstance(raw, list):
         raise ApiError(400, "validation_error", "attachments は配列で送ってください。")
+    if raw and row is not None and not engine_for(row["mode"]).has_images:
+        raise ApiError(400, "attachments_not_supported", NO_IMAGES_REASON)
     if len(raw) > MAX_ATTACHMENTS:
         raise ApiError(400, "too_many_attachments", TOO_MANY_ATTACHMENTS_REASON)
     out = []
@@ -141,8 +145,8 @@ def route_instructions(server: "QuickSlideServer", req: "Request") -> "Response"
     text = _text(server, body, required=TEXT_REQUIRED_REASON)
     with server.store_lock:
         store = server.store
-        _live_deck_row(store, deck_id)
-        atts = _attachments(store, body)
+        row = _live_deck_row(store, deck_id)
+        atts = _attachments(store, body, row)
         if not text and not atts:
             raise ApiError(400, "text_required", TEXT_REQUIRED_REASON)
         pages, _ = _head_pages(store, deck_id)
@@ -221,8 +225,8 @@ def route_insert(server: "QuickSlideServer", req: "Request") -> "Response":
     source, runtime = _source(body)
     with server.store_lock:
         store = server.store
-        _live_deck_row(store, deck_id)
-        atts = _attachments(store, body)
+        row = _live_deck_row(store, deck_id)
+        atts = _attachments(store, body, row)
         pages, args = _head_pages(store, deck_id)
         _no_structure(args)
         after = body.get("after_slide_id")
@@ -308,6 +312,8 @@ REBUILD_NOTICES = {
                     "描いた絵はそのまま使います（画風が変わるスタイルを選んだときだけ、絵を描き直します）。",
     "pitch": "いまの台本のまま、選んだブランドとスタイルで描き直します。ピッチは色やスタイルが絵の描き方に入るので、"
              "変えたページの絵を描き直します（ChatGPT の枠を使います）。何も変えなければ描きません。",
+    "motion": "いまの台本のまま、選んだブランドの色とロゴで組み直します。文章と動きは変わりません。"
+              "全部の拍を開いて確かめ直すので、場面が多いと数分かかります（ChatGPT の枠は使いません）。",
 }
 
 

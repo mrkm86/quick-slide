@@ -48,6 +48,9 @@ body { font: var(--font-weight-400) var(--font-size-16)/var(--line-height-150) v
 .pr__slide iframe { pointer-events: none; background: var(--pr-bg); }
 /* 画面全体を受ける面（クリックの左右・スワイプ）。iframe の上に置くので、フォーカスは外枠に残る */
 .pr__hit { position: absolute; inset: 0; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: pinch-zoom; -webkit-tap-highlight-color: transparent; }
+/* 中が自分で操作を受けるエンジン（motion-slide）: 面を重ねず、タップ・スワイプ・LIVE の部品は中で受ける（橋渡しが外枠と同じ決まりにする） */
+.pr--live .pr__hit { display: none; }
+.pr--live .pr__slide iframe { pointer-events: auto; }
 .pr__notice { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); max-width: calc(100% - 32px); margin: 0; padding: 8px 16px;
   border: 1px solid var(--pr-line); border-radius: var(--border-radius-8); background: var(--pr-panel); color: var(--pr-ink); text-align: center; }
 .pr__notice[hidden] { display: none; }

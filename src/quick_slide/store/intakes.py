@@ -2,11 +2,11 @@
 
 payload の形は v1 と同じ（`schema_version`・`origin{kind,runtime,conversation_key}`・`manuscript`・`title_hint`・
 `deck_attributes`・`attachments`・`append_to_deck_id`・`force_new_deck`）。v2 で足したのは
-`deck_attributes` の `mode`（presentation / pitch）・`style`（エンジンのスタイル）・`image_look`・`images`、P3 で
+`deck_attributes` の `mode`（presentation / pitch / motion）・`style`（エンジンのスタイル）・`image_look`・`images`、P3 で
 `outline_fixed`（原稿は会話で合意した構成。台本係はページ割りを守る）、P4 で `style_id`（設定のスタイル）。
 
 ブランド・スタイルの決め方（P4）: `brand_id` → 設定の既定 → 利用者のブランド（最新）→ 既定。`style_id` → 会話が言った
-`style` にあたる付属スタイル → モードの既定（プレゼン standard・ピッチ visual）。会話が `style`・`image_look`・
+`style` にあたる付属スタイル → モードの既定（プレゼン standard・ピッチ visual・モーション standard）。会話が `style`・`image_look`・
 `style_note` を言ったら、それは描く回の `overrides` に入り、設定のスタイルより勝つ（`style` は `style_id` と一緒に
 言ったときだけ。`style` だけなら、それにあたる付属スタイルを選ぶので overrides に入れない）。
 
@@ -228,7 +228,8 @@ class IntakesMixin(StoreBase):
                 raise ValidationError(f"deck_attributes.{k} に秘密情報らしい文字列が含まれています。除いて再投入してください")
         mode = out.get("mode") or "presentation"
         if mode not in ENGINES:
-            raise ValidationError("deck_attributes.mode は presentation（編集できて動く PPTX）か pitch（1枚ずつ絵で描く）")
+            raise ValidationError("deck_attributes.mode は presentation（編集できて動く PPTX）・pitch（1枚ずつ絵で描く）・"
+                                  "motion（クリックで拍が進む Web プレゼン。HTML 1枚）のどれか")
         engine = ENGINES[mode]
         said = bool(out.get("style"))
         style = out.get("style") or engine.default_style
@@ -240,6 +241,8 @@ class IntakesMixin(StoreBase):
         images = out.get("images", True)
         if not isinstance(images, bool):
             raise ValidationError("deck_attributes.images は真偽値（画像の枠を置くか）")
+        if not engine.has_images:
+            images = False   # モーションは画像の枠を持たない（図は場面の HTML で描く）
         outline_fixed = out.get("outline_fixed", False)
         if not isinstance(outline_fixed, bool):
             raise ValidationError("deck_attributes.outline_fixed は真偽値（原稿は合意した構成か）")

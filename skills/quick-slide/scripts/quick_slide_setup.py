@@ -6,7 +6,8 @@
     python3 quick_slide_setup.py --setup --yes       # 聞かずに入れる（会話で利用者に聞いてから使う）
 
 見るもの: Python と 4 つのパッケージ（python-pptx・lxml・Pillow・PyYAML）・Node・puppeteer-core・Chrome（headless shell）・
-游ゴシックの字体ファイル・`codex` CLI と ChatGPT のログイン・台本を書く CLI（`claude` / `codex`）・データの置き場・ポート。
+游ゴシックの字体ファイル・Playwright と、その Chromium（**モーションを使うときだけ要る**。`ready.motion`）・
+`codex` CLI と ChatGPT のログイン・台本を書く CLI（`claude` / `codex`）・データの置き場・ポート。
 
 入れるもの（`--setup`。どれも Quick Slide の置き場か利用者の場所。全体に入れるもの・ログインはしない。コマンドを言う）:
 
@@ -15,6 +16,8 @@
 | Python のパッケージ | 利用者の場所（`pip --user`） | `python3 -m pip install --user …`（Python が「外から管理されている」ときは入れずに手順を言う） |
 | puppeteer-core | `<置き場>/engines/html-slide/node/` | `npm install --prefix … puppeteer-core` |
 | Chrome（headless shell） | `<置き場>/engines/html-slide/chrome/` | `@puppeteer/browsers install chrome-headless-shell@stable --path …` |
+| Playwright（モーション用） | 利用者の場所（`pip --user`） | `python3 -m pip install --user playwright` |
+| Playwright の Chromium（モーション用） | Playwright の置き場（`~/Library/Caches/ms-playwright` など） | `python3 -m playwright install chromium` |
 
 Node・`codex` CLI・PowerPoint（字体）は入れない（入れ方を言う）。`codex login` もしない（コマンドを言う）。
 
@@ -101,7 +104,7 @@ class Report:
     def ready(self) -> dict[str, bool]:
         def ok(use: str) -> bool:
             return all(i["level"] != "ng" for i in self.items if use in i["needed_for"] or "all" in i["needed_for"])
-        return {"presentation": ok("presentation"), "pitch": ok("pitch"), "images": ok("images")}
+        return {"presentation": ok("presentation"), "pitch": ok("pitch"), "motion": ok("motion"), "images": ok("images")}
 
 
 # --- 確かめる ------------------------------------------------------------------
@@ -230,6 +233,32 @@ def check_fonts(rep: Report, home: Path) -> None:
             needed_for=("presentation",))
 
 
+def chromium_path() -> str | None:
+    """Playwright の Chromium の本体の在りか（無ければ None）。motion-slide が全部の拍を開くのに使う（html-slide の Chrome とは別）。
+    Playwright を子プロセスで起こして聞く（このプロセスに Playwright を読み込まない）。"""
+    code = "from playwright.sync_api import sync_playwright\nwith sync_playwright() as p:\n    print(p.chromium.executable_path)\n"
+    rc, out = run([sys.executable, "-c", code], env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+    path = out.strip().splitlines()[-1] if rc == 0 and out.strip() else ""
+    return path if path and Path(path).exists() else None
+
+
+def check_motion(rep: Report) -> dict[str, Any]:
+    """モーション（motion-slide）に要るもの: Playwright（Python）と、その Chromium。**モーションを使うときだけ要る**。"""
+    import importlib.util
+
+    have = importlib.util.find_spec("playwright") is not None
+    rep.add("playwright", "Playwright（モーションの検査・組み立て用の Python パッケージ）", "ok" if have else "ng",
+            "入っています" if have else "入っていません",
+            fix=None if have else f"{SETUP_CMD}（pip --user で入れます）。モーションを使わないなら要りません",
+            needed_for=("motion",))
+    chromium = chromium_path() if have else None
+    rep.add("playwright-chromium", "Playwright の Chromium（モーションが全部の拍を開く）", "ok" if chromium else "ng",
+            chromium or ("入っていません" if have else "Playwright が無いので確かめられません"),
+            fix=None if chromium else f"{SETUP_CMD}（`python3 -m playwright install chromium`。数百 MB）。モーションを使わないなら要りません",
+            needed_for=("motion",))
+    return {"playwright": have, "chromium": chromium}
+
+
 def codex_cli() -> str | None:
     value = os.environ.get("IMAGE_SLIDE_CODEX")
     if value:
@@ -338,6 +367,7 @@ def doctor(home: Path) -> tuple[Report, dict[str, Any]]:
     facts.update(check_node(rep))
     facts["browser"] = check_browser(rep, home)
     check_fonts(rep, home)
+    facts["motion"] = check_motion(rep)
     check_codex(rep)
     check_writers(rep)
     facts["home"] = check_home(rep, home)
@@ -357,7 +387,8 @@ def print_report(rep: Report, home: Path) -> None:
     ready = rep.ready()
     say("使えるもの: " + "・".join(
         f"{name}{'（使える）' if ok else '（まだ）'}" for name, ok in
-        (("プレゼン", ready["presentation"]), ("ピッチ", ready["pitch"]), ("画像の枠を描く", ready["images"]))))
+        (("プレゼン", ready["presentation"]), ("ピッチ", ready["pitch"]), ("モーション", ready["motion"]),
+         ("画像の枠を描く", ready["images"]))))
 
 
 # --- 入れる --------------------------------------------------------------------
@@ -400,6 +431,18 @@ def plan_steps(rep: Report, facts: dict[str, Any], home: Path) -> tuple[list[dic
         else:
             steps.append({"id": "chrome", "what": f"Chrome（headless shell）を {engine / 'chrome'} に入れる（@puppeteer/browsers・全体には入れない）",
                           "cmd": None, "path": str(engine / "chrome"), "node_modules": str(target_nm)})
+    motion = facts.get("motion") or {}
+    if motion and not motion.get("playwright"):
+        if externally_managed():
+            manual.append("Playwright（モーションに要る）: この Python は外から管理されているので pip --user では入れません。"
+                          f"`{sys.executable} -m pip install --user --break-system-packages playwright` を自分で判断して実行してください"
+                          "（モーションを使わないなら要りません）")
+        else:
+            steps.append({"id": "playwright", "what": "Playwright（モーションの検査・組み立て用。利用者の場所へ pip --user）を入れる",
+                          "cmd": [sys.executable, "-m", "pip", "install", "--user", "playwright"]})
+    if motion and not motion.get("chromium") and (motion.get("playwright") or not externally_managed()):
+        steps.append({"id": "playwright-chromium", "what": "Playwright の Chromium（モーションが全部の拍を開く。数百 MB）を入れる",
+                      "cmd": [sys.executable, "-m", "playwright", "install", "chromium"]})
     for key in ("codex", "codex_login", "font", "writer"):
         item = rep.get(key)
         if item["level"] == "ng" and item["fix"]:

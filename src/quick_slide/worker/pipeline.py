@@ -17,17 +17,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .. import motion
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, Engine, engine_for, engine_marker
 from ..paths import DataRoot
 from ..render import look as LOOK
 from ..render import workspace as W
 from ..render.runner import (
-    DEPENDENCY_MESSAGE,
     DOCTOR_HINT,
+    CHECK_TIMEOUT_SECONDS,
     RenderOutcome,
     check_prerequisites,
     check_script,
+    dependency_message,
     render_deck,
 )
 from ..scriptdoc import (
@@ -103,8 +105,16 @@ def settle_look(ctx: Context, run: dict[str, Any], *, previous_style: str | None
 
 
 def engine_script_view(data: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
-    """エンジンに渡す台本: 非表示のページを抜き、ブランドのフッタ・ページ番号を一番外に入れる（台本の版は変えない）。"""
+    """エンジンに渡す台本: 非表示のページを抜き、ブランドのフッタ・ページ番号を一番外に入れる（台本の版は変えない）。
+    モーションは場面の配列を `scenes` に直し、フッタ・ページ番号は入れない（motion-slide は一番外のキーを知らないと NG にする）。"""
+    if motion.is_motion(args):
+        return motion.engine_view(engine_view(data))
     return LOOK.apply_format(engine_view(data), args.get("look"))
+
+
+def lint_view(args: dict[str, Any], slides: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """日本語の検査（`writer/jlint.py`）にかけるページ。モーションは場面の HTML の見える文字・題・言葉・話す台本。"""
+    return motion.jlint_pages(slides) if motion.is_motion(args) else slides
 
 
 def _writer_progress(round_no: int, rounds: int, backend: str, phase: str) -> dict[str, Any]:
@@ -210,12 +220,12 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
     run_dir = ctx.root.run_dir(deck_id, run_id)
     work.mkdir(parents=True, exist_ok=True)
     pages = output_pages(args, data)
+    # モーションは進みの行が無いので、最初から「組んでいます」（検査と組み立てが終わるまで変わらない）
+    first = {"phase": "rendering", "step": "motion" if engine.mode == "motion" else "starting", "done": 0, "total": len(pages)}
     if start:
-        ctx.call(store.start_rendering, run_id, script["id"], pages,
-                 {"phase": "rendering", "step": "starting", "done": 0, "total": len(pages)})
+        ctx.call(store.start_rendering, run_id, script["id"], pages, first)
     else:
-        ctx.call(store.set_run_state, run_id, "rendering",
-                 progress={"phase": "rendering", "step": "starting", "done": 0, "total": len(pages)})
+        ctx.call(store.set_run_state, run_id, "rendering", progress=first)
     script_path = W.write_engine_script(ctx.root.engine_script_path(deck_id), engine_script_view(data, args))
 
     placed: dict[str, str] = {}
@@ -275,6 +285,11 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
             W.snapshot_present(work, run_dir)   # 発表の画面の段ごとの再生用（無くても描いた回は成り立つ。ページの PNG で出す）
         except OSError as exc:
             log.warning("run %s: 発表の画面用の HTML を控えられませんでした: %s", run_id, exc)
+    elif outcome.state == "done" and engine.mode == "motion":
+        try:
+            W.snapshot_present_motion(work, run_dir)   # 発表の画面（HTML 1枚をそのまま動かす）。無ければページの PNG で出す
+        except OSError as exc:
+            log.warning("run %s: 発表の画面用の HTML を控えられませんでした: %s", run_id, exc)
     for no, info in outcome.pages.items():
         s = snap.get(no) or {}
         info["file"] = s.get("file") if info.get("file") else None
@@ -290,9 +305,19 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
 
 
 def check_candidate(ctx: Context, engine: Engine, run: dict[str, Any], data: dict[str, Any]):
-    """台本の候補をエンジンの `check` に通す（非表示のページを抜いた形で）。CheckResult を返す。"""
+    """台本の候補をエンジンの `check` に通す（非表示のページを抜いた形で）。CheckResult を返す。
+
+    形だけを先に見られるエンジン（モーション）は、先に `--quick`（Chrome を使わず数秒）で形の NG を返し、
+    形が通ったときだけ全部の拍の検査（拍の数に比例して時間がかかる）を回す。書き直しのたびに全拍を回さない。"""
     path = W.write_engine_script(ctx.root.engine_script_path(run["deck_id"]), engine_script_view(data, run["args"]))
-    return check_script(engine, tools=ctx.tools, home=ctx.root.root, script=path, args=run["args"], stop=ctx.stop)
+    timeout = motion.check_timeout(data) if motion.is_motion(run["args"]) else CHECK_TIMEOUT_SECONDS
+    if engine.quick_check:
+        quick = check_script(engine, tools=ctx.tools, home=ctx.root.root, script=path, args=run["args"], stop=ctx.stop,
+                             quick=True)
+        if quick.rc != 0:
+            return quick
+    return check_script(engine, tools=ctx.tools, home=ctx.root.root, script=path, args=run["args"], stop=ctx.stop,
+                        timeout=timeout)
 
 
 def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
@@ -353,6 +378,8 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
                 continue
             return fail(exc.message, "writer_" + exc.kind)
         del prompt
+        if motion.is_motion(args):
+            data = motion.normalize(data)   # 台本係が scenes と書いても slides に読み替える
         slides = data.get("slides")
         if not isinstance(slides, list) or not slides or not all(isinstance(s, dict) for s in slides):
             previous, problems = data, ["NG: slides（ページのオブジェクトの配列）が無いか空"]
@@ -364,7 +391,7 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
         ctx.call(store.set_run_state, run_id, "checking", progress=_writer_progress(round_no, rounds, backend, "checking"))
         own = page_id_problems(slides) + LOOK.type_problems(slides, args)
         # 日本語の検査（絵文字・前置き）。最後の回は止めずに記録だけ（リンターのせいで 1 冊が作れなくなるのを避ける）
-        jl_ng, jl_notes = JLINT.problems_and_notes(slides, enforce=round_no < rounds)
+        jl_ng, jl_notes = JLINT.problems_and_notes(lint_view(args, slides), enforce=round_no < rounds)
         own += jl_ng
         if outline and len(slides) != len(outline):
             own.append(f"NG: 構成は {len(outline)} ページ（`## N.` の見出しの数）なのに、台本は {len(slides)} ページ。"
@@ -387,7 +414,7 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
             log.info("run %s: 台本の検査で止まった（%d 回目・%d 行）", run_id, round_no, len(problems))
             continue
         if result.rc == RC_DEPENDENCY:
-            return fail(DEPENDENCY_MESSAGE, "dependency", result.rc)
+            return fail(dependency_message(engine), "dependency", result.rc)
         return fail("台本を確かめられませんでした（エンジンの検査が動きませんでした）。" + DOCTOR_HINT, "check", result.rc)
     return fail(f"台本を {rounds} 回書き直しましたが、エンジンの決まりに合いませんでした。原稿を短くするか、もう一度頼んでください。",
                 "script")

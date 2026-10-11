@@ -38,7 +38,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
-OUTPUT_FILES = ("deck.pptx", "deck.pdf", "build.json", "deck-info.json", "inspect.md", "deck.html")
+# motion-slide は index.html（HTML 1枚）と check/（全拍の検査の画像と記録）も書く
+OUTPUT_FILES = ("deck.pptx", "deck.pdf", "build.json", "deck-info.json", "inspect.md", "deck.html", "index.html")
+OUTPUT_DIRS = ("check",)
 RECORD_FILES = ("build.json", "deck-info.json", "inspect.md")
 LAYOUT = "layout.json"
 STAGE = ".quick-slide-stage"
@@ -77,6 +79,13 @@ def _copy(src: Path, dst: Path) -> None:
     os.replace(tmp, dst)
 
 
+def _link_tree(src: Path, dst: Path) -> None:
+    """フォルダの中身を、ハードリンクで写す（`clear_outputs` が次の回の前に作業フォルダ側を消す）。"""
+    for p in sorted(src.rglob("*")):
+        if p.is_file() and not p.is_symlink():
+            _link(p, dst / p.relative_to(src))
+
+
 def write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
@@ -107,6 +116,8 @@ def clear_outputs(work: Path) -> None:
     """エンジンを呼ぶ前に、作業フォルダの出力を消す（控えとハードリンクでつながった中身を上書きさせない）。"""
     for name in OUTPUT_FILES:
         (work / name).unlink(missing_ok=True)
+    for name in OUTPUT_DIRS:
+        shutil.rmtree(work / name, ignore_errors=True)
     for p in work.glob("thumbs*.png"):
         p.unlink(missing_ok=True)
     slides = work / "slides"
@@ -131,9 +142,11 @@ def snapshot(mode: str, work: Path, run_dir: Path, pages: list[dict[str, Any]]) 
     `pages` は `scriptdoc.output_pages`（番号・ページの id）。ページの画像が無い番号は file が None。
     """
     run_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("deck.pptx", "deck.pdf"):
+    for name in ("deck.pptx", "deck.pdf", "index.html"):
         if (work / name).is_file():
             _link(work / name, run_dir / name)
+    if (work / "check").is_dir():
+        _link_tree(work / "check", run_dir / "check")
     for p in sorted(work.glob("thumbs*.png")):
         _link(p, run_dir / p.name)
     for name in RECORD_FILES:
@@ -220,6 +233,18 @@ def snapshot_present(work: Path, run_dir: Path) -> bool:
         font = Path(path)
         if font.suffix.lower() in PRESENT_FONT_TYPES and font.is_file():
             _link(font, dest / "fonts" / present_font_name(path))
+    return True
+
+
+def snapshot_present_motion(work: Path, run_dir: Path) -> bool:
+    """発表の画面（モーション）のために、組んだ HTML 1枚（index.html）を回のフォルダの `present/` へ控える。
+
+    HTML 1枚は外へ何も取りに行かない（画像・字体・音は全部中に入っている）ので、控えるのはこの 1 枚だけ。
+    ハードリンク（エンジンは次の回の前に作業フォルダの出力を消すので、控えの中身は変わらない）。無ければ False。"""
+    src = work / "index.html"
+    if not src.is_file():
+        return False
+    _link(src, run_dir / PRESENT / "index.html")
     return True
 
 

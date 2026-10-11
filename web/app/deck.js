@@ -366,12 +366,14 @@
     // 絵の無いページでは土台が無いので、**チェックを入れた状態に固定して理由を添える**
     // （既定のまま送らせて、送ってから断るのは遅い）
     var canMinor = opts.canMinor || { available: false, reason: words.remake_forced_reason };
+    // 画像の概念が無いモード（モーション）では、「元の画像を使わずに生成し直す」と画像の添付を出さない（サーバが `hidden` を付ける）
+    var noImages = !!canMinor.hidden;
     var fieldId = "instruct-" + (++nextFieldId);
 
     var ta = h("textarea", { id: fieldId, "aria-label": target + " " + words.section_label,
       placeholder: opts.placeholder || (opts.deck ? words.deck_placeholder : words.page_placeholder) });
     // 3 つの経路（貼り付け・ドラッグ&ドロップ・ファイルから選ぶ）を**どれも隠したメニューに落とさない**
-    var att = attachArea({ locked: function () { return locked(); }, onChange: function () { sync(); } });
+    var att = attachArea({ locked: function () { return noImages || locked(); }, onChange: function () { sync(); } });
     var chips = att.chips, file = att.file, pick = att.pick, note = att.note;
     // このページの事情（空・長すぎ・枚数の超過）を出す 1 行。スライドの事情は上に 1 か所だけ出る
     var why = h("p", { class: "editbox__why small", role: "status" });
@@ -380,7 +382,7 @@
     var said = h("div", { class: "editbox__said small", role: "status" });
     var send = h("button", { class: "btn" + (c.available ? " btn--primary" : ""), type: "button", text: c.label });
     var remake = h("input", { type: "checkbox", class: "editbox__remake-box", id: fieldId + "-remake" });
-    remake.checked = !canMinor.available;
+    remake.checked = !canMinor.available && !noImages;
     remake.disabled = !canMinor.available;
     var remakeLabel = h("label", { class: "editbox__remake", for: remake.id,
       title: canMinor.available ? words.remake_description : canMinor.reason },
@@ -389,10 +391,10 @@
     var fs = h("fieldset", { disabled: !c.available, "aria-describedby": opts.reasonId || null },
       opts.deck || opts.capKey ? h("div", { class: "editbox__row" }, h("span", { class: "target", text: target })) : null,
       h("div", { class: "editbox__prompt" }, ta,
-        h("div", { class: "editbox__prompt-tools" }, pick, remakeLabel,
+        h("div", { class: "editbox__prompt-tools" }, noImages ? null : pick, noImages ? null : remakeLabel,
           h("span", { class: "grow" }), send)),
-      h("div", { class: "editbox__row editbox__attach" }, chips, file),
-      note,
+      noImages ? null : h("div", { class: "editbox__row editbox__attach" }, chips, file),
+      noImages ? null : note,
       why, said);
     // 理由の文はここには出さない（スライドに 1 か所。上の `screenReasons`）。fieldset がその行を指す。
     // モードの助言も**カードごとには要らない**（どのページでも同じ 1 文）。デッキ全体への指示に 1 回だけ置く
@@ -418,7 +420,7 @@
 
     ta.addEventListener("input", sync);
     remake.addEventListener("change", sync);
-    att.bind(box);
+    att.bind(box);   // 画像の無いモードでは `locked` が真なので、貼り付け・ドロップは何も受けない
     if (opts.onSubmit) {
       send.addEventListener("click", function () { opts.onSubmit(box, send); });
     }
@@ -437,7 +439,7 @@
       if (nextCanMinor) {
         // **利用者が自分で入れたチェックは動かさない。** 固定されていた（押せなかった）ときだけ
         // 既定へ戻す: 絵ができて今の絵から直せるようになったのに、作り直す側で固まったままにしない
-        if (remake.disabled) { remake.checked = !nextCanMinor.available; }
+        if (remake.disabled) { remake.checked = !nextCanMinor.available && !noImages; }
         remake.disabled = !nextCanMinor.available;
         remakeLabel.title = nextCanMinor.available ? words.remake_description : (nextCanMinor.reason || "");
         var forced = remakeLabel.querySelector(".editbox__forced");
@@ -458,7 +460,8 @@
     var words = instructionWords();
     var blocked = pages.filter(function (p) { return !p.can_minor.available; });
     if (!blocked.length) { return { available: true, reason: null }; }
-    return { available: false, reason: blocked[0].can_minor.reason || words.remake_forced_reason };
+    return { available: false, reason: blocked[0].can_minor.reason || words.remake_forced_reason,
+             hidden: !!blocked[0].can_minor.hidden };
   }
 
   // デッキ全体への指示の欄。パネルの「デッキ全体」タブに置く（バーも畳みも持たない。いつでも開いている欄）
@@ -478,7 +481,8 @@
       text: words.selection_clear || "" });
     clear.addEventListener("click", function () { if (opts.onClear) { opts.onClear(); } });
     var box = editbox(caps, "", { capKey: "pages_instruction", reasonId: reasonIds && reasonIds.pages_instruction,
-      placeholder: words.pages_placeholder, canMinor: { available: true, reason: null }, onSubmit: opts.onSubmit });
+      placeholder: words.pages_placeholder, canMinor: { available: true, reason: null, hidden: !!opts.noImages },
+      onSubmit: opts.onSubmit });
     var head = box.querySelector(".editbox__row");
     if (head) { SS.clear(head).appendChild(label); head.appendChild(h("span", { class: "grow" })); head.appendChild(clear); }
     var wrap = h("div", { class: "deck-instruction__pages", hidden: true, role: "region",
@@ -836,17 +840,19 @@
     var textLimit = instructionLimits().text || 0;
     var ta = h("textarea", { class: "gap__text", "aria-label": words.section_label || "足すページの指示",
                              placeholder: words.placeholder || "" });
-    var att = attachArea({ hint: words.attach_hint, onChange: function () { sync(); } });
+    // 画像の概念が無いモード（モーション）は、画像の添付を出さず、貼り付け・ドロップも受けない
+    var noImages = data.pages.length > 0 && data.pages.every(function (p) { return p.can_minor && p.can_minor.hidden; });
+    var att = attachArea({ hint: words.attach_hint, locked: function () { return noImages; }, onChange: function () { sync(); } });
     var why = h("p", { class: "editbox__why small", role: "status" });
     var send = h("button", { class: "btn btn--primary", type: "button", text: words.submit || "送信" });
     var cancel = h("button", { class: "btn btn--ghost", type: "button", text: words.cancel || "キャンセル" });
     // 送信は右端。やめるはその左（同上）。`.grow` は畳まれる決まりなので、真ん中は素の span で空ける
     var form = h("div", { class: "gap__form editbox", hidden: true },
       h("div", { class: "editbox__prompt" }, ta,
-        h("div", { class: "editbox__prompt-tools" }, att.pick, h("span", {}),
+        h("div", { class: "editbox__prompt-tools" }, noImages ? null : att.pick, h("span", {}),
           h("span", { class: "gap__actions" }, cancel, send))),
-      h("div", { class: "editbox__row editbox__attach" }, att.chips, att.file),
-      att.note, why);
+      noImages ? null : h("div", { class: "editbox__row editbox__attach" }, att.chips, att.file),
+      noImages ? null : att.note, why);
     att.bind(form);
 
     var sending = false;
@@ -1662,9 +1668,13 @@
       applyExportCap();
       exportBtn.addEventListener("click", function () {
         var c = SS.cap(caps, "export");
-        SS.menu(exportBtn, ["pdf", "pptx"].map(function (format) {
-          return { label: exportFormatLabel(format), disabled: !c.available, reason: c.reason,
-                   onSelect: function () { ctx.exportDeck(exportBtn, format); } };
+        // 形式はサーバのデッキの答え `export_formats`（モードで決まる。モーションは PDF・PPTX を押せなくして理由を出し、
+        // HTML（1枚）を出す）。ページの有無は `capabilities.export`。無ければ（古い答え）PDF と PPTX
+        var formats = data.export_formats || [{ format: "pdf" }, { format: "pptx" }];
+        SS.menu(exportBtn, formats.map(function (f) {
+          var ok = c.available && f.available !== false;
+          return { label: f.label || exportFormatLabel(f.format), disabled: !ok, reason: c.available ? f.reason : c.reason,
+                   onSelect: function () { ctx.exportDeck(exportBtn, f.format); } };
         }));
       });
       // タイトルはその場で直せる（2026-09-18、利用者の指示）。**モーダルを開かない。**
@@ -1775,6 +1785,8 @@
       var selClear = h("button", { class: "btn btn--small", type: "button", text: words.selection_clear || "選択を解除" });
       var selBar = h("div", { class: "selection-bar", hidden: true, role: "region", "aria-label": "選んだページ" }, selText, selEdit, selClear);
       var pagesBox = pagesInstruction(caps, reasons.ids, {
+        // 画像の概念が無いモード（モーション）は、選んだ数ページの欄にも画像の添付・作り直しを出さない
+        noImages: data.pages.length > 0 && data.pages.every(function (p) { return p.can_minor && p.can_minor.hidden; }),
         onSubmit: function (box, btn) { ctx.submitPages(box, btn); },
         onClear: function () { ctx.clearSelection(); } });
       var setTab = function () {};   // パネルを作ったあとで本物に替わる

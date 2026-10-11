@@ -10,7 +10,12 @@
                         rate（利用枠に達した）/ slow（FAKE_WRITER_SLEEP 秒待ってから答える）
     FAKE_WRITER_IMAGES  0 にすると画像の枠を置かない
     FAKE_WRITER_SLEEP   slow の秒数（既定 2）
+    FAKE_WRITER_MOTION_FILE  モーションの 1 回目の答えにする JSON のファイル（本物のエンジンの見本から作った台本。画面の確かめ用）
     FAKE_WRITER_PAGES   10 にすると 10 ページの台本（直す試験用。どのページも talk を 1 つ持つ）
+
+モーション（指示文に「モード: モーション」がある）のときは、場面ごとの台本（`slides` に場面。拍の数 `beats`・`html`・`talk`）を返す。
+FAKE_WRITER_MODE=scenes_key なら、場面の配列を `scenes` のキーで返す（`slides` に読み替えられるか）。invalid_first・
+always_invalid は `id` が `bad-scene` の場面（偽物のエンジンが NG にする）、emoji_first・always_emoji は場面の文字に絵文字。
 
 直す（P3）の指示文も読む: 「直すページ」の節があれば直しの答え、「ページを足します」なら差し込みの答え、
 「合意した「構成」」なら構成の見出しの数だけページを書く。直しの振り分けは指示の語で決める
@@ -50,6 +55,26 @@ def calls(kind: str) -> int:
 
 def leaked_keys() -> list[str]:
     return [k for k in API_KEY_VARS if k in os.environ]
+
+
+def is_motion(prompt: str) -> bool:
+    return "モード: モーション" in prompt
+
+
+def motion_scene(sid: str, title: str, beats: int = 2, *, text: str | None = None) -> dict:
+    cells = "".join(f'<p class="x" data-in="{b}">{text or title}の{b + 1}つ目（架空）</p>' for b in range(beats))
+    return {"id": sid, "title": title, "beats": beats, "html": f'<div class="stack">{cells}</div>',
+            "talk": [f"{title}の{b + 1}つ目を話す（架空）" for b in range(beats)]}
+
+
+def motion_script(key: str = "slides") -> dict:
+    return {"title": "試験のモーション（架空）", "config": {"crumb": "試験", "chapters": [], "dur": 4200},
+            key: [motion_scene("cover", "会議を半分にする", 2), motion_scene("why", "会議の4割は何も決めない", 3),
+                  motion_scene("rules", "3つのルールで短くする", 2), motion_scene("closing", "まず2チームで試す", 2)]}
+
+
+def motion_invalid() -> dict:
+    return {"title": "試験のモーション（架空）", "slides": [motion_scene("bad-scene", "決まりに合わない場面", 2)]}
 
 
 def valid_script() -> dict:
@@ -113,6 +138,7 @@ def revision_answer(prompt: str, n_before: int) -> dict:
     targets = [t.strip() for t in _between(prompt, "対象の id: ", "\n").split(",") if t.strip()]
     note = _between(prompt, "<<<指示ここから\n", "\n指示ここまで>>>")
     by_id = {p["id"]: p for p in script["slides"]}
+    motion = is_motion(prompt)
     route = "image" if "絵だけ" in note else "both" if "両方" in note else "keep" if "そのまま" in note else "script"
     pages = []
     for t in targets:
@@ -131,7 +157,8 @@ def revision_answer(prompt: str, n_before: int) -> dict:
                 page["image"] = {**page["image"], "prompt": page["image"]["prompt"] + "。夕方の光"}
             slides = [page]
             if "分けて" in note:
-                slides.append({"id": t + "-b", "type": "statement", "headline": "分けた後半（架空）",
+                slides.append(motion_scene(t + "-b", "分けた後半", 2) if motion else
+                              {"id": t + "-b", "type": "statement", "headline": "分けた後半（架空）",
                                "talk": ["分けた後半の話（架空）"]})
             item["slides"] = slides
         if route in ("image", "both"):
@@ -149,6 +176,8 @@ def insert_answer(prompt: str) -> dict:
     n = 1
     while f"p-added-{n}" in taken:
         n += 1
+    if is_motion(prompt):
+        return {"slides": [motion_scene(f"p-added-{n}", f"足した場面{n}", 2)], "summary": "1 場面足した（架空）"}
     return {"slides": [{"id": f"p-added-{n}", "type": "statement", "headline": f"足したページ{n}（架空）",
                         "talk": [f"足したページ{n}の話（架空）"]}], "summary": "1 ページ足した（架空）"}
 
@@ -158,6 +187,8 @@ def outline_script(prompt: str, n_before: int) -> dict:
     heads = re.findall(r"^##\s*\d+\.\s*(.+)$", manuscript, re.M)
     if MODE == "outline_wrong_first" and n_before == 0:
         heads = heads[:-1]
+    if is_motion(prompt):
+        return {"title": "構成どおりの資料（架空）", "slides": [motion_scene(f"p-{i}", h.strip(), 2) for i, h in enumerate(heads, 1)]}
     pages = [{"id": f"p-{i}", "type": "statement", "headline": h.strip(), "talk": [f"{i}枚目の話（架空）"]}
              for i, h in enumerate(heads, 1)]
     return {"title": "構成どおりの資料（架空）", "slides": pages}
@@ -187,6 +218,9 @@ def answer_for(kind: str, prompt: str) -> tuple[str | None, str | None]:
            outline="合意した「構成」" in prompt,
            has_contract="# 台本の決まり" in prompt and "deck-format.md" in prompt,
            has_pitch_contract="image-slide/references/intake.md" in prompt,
+           motion="モード: モーション" in prompt, has_motion_contract="motion-slide/references/deck-format.md" in prompt
+           and "motion-slide/references/authoring.md" in prompt,
+           prompt_lines=[ln for ln in prompt.splitlines() if ln.startswith("- ")][:200],
            has_manuscript="<<<原稿ここから" in prompt, retry="# 前の台本は検査で止まりました" in prompt,
            ng=[ln for ln in prompt.splitlines() if ln.startswith("- NG")], chars=len(prompt),
            # 設定のスタイルから来た書き方の注文（P4）
@@ -206,18 +240,27 @@ def answer_for(kind: str, prompt: str) -> tuple[str | None, str | None]:
         return json.dumps(insert_answer(prompt), ensure_ascii=False), None
     if "合意した「構成」" in prompt:
         return json.dumps(outline_script(prompt, n_what), ensure_ascii=False), None
+    motion = is_motion(prompt)
     if MODE == "always_invalid" or (MODE == "invalid_first" and n == 0):
-        return json.dumps(invalid_script(), ensure_ascii=False), None
+        return json.dumps(motion_invalid() if motion else invalid_script(), ensure_ascii=False), None
     if MODE == "no_ids_first" and n == 0:
-        script = valid_script()
+        script = motion_script() if motion else valid_script()
         for page in script["slides"]:
             page.pop("id")
         return json.dumps(script, ensure_ascii=False), None
     if MODE == "always_emoji" or (MODE == "emoji_first" and n == 0):
-        script = valid_script()
-        script["slides"][2]["items"][0]["title"] = "✅ 25分を基本にする"
+        script = motion_script() if motion else valid_script()
+        if motion:
+            script["slides"][2]["html"] = '<p class="x" data-in="0">✅ 25分を基本にする</p>'
+        else:
+            script["slides"][2]["items"][0]["title"] = "✅ 25分を基本にする"
         return json.dumps(script, ensure_ascii=False), None
     if MODE == "garbage_first" and n == 0:
         return "ごめんなさい、台本は書けません。", None
+    if motion:
+        fixed = os.environ.get("FAKE_WRITER_MOTION_FILE")   # 本物のエンジンの見本から作った台本（`scenes` のまま。読み替えを通す）
+        if fixed:
+            return pathlib.Path(fixed).read_text(encoding="utf-8"), None
+        return json.dumps(motion_script("scenes" if MODE == "scenes_key" else "slides"), ensure_ascii=False), None
     script = ten_page_script() if os.environ.get("FAKE_WRITER_PAGES") == "10" else valid_script()
     return "```json\n" + json.dumps(script, ensure_ascii=False, indent=1) + "\n```", None

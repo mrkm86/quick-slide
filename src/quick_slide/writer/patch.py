@@ -76,11 +76,16 @@ def image_paths(value: Any) -> set[str]:
     return out
 
 
-def _check_page(page: Any, where: str, allowed_paths: set[str], forbidden_keys=("_characters", "_layout", HIDDEN_KEY)) -> list[str]:
+def _check_page(page: Any, where: str, allowed_paths: set[str], forbidden_keys=("_characters", "_layout", HIDDEN_KEY),
+                *, motion: bool = False) -> list[str]:
     if not isinstance(page, dict):
         return [f"NG: {where}: ページはオブジェクトで書く"]
     problems = []
-    if not isinstance(page.get("type"), str):
+    if motion:
+        # モーションの場面は型を持たない（題・拍の数・HTML は、エンジンの形の検査が確かめる）
+        if not isinstance(page.get("title"), str):
+            problems.append(f"NG: {where}: title が無い")
+    elif not isinstance(page.get("type"), str):
         problems.append(f"NG: {where}: type が無い")
     for k in forbidden_keys:
         if k in page:
@@ -128,7 +133,7 @@ def parse_revision(answer: Any, *, script: dict[str, Any], targets: list[str], p
             ok = True
             for j, page in enumerate(new):
                 where = f"id \"{key}\" の slides の {j + 1} 番目"
-                errs = _check_page(page, where, allowed)
+                errs = _check_page(page, where, allowed, motion=mode == "motion")
                 if errs:
                     problems.extend(errs)
                     ok = False
@@ -203,7 +208,8 @@ def apply_revision(script: dict[str, Any], patch: Patch) -> dict[str, Any]:
     return {**script, "slides": out}
 
 
-def parse_insert(answer: Any, *, script: dict[str, Any], attachments: list[str]) -> tuple[list[dict[str, Any]], str, list[str]]:
+def parse_insert(answer: Any, *, script: dict[str, Any], attachments: list[str],
+                 mode: str = "presentation") -> tuple[list[dict[str, Any]], str, list[str]]:
     """差し込みの答え → (足すページ, 一言, NG の行)。"""
     problems: list[str] = []
     if not isinstance(answer, dict) or not isinstance(answer.get("slides"), list) or not answer["slides"]:
@@ -215,7 +221,7 @@ def parse_insert(answer: Any, *, script: dict[str, Any], attachments: list[str])
     seen: set[str] = set()
     for j, page in enumerate(new, 1):
         where = f"slides の {j} 番目"
-        problems.extend(_check_page(page, where, set(attachments)))
+        problems.extend(_check_page(page, where, set(attachments), motion=mode == "motion"))
         pid = page.get("id") if isinstance(page, dict) else None
         if not isinstance(pid, str) or not PAGE_ID_RE.match(pid) or pid in taken or pid in seen:
             problems.append(f"NG: {where}: 台本の中で重ならない新しい id を付ける（英小文字・数字・ハイフンで 40 字以内）")

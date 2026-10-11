@@ -1,12 +1,14 @@
 """書き出しの配布（P5）。**画面に出ている回（見せる回）のファイルをそのまま配る**（エンジンの出力。作り直さない）。
 
-- `POST /api/decks/<id>/exports` {format: pptx|pdf|images}  → `{"export": {id, format, run_id, filename, bytes, sha256,
+- `POST /api/decks/<id>/exports` {format: pptx|pdf|images|html}  → `{"export": {id, format, run_id, filename, bytes, sha256,
   download_url, created_at}}`（v1 の画面と同じ形。画面は `export.download_url` を開く）
 - `GET /api/exports/<id>/file`  → そのファイル（`Content-Disposition: attachment`。名前はスライドの題＋拡張子）
 
 決まり:
 - 配るのは見せる回（`store.shown_run`。描き終えた一番新しい回）の控え `decks/<デッキ>/runs/<回>/deck.pptx`・`deck.pdf`。
   非表示のページはエンジンに渡す台本から抜いてあるので、入っていない
+- `html` は組んだ HTML 1枚（`runs/<回>/index.html`。モーションだけ。エンジンの出力をそのまま配る）。モーションは PPTX・PDF を作らない
+  （逆に、プレゼン・ピッチには `html` が無い）。どのモードがどの形式を書き出せるかは `engines.Engine.exports`
 - `images` はページの画像（`slides/slide-NN.png`）の ZIP（`runs/<回>/exports/pages.zip`。時刻を固定して作るので、
   同じ回なら同じバイト）
 - 書き出しは記録する（どの回・どの形式・中身の sha256・名前）。配るときに sha256 を照らし、違えば配らない（同じ URL は同じバイト）
@@ -36,14 +38,16 @@ if TYPE_CHECKING:
 
 EXPORT_WAIT_SECONDS = 900.0
 POLL_SECONDS = 0.5
-FILES = {"pptx": "deck.pptx", "pdf": "deck.pdf", "images": "exports/pages.zip"}
-EXTENSIONS = {"pptx": ".pptx", "pdf": ".pdf", "images": ".zip"}
+FILES = {"pptx": "deck.pptx", "pdf": "deck.pdf", "images": "exports/pages.zip", "html": "index.html"}
+EXTENSIONS = {"pptx": ".pptx", "pdf": ".pdf", "images": ".zip", "html": ".html"}
 MEDIA_TYPES = {
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "pdf": "application/pdf",
     "images": "application/zip",
+    "html": "text/html; charset=utf-8",
 }
-FORMAT_REASON = "書き出しの形式は PDF・PPTX・ページの画像（ZIP）のどれかです。"
+FORMAT_REASON = "書き出しの形式は PDF・PPTX・HTML（1枚）・ページの画像（ZIP）のどれかです。"
+FORMAT_UNSUPPORTED = "このスライド（{mode}）は {fmt} に書き出せません。書き出せるのは「{ok}」です。"
 BUILDING_MESSAGE = "書き出すファイルを作っています。少し待ってから、もう一度押してください。"
 FAILED_MESSAGE = "書き出すファイルを作れませんでした。"
 _UNSAFE = re.compile(r'[\x00-\x1f\x7f/\\:*?"<>|]+')
@@ -123,6 +127,18 @@ def export_public(row: dict[str, Any]) -> dict[str, Any]:
             "download_url": f"/api/exports/{row['id']}/file"}
 
 
+def format_refusal(mode: str, fmt: str) -> str | None:
+    """そのモードが書き出せない形式なら、理由の 1 文（書き出せるなら None）。ページの画像の ZIP はどのモードでも書き出せる。"""
+    from ..engines import engine_for
+    from .vocabulary import EXPORT_FORMAT_LABELS, deck_mode_label
+
+    engine = engine_for(mode)
+    if fmt == "images" or fmt in engine.exports:
+        return None
+    ok = "・".join(EXPORT_FORMAT_LABELS.get(f, f) for f in engine.exports)
+    return FORMAT_UNSUPPORTED.format(mode=deck_mode_label(mode), fmt=EXPORT_FORMAT_LABELS.get(fmt, fmt), ok=ok)
+
+
 def route_create_export(server: "QuickSlideServer", req: "Request") -> "Response":
     deck_id = req.params["deck_id"]
     body = req.json_object()
@@ -132,6 +148,9 @@ def route_create_export(server: "QuickSlideServer", req: "Request") -> "Response
     with server.store_lock:
         store = server.store
         row = _live_deck_row(store, deck_id)
+        reason = format_refusal(row["mode"], fmt)
+        if reason:
+            raise ApiError(409, "export_unsupported", reason)
         shown = store.shown_run(deck_id)
         head = store.head_script(deck_id)
     path = _run_file(server, shown, fmt)
@@ -188,5 +207,8 @@ def route_export_file(server: "QuickSlideServer", req: "Request") -> "Response":
         raise ApiError(404, "export_not_found", "書き出したファイルが見つかりません。もう一度書き出してください。") from None
     if hashlib.sha256(data).hexdigest() != rec["sha256"]:
         raise ApiError(409, "export_changed", "書き出したときとファイルの中身が違うため、配りません。もう一度書き出してください。")
-    return Response(200, data, content_type=MEDIA_TYPES[rec["format"]],
-                    headers=(("Content-Disposition", content_disposition(rec["filename"])),))
+    headers = [("Content-Disposition", content_disposition(rec["filename"]))]
+    if rec["format"] == "html":
+        # 配るのはスクリプトを持つ HTML 1枚。ダウンロードで配るが、直に開かれても同一オリジンにしない
+        headers.append(("Content-Security-Policy", "sandbox allow-scripts"))
+    return Response(200, data, content_type=MEDIA_TYPES[rec["format"]], headers=tuple(headers))

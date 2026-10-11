@@ -16,7 +16,7 @@
 | フッタの文字 | 台本の一番外の `footer`（`scripts/engine.json` に書くときに入れる。台本の版は変えない） |
 | ページ番号 | 台本の一番外の `page_numbers` |
 | 透かし | `--watermark` |
-| スタイルの `engine_style[モード]` | `--style` |
+| スタイルの `engine_style[モード]` | `--style`（モーションは渡さない。テーマとロゴだけ受ける） |
 | スタイルの `image_look` | `--image-look` |
 | スタイルの `style_note`（と会話の作風の一言） | ピッチは `--style-note`。どちらも台本係の指示文 |
 | スタイルの `emphasis_prompt`・`tone`・`allowed_layouts` | 台本係の指示文（使ってよい型はサーバも確かめる） |
@@ -33,7 +33,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .. import contenttypes, palette
+from .. import contenttypes, motion, palette
 from ..engines import IMAGE_LOOKS, engine_for
 from ..logo import DEFAULT_PLACEMENT, PLACEMENT_KEY
 from ..paths import DataRoot
@@ -279,7 +279,7 @@ def writer_guidance(args: dict[str, Any]) -> list[str]:
     if tone and tone != "standard":
         lines.append(f"文章の調子: {TONE_WORDS.get(tone, tone)}")
     allowed = look.get("allowed_types")
-    if allowed:
+    if allowed and not motion.is_motion(args):   # モーションの場面は型を持たない
         lines.append("使ってよい型: " + "・".join(allowed) + "（ほかの型は使わない）")
     return lines
 

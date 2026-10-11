@@ -315,8 +315,10 @@ def fake_tools(testcase, *, mode: str = "ok", images: bool = True, skills_dir: P
         "HTML_SLIDE_CONFIG": str(tmp / "no-config.yaml"), "IMAGE_SLIDE_CONFIG": str(tmp / "no-config.yaml"),
         **(extra or {}),
     }
+    # モーションが組むのに要るもの（Playwright の Chromium）の確かめは、本物を探さず「揃っている」と答える偽物にする
     return Tools(claude=str(FAKES / "fake_claude.py"), codex=str(FAKES / "fake_codex_text.py"),
-                 skills_dir=skills_dir or SKILLS_DIR, extra_env=env), tmp
+                 skills_dir=skills_dir or SKILLS_DIR, extra_env=env,
+                 motion_probe=[sys.executable, "-c", "print('[]')"]), tmp
 
 
 def writer_calls(log_root: Path) -> list[dict[str, Any]]:

@@ -18,6 +18,7 @@ Claude Code と Codex のどちらにも載る。
 |---|---|
 | [`skills/html-slide/`](skills/html-slide/SKILL.md) | 文字も図形も PowerPoint の部品として組んだ、あとから直せて動く PPTX（プレゼンモード） |
 | [`skills/image-slide/`](skills/image-slide/SKILL.md) | 同じ台本を画像生成で1枚ずつ丸ごと描いた資料（ピッチモード） |
+| [`skills/motion-slide/`](skills/motion-slide/SKILL.md) | クリックで拍が進む Web プレゼン（HTML 1枚。モーションモード。PPTX・PDF にはならず、書き出しは HTML） |
 
 2つは同じ台本を受ける。設計判断はそれぞれの `docs/adr/`。
 
@@ -54,6 +55,7 @@ python3 <プラグイン>/skills/quick-slide/scripts/quick_slide_setup.py --setu
 | Node 18 以上・npm | 入れない（nodejs.org か `brew install node`） | — |
 | puppeteer-core | 入れる（`npm install --prefix`） | `~/.quick-slide/engines/html-slide/node/` |
 | Chrome（headless shell） | 入れる（`@puppeteer/browsers`） | `~/.quick-slide/engines/html-slide/chrome/` |
+| Playwright と Chromium（モーションだけ要る） | 入れる（`pip --user`・`python3 -m playwright install chromium`） | Playwright の置き場 |
 | 游ゴシック（プレゼンが文字の幅を測る） | 入れない（PowerPoint for Mac に同梱。無ければ html-slide の設定の `fonts:`） | — |
 | `codex` CLI（絵を描く・台本係にもなる） | 入れない（`npm install -g @openai/codex`。全体に入れるため） | — |
 | `claude` CLI（台本係） | 入れない（Claude Code に付いてくる） | — |

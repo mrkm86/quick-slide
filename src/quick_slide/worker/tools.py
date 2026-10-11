@@ -29,6 +29,9 @@ class Tools:
     claude: str | None = None
     codex: str | None = None
     extra_env: dict[str, str] = field(default_factory=dict)
+    # モーションが組むのに要るもの（Playwright の Chromium など）の確かめ。None なら `render/runner.py` の既定の確かめ。
+    # 足りなければ 4 で終わり、足りないものの名前の配列（JSON）を標準出力の最後の行に出す（試験が偽物を差す）
+    motion_probe: list[str] | None = None
 
     def _lookup(self, explicit: str | None, env_name: str, command: str) -> str | None:
         value = explicit or self.extra_env.get(env_name) or os.environ.get(env_name)

@@ -16,8 +16,8 @@ LOGO_ROLES = ("logo_normal", "logo_white", "logo_transparent", "logo_symbol")
 LOGO_VARIANTS = ("normal", "white", "transparent", "symbol", "none")
 LOGO_CORNERS = LOGO_POSITIONS  # 正本は logo.py（エンジンの --logo-position と同じ 3 つ）
 DECK_STATUSES = ("draft", "review", "final")
-# デッキのモード。作るときに決め、あとから替えない（プレゼン＝html-slide・ピッチ＝image-slide）
-DECK_MODES = ("presentation", "pitch")
+# デッキのモード。作るときに決め、あとから替えない（プレゼン＝html-slide・ピッチ＝image-slide・モーション＝motion-slide）
+DECK_MODES = ("presentation", "pitch", "motion")
 LAUNCH_REQUESTED_VIA = ("start", "open", "ensure_external")
 LAUNCH_STATES = ("pending", "attached", "expired", "cancelled")
 ATTACHED_VIA = ("integrated", "external", "unknown")
@@ -36,8 +36,8 @@ JOB_KINDS = ("make", "edit")
 # 直しの種類: ページを指定した直し・差し込み・複製・非表示/表示・並べ替え・版から戻す・描き直し（再開）・
 # 設定を替えて組み直す（P5。いまの台本をいまのブランド・スタイルで）
 EDIT_OPS = ("revise", "insert", "duplicate", "visibility", "reorder", "restore", "render", "rebuild")
-# 書き出しの形式（P5）。images はページの画像の ZIP
-EXPORT_FORMATS = ("pptx", "pdf", "images")
+# 書き出しの形式（P5）。images はページの画像の ZIP。html は HTML 1枚（motion だけ）
+EXPORT_FORMATS = ("pptx", "pdf", "images", "html")
 # 直しを頼んだ口
 EDIT_SOURCES = ("screen", "conversation")
 JOB_STATES = ("queued", "running", "done", "failed")

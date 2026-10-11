@@ -407,7 +407,15 @@ def route_deck(server: "QuickSlideServer", req: "Request") -> "Response":
         "live": view["live"],
         "last_event_seq": view["seq"],
         "capabilities": view["capabilities"],
+        # 書き出しのメニューの形式（モードで決まる。可否は capabilities.export と、ここの形式ごとの理由）
+        "export_formats": _export_formats(view["row"]["mode"]),
     })
+
+
+def _export_formats(mode: str) -> list[dict[str, Any]]:
+    from .page_view import export_formats
+
+    return export_formats(mode)
 
 
 def route_progress(server: "QuickSlideServer", req: "Request") -> "Response":

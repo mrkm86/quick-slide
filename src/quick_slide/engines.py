@@ -1,8 +1,12 @@
-"""エンジン（`skills/html-slide`・`skills/image-slide`）の呼び方の正本。モード → スキル・入口・スタイル・引数。
+"""エンジン（`skills/html-slide`・`skills/image-slide`・`skills/motion-slide`）の呼び方の正本。モード → スキル・入口・スタイル・引数。
 
 サーバはエンジンの中身を持たない。台本の決まり（`references/deck-format.md` など）は実行時にここから読み、
 検査（`check`）と描くこと（`deck`）は子プロセスで呼ぶ。エンジンの終了コードは
-0=成功 / 1=一部できなかった / 2=台本・引数の誤り / 4=依存不足・Codex の認証（両エンジン共通）。
+0=成功 / 1=一部できなかった / 2=台本・引数の誤り / 4=依存不足・Codex の認証（3 エンジン共通）。
+
+モードごとの違い（受ける引数・出力・画像の枠・書き出せる形・発表の部品）は `Engine` の項目に集める。
+**種類（モード）の持ち方は、デッキの作り方を見直したときに変えうる**ので、モードごとの分岐は呼ぶ側に散らさず、
+ここと `motion.py`（motion の台本の読み書き）に閉じ込める。
 """
 
 from __future__ import annotations
@@ -16,6 +20,8 @@ from typing import Any
 IMAGE_LOOKS = ("photo", "illustration", "handdrawn")
 # 描いた回で作る出力（エンジンの `--format`）。画面に出すのは `slides/slide-NN.png`
 FORMATS = "pptx,pdf,png,thumbs"
+# motion-slide は PPTX・PDF を作らない（出口は HTML 1枚）
+MOTION_FORMATS = "png,thumbs"
 
 RC_OK = 0
 RC_PARTIAL = 1
@@ -39,15 +45,32 @@ class Engine:
     # 検査（check）もロゴ・透かしを受けるか（image-slide はロゴの有無で描く指示の帯が変わるので、検査にも渡す）
     check_takes_brand: bool = False
     label: str = ""
+    # --- モードごとの違い（既定は html-slide・image-slide と同じ） ---
+    formats: str = FORMATS
+    # `--style`・`--image-look` を渡すか。motion-slide はスタイルを持たない（テーマとロゴだけ受ける）
+    takes_style: bool = True
+    takes_logo_position: bool = True
+    takes_watermark: bool = True
+    # 台本係が画像の枠（image）を書くか・絵だけを直す（revise）があるか
+    has_images: bool = True
+    can_revise: bool = True
+    # 形だけを先に見る検査（`check --quick`。Chrome を使わず速い）があるか
+    quick_check: bool = False
+    # 書き出せる形（`enums.EXPORT_FORMATS` の名前）
+    exports: tuple[str, ...] = ("pptx", "pdf")
+    # 台本のページの呼び名（画面・台本係への指示で使う）。motion は「場面」
+    page_word: str = "ページ"
 
     def entry_path(self, skills_dir: Path) -> Path:
         return skills_dir / self.skill / self.entry
 
     def style_args(self, args: dict[str, Any]) -> list[str]:
         """スタイル・画風・一言・テーマ（ブランドの配色。P4 の回は `args.look.theme`）。"""
-        out = ["--style", str(args.get("style") or self.default_style)]
-        if args.get("image_look"):
-            out += ["--image-look", str(args["image_look"])]
+        out: list[str] = []
+        if self.takes_style:
+            out += ["--style", str(args.get("style") or self.default_style)]
+            if args.get("image_look"):
+                out += ["--image-look", str(args["image_look"])]
         if self.takes_style_note and args.get("style_note"):
             out += ["--style-note", str(args["style_note"])]
         look = args.get("look") or {}
@@ -60,21 +83,28 @@ class Engine:
         look = args.get("look") or {}
         out: list[str] = []
         if look.get("logo"):
-            out += ["--logo", str(look["logo"]), "--logo-position", str(look.get("logo_position") or "bottom-right")]
+            out += ["--logo", str(look["logo"])]
+            if self.takes_logo_position:
+                out += ["--logo-position", str(look.get("logo_position") or "bottom-right")]
             if self.takes_logo_white and look.get("logo_white"):
                 out += ["--logo-white", str(look["logo_white"])]
-        if look.get("watermark"):
+        if self.takes_watermark and look.get("watermark"):
             out += ["--watermark", str(look["watermark"])]
         return out
 
-    def check_command(self, python: str, skills_dir: Path, script: Path, args: dict[str, Any]) -> list[str]:
+    def check_command(self, python: str, skills_dir: Path, script: Path, args: dict[str, Any], *,
+                      quick: bool = False) -> list[str]:
+        """台本の検査。`quick` は形だけ（`quick_check` のエンジンだけ。Chrome を使わない）。"""
         extra = self.brand_args(args) if self.check_takes_brand else []
-        return [python, str(self.entry_path(skills_dir)), "check", "--script", str(script), *self.style_args(args),
-                *extra]
+        cmd = [python, str(self.entry_path(skills_dir)), "check", "--script", str(script), *self.style_args(args),
+               *extra]
+        if quick and self.quick_check:
+            cmd.append("--quick")
+        return cmd
 
     def deck_command(self, python: str, skills_dir: Path, script: Path, out: Path, args: dict[str, Any]) -> list[str]:
         return [python, str(self.entry_path(skills_dir)), "deck", "--script", str(script), "--out", str(out),
-                *self.style_args(args), *self.brand_args(args), "--format", FORMATS, *self.deck_extra]
+                *self.style_args(args), *self.brand_args(args), "--format", self.formats, *self.deck_extra]
 
     def revise_command(self, python: str, skills_dir: Path, script: Path, out: Path, args: dict[str, Any], *,
                        page: int, note: str, remake: bool = False, slot: str | None = None,
@@ -87,7 +117,7 @@ class Engine:
         直す前の絵は、どちらもキャッシュの区画の `history/` に残る（戻すのは Quick Slide の版スタックがする）。
         """
         cmd = [python, str(self.entry_path(skills_dir)), "revise", "--script", str(script), "--out", str(out),
-               *self.style_args(args), *self.brand_args(args), "--format", FORMATS, *self.deck_extra,
+               *self.style_args(args), *self.brand_args(args), "--format", self.formats, *self.deck_extra,
                "--page", str(page), "--note", note]
         if slot and self.mode == "presentation":
             cmd += ["--slot", slot]
@@ -119,6 +149,15 @@ ENGINES: dict[str, Engine] = {
         contract_docs=("html-slide/references/deck-format.md", "image-slide/references/intake.md"),
         takes_style_note=True, needs_codex_auth=True, takes_logo_white=True, check_takes_brand=True,
         label="ピッチ（1 枚ずつ画像生成で描く）"),
+    # モーション: クリックで拍が進む Web プレゼン（HTML 1枚）。場面ごとの台本（JSON）を組み、全部の拍を Chrome で検査する。
+    # 画像の枠・Codex は使わない。テーマとロゴだけ受ける（スタイル・透かし・ロゴの角は無い）
+    "motion": Engine(
+        mode="motion", skill="motion-slide", entry="scripts/motion_slide.py",
+        styles=("standard",), default_style="standard",
+        contract_docs=("motion-slide/references/deck-format.md", "motion-slide/references/authoring.md"),
+        formats=MOTION_FORMATS, takes_style=False, takes_logo_position=False, takes_watermark=False,
+        has_images=False, can_revise=False, quick_check=True, exports=("html",), page_word="場面",
+        label="モーション（クリックで拍が進む Web プレゼン・HTML 1枚）"),
 }
 
 

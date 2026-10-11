@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from ..enums import (
+    DECK_MODES,
     JOB_KINDS,
     JOB_STATES,
     RUN_ACTIVE_STATES,
@@ -52,7 +53,7 @@ class RunsMixin(StoreBase):
         self._require_tx()
         from ..engines import engine_for
 
-        mode = require(args.get("mode"), tuple(("presentation", "pitch")), "runs.mode")
+        mode = require(args.get("mode"), DECK_MODES, "runs.mode")
         number = int(self._scalar("SELECT COALESCE(MAX(number),0)+1 FROM runs WHERE deck_id=?", (deck_id,)))
         rid = self.new_id()
         now = self.now()

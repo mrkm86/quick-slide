@@ -34,11 +34,11 @@ description: Quick Slide で会話の続きからスライドを作り、会話�
 python3 "${SKILL_DIR}/scripts/quick_slide_setup.py" --doctor
 ```
 
-最終行の JSON の `checks[]`（`level` が `ng` のもの）と `ready`（presentation・pitch・images）を読む。
+最終行の JSON の `checks[]`（`level` が `ng` のもの）と `ready`（presentation・pitch・motion・images）を読む（`motion` はモーションを使うときだけ要る Playwright と Chromium）。
 
 1. **`ng` を利用者に伝え、入れてよいか聞く。** 入れるのは管理者の権限が要らないものだけで、置き場は Quick Slide の中
    （`~/.quick-slide/engines/html-slide/` の puppeteer-core と Chrome の headless shell・Python のパッケージは `pip --user`）。
-   ダウンロードが数百 MB あることも言う
+   ダウンロードが数百 MB あることも言う（モーションを使わないなら、Playwright と Chromium は入れなくてよい）
 2. 承知されたら `--setup --yes` を流す（聞かずに流さない。`--yes` を付けないと計画を出して止まる）
 
    ```bash
@@ -102,9 +102,10 @@ python3 "${SKILL_DIR}/scripts/quick_slide_setup.py" --doctor
 |---|---|---|
 | `presentation`（既定） | 文字も図形も PowerPoint の部品として組んだ、**あとから直せて、クリックで動く PPTX**（エンジン html-slide） | 説明・報告・提案。数字や文言をあとで直す・話しながら見せる |
 | `pitch` | 各ページを**画像生成で丸ごと描いた**資料（エンジン image-slide）。PPTX にも絵として入る | 印象で伝えるピッチ・企画のイメージ。絵の中の文字はあとで直せない |
+| `motion` | **クリックで「拍」が進む Web プレゼン**（エンジン motion-slide）。HTML 1枚で、図が動き・飛び・線でつながる。PPTX・PDF にはならない（書き出しは「HTML（1枚）」だけ） | 画面で見せて説明する（発表の画面か、HTML を開いて見せる）。動きで理解を助けたい解説・講座・記事の読み解き。画像は使わない（図は HTML で描く）。作るのに全部の拍を Chrome で確かめるので数分かかる（Playwright の Chromium が要る。`quick_slide_setup.py --doctor` の `motion`） |
 
-迷ったら `presentation`。ユーザーが「絵で」「イメージで」「ワクワクする感じで」と言ったら `pitch`。
-スタイルは `--style`（presentation: `standard` 既定・`visual`／pitch: `visual` 既定・`standard`・`infographic`＝全ページを 1 枚のポスターに）。
+迷ったら `presentation`。ユーザーが「絵で」「イメージで」「ワクワクする感じで」と言ったら `pitch`。「動くプレゼン」「クリックで進む」「Web プレゼン」「モーション」と言ったら `motion`。
+スタイルは `--style`（presentation: `standard` 既定・`visual`／pitch: `visual` 既定・`standard`・`infographic`＝全ページを 1 枚のポスターに／motion: `standard` だけ。色とロゴは設定のブランド）。
 絵の画風を言われたら `--image-look photo|illustration|handdrawn`。絵を入れたくないと言われたら `--no-images`。
 
 ### 2. 会話を原稿にする
@@ -147,11 +148,11 @@ python3 "${SKILL_DIR}/scripts/quick_slide_start.py" \
 |---|---|
 | `--manuscript-file` | 原稿（Markdown, UTF-8）。**必須** |
 | `--title` | 仮の題。無ければ「無題のスライド（日時）」 |
-| `--mode` | `presentation`（既定）／`pitch` |
+| `--mode` | `presentation`（既定）／`pitch`／`motion`（`motion` は `--image-look`・`--no-images` が効かない。画像を使わない。1 ページは「場面」） |
 | `--style` / `--image-look` / `--no-images` | 上の「モードを選ぶ」 |
 | `--purpose` / `--audience` / `--style-note` / `--pages` | 会話で分かっている範囲だけ。分からないものは渡さない（`--pages` は枚数） |
 | `--outline-fixed` | 原稿は会話で合意した構成（`## N. 見出し` が 1 ページ）。A のときだけ付ける |
-| `--wait`（`--wait-timeout` 秒・既定 900） | 描き終える（か失敗する）まで待ち、ページの見出し（`pages`）を返す。B では必ず付ける |
+| `--wait`（`--wait-timeout` 秒・既定 900） | 描き終える（か失敗する）まで待ち、ページの見出し（`pages`）を返す。B では必ず付ける。`motion` は全拍の検査で長くなるので `--wait-timeout 2400` ほどにする |
 | `--brand-id` | ブランドの UUID（名前では指定できない。分からなければ渡さない） |
 | `--style-id` | スライドスタイルの UUID（設定の画面で登録したもの。分からなければ渡さない。`--style` と一緒なら `--style` が勝つ） |
 | `--new-deck` | 同じ内容を送り直したときも、必ず新しいスライドにする（既定では、同じ会話から 10 分以内に同じ内容が届くと同じスライドを返す） |

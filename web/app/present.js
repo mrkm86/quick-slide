@@ -1,15 +1,21 @@
 // 発表の画面（見せる用）の外枠。ページ数・いまのページ・段・次へ・前へ だけを知り、中身はエンジンの部品（adapter）に任せる。
 //
 //   adapter = {
-//     mount(slideEl, data) -> Promise   出す場所を作る（準備ができたら解決・出せなければ拒否）
+//     mount(slideEl, data, host) -> Promise   出す場所を作る（準備ができたら解決・出せなければ拒否）。host は中からの知らせの受け口
+//                                              { change(page, step), key(key), activity() }（中が自分で動くエンジンだけが使う）
 //     steps(i) -> number                そのページの段の数（0 なら 1 ページ 1 段）
 //     show(i, step, dir)                i ページ目（0 から）の step 段目まで出す。dir は 1 進む・-1 戻る・0 飛ぶ
 //     dispose()
+//     （任意）interactive    true なら中が自分で操作を受ける（外枠は面を重ねず、タップ・スワイプ・キーは中で受ける）
+//     （任意）stepText(i, step) -> string   進み具合の「段」の言い方（無ければ「段 n / m」）
+//     （任意）idle(on)・gesture()           触らない間（矢印を隠す）・最初の操作（音を使えるようにする）を中へ伝える
 //   }
 //   - image-slide: 見せる版のページの PNG を順に出す（段は無い）。html-slide の回の HTML が無い古い回もこれで出す
 //   - html-slide:  回の HTML を仕切りの中（<iframe sandbox="allow-scripts">・同一オリジンの許可なし）で開き、
 //                  postMessage で「このページの何段目まで」を送る（再生は present-frame.js）
-//   - motion-slide を足すときは、同じ形の部品を ADAPTERS に 1 つ足す（外枠は変えない）
+//   - motion-slide: 回の HTML 1枚（自前のエンジン window.MS を持つ）を、同じ仕切りの中で動かす。外枠のページ＝場面・段＝拍で、
+//                   postMessage（present-motion-frame.js が中でつなぐ）で MS.go を送り、中の状態の変化（中でのクリック・キー・
+//                   自動再生）を外枠の進み具合に返す。一覧・全画面・Esc は外枠のものを使う（中の一覧は出さない）
 //
 // 画面の操作: 進む（クリックの右側・→・Space・Enter・PageDown・左スワイプ）／戻る（左側・←・PageUp・右スワイプ）／
 // Home・End／O か一覧ボタンで一覧／F で全画面／Esc で編集へ戻る（一覧が開いていれば一覧を閉じる）。
@@ -156,10 +162,89 @@
     };
   }
 
-  // エンジンごとの部品。外枠は名前でしか選ばない。html-slide は回の HTML があれば仕切りの中で、無ければ PNG で出す
+  // ---- 部品 3: motion-slide の回の HTML 1枚を仕切りの中でそのまま動かす（エンジンは中。外枠は場面と拍の位置だけをつなぐ） ----
+  function motionAdapter() {
+    var frame = null, pages = [], info = [], host = {}, readyResolve = null, readyReject = null, timer = null, onMessage = null;
+    function send(msg) {
+      msg.qs = "present-motion";
+      msg.v = 1;
+      // 仕切りの中のオリジンは不透明（null）で宛先に書けない。送る中身は場面と拍の番号だけ。受ける側（present-motion-frame.js）が
+      // 差出人（親の window）とオリジンを確かめる
+      if (frame && frame.contentWindow) { frame.contentWindow.postMessage(msg, "*"); }
+    }
+    function isInt(n) { return Number.isInteger(n) && n >= 0; }
+    function isReady(d) {
+      return d.type === "ready" && Array.isArray(d.scenes) && d.scenes.every(function (s) { return s && isInt(s.steps); });
+    }
+    function pageOf(section) {
+      for (var k = 0; k < pages.length; k++) { if (pages[k].section === section) { return k; } }
+      return -1;
+    }
+    return {
+      name: "motion",
+      interactive: true,
+      mount: function (slideEl, data, h) {
+        pages = data.pages;
+        host = h || {};
+        return new Promise(function (resolve, reject) {
+          readyResolve = resolve;
+          readyReject = reject;
+          onMessage = function (e) {
+            // 差出人はこの iframe だけ・オリジンは不透明（"null"）・合図の形が合うものだけ
+            if (!frame || e.source !== frame.contentWindow || e.origin !== "null") { return; }
+            var d = e.data;
+            if (!d || typeof d !== "object" || d.qs !== "present-motion" || d.v !== 1) { return; }
+            if (isReady(d)) {
+              info = d.scenes;
+              clearTimeout(timer);
+              if (readyResolve) { readyResolve(); readyResolve = readyReject = null; }
+            } else if (d.type === "state" && isInt(d.page) && isInt(d.step)) {
+              var i = pageOf(d.page);
+              if (i >= 0 && host.change) { host.change(i, d.step); }
+            } else if (d.type === "key" && typeof d.key === "string") {
+              if (host.key) { host.key(d.key); }
+            } else if (d.type === "activity") {
+              if (host.activity) { host.activity(); }
+            }
+          };
+          window.addEventListener("message", onMessage);
+          frame = document.createElement("iframe");
+          frame.setAttribute("sandbox", "allow-scripts");     // 同一オリジンの許可は付けない（API・セッションに触れさせない）
+          frame.setAttribute("allow", "autoplay");            // 効果音・BGM（利用者の操作の後だけ鳴る）を中の文書にも許す
+          frame.setAttribute("title", "スライド");
+          frame.src = data.html.url;
+          slideEl.appendChild(frame);
+          timer = setTimeout(function () {
+            if (readyReject) { readyReject(new Error("timeout")); readyResolve = readyReject = null; }
+          }, READY_TIMEOUT_MS);
+        });
+      },
+      steps: function (i) {
+        var page = pages[i];
+        if (!page) { return 0; }
+        var s = info[page.section];
+        return s ? s.steps : page.steps;
+      },
+      stepText: function (i, step) { return "拍 " + (step + 1) + " / " + (this.steps(i) + 1); },
+      show: function (i, step) {
+        var page = pages[i];
+        if (page) { send({ type: "show", page: page.section, step: step }); }
+      },
+      idle: function (on) { send({ type: "idle", on: !!on }); },
+      gesture: function () { send({ type: "gesture" }); },
+      dispose: function () {
+        clearTimeout(timer);
+        if (onMessage) { window.removeEventListener("message", onMessage); }
+        if (frame) { frame.remove(); frame = null; }
+      }
+    };
+  }
+
+  // エンジンごとの部品。外枠は名前でしか選ばない。html-slide・motion-slide は回の HTML があれば仕切りの中で、無ければ PNG で出す
   var ADAPTERS = {
     "image-slide": function () { return imageAdapter(); },
-    "html-slide": function (data) { return data.html ? frameAdapter() : imageAdapter(); }
+    "html-slide": function (data) { return data.html ? frameAdapter() : imageAdapter(); },
+    "motion-slide": function (data) { return data.html ? motionAdapter() : imageAdapter(); }
   };
 
   // ---- 外枠 ----
@@ -212,12 +297,20 @@
   // ---- 進む・戻る ----
   function stepsHere() { return adapter ? adapter.steps(cur) : 0; }
 
-  function render(dir, announce) {
-    adapter.show(cur, step, dir);
+  // 進み具合の「段」の言い方（motion は「拍」）。段が無いページは言わない
+  function stepLabel(n) {
+    if (adapter && adapter.stepText) { return adapter.stepText(cur, step); }
+    return n > 0 ? "段 " + step + " / " + n : "";
+  }
+
+  // `fromInner` が真のときは、中が自分で動いた結果を外枠に合わせるだけ（中へは送り返さない）
+  function render(dir, announce, fromInner) {
+    if (!fromInner) { adapter.show(cur, step, dir); }
     var total = pages.length, n = stepsHere();
+    var label = stepLabel(n);
     countEl.textContent = "";
     countEl.appendChild(document.createTextNode((cur + 1) + " / " + total));
-    if (n > 0) { countEl.appendChild(el("small", "", "段 " + step + " / " + n)); }
+    if (label) { countEl.appendChild(el("small", "", label)); }
     fill.style.width = (total > 1 ? (cur / (total - 1)) * 100 : 100) + "%";
     var atEnd = cur === total - 1 && step >= n;
     var atStart = cur === 0 && step === 0;
@@ -225,7 +318,7 @@
     prevBtn.hidden = atStart;
     var title = pages[cur].title;
     if (announce !== false) {
-      say("ページ " + (cur + 1) + " / " + total + (title ? ": " + title : "") + (n > 0 ? "（段 " + step + " / " + n + "）" : ""));
+      say("ページ " + (cur + 1) + " / " + total + (title ? ": " + title : "") + (label ? "（" + label + "）" : ""));
     }
     document.title = (title ? title + " - " : "") + (data ? data.deck.title : "発表") + "（" + (cur + 1) + " / " + total + "）";
     var url = new URL(location.href);
@@ -255,6 +348,28 @@
     else if (cur > 0) { go(cur - 1, adapter.steps(cur - 1), -1); }   // 戻ると、前のページは全部出した姿
   }
   function jump(i) { go(i, 0, 0); }
+  // 中のエンジンが自分で動いた（中でのクリック・キー・自動再生）。外枠の位置を合わせる（中へは送り返さない）
+  function syncFromInner(i, s) {
+    if (!mounted || !adapter) { return; }
+    i = Math.max(0, Math.min(i, pages.length - 1));
+    s = Math.max(0, Math.min(s, adapter.steps(i)));
+    if (rendered && i === cur && s === step) { return; }
+    cur = i;
+    step = s;
+    rendered = true;
+    render(1, true, true);
+  }
+  // 中で押された、外枠が持つキー（一覧・全画面・Esc・End）。外枠にフォーカスがあるときの同じキーと同じ動き
+  function forwardedKey(key) {
+    if (!mounted || listIsOpen()) { return; }
+    switch (key) {
+      case "o": case "O": openList(); break;
+      case "f": case "F": toggleFullscreen(); break;
+      case "End": jump(pages.length - 1); break;
+      case "Escape": location.assign(data.edit_url); break;
+      default: break;
+    }
+  }
 
   // ---- 一覧 ----
   function buildList() {
@@ -337,13 +452,25 @@
 
   // ---- 触らないと隠す ----
   function wake() {
-    root.classList.remove("is-idle");
+    if (root.classList.contains("is-idle")) {
+      root.classList.remove("is-idle");
+      if (adapter && adapter.idle) { adapter.idle(false); }
+    }
     clearTimeout(idleTimer);
     idleTimer = setTimeout(function () {
       if (listIsOpen() || root.getAttribute("data-state") !== "ready") { return; }
       root.classList.add("is-idle");
+      if (adapter && adapter.idle) { adapter.idle(true); }
     }, IDLE_MS);
   }
+  // 外枠での最初の操作を、中のエンジンへ「最初の操作」として伝える（効果音・BGM は利用者の操作の後だけ鳴る）
+  var gestured = false;
+  function firstGesture() {
+    if (gestured) { return; }
+    gestured = true;
+    if (adapter && adapter.gesture) { adapter.gesture(); }
+  }
+  ["pointerdown", "keydown"].forEach(function (t) { document.addEventListener(t, firstGesture, { capture: true, passive: true }); });
   ["pointermove", "pointerdown", "keydown", "focusin", "touchstart"].forEach(function (t) {
     document.addEventListener(t, wake, { passive: true });
   });
@@ -450,10 +577,12 @@
       wake();
       stage.focus({ preventScroll: true });
     };
-    adapter.mount(slideEl, d).then(begin, function () {
+    root.classList.toggle("pr--live", !!adapter.interactive);
+    adapter.mount(slideEl, d, { change: syncFromInner, key: forwardedKey, activity: wake }).then(begin, function () {
       // 仕切りの中が立ち上がらない: ページの PNG に切り替える（段ごとの再生は諦める）
       adapter.dispose();
       adapter = imageAdapter();
+      root.classList.remove("pr--live");
       slideEl.textContent = "";
       flash("動きの再生を始められなかったので、ページの画像で見せます。");
       adapter.mount(slideEl, d).then(begin);

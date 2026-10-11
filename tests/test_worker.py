@@ -31,14 +31,16 @@ def fake_skills_dir(testcase) -> Path:
     """偽物のエンジンを本物と同じ置き方（`<スキル>/scripts/<入口>.py`・決まりの文書）で並べる。"""
     root = temp_dir(testcase, "quick-slide-fake-skills-") / "skills"
     fake = FAKES / "fake_engine.py"
-    for skill, entry, kind in (("html-slide", "html_slide.py", "html"), ("image-slide", "image_slide.py", "image")):
+    for skill, entry, kind in (("html-slide", "html_slide.py", "html"), ("image-slide", "image_slide.py", "image"),
+                               ("motion-slide", "motion_slide.py", "motion")):
         (root / skill / "scripts").mkdir(parents=True)
         (root / skill / "scripts" / entry).write_text(
             "import runpy, sys\n"
             f"sys.argv = [{str(fake)!r}, {kind!r}, *sys.argv[1:]]\n"
             f"runpy.run_path({str(fake)!r}, run_name='__main__')\n", encoding="utf-8")
         (root / skill / "references").mkdir()
-    for rel in ("html-slide/references/deck-format.md", "image-slide/references/intake.md"):
+    for rel in ("html-slide/references/deck-format.md", "image-slide/references/intake.md",
+                "motion-slide/references/deck-format.md", "motion-slide/references/authoring.md"):
         shutil.copyfile(SKILLS_DIR / rel, root / rel)
     return root
 

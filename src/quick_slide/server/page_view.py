@@ -14,12 +14,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..engines import engine_for
 from ..render import workspace as W
 from ..scriptdoc import one_page, screen_pages
 from .later import NOT_READY_REASON
 from .vocabulary import EDIT_MODE_LABELS, SOURCE_KIND_LABELS, page_display, run_page_display
 
 NO_PICTURE_REASON = "このページには直せる絵がありません。指示は文字・構成の直しになります。"
+NO_REVISE_REASON = "モーションには絵だけを直す操作がありません。指示は場面の中身（文字・図・動き）の直しになります。"
 INFOGRAPHIC_PAGES_REASON = "1 枚にまとめるスタイル（infographic）では、ページを足す・並べ替える・隠すことはできません。"
 NOT_ADOPTABLE_REASON = "この版には絵がありません。"
 NOT_PRESENTABLE_REASON = "見せられるページがまだありません。ページができてから開いてください。"
@@ -128,6 +130,9 @@ class LegacyContent:
 
 
 def _minor(mode: str, has_picture: bool) -> dict[str, Any]:
+    if not engine_for(mode).can_revise:
+        # 画像の概念が無い（`hidden`: 画面は「元の画像を使わずに生成し直す」の選択肢と画像の添付を出さない）
+        return {"available": False, "label": EDIT_MODE_LABELS["minor"], "reason": NO_REVISE_REASON, "hidden": True}
     if has_picture:
         return {"available": True, "label": EDIT_MODE_LABELS["minor"], "reason": None}
     return {"available": False, "label": EDIT_MODE_LABELS["minor"], "reason": NO_PICTURE_REASON}
@@ -243,6 +248,23 @@ def pending_inserts(store: Any, jobs: list[dict[str, Any]]) -> list[dict[str, An
         req = j.get("request") or {}
         if req.get("op") == "insert":
             out.append({"task_id": j["id"], "after_slide_id": req.get("after"), "state": j["state"]})
+    return out
+
+
+def export_formats(mode: str) -> list[dict[str, Any]]:
+    """書き出しのメニューに出す形式と、モードで決まる可否（理由つき）。PDF・PPTX はどのモードにも並べ、書き出せないモード
+    （モーション）は押せなくして理由を出す。HTML（1枚）はモーションだけに並べる。ページの有無による可否は
+    `capabilities.export`（ここはモードだけで決まるので、デッキの答えに 1 度だけ載せる）。"""
+    from .export_routes import format_refusal
+    from .vocabulary import EXPORT_FORMAT_LABELS
+
+    engine = engine_for(mode)
+    out = []
+    for fmt in ("pdf", "pptx", "html"):
+        if fmt == "html" and fmt not in engine.exports:
+            continue
+        reason = format_refusal(mode, fmt)
+        out.append({"format": fmt, "label": EXPORT_FORMAT_LABELS[fmt], "available": reason is None, "reason": reason})
     return out
 
 

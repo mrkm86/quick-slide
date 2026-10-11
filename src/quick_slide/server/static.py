@@ -266,7 +266,8 @@ PRESENT_FONT_TYPES: dict[str, str] = {
 class PresentFiles:
     """`decks/<デッキ>/runs/<回>/present/` の中だけを配る。
 
-    開けるのは `deck.html` と、`assets/<画像>`・`fonts/<字体>`（拡張子の許可リスト）だけ。字体は控えるときに
+    開けるのは `deck.html`（html-slide）か `index.html`（motion-slide の HTML 1枚。画像・字体・音は全部中に入っている）と、
+    `assets/<画像>`・`fonts/<字体>`（拡張子の許可リスト）だけ。字体は控えるときに
     手元のファイルから `present/fonts/` へ張った**控え**を配るので、元のパス（設定の fonts）は配信に出ない。
     降り方は `AssetFiles` と同じ（1 段ずつ文字列一致・symlink 拒否・最後に realpath で閉じ込める）。
     """
@@ -280,7 +281,7 @@ class PresentFiles:
         parts = split_segments(rel)
         if parts is None:
             return None
-        if parts == ["deck.html"]:
+        if parts in (["deck.html"], ["index.html"]):
             content_type = STATIC_TYPES[".html"]
         elif len(parts) == 2 and parts[0] in ("assets", "fonts"):
             table = PRESENT_ASSET_TYPES if parts[0] == "assets" else PRESENT_FONT_TYPES

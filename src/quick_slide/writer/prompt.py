@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .. import motion
 from ..engines import Engine
 from ..render.look import writer_guidance
 
@@ -59,6 +60,8 @@ def contract_text(engine: Engine, skills_dir: Path) -> str:
 
 
 def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
+    if engine.mode == "motion":
+        return [*motion.writer_rules(args), *(motion.OUTLINE_RULES if args.get("outline_fixed") else [])]
     rules = [
         "返すのは台本の JSON オブジェクト 1 つだけ。前後に説明・見出し・コードフェンスを付けない",
         "道具を使わない。ファイルを読まない・書かない。コマンドを実行しない。調べものをしない",
@@ -96,21 +99,27 @@ def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
 
 def _attributes(engine: Engine, args: dict[str, Any], title_hint: str | None) -> list[str]:
     style = args.get("style") or engine.default_style
-    lines = [
-        f"モード: {engine.label}",
-        f"スタイル: {STYLE_WORDS.get((engine.mode, style), style)}",
+    lines = [f"モード: {engine.label}"]
+    if engine.takes_style:   # モーションはスタイルを持たない（見せ方はテーマの色と、場面ごとの HTML で決まる）
+        lines.append(f"スタイル: {STYLE_WORDS.get((engine.mode, style), style)}")
+    lines += [
         f"目的: {args.get('purpose') or '（指定なし。原稿から読み取る）'}",
         f"読み手: {args.get('audience') or '（指定なし。原稿から読み取る）'}",
     ]
     pc = args.get("page_count")
-    lines.append(f"枚数: {pc} 枚（表紙と締めを含む）" if pc else "枚数: 指定なし（原稿の量に合わせる。目安は 5〜12 枚）")
-    if args.get("images", True):
+    if engine.mode == "motion":
+        lines.append(f"場面数: {pc} 場面（表紙とまとめを含む）" if pc else "場面数: 指定なし（原稿の量に合わせる。目安は 5〜10 場面）")
+    else:
+        lines.append(f"枚数: {pc} 枚（表紙と締めを含む）" if pc else "枚数: 指定なし（原稿の量に合わせる。目安は 5〜12 枚）")
+    if not engine.has_images:
+        lines.append("画像: 使わない（図・形・線は HTML・CSS・SVG で描く）")
+    elif args.get("images", True):
         look = args.get("image_look")
         lines.append("画像: 使う（効くページにだけ置く）"
                      + (f"。画風は {LOOK_WORDS.get(look, look)}（描くときに足すので prompt には書かない）" if look else ""))
     else:
         lines.append("画像: 使わない")
-    if args.get("style_note"):
+    if args.get("style_note") and engine.has_images:   # 作風の一言は絵の描き方の注文（モーションは絵を描かない）
         lines.append(f"作風の一言: {args['style_note']}")
     if title_hint:
         lines.append(f"資料の仮の題: {title_hint}（title に使ってよい）")
@@ -187,6 +196,8 @@ ROUTE_WORDS = {
 
 
 def _edit_rules(engine: Engine, args: dict[str, Any]) -> list[str]:
+    if engine.mode == "motion":
+        return motion.edit_rules(args)
     rules = [
         "返すのは JSON オブジェクト 1 つだけ。前後に説明・見出し・コードフェンスを付けない",
         "道具を使わない。ファイルを読まない・書かない。コマンドを実行しない。調べものをしない",
@@ -239,6 +250,18 @@ def _retry_part(previous: dict[str, Any] | str | None, problems: list[str] | Non
             "", "直した答えの全体を、JSON オブジェクト 1 つだけで返してください。"]
 
 
+def _example_pages(engine: Engine, ids: list[str]) -> list[dict[str, Any]]:
+    """直しの答えの形の見本（`pages`）。モーションは絵だけを直す振り分けが無い。"""
+    if engine.mode == "motion":
+        return [{"id": ids[0], "route": "script", "slides": [{**motion.EXAMPLE_SCENE, "id": ids[0]}]},
+                {"id": "（別の対象の id）", "route": "keep"}]
+    return [
+        {"id": ids[0], "route": "script", "slides": [{"id": ids[0], "type": "（型）", "headline": "（直したページの中身）"}]},
+        {"id": "（別の対象の id）", "route": "image", "image": {"slot": "（プレゼンで枠が 2 つ以上のときだけ）",
+                                                              "note": "（絵をどう直すか。1〜2 文）"}},
+    ]
+
+
 def build_revision_prompt(engine: Engine, args: dict[str, Any], *, script: dict[str, Any], targets: list[dict[str, Any]],
                           instruction: str, attachments: list[str], skills_dir: Path, scope: str = "pages",
                           previous: dict[str, Any] | str | None = None, problems: list[str] | None = None) -> str:
@@ -269,7 +292,7 @@ def build_revision_prompt(engine: Engine, args: dict[str, Any], *, script: dict[
         "",
         "# 振り分け（ページごとに route を 1 つ選ぶ）",
         "",
-        *[f"- {w}" for w in ROUTE_WORDS[engine.mode]],
+        *[f"- {w}" for w in (motion.ROUTE_WORDS if engine.mode == "motion" else ROUTE_WORDS[engine.mode])],
         "- **迷ったら script**",
         "",
         "# 資料の属性",
@@ -308,16 +331,13 @@ def build_revision_prompt(engine: Engine, args: dict[str, Any], *, script: dict[
         "# 返す形",
         "",
         "```json",
-        json.dumps({"pages": [
-            {"id": ids[0], "route": "script", "slides": [{"id": ids[0], "type": "（型）", "headline": "（直したページの中身）"}]},
-            {"id": "（別の対象の id）", "route": "image", "image": {"slot": "（プレゼンで枠が 2 つ以上のときだけ）",
-                                                                  "note": "（絵をどう直すか。1〜2 文）"}},
-        ], "suggestions": [{"id": "（直さなかったページの id）", "text": "（どう直すとよいか）"}],
+        json.dumps({"pages": _example_pages(engine, ids), "suggestions": [{"id": "（直さなかったページの id）", "text": "（どう直すとよいか）"}],
             "summary": "（何をどう直したかを 1 文で）"}, ensure_ascii=False, indent=1),
         "```",
         "",
         "- pages には「直すページ」の id を全部、1 回ずつ入れる（別のページは入れない）",
-        "- route が script・both のときは slides（直したページの中身の全体。分けたときは並べる）、image・both のときは image.note を書く",
+        "- route が script" + ("" if engine.mode == "motion" else "・both") + " のときは slides（直したページの中身の全体。分けたときは並べる）"
+        + ("" if engine.mode == "motion" else "、image・both のときは image.note を書く"),
         "- suggestions は無ければ []",
     ]
     out += _retry_part(previous, problems)
@@ -372,7 +392,8 @@ def build_insert_prompt(engine: Engine, args: dict[str, Any], *, script: dict[st
         "# 返す形",
         "",
         "```json",
-        json.dumps({"slides": [{"id": "（新しい id）", "type": "（型）", "headline": "（足すページの中身）"}],
+        json.dumps({"slides": [motion.EXAMPLE_NEW_SCENE if engine.mode == "motion" else
+                               {"id": "（新しい id）", "type": "（型）", "headline": "（足すページの中身）"}],
                     "summary": "（何を足したかを 1 文で）"}, ensure_ascii=False, indent=1),
         "```",
     ]

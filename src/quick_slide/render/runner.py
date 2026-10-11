@@ -13,7 +13,10 @@
 | image-slide | `  ✓ 3枚目` / `  ✗ 3枚目` | そのページの絵が返った / 描けなかった |
 | html-slide | `画像の枠 4（生成 3・描く 2）` | 描く画像の枠の数 |
 | html-slide | `  ✓ 2.` / `  ✗ 2.` | 枠の通し番号 2 が描けた / 描けなかった |
+| motion-slide | （進みの行は無い。`index: …`・`png: …`・`thumbs: …` は終わりに標準出力へ出る） | 検査と組み立てが終わるまで「組んでいます」 |
 | 両方 | `警告: 3枚目…` | そのページの警告 |
+
+motion-slide は全部の拍を Chrome で開いて検査する（1 拍あたり約 2 秒）ので、`check` の時間切れは拍の数で伸ばす（`motion.check_timeout`）。
 """
 
 from __future__ import annotations
@@ -39,6 +42,9 @@ SETUP_SCRIPT = SKILLS_DIR / "quick-slide" / "scripts" / "quick_slide_setup.py"
 DOCTOR_HINT = f"足りないものは `python3 {SETUP_SCRIPT} --doctor` で分かります（会話で「Quick Slide の導入を確かめて」と頼んでも同じ）。"
 CODEX_LOGIN_MESSAGE = ("画像を描く Codex にログインできていません（または見つかりません）。"
                        "ターミナルで `codex login`（ChatGPT でログイン）をしてから、もう一度頼んでください。" + DOCTOR_HINT)
+MOTION_DEPENDENCY_MESSAGE = ("モーションを組むのに要るもの（Playwright の Chromium・Pillow・PyYAML）が足りません。"
+                             f"`python3 {SETUP_SCRIPT} --doctor` で足りないものを確かめ、`--setup` で入れてから"
+                             "（会話で「Quick Slide の導入をして」と頼んでも入ります）、もう一度頼んでください。")
 DEPENDENCY_MESSAGE = ("描くのに要るもの（Node・puppeteer-core・Chrome など）が足りません。"
                       f"`python3 {SETUP_SCRIPT} --doctor` で足りないものを確かめ、`--setup` で入れてから"
                       "（会話で「Quick Slide の導入をして」と頼んでも入ります）、もう一度頼んでください。")
@@ -60,12 +66,19 @@ class CheckResult:
     stopped: bool = False
 
 
+def dependency_message(engine: Engine) -> str:
+    return MOTION_DEPENDENCY_MESSAGE if engine.mode == "motion" else DEPENDENCY_MESSAGE
+
+
 def check_script(engine: Engine, *, tools: Tools, home: Path, script: Path, args: dict[str, Any],
-                 stop: threading.Event | None = None) -> CheckResult:
-    """エンジンの `check`。rc=2 のときの `NG:` の行を返す（台本係に直させる）。"""
-    cmd = engine.check_command(tools.python, tools.skills_dir, script, args)
+                 stop: threading.Event | None = None, quick: bool = False,
+                 timeout: float = CHECK_TIMEOUT_SECONDS) -> CheckResult:
+    """エンジンの `check`。rc=2 のときの `NG:` の行を返す（台本係に直させる）。
+
+    `quick` は形だけの検査（`Engine.quick_check` のエンジンだけ。Chrome を使わず速い）。"""
+    cmd = engine.check_command(tools.python, tools.skills_dir, script, args, quick=quick)
     r = run_process(cmd, cwd=script.parent, env=child_env(home=home, extra=tools.extra_env),
-                    timeout=CHECK_TIMEOUT_SECONDS, stop=stop)
+                    timeout=timeout, stop=stop)
     lines = [ln.strip() for ln in r.stderr_tail if ln.strip()]
     rc = None if r.launch_error else r.rc
     return CheckResult(rc=rc, problems=[ln for ln in lines if ln.startswith("NG")],
@@ -100,12 +113,50 @@ def browser_missing(*, tools: Tools, home: Path, cwd: Path, stop: threading.Even
     return [k for k in ("node", "node_modules", "chrome") if not (data.get(k) or {}).get("ok")]
 
 
+# motion-slide が組むのに要るもの（Playwright・Pillow・PyYAML のモジュールと、Playwright の Chromium の本体）を 1 回で確かめる。
+# 足りなければ 4 で終わり、足りないものの名前を標準出力に 1 行（JSON）で出す
+_MOTION_PROBE = (
+    "import importlib.util as u, json, os, sys\n"
+    "lack = [n for m, n in (('playwright', 'playwright'), ('PIL', 'Pillow'), ('yaml', 'PyYAML')) if u.find_spec(m) is None]\n"
+    "if not lack:\n"
+    "    try:\n"
+    "        from playwright.sync_api import sync_playwright\n"
+    "        with sync_playwright() as p:\n"
+    "            if not os.path.exists(p.chromium.executable_path):\n"
+    "                lack.append('chromium')\n"
+    "    except Exception:\n"
+    "        lack.append('chromium')\n"
+    "print(json.dumps(lack))\n"
+    "sys.exit(4 if lack else 0)\n"
+)
+
+
+def motion_missing(*, tools: Tools, home: Path, cwd: Path, stop: threading.Event | None = None) -> list[str] | None:
+    """モーションが組むのに要るもののうち足りないもの。聞けなければ None（描くときの rc=4 で分かる）。"""
+    cmd = tools.motion_probe or [tools.python, "-I", "-c", _MOTION_PROBE]
+    r = run_process(cmd, cwd=cwd, env=child_env(home=home, extra=tools.extra_env),
+                    timeout=AUTH_TIMEOUT_SECONDS, stop=stop)
+    if r.launch_error or r.timed_out or r.stopped or r.rc not in (RC_OK, RC_DEPENDENCY):
+        return None
+    try:
+        lack = json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError, TypeError):
+        return None
+    return [str(x) for x in lack] if isinstance(lack, list) else None
+
+
 def check_prerequisites(engine: Engine, *, tools: Tools, home: Path, cwd: Path,
                         stop: threading.Event | None = None) -> Prerequisites:
     """描く前に 1 回だけ確かめる。台本係を呼ぶ前なので、描けないのにサブスクの枠を使わない。
     ピッチは `image_slide.py auth`（Codex のログイン）。プレゼンは Chrome で組む道具が揃っているか（P5）。"""
     cmd = engine.auth_command(tools.python, tools.skills_dir)
     if cmd is None:
+        if engine.mode == "motion":
+            cwd.mkdir(parents=True, exist_ok=True)
+            lack = motion_missing(tools=tools, home=home, cwd=cwd, stop=stop)
+            if lack:
+                return Prerequisites(False, RC_DEPENDENCY, MOTION_DEPENDENCY_MESSAGE, "dependency")
+            return Prerequisites(True, None if lack is None else 0)
         if engine.mode == "presentation":
             cwd.mkdir(parents=True, exist_ok=True)
             lack = browser_missing(tools=tools, home=home, cwd=cwd, stop=stop)
@@ -141,6 +192,9 @@ class RenderProgress:
         self._lock = threading.Lock()
 
     def snapshot(self) -> dict[str, Any]:
+        if self.engine.mode == "motion":
+            # 進みの行が無い（検査と組み立ての間は静か）。終わるまで「組んでいます」
+            return {"phase": "rendering", "step": "motion", "done": 0, "total": self.pages}
         if self.engine.mode == "pitch":
             if self.todo is None:
                 return {"phase": "rendering", "step": "starting", "done": 0, "total": self.pages}
@@ -160,7 +214,9 @@ class RenderProgress:
             w = _PAGE_WARNING.match(line)
             if w:
                 self.warnings.setdefault(int(w.group(1)), []).append(line.split(": ", 1)[-1][:300])
-            if self.engine.mode == "pitch":
+            if self.engine.mode == "motion":
+                pass   # 進みの行は無い（警告だけ拾う）
+            elif self.engine.mode == "pitch":
                 m = _PITCH_PLAN.match(line)
                 if m:
                     self.todo = int(m.group(2))
@@ -242,6 +298,8 @@ def render_deck(engine: Engine, *, tools: Tools, home: Path, script: Path, out: 
                              unfinished)
     if r.rc == RC_DEPENDENCY:
         said = "\n".join(r.stderr_tail).lower()
+        if engine.mode == "motion":
+            return RenderOutcome("failed", r.rc, MOTION_DEPENDENCY_MESSAGE, "dependency", unfinished)
         if "codex" not in said and any(w in said for w in ("node", "chrome", "puppeteer")):
             return RenderOutcome("failed", r.rc, DEPENDENCY_MESSAGE, "dependency", unfinished)
         return RenderOutcome("failed", r.rc, CODEX_LOGIN_MESSAGE, "auth", unfinished)
