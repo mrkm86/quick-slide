@@ -738,3 +738,12 @@ class SkillStartTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MotionLogoTests(unittest.TestCase):
+    def test_no_brand_logo_is_passed_as_none(self) -> None:
+        # motion-slide はロゴを渡さないと機体の設定のロゴを既定に使うので、ブランドにロゴが無ければ「なし」を渡す
+        from quick_slide.engines import ENGINES
+        self.assertEqual(ENGINES["motion"].brand_args({"look": {}}), ["--logo", "none"])
+        self.assertEqual(ENGINES["motion"].brand_args({"look": {"logo": "/x.png"}})[:2], ["--logo", "/x.png"])
+        self.assertNotIn("--logo", ENGINES["presentation"].brand_args({"look": {}}))

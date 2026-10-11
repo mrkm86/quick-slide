@@ -60,6 +60,8 @@ class Engine:
     exports: tuple[str, ...] = ("pptx", "pdf")
     # 台本のページの呼び名（画面・台本係への指示で使う）。motion は「場面」
     page_word: str = "ページ"
+    # ブランドにロゴが無いとき「ロゴなし」をはっきり渡すか。motion-slide は渡さないと機体の設定のロゴを既定に使う
+    logo_none_when_absent: bool = False
 
     def entry_path(self, skills_dir: Path) -> Path:
         return skills_dir / self.skill / self.entry
@@ -88,6 +90,8 @@ class Engine:
                 out += ["--logo-position", str(look.get("logo_position") or "bottom-right")]
             if self.takes_logo_white and look.get("logo_white"):
                 out += ["--logo-white", str(look["logo_white"])]
+        elif self.logo_none_when_absent:
+            out += ["--logo", "none"]
         if self.takes_watermark and look.get("watermark"):
             out += ["--watermark", str(look["watermark"])]
         return out
@@ -152,7 +156,7 @@ ENGINES: dict[str, Engine] = {
     # モーション: クリックで拍が進む Web プレゼン（HTML 1枚）。場面ごとの台本（JSON）を組み、全部の拍を Chrome で検査する。
     # 画像の枠・Codex は使わない。テーマとロゴだけ受ける（スタイル・透かし・ロゴの角は無い）
     "motion": Engine(
-        mode="motion", skill="motion-slide", entry="scripts/motion_slide.py",
+        mode="motion", skill="motion-slide", entry="scripts/motion_slide.py", logo_none_when_absent=True,
         styles=("standard",), default_style="standard",
         contract_docs=("motion-slide/references/deck-format.md", "motion-slide/references/authoring.md"),
         formats=MOTION_FORMATS, takes_style=False, takes_logo_position=False, takes_watermark=False,
