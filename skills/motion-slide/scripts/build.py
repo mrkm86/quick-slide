@@ -98,11 +98,41 @@ def logo_json(path, alt, height):
             "crop": [bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]], "alt": alt, "height": height}
 
 
+def thumb_uri(png):
+    """拍の絵（PNG のパスかバイト列）→ 一覧のサムネイル（512×288 の WebP の data URI）"""
+    import io
+    from PIL import Image
+    im = Image.open(io.BytesIO(png) if isinstance(png, bytes) else png).convert("RGB").resize((512, 288), Image.LANCZOS)
+    buf = io.BytesIO(); im.save(buf, "WEBP", quality=72)
+    return "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def read_thumbs(path):
+    """組んだ HTML に埋まっている一覧のサムネイル {場面 id: data URI}。無ければ {}"""
+    p = pathlib.Path(path)
+    if not p.is_file():
+        return {}
+    m = re.search(r'<script type="application/json" id="ms-thumbs">(.*?)</script>', p.read_text(encoding="utf-8"), re.S)
+    try:
+        return json.loads(m.group(1)) if m else {}
+    except ValueError:
+        return {}
+
+
+def embed_thumbs(out, shots):
+    """組んだ HTML に一覧のサムネイル {場面 id: data URI} を埋める（あれば置き換える）"""
+    out = pathlib.Path(out)
+    html = re.sub(r'<script type="application/json" id="ms-thumbs">.*?</script>\n', "", out.read_text(encoding="utf-8"), flags=re.S)
+    if shots:
+        tag = f'<script type="application/json" id="ms-thumbs">{json.dumps(shots)}</script>\n'
+        html = html.replace("</head>", tag + "</head>", 1)
+    out.write_text(html)
+
+
 def shoot_thumbs(out):
     """組んだ HTML を Chrome で開き、場面ごとに1枚撮って、一覧（Esc / O）のサムネイルにする。
     撮る拍は場面の data-thumb（0 始まり）、無ければ最後の拍。前の拍から1つ進めて撮る（飛ぶ動きも着いた後）"""
-    import asyncio, io
-    from PIL import Image
+    import asyncio
     try:
         from playwright.async_api import async_playwright
     except ImportError:
@@ -121,9 +151,7 @@ def shoot_thumbs(out):
                 if bt:
                     await pg.evaluate("MS.next()")
                 await pg.wait_for_timeout(2200)
-                im = Image.open(io.BytesIO(await pg.screenshot())).convert("RGB").resize((512, 288), Image.LANCZOS)
-                buf = io.BytesIO(); im.save(buf, "WEBP", quality=72)
-                shots[sc["id"]] = "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode()
+                shots[sc["id"]] = thumb_uri(await pg.screenshot())
             await b.close()
         return shots
     return asyncio.run(run())
@@ -182,8 +210,7 @@ def build(src, out, theme, logo, logo_alt, logo_height, bgm, thumbs=True):
     if thumbs:
         shots = shoot_thumbs(out)
         if shots:
-            tag = f'<script type="application/json" id="ms-thumbs">{json.dumps(shots)}</script>\n'
-            out.write_text(html.replace("</head>", tag + "</head>", 1))
+            embed_thumbs(out, shots)
     beats = sum(int(re.search(r'data-beats="(\d+)"', a).group(1)) for a in scenes)
     print(f"{out}  {len(scenes)} 場面・{beats} 拍・{out.stat().st_size / 1024:.0f}KB")
 

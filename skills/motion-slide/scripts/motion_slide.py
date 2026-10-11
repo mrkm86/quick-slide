@@ -2,13 +2,19 @@
 
     python3 -I motion_slide.py check --script <台本.json> [--theme <名前|YAML>] [--quick] [--strict] [--wait <ms>]
     python3 -I motion_slide.py deck  --script <台本.json> --out <フォルダ> [--theme …] [--logo <PNG>|none] [--logo-alt …]
-                                     [--logo-height <px>] [--format png,thumbs] [--strict] [--wait <ms>]
+                                     [--logo-height <px>] [--format png,thumbs] [--strict] [--wait <ms>] [--no-shoot]
 
 check  台本の形を検査する → 組み立てて Chrome で全部の拍を開き、はみ出し・切れ・JS のエラーを数える。OK なら "OK"。--quick は形の検査だけ（Chrome を使わない）
 deck   check と同じ検査のあと、--out に index.html（本体）・deck.html（組み立てた台本）・build.json・deck-info.json・
        slides/slide-NN.png（場面ごとの絵）・thumbs.png（一覧）・inspect.md・check/（拍ごとの画像と検査の記録）を書く
 
 台本の形は references/deck-format.md。NG の行は stderr に `NG: N枚目（id s3）: …`（台本係が直せる言い方）。
+
+--no-shoot（deck のみ）: 形の検査と index.html・deck.html・build.json・deck-info.json の組み立てだけ行い、Chrome を起動しない（1 秒前後）。
+       slides/・thumbs.png・inspect.md・check/ は前の回のまま触らず、stdout に `pictures: not-taken` と出し、build.json の pictures.taken が false になる。
+       一覧（Esc / O）のサムネイルは、同じ見た目の場面のキャッシュか前の index.html のものを使う
+場面ごとのキャッシュ: 撮るとき（deck・check）、見た目が変わりうるものすべて（docs/adr/0004）が同じ場面は、前に撮った拍の絵・記録を使い、鍵が変わった場面だけ Chrome で撮る。
+       置き場は MOTION_SLIDE_CACHE（無ければ OS のキャッシュの置き場）・上限は設定の cache_max_mb。stdout に `shots:` の行で撮った場面・使い回した場面の数
 警告（重なり・泣き別れなど）は `警告: …`。--strict で警告も NG にする。
 html-slide と同じ口で渡る引数（--style・--image-look・--logo-position・--watermark・--no-odp・--mode など）は受けて読み飛ばす。
 終了コード: 0=成功 / 2=台本の誤り・検査の NG / 4=依存不足（Playwright・Pillow・PyYAML・Chrome）
@@ -27,7 +33,9 @@ import tempfile
 HERE = pathlib.Path(__file__).resolve().parent
 SKILL = HERE.parent
 sys.path.insert(0, str(HERE))   # python3 -I は台本のあるフォルダを探さないので、隣の deckjson を足す
+import build as buildmod  # noqa: E402
 import deckjson  # noqa: E402
+import shotcache  # noqa: E402
 
 PY = sys.executable
 MADE = ("deck.html", "index.html", "build.json", "deck-info.json", "inspect.md")
@@ -123,7 +131,8 @@ def pipeline(a, work, full):
         return 2
     if getattr(a, "quick", False):
         return 0
-    lack = lacking()
+    no_shoot = full and getattr(a, "no_shoot", False)
+    lack = [n for n in lacking() if not (no_shoot and n == "Playwright")]
     if lack:
         say(f"NG: {'・'.join(lack)}が要る（pip で入れる。Quick Slide の導入の確かめ --doctor も参照）")
         return 4
@@ -133,16 +142,16 @@ def pipeline(a, work, full):
     if pathlib.Path(a.script).resolve() in {(work / n).resolve() for n in MADE}:
         say(f"NG: 台本 {a.script} が出力のファイル名と重なる（--out を別のフォルダにする）")
         return 2
+    prev_thumbs = buildmod.read_thumbs(index)   # 組み直す前の一覧のサムネイル（--no-shoot で撮り直せない場面に使う）
     deck.write_text(deckjson.assemble(data), encoding="utf-8")
 
-    build = [PY, "-I", str(HERE / "build.py"), str(deck), "--out", str(index)]
+    # 一覧のサムネイルは build.py で撮らず（Chrome をもう1回起動することになる）、拍の絵から作って埋める
+    build = [PY, "-I", str(HERE / "build.py"), str(deck), "--out", str(index), "--no-thumbs"]
     theme = a.theme or data.get("theme")
     if theme:
         build += ["--theme", _theme_arg(theme, a.script)]
     if a.logo:
         build += ["--logo", a.logo, "--logo-alt", a.logo_alt or "", "--logo-height", str(a.logo_height or 34)]
-    if not full:
-        build.append("--no-thumbs")
     r = run(build)
     if r.returncode != 0:
         for ln in (r.stderr or r.stdout).splitlines():
@@ -156,8 +165,54 @@ def pipeline(a, work, full):
         if ln.startswith("警告"):
             say(ln)
 
-    cmd = [PY, "-I", str(HERE / "check.py"), str(index), "--out", str(check_dir), "--wait", str(a.wait)]
-    r = run(cmd)
+    keys = shotcache.scene_keys(data, shotcache.shared_inputs(data, index.read_text(encoding="utf-8"), a.wait))
+    store = shotcache.Store()
+    rows = [{"no": i, "id": s["id"], "title": s["title"], "beats": s["beats"], "clicks": s["beats"] - 1,
+             "page": f"slides/slide-{i:02d}.png"} for i, s in enumerate(scenes, 1)]
+    head = {"engine": "motion-slide", "title": title, "scenes": len(scenes), "beats": sum(s["beats"] for s in scenes)}
+
+    if no_shoot:   # 絵は撮らない。前の回の絵・一覧・検査はそのまま
+        thumbs = {}
+        for s, k in zip(scenes, keys):
+            t = (store.get(k) and store.thumb(k)) or prev_thumbs.get(s["id"])
+            if t:
+                thumbs[s["id"]] = t
+        buildmod.embed_thumbs(index, thumbs)
+        have = lambda p: str(p) if p.exists() else None   # noqa: E731
+        outputs = {"index": str(index), "deck": str(deck), "png": [str(p) for p in sorted((work / "slides").glob("slide-[0-9][0-9].png"))],
+                   "thumbs": [str(p) for p in sorted(work.glob("thumbs*.png"))], "inspect": have(work / "inspect.md"), "check": have(check_dir)}
+        record = {**head, "pictures": {"taken": False, "reason": "no-shoot"}, "check": None, "slides": rows, "outputs": outputs}
+        for name in ("build.json", "deck-info.json"):
+            (work / name).write_text(json.dumps(record, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        print(f"index: {index}（{index.stat().st_size / 1024:.0f}KB）")
+        print("pictures: not-taken（--no-shoot。slides/・thumbs.png・inspect.md・check/ は前の回のまま）")
+        return 0
+
+    # 拍の絵: 鍵が同じ場面はキャッシュから、変わった場面だけ Chrome で撮る
+    shutil.rmtree(check_dir, ignore_errors=True)
+    beats_dir = check_dir / "beats"
+    beats_dir.mkdir(parents=True)
+    reuse, hit, miss = [], {}, []
+    for i, (s, k) in enumerate(zip(scenes, keys)):
+        if not getattr(a, "no_cache", False) and store.get(k):
+            try:
+                store.restore(k, beats_dir)
+                items = store.items(k)
+                if len(items) != s["beats"] or not all((beats_dir / f"{it['beat']}.png").is_file() for it in items):
+                    raise OSError("拍の数が合わない")
+                reuse += items
+                hit[i] = k
+                continue
+            except (OSError, ValueError, KeyError):
+                pass   # 壊れた区画は撮り直す（上書きされる）
+        miss.append(i)
+    todo = ",".join(scenes[i]["id"] for i in miss)
+    with tempfile.TemporaryDirectory(prefix="motion-slide-reuse-") as tmp:
+        reuse_json = pathlib.Path(tmp) / "reuse.json"
+        reuse_json.write_text(json.dumps(reuse, ensure_ascii=False), encoding="utf-8")
+        cmd = [PY, "-I", str(HERE / "check.py"), str(index), "--out", str(check_dir), "--wait", str(a.wait),
+               "--only", todo, "--reuse", str(reuse_json)]
+        r = run(cmd)
     if r.returncode not in (0, 2):
         tail = (r.stderr or r.stdout).strip().splitlines()
         say(f"NG: 全拍の検査（check.py）が動かなかった: {tail[-1] if tail else ''}")
@@ -171,23 +226,41 @@ def pipeline(a, work, full):
         say("NG: " + n)
     bad = bool(ng)
 
+    # 撮った場面をキャッシュへ（JS のエラー・はみ出し・切れがあった場面は置かない。偶然の失敗を居座らせない）。一覧のサムネイルもここで作る
+    report = json.loads((check_dir / "check.json").read_text(encoding="utf-8"))
+    thumbs = {}
+    for i, s in enumerate(scenes):
+        k = keys[i]
+        png = beats_dir / f"s{i + 1:02d}-b{s.get('thumb', s['beats'] - 1) + 1}.png"
+        thumb = store.thumb(k) if i in hit else None
+        if full:   # check は一覧を使わないので作らない（deck が置き場から引いたとき、無ければ拍の絵から作る）
+            thumb = thumb or buildmod.thumb_uri(png)
+            thumbs[s["id"]] = thumb
+        if i in miss:
+            mine = [it for it in report if it["id"] == s["id"]]
+            if len(mine) == s["beats"] and not any(shotcache.has_ng(it) for it in mine):
+                store.put(k, beats_dir, mine, thumb)
+    if full:
+        buildmod.embed_thumbs(index, thumbs)
+    store.trim(say)
+    say(f"場面の絵: 撮った {len(miss)}・キャッシュから {len(hit)}")
+
     if full:
         pngs = write_slides(work, scenes, check_dir)
         fmts = {f.strip() for f in (a.format or "png,thumbs").split(",")}
-        thumbs = write_thumbs(pngs, scenes, work, title) if "thumbs" in fmts or "png" in fmts else []
+        thumbs_png = write_thumbs(pngs, scenes, work, title) if "thumbs" in fmts or "png" in fmts else []
         shutil.copyfile(check_dir / "inspect.md", work / "inspect.md")
-        rows = [{"no": i, "id": s["id"], "title": s["title"], "beats": s["beats"], "clicks": s["beats"] - 1,
-                 "page": f"slides/slide-{i:02d}.png"} for i, s in enumerate(scenes, 1)]
-        outputs = {"index": str(index), "deck": str(deck), "png": [str(p) for p in pngs], "thumbs": thumbs,
+        outputs = {"index": str(index), "deck": str(deck), "png": [str(p) for p in pngs], "thumbs": thumbs_png,
                    "inspect": str(work / "inspect.md"), "check": str(check_dir)}
-        record = {"engine": "motion-slide", "title": title, "scenes": len(scenes), "beats": sum(s["beats"] for s in scenes),
+        record = {**head, "pictures": {"taken": True, "shot": len(miss), "reused": len(hit)},
                   "check": {"ng": len(ng), "warnings": len(warn)}, "slides": rows, "outputs": outputs}
         for name in ("build.json", "deck-info.json"):
             (work / name).write_text(json.dumps(record, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
         print(f"index: {index}（{index.stat().st_size / 1024:.0f}KB）")
         print(f"png: {work / 'slides'}（{len(pngs)}枚）")
-        for t in thumbs:
+        for t in thumbs_png:
             print(f"thumbs: {t}")
+        print(f"shots: 撮った場面 {len(miss)}・キャッシュから {len(hit)}")
     return 2 if bad else 0
 
 
@@ -221,6 +294,7 @@ def main(argv=None):
         p.add_argument("--theme", help="html-slide のテーマの名前か YAML（台本の theme より優先）")
         p.add_argument("--strict", action="store_true", help="警告も NG にする")
         p.add_argument("--wait", type=int, default=1800, help="拍を進めてから撮るまで（ms）")
+        p.add_argument("--no-cache", action="store_true", help="場面ごとのキャッシュを読まず、全部撮り直す（撮ったものは置く）")
         p.add_argument("--logo")
         p.add_argument("--logo-alt")
         p.add_argument("--logo-height", type=int)
@@ -234,6 +308,7 @@ def main(argv=None):
             p.add_argument("--quick", action="store_true", help="形の検査だけ（Chrome を使わない）")
         else:
             p.add_argument("--out", required=True, help="出力のフォルダ")
+            p.add_argument("--no-shoot", action="store_true", help="形の検査と組み立てだけ。Chrome を起動せず、絵・一覧・検査は前の回のまま")
     a = ap.parse_args(argv)
     return a.fn(a)
 

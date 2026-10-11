@@ -13,6 +13,8 @@ export MOTION_SLIDE_CONFIG=/nonexistent/motion-slide-config.yaml
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SK="$(cd "$DIR/.." && pwd)"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+# 場面ごとの絵のキャッシュも使い捨てにする（実の置き場を読まない・書かない）
+export MOTION_SLIDE_CACHE="$TMP/cache"
 PY="python3 -I"
 
 pass=0
@@ -177,11 +179,42 @@ PYEOF
 }
 run "split: 台本 JSON から組んだ形（ms-scenes・ms-shared）も読み、組み直して分けても hook・script が消えない" roundtrip_new
 run "組み立て: <section> の属性・notes が雛形と同じで、hook は ms-scenes の JSON に入る" asm_ok
+# 場面ごとの絵のキャッシュ（docs/adr/0004）。鍵の試験は Chrome を使わない
+run "キャッシュの鍵: 場面・前の場面の term・拍・待ち・テーマ・ロゴ・共通のスタイルが変われば鍵が変わり、ほかは変わらない" $PY "$SK/tests/cache_check.py" "$TMP/j/ok.json"
+# deck --no-shoot は Chrome を起動しない（playwright を入れない状態にして走らせる）
+no_shoot() {
+  $PY - "$MS" "$TMP/j/ok.json" "$TMP/j/ns" <<'PYEOF' > "$TMP/j/ns.out" 2>/dev/null
+import runpy, sys
+sys.modules["playwright"] = None   # 起動しようとすれば落ちる。入っていない扱い
+ms, script, out = sys.argv[1:4]
+sys.argv = [ms, "deck", "--script", script, "--out", out, "--logo", "none", "--no-shoot"]
+runpy.run_path(ms, run_name="__main__")
+PYEOF
+  grep -q "^pictures: not-taken" "$TMP/j/ns.out" && [ -f "$TMP/j/ns/index.html" ] && [ ! -e "$TMP/j/ns/slides" ] && [ ! -e "$TMP/j/ns/check" ] \
+    && $PY -c "import json; r=json.load(open('$TMP/j/ns/build.json')); assert r['pictures']=={'taken': False, 'reason': 'no-shoot'} and r['check'] is None and [x['id'] for x in r['slides']]==['s1','s2','s3']"
+}
+run "deck --no-shoot: Chrome なしで index.html を組み、stdout に pictures: not-taken・絵は作らない" no_shoot
 if $PY -c "import playwright" 2>/dev/null; then
   run "check: 形・組み立て・全拍の検査を通ると OK"      bash -c "$PY '$MS' check --script '$TMP/j/ok.json' --wait 1600 2>&1 | tail -1 | grep -qx OK"
   run "deck: 出力のフォルダに全部そろう（3場面）"      bash -c "$PY '$MS' deck --script '$TMP/j/ok.json' --out '$TMP/j/out' --wait 1600 >/dev/null 2>&1 && cd '$TMP/j/out' && ls index.html deck.html build.json deck-info.json inspect.md thumbs.png slides/slide-01.png slides/slide-02.png slides/slide-03.png >/dev/null && [ ! -e slides/slide-04.png ]"
   run "deck: build.json に場面ごとの id・題・拍・絵のパス" bash -c "$PY -c \"import json; r=json.load(open('$TMP/j/out/build.json')); s=r['slides']; assert [x['id'] for x in s]==['s1','s2','s3'] and [x['beats'] for x in s]==[2,4,3] and s[2]['page']=='slides/slide-03.png' and r['check']=={'ng':0,'warnings':0}\""
   run "deck: 組んだ index.html は外へ取りに行かず、雛形と同じ拍の数（9）" bash -c "! grep -Eq '(src|href)=\"https?://' '$TMP/j/out/index.html' && grep -q '拍 9' '$TMP/j/out/check/inspect.md' || grep -q '拍 9 ' '$TMP/j/out/inspect.md'"
+  # 場面ごとのキャッシュ: 同じ台本の 2 回目は全部使い回し・1 場面だけ変えたらその場面だけ撮る・拍の絵と一覧は 1 回目と同じ
+  shots() { grep '^shots:' "$1" | tr -d '\n'; }
+  $PY "$MS" deck --script "$TMP/j/ok.json" --out "$TMP/j/c1" --wait 600 > "$TMP/j/c1.out" 2>/dev/null || true
+  $PY "$MS" deck --script "$TMP/j/ok.json" --out "$TMP/j/c2" --wait 600 > "$TMP/j/c2.out" 2>/dev/null || true
+  mut touched 'd["scenes"][1]["talk"][0]+="。"'
+  $PY "$MS" deck --script "$TMP/j/touched.json" --out "$TMP/j/c3" --wait 600 > "$TMP/j/c3.out" 2>/dev/null || true
+  $PY "$MS" deck --script "$TMP/j/ok.json" --out "$TMP/j/c4" --wait 600 --no-cache > "$TMP/j/c4.out" 2>/dev/null || true
+  run "キャッシュ: 1 回目は 3 場面とも撮る"                       bash -c "[ \"\$(grep '^shots:' '$TMP/j/c1.out')\" = 'shots: 撮った場面 3・キャッシュから 0' ]"
+  run "キャッシュ: 変えない 2 回目は 3 場面ともキャッシュから"     bash -c "[ \"\$(grep '^shots:' '$TMP/j/c2.out')\" = 'shots: 撮った場面 0・キャッシュから 3' ]"
+  run "キャッシュ: 2 回目の出力は 1 回目と同じ並び（絵・一覧・記録）と同じ中身" bash -c "cd '$TMP/j' && (cd c1 && find . -type f | sort) > l1 && (cd c2 && find . -type f | sort) > l2 && diff -q l1 l2 && for f in slides/slide-01.png slides/slide-03.png thumbs.png check/beats/s02-b3.png; do cmp -s c1/\$f c2/\$f || exit 1; done && grep -c . c2/inspect.md >/dev/null && diff -q <(grep -v '^- 本体' c1/inspect.md) <(grep -v '^- 本体' c2/inspect.md)"
+  run "キャッシュ: 2 回目の一覧のサムネイルは 1 回目と同じ"        bash -c "cmp -s <(grep -o 'id=\"ms-thumbs\">.*' '$TMP/j/c1/index.html') <(grep -o 'id=\"ms-thumbs\">.*' '$TMP/j/c2/index.html')"
+  run "キャッシュ: 場面を 1 つ変えたらその場面だけ撮る"            bash -c "[ \"\$(grep '^shots:' '$TMP/j/c3.out')\" = 'shots: 撮った場面 1・キャッシュから 2' ]"
+  run "キャッシュ: 変えなかった場面の絵は前のまま"                 bash -c "cmp -s '$TMP/j/c1/slides/slide-01.png' '$TMP/j/c3/slides/slide-01.png' && cmp -s '$TMP/j/c1/slides/slide-03.png' '$TMP/j/c3/slides/slide-03.png'"
+  run "キャッシュ: --no-cache は全部撮り直す"                      bash -c "[ \"\$(grep '^shots:' '$TMP/j/c4.out')\" = 'shots: 撮った場面 3・キャッシュから 0' ]"
+  run "キャッシュ: 待ちが違えば別の鍵（全部撮る）"                  bash -c "$PY '$MS' deck --script '$TMP/j/ok.json' --out '$TMP/j/c5' --wait 700 2>/dev/null | grep -qx 'shots: 撮った場面 3・キャッシュから 0'"
+  run "キャッシュ: build-only は前の絵に触らず、場面のサムネイルは前の一覧を残す" bash -c "cd '$TMP/j' && cp c3/slides/slide-02.png before.png && $PY '$MS' deck --script '$TMP/j/ok.json' --out c3 --no-shoot 2>/dev/null | grep -q '^pictures: not-taken' && cmp -s before.png c3/slides/slide-02.png && [ -d c3/check ] && grep -c 'data:image/webp' c3/index.html | grep -qv '^0'"
   # 見た目の崩れ（はみ出し）と JS のエラーは NG の行になる
   mut overflow 'd["scenes"][0]["style"].append("#s1 .lead{position:absolute;left:1800px;top:500px;width:400px}")'
   mut js-error 'd["scenes"][2]["hook"]="throw new Error(\"boom\");"'

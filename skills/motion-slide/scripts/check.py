@@ -1,11 +1,13 @@
 """組んだ HTML 1枚を Chrome で開き、全部の拍を順に進めて、崩れを数える。拍ごとの画像と、場面ごとの一覧画像も出す。
 
-    python3 -I check.py <index.html> [--out <フォルダ>] [--wait <ms>] [--only s3,s5] [--strict]
+    python3 -I check.py <index.html> [--out <フォルダ>] [--wait <ms>] [--only s3,s5] [--reuse <report.json>] [--strict]
 
 見るもの:
   NG（rc=2）  JS のエラー ／ 見えている要素が舞台（1920×1080）の外にはみ出す ／ 文字が箱からあふれて切れる
   警告        見えている文字どうしの重なり ／ 1〜2字だけ次の行に残る（泣き別れ）／ .x なのにふわっと出ない（transition の上書き） ／ 道しるべ（パンくず・拍の点・章のレール・言葉・ロゴ）との重なり
               （--strict で警告も NG。わざと重ねる要素には data-overlap-ok を付ける）
+--reuse は撮り済みの拍の記録（check.json と同じ形の配列）。その拍の画像は <out>/beats/ に置いてあるものとして、撮らずに記録へ混ぜる
+  （--only で撮る場面を絞り、それ以外を --reuse で渡すと、場面ごとのキャッシュになる。--only "" なら Chrome を起動しない）
 出力: <out>/beats/sNN-bM.png ・ <out>/sheet-sNN.png（場面ごとの一覧）・ <out>/check.json ・ <out>/inspect.md（検品役が読む写し）
 """
 import argparse, asyncio, json, pathlib, sys
@@ -69,12 +71,28 @@ PROBE = r"""
 """
 
 
-async def main(a):
+EMIT = (("errors", "NG JS"), ("outside", "NG はみ出し"), ("clipped", "NG 切れ"), ("overlap", "警告 重なり"),
+        ("chrome", "警告 道しるべと重なり"), ("orphan", "警告 泣き別れ"), ("pop", "警告 パッと出る"))
+
+
+def counts(item):
+    """拍の記録 → (NG の数, 警告の数)"""
+    n_ng = len(item["errors"]) + len(item["outside"]) + len(item["clipped"])
+    n_w = len(item["overlap"]) + len(item["chrome"]) + len(item["orphan"]) + len(item["pop"])
+    return n_ng, n_w
+
+
+def order(item):   # 場面の番号・拍の番号の順
+    s, b = item["beat"][1:].split("-b")
+    return int(s), int(b)
+
+
+async def shoot(a, html, out, only):
+    """only の場面（None なら全部）の拍を撮って、拍ごとの記録の配列を返す。only が空なら Chrome を起動しない"""
+    report = []
+    if only is not None and not only:
+        return report
     from playwright.async_api import async_playwright
-    html = pathlib.Path(a.html).resolve()
-    out = pathlib.Path(a.out or html.parent / "check"); (out / "beats").mkdir(parents=True, exist_ok=True)
-    only = set(a.only.split(",")) if a.only else None
-    report, ng, warn = [], 0, 0
     async with async_playwright() as p:
         b = await p.chromium.launch()
         pg = await b.new_page(viewport={"width": 1920, "height": 1080})
@@ -84,10 +102,10 @@ async def main(a):
         await pg.goto(html.as_uri()); await pg.wait_for_timeout(800)
         scenes = await pg.evaluate("MS.state.scenes")
         for si, sc in enumerate(scenes):
-            if only and sc["id"] not in only:
+            if only is not None and sc["id"] not in only:
                 continue
             for bi in range(sc["beats"]):
-                # 前の拍から1つ進める（飛ぶ動きなど「進んだときだけ」の演出も通す）
+                # 前の拍から1つ進める（飛ぶ動きなど「進んだときだけ」の演出も通す）。場面へは直に飛ぶので、前の場面を撮ったかどうかに依らない
                 await pg.evaluate(f"MS.go({si},{max(0, bi - 1)})"); await pg.wait_for_timeout(150)
                 if bi:
                     await pg.evaluate("MS.next()")
@@ -96,20 +114,33 @@ async def main(a):
                 name = f"s{si + 1:02d}-b{bi + 1}"
                 await pg.screenshot(path=str(out / "beats" / f"{name}.png"))
                 e_now = list(errs); errs.clear()
-                item = {"beat": name, "id": sc["id"], "title": sc["title"], "errors": e_now, **r}
-                report.append(item)
-                n_ng = len(e_now) + len(r["outside"]) + len(r["clipped"])
-                n_w = len(r["overlap"]) + len(r["chrome"]) + len(r["orphan"]) + len(r["pop"])
-                ng += n_ng; warn += n_w
-                for k, tag in (("errors", "NG JS"), ("outside", "NG はみ出し"), ("clipped", "NG 切れ"), ("overlap", "警告 重なり"), ("chrome", "警告 道しるべと重なり"), ("orphan", "警告 泣き別れ"), ("pop", "警告 パッと出る")):
-                    for v in item[k]:
-                        print(f"{name} {sc['id']} {tag}: {v}")
+                report.append({"beat": name, "id": sc["id"], "title": sc["title"], "errors": e_now, **r})
         await b.close()
+    return report
+
+
+async def main(a):
+    html = pathlib.Path(a.html).resolve()
+    out = pathlib.Path(a.out or html.parent / "check"); (out / "beats").mkdir(parents=True, exist_ok=True)
+    only = None if a.only is None else {x for x in a.only.split(",") if x}
+    reused = json.loads(pathlib.Path(a.reuse).read_text(encoding="utf-8")) if a.reuse else []
+    report = sorted(reused + await shoot(a, html, out, only), key=order)
+    ng = warn = 0
+    for item in report:
+        n_ng, n_w = counts(item)
+        ng += n_ng; warn += n_w
+        for k, tag in EMIT:
+            for v in item[k]:
+                print(f"{item['beat']} {item['id']} {tag}: {v}")
+    finish(out, html, report, ng, warn)
+    print(f"拍 {len(report)} ・ NG {ng} ・ 警告 {warn} ・ 画像 {out}")
+    return 2 if ng or (a.strict and warn) else 0
+
+
+def finish(out, html, report, ng, warn):
     sheets(out, report)
     inspect_md(out, html, report, ng, warn)
     (out / "check.json").write_text(json.dumps(report, ensure_ascii=False, indent=1))
-    print(f"拍 {len(report)} ・ NG {ng} ・ 警告 {warn} ・ 画像 {out}")
-    return 2 if ng or (a.strict and warn) else 0
 
 
 def inspect_md(out, html, report, ng, warn):
@@ -158,6 +189,7 @@ if __name__ == "__main__":
     ap.add_argument("html")
     ap.add_argument("--out")
     ap.add_argument("--wait", type=int, default=1800, help="拍を進めてから撮るまで（ms）。飛ぶ動き・数え上げが終わる長さ")
-    ap.add_argument("--only", help="場面 id をカンマ区切り")
+    ap.add_argument("--only", help="場面 id をカンマ区切り（空なら撮らない）")
+    ap.add_argument("--reuse", help="撮り済みの拍の記録（JSON の配列）。撮らずに混ぜる")
     ap.add_argument("--strict", action="store_true")
     sys.exit(asyncio.run(main(ap.parse_args())))

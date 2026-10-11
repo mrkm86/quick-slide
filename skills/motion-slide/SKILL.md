@@ -38,7 +38,7 @@ description: クリックで「拍」が進む Web プレゼン（Motion Slide�
    - 公開前の記事・社内の数字を含むときは、出力を外のサービス（Artifact・GitHub Pages・Vercel 等）に出さない
 2. `templates/deck.html` を `<出力先>/deck.html` に写して書く。決まり（場面の属性・`data-in` など・`MS.hook`）は authoring.md
 3. `build.py <出力先>/deck.html`（→ `index.html`）。rc=2 は stderr の `NG:` を読んで台本を直す
-   - 最後に場面ごとに1枚撮って、一覧（Esc / O）のサムネイルとして埋め込む（30秒ほど・1場面約10KB）。試し組みは `--no-thumbs`
+   - 最後に場面ごとに1枚撮って、一覧（Esc / O）のサムネイルとして埋め込む（30秒ほど・1場面約10KB）。試し組みは `--no-thumbs`（`motion_slide.py deck` は build.py に常に `--no-thumbs` を付け、拍の絵から作って埋める）
 4. `check.py <出力先>/index.html` → **NG と警告を 0 にする。** 文字は短くして直す（字を小さくしない）。わざと重ねる要素だけ `data-overlap-ok`
 5. **`check/sheet-sNN.png`（場面ごとの一覧）を全部目で見る。** 検査は「重なり」は数えられても「図が意味を伝えているか」は見ない
    - 飛ぶ・波及するなど時間のかかる動きは `--only <場面> --wait 4000` で撮り直して確かめる
@@ -51,6 +51,8 @@ description: クリックで「拍」が進む Web プレゼン（Motion Slide�
 `motion_slide.py check --script <script.json>`（形の検査 → 組み立て → 全拍の検査。`--quick` は形だけ・`--strict` は警告も NG）→
 `deck --script <script.json> --out <フォルダ>`（`index.html`・`deck.html`・`build.json`・`deck-info.json`・`slides/slide-NN.png`・`thumbs.png`・`inspect.md`・`check/`）。
 NG は stderr の `NG: N枚目（id s3）: …`。rc は 0 / 2（台本の誤り・検査の NG）/ 4（Playwright・Pillow・PyYAML・Chrome が無い）。台本係は [`references/deck-format.md`](references/deck-format.md) の「書く前に」を読む。
+撮るとき（`deck`・Chrome を使う `check`）は、見た目が変わりうるもの（場面の中身・共通部・テーマとロゴ・エンジン・`--wait`・場面の番号と総数・ここまでの言葉・章のレール）が同じ場面は前に撮った絵を使い、変わった場面だけ Chrome で撮る（`shots:` の行。置き場は `MOTION_SLIDE_CACHE`・上限は設定の `cache_max_mb`。全部撮り直すなら `--no-cache`）。
+`deck --no-shoot` は形の検査と `index.html` の組み立てだけで Chrome を起動しない（1 秒前後。`slides/`・`thumbs.png`・`inspect.md`・`check/` は前の回のまま。stdout に `pictures: not-taken`・`build.json` の `pictures.taken` が false）。非表示・並べ替えのあとの組み直し用。詳しくは [`docs/adr/0004-scene-shot-cache-and-no-shoot.md`](docs/adr/0004-scene-shot-cache-and-no-shoot.md)。
 この経路は html-slide の `check` / `deck` と同じ口（`--script` `--out` `--theme` `--logo` `--format` など。`--style` ほか motion-slide に無い引数は読み飛ばす）。PPTX・PDF は作らない。
 
 ## 構成
