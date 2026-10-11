@@ -923,7 +923,12 @@
       // 位置と件数は「いま画面に出ている並び」から取る（描いた時点の page.position は並べ替えで古くなる）
       var pos = ctx.positionOf(page.slide_id);
       var ins = SS.cap(ctx.caps, "insert_page");
+      var presentHere = SS.cap(ctx.caps, "present_from_here");
       SS.menu(menuBtn, [
+        { label: presentHere.label, disabled: !presentHere.available || !ctx.presentNumber(page.slide_id),
+          reason: presentHere.available ? "非表示のページは発表に出ません" : presentHere.reason,
+          onSelect: function () { ctx.present(page.slide_id); } },
+        "-",
         { label: "画像をコピー", disabled: !page.image_url, reason: "コピーできる画像がありません", onSelect: function () { copyImage(page, article, pos); } },
         { label: "画像を保存", disabled: !page.image_url, reason: "保存できる画像がありません", onSelect: function () {
           var a = h("a", { href: page.image_url, download: "slide-" + pos + ".png" }); document.body.appendChild(a); a.click(); a.remove(); recordCopy("save", true, null);
@@ -1539,6 +1544,22 @@
       ctx.order = function () { return order; };
       ctx.visibleCount = function () { return data.pages.filter(function (p) { return !p.hidden; }).length; };
       ctx.positionOf = function (slideId) { return order.indexOf(slideId) + 1; };
+      // 発表の画面の番号（非表示・絵の無いページを抜いた何番目か）。そのページが発表に出ないときは 0
+      ctx.presentNumber = function (slideId) {
+        var skip = {};
+        data.pages.forEach(function (p) { skip[p.slide_id] = !!p.hidden || !p.image_url; });
+        var n = 0;
+        for (var k = 0; k < order.length; k++) {
+          if (!skip[order[k]]) { n += 1; }
+          if (order[k] === slideId) { return skip[slideId] ? 0 : n; }
+        }
+        return 0;
+      };
+      // 発表の画面は別の画面（/slides/<id>/present）。同じウィンドウで開く（DESIGN §1.2）
+      ctx.present = function (slideId) {
+        // 開始ページは番号ではなく slide_id で渡す（並べ替えの組み直しが終わる前は、発表の側の並びが古いため）
+        location.assign("/slides/" + deckId + "/present" + (slideId ? "?s=" + encodeURIComponent(slideId) : ""));
+      };
       var mutate = function (p) { return p.then(function () { reload(); }).catch(SS.toastError); };
       // 連打で batch が 2 つ起きないように、この描画の間は 1 回だけ通す
       var resuming = false;
@@ -1617,6 +1638,20 @@
       // 幅が足りない画面（スマホ）では字を畳んでアイコンだけにする（`aria-label` が名前）
       var exportBtn = h("button", { class: "btn btn--export deck-export", type: "button", "aria-haspopup": "menu", "aria-label": "書き出し" },
         SS.icon("download"), h("span", { class: "btn__label", text: "書き出し" }));
+      // 発表（見せる画面）への入口。**可否は 1 つ（`caps.present`）**で、書き出しと同じく `paintCaps` が当て直す
+      var presentBtn = h("button", { class: "btn btn--export deck-present", type: "button", "aria-label": "発表" },
+        SS.icon("play_arrow"), h("span", { class: "btn__label", text: "発表" }));
+      var applyPresentCap = function () {
+        var c = SS.cap(caps, "present");
+        presentBtn.disabled = !c.available;
+        presentBtn.setAttribute("aria-label", c.label);
+        presentBtn.querySelector(".btn__label").textContent = c.label;
+        if (c.available) { presentBtn.removeAttribute("aria-disabled"); presentBtn.removeAttribute("title"); }
+        else { presentBtn.setAttribute("aria-disabled", "true"); presentBtn.setAttribute("title", c.reason || ""); }
+        describedBy(presentBtn, reasons.ids, "present");
+      };
+      applyPresentCap();
+      presentBtn.addEventListener("click", function () { ctx.present(null); });
       var applyExportCap = function () {
         var c = SS.cap(caps, "export");
         exportBtn.disabled = !c.available;
@@ -1692,6 +1727,7 @@
         titleBox,
         pband,
         h("span", { class: "deck-actions" },
+          presentBtn,
           h("span", { class: "menu-anchor" }, exportBtn),
           h("span", { class: "menu-anchor" }, deckMenuBtn)));
       // この画面は名前を鉛筆でその場で直せるので、メニューには「名前を変更」を出さない（2026-09-18）
@@ -2138,6 +2174,7 @@
         pctx.reasonIds = next.ids;
         // 2 つのボタンが 1 つの可否を分け合うので、当て直すのも 2 つとも（文言は形式のまま保つ）
         applyExportCap();
+        applyPresentCap();
         // 並べ替えの可否は列全体に効く（理由は列の下に 1 行。サムネは title で読める）
         var canReorder = SS.cap(caps, "reorder_pages");
         var why = aside.querySelector(".thumbs__why");

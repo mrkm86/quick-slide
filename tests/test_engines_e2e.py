@@ -78,6 +78,13 @@ class BothModesEndToEndTests(unittest.TestCase):
         info = (fx.root.run_dir(body["deck_id"], run["id"]) / "deck-info.json").read_text(encoding="utf-8")
         self.assertIn('"outputs"', info)
         self.assertTrue(any((log / "codex-calls").glob("*.json")), "画像の枠を描かせていない")
+        # 発表の画面: 回の HTML・画像・字体が回のフォルダに残り、段の数は build.json（エンジンの記録）と同じ
+        folder = fx.root.run_dir(body["deck_id"], run["id"]) / "present"
+        self.assertTrue((folder / "deck.html").is_file())
+        built = json.loads((fx.root.run_dir(body["deck_id"], run["id"]) / "build.json").read_text(encoding="utf-8"))
+        view = fx.get(f"/api/decks/{body['deck_id']}/present").json()
+        self.assertEqual([p["steps"] for p in view["pages"]], [r["steps"] for r in built["slides"]])
+        self.assertEqual(fx.get(view["html"]["url"]).status, 200)
 
     def test_pitch_with_image_slide_and_a_rewrite(self) -> None:
         tools, log = fake_tools(self, mode="invalid_first")

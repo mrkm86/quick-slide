@@ -56,7 +56,7 @@ from .errors import GENERIC_500_MESSAGE, ApiError, bad_json, from_store_error, m
 from .later import NOT_READY_CODE
 from . import restart as restart_mod
 from .runtime import InstanceLock, ServerRecord, http_host, remove_record, status, write_record
-from .static import AssetFiles, ResolvedFile, StaticRoot
+from .static import AssetFiles, PresentFiles, ResolvedFile, StaticRoot
 
 log = logging.getLogger("quick_slide.server")
 access_log = logging.getLogger("quick_slide.server.access")
@@ -251,6 +251,7 @@ class QuickSlideServer:
         self.restarting: dict[str, Any] | None = None
         self._abandon = False
         self.assets = AssetFiles(self.root.root, self.root.assets_dir, self.root.trash_dir)
+        self.present_files = PresentFiles(self.root.root)
         self.clock = clock or Clock()
         self.instance_id = new_id()
         self.session_token = secrets.token_urlsafe(32)
@@ -857,6 +858,7 @@ from . import edit_routes as _edit_routes  # noqa: E402
 from . import export_routes as _export_routes  # noqa: E402
 from . import intake_routes as _intake_routes  # noqa: E402
 from . import later as _later  # noqa: E402
+from . import present_routes as _present_routes  # noqa: E402
 from . import settings_routes as _settings_routes  # noqa: E402
 
 _not_ready = _later.not_ready
@@ -911,6 +913,10 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/delete"), _deck_routes.route_delete),
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/restore"), _deck_routes.route_restore),
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/purge"), _deck_routes.route_purge),
+    # --- 発表の画面（server/present_routes.py）。HTML・API・仕切りの中で開く回の HTML とその画像・字体 ---
+    (frozenset({"GET"}), _uuid_route("/api/decks/", "deck_id", "/present"), _present_routes.route_present_data),
+    (frozenset({"GET"}), _uuid_route("/slides/", "deck_id", "/present"), _present_routes.route_present_screen),
+    (frozenset({"GET"}), _present_routes.present_route, _present_routes.route_present_file),
     # --- 直す・版から戻す・ページの操作（P3。server/edit_routes.py） ---
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/pages/reorder"), _edit_routes.route_reorder),
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/pages/insert"), _edit_routes.route_insert),

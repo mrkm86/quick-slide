@@ -246,3 +246,51 @@ class AssetFiles:
         if isinstance(declared, int) and not isinstance(declared, bool) and declared != resolved.size:
             return None  # 行と現物が食い違う asset は配信しない（I5: 測っていないものを出さない）
         return resolved
+
+
+# 発表の画面（html-slide の段ごとの再生）が仕切りの中で読む、回ごとの控え（回のフォルダの `present/`）。
+PRESENT_ASSET_TYPES: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+}
+PRESENT_FONT_TYPES: dict[str, str] = {
+    ".ttf": "font/ttf",
+    ".otf": "font/otf",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+}
+
+
+class PresentFiles:
+    """`decks/<デッキ>/runs/<回>/present/` の中だけを配る。
+
+    開けるのは `deck.html` と、`assets/<画像>`・`fonts/<字体>`（拡張子の許可リスト）だけ。字体は控えるときに
+    手元のファイルから `present/fonts/` へ張った**控え**を配るので、元のパス（設定の fonts）は配信に出ない。
+    降り方は `AssetFiles` と同じ（1 段ずつ文字列一致・symlink 拒否・最後に realpath で閉じ込める）。
+    """
+
+    def __init__(self, data_root: Path | str) -> None:
+        self.data_root = Path(os.path.realpath(data_root))
+
+    def resolve(self, deck_id: str, run_id: str, rel: str) -> ResolvedFile | None:
+        if not is_uuid(deck_id) or not is_uuid(run_id) or deck_id != deck_id.lower() or run_id != run_id.lower():
+            return None
+        parts = split_segments(rel)
+        if parts is None:
+            return None
+        if parts == ["deck.html"]:
+            content_type = STATIC_TYPES[".html"]
+        elif len(parts) == 2 and parts[0] in ("assets", "fonts"):
+            table = PRESENT_ASSET_TYPES if parts[0] == "assets" else PRESENT_FONT_TYPES
+            content_type = table.get(os.path.splitext(parts[1])[1])
+            if content_type is None:
+                return None
+        else:
+            return None
+        base = self.data_root / "decks" / deck_id / "runs" / run_id / "present"
+        path = walk_no_symlinks(self.data_root, ["decks", deck_id, "runs", run_id, "present", *parts])
+        if path is None:
+            return None
+        return _resolved(path, base, content_type)

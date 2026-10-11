@@ -22,6 +22,7 @@ from .vocabulary import EDIT_MODE_LABELS, SOURCE_KIND_LABELS, page_display, run_
 NO_PICTURE_REASON = "このページには直せる絵がありません。指示は文字・構成の直しになります。"
 INFOGRAPHIC_PAGES_REASON = "1 枚にまとめるスタイル（infographic）では、ページを足す・並べ替える・隠すことはできません。"
 NOT_ADOPTABLE_REASON = "この版には絵がありません。"
+NOT_PRESENTABLE_REASON = "見せられるページがまだありません。ページができてから開いてください。"
 
 
 def asset_url(asset_id: str | None) -> str | None:
@@ -256,6 +257,7 @@ def edit_capabilities(row: dict[str, Any], pages: list[dict[str, Any]], args: di
     def cap(key: str, ok: bool, reason: str | None) -> dict[str, Any]:
         return {"available": ok, "label": labels[key], "reason": None if ok else reason}
 
+    presentable = any(p.get("image_url") and not p["hidden"] for p in pages)
     structural = has and not one_page(args)
     struct_reason = pages_reason if not has else INFOGRAPHIC_PAGES_REASON
     return {
@@ -269,6 +271,8 @@ def edit_capabilities(row: dict[str, Any], pages: list[dict[str, Any]], args: di
         "duplicate_page": cap("duplicate_page", structural, struct_reason),
         "page_visibility": cap("page_visibility", structural, struct_reason),
         "export": cap("export", has, pages_reason),
+        "present": cap("present", presentable, NOT_PRESENTABLE_REASON),
+        "present_from_here": cap("present_from_here", presentable, NOT_PRESENTABLE_REASON),
         "rebuild": cap("rebuild", has, pages_reason),
         "generate": {"available": False, "label": labels["generate"], "reason": NOT_READY_REASON},
     }

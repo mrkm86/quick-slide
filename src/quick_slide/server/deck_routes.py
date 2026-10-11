@@ -75,6 +75,7 @@ SCREEN_LABELS = {"page_instruction": "送信", "pages_instruction": "選んだ�
                  "regenerate": "作り直す", "adopt_version": ADOPT_LABEL, "insert_page": INSERT_PAGE_LABEL,
                  "reorder_pages": REORDER_LABEL, "duplicate_page": "このページを複製",
                  "page_visibility": "表示・非表示", "export": EXPORT_LABEL, "generate": "画像を生成",
+                 "present": "発表", "present_from_here": "ここから発表",
                  "rebuild": "設定を替えて組み直す"}
 
 # `label` は画面のボタン文言（画面側に書かず、ここから渡す）

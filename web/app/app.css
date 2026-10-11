@@ -1033,7 +1033,7 @@ html.is-locked { overflow: hidden; }
 .deck-title-input { font-size: var(--font-size-20); line-height: var(--line-height-150); letter-spacing: 0.02em; min-height: var(--tap); }
 .deck-title-edit { flex: none; }
 .deck-actions { display: flex; align-items: center; gap: var(--space-1); flex: none; }
-.deck-export { min-width: 0; min-height: var(--tap); padding: 0 var(--space-3); }
+.deck-export, .deck-present { min-width: 0; min-height: var(--tap); padding: 0 var(--space-3); }
 /* 進み具合の札（DADS のチップラベル）。完成・生成中・要対応は語と件数で言い、色は補助 */
 .deck-progress {
   display: inline-flex; align-items: center; flex: none; min-height: 32px; padding: 3px var(--space-2);
@@ -1165,9 +1165,9 @@ html.is-locked { overflow: hidden; }
   .deck-bar { gap: var(--space-1); }
   .deck-bar__back-text { display: none; }
   .deck-bar__back:any-link { padding: 0; margin-left: -4px; justify-content: center; min-width: var(--tap); }
-  .deck-export { width: var(--tap); padding: 0; }
+  .deck-export, .deck-present { width: var(--tap); padding: 0; }
   .deck-progress--done .deck-progress__rest { display: none; }
-  .deck-export .btn__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .deck-export .btn__label, .deck-present .btn__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .pages { gap: var(--space-4); }
   .panel {
     top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 88vh; max-height: 88dvh;

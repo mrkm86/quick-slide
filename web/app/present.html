@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<title>発表 - Quick Slide</title>
+<link rel="stylesheet" href="/static/dads-tokens.css">
+<link rel="stylesheet" href="/static/present.css">
+</head>
+<body>
+<!--
+  発表の画面（見せる用）。編集の画面（index.html・deck.js）とは別の軽い画面で、デッキの中身は API（/api/decks/<id>/present）から読む。
+  外枠（この HTML と present.js）は「ページ数・いまのページ・段・次へ・前へ」だけを知り、中身はエンジンごとの部品（adapter）が出す:
+  image-slide は PNG のページ送り、html-slide は仕切りの中（iframe sandbox="allow-scripts"）で回の HTML を段ごとに再生する。
+  ビルド無し・外部リソース無し（CSP: default-src 'self'）。新しいウィンドウ・タブは開かない。
+-->
+<a class="skip" href="#stage">スライドへ</a>
+<div id="present" class="pr" data-state="loading">
+  <div id="stage" class="pr__stage" tabindex="-1" aria-label="スライド">
+    <div id="slide" class="pr__slide"></div>
+    <div id="hit" class="pr__hit"></div>
+    <p id="notice" class="pr__notice" role="status" hidden></p>
+  </div>
+  <div id="bar" class="pr__bar">
+    <div class="pr__nav" role="group" aria-label="ページを送る">
+      <button id="prev" class="pr-btn" type="button" aria-label="前へ（←）" title="前へ（←）"></button>
+      <p id="count" class="pr__count" aria-hidden="true"></p>
+      <button id="next" class="pr-btn" type="button" aria-label="次へ（→）" title="次へ（→）"></button>
+    </div>
+    <div class="pr__tools">
+      <button id="list-btn" class="pr-btn" type="button" aria-haspopup="dialog" aria-label="ページの一覧（O）" title="ページの一覧（O）"></button>
+      <button id="fs-btn" class="pr-btn" type="button" aria-label="全画面（F）" title="全画面（F）" hidden></button>
+      <a id="exit" class="pr-btn" href="/slides" aria-label="編集へ戻る（Esc）" title="編集へ戻る（Esc）"></a>
+    </div>
+    <div class="pr__progress" aria-hidden="true"><div id="progress-fill" class="pr__progress-fill"></div></div>
+  </div>
+  <p id="live" class="visually-hidden" aria-live="polite"></p>
+  <div id="list" class="pr-list" role="dialog" aria-modal="true" aria-label="ページの一覧" hidden>
+    <div class="pr-list__head">
+      <h1 class="pr-list__title" id="list-title">ページの一覧</h1>
+      <button id="list-close" class="pr-btn" type="button" aria-label="閉じる（Esc）"></button>
+    </div>
+    <ol id="list-items" class="pr-list__grid"></ol>
+  </div>
+</div>
+<noscript><p class="pr__noscript">発表の画面には JavaScript が要ります。</p></noscript>
+<script src="/static/present.js"></script>
+</body>
+</html>

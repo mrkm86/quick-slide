@@ -9,6 +9,7 @@
     FAKE_ENGINE_SLEEP   1 ページごとに待つ秒（既定 0.05）
     FAKE_ENGINE_LOG     呼ばれた引数を書くフォルダ（任意）
     FAKE_ENGINE_AUTH_RC auth（ピッチの描く前の確かめ）の終了コード（既定 0）
+    FAKE_ENGINE_FONT    プレゼンの deck.html が file:// で読む字体ファイル（任意。発表の画面の字体の配信の試験が使う）
     FAKE_ENGINE_SKIP    作らない出力（例 "pdf"。既定は deck.pptx・deck.pdf も書く。書き出しの試験が使う）
 """
 import json
@@ -18,6 +19,29 @@ import sys
 import time
 
 sys.dont_write_bytecode = True
+
+
+def write_html(out: pathlib.Path, slides: list, skip: set) -> None:
+    """html-slide の出力の形（section・data-step・assets/・file:// の字体）の deck.html と、段の数を持つ build.json。
+    ページ i（1 から）の段の数は i % 3（1→1・2→2・3→0）。"""
+    from urllib.parse import quote
+    from PIL import Image
+    font = os.environ.get("FAKE_ENGINE_FONT")
+    face = (f'@font-face {{ font-family: "Fake"; font-weight: 400; src: url("file://{quote(font)}"); }}' if font else "")
+    (out / "assets").mkdir(exist_ok=True)
+    Image.new("RGB", (8, 8), (10, 20, 30)).save(out / "assets" / "s01-image.png")
+    sections, rows = [], []
+    for i, s in enumerate(slides, 1):
+        steps = i % 3
+        body = "".join(f'<div data-step="{n}" data-fx="pop" data-delay="{n * 10}">段{n}</div>' for n in range(1, steps + 1))
+        sections.append(f'<section data-slide data-transition="fade">'
+                        f'<h1 data-step="0">{i}</h1><img src="assets/s01-image.png" alt="">{body}'
+                        f'<aside class="notes">ノート</aside></section>')
+        rows.append({"no": i, "type": s.get("type"), "steps": steps, "transition": "fade"})
+    if "html" not in skip:
+        (out / "deck.html").write_text(f'<!doctype html><html><head><meta charset="UTF-8"><style>{face}</style></head>'
+                                       f'<body>{"".join(sections)}</body></html>', encoding="utf-8")
+    (out / "build.json").write_text(json.dumps({"slides": rows}))
 
 
 def main(kind: str) -> int:
@@ -73,6 +97,8 @@ def main(kind: str) -> int:
             for i, s in enumerate(slides, 1)]
     (out / ("build.json" if kind == "image" else "deck-info.json")).write_text(json.dumps({"slides": rows}))
     skip = set(filter(None, os.environ.get("FAKE_ENGINE_SKIP", "").split(",")))
+    if kind != "image":
+        write_html(out, slides, skip)
     body = json.dumps([s.get("title") or s.get("type") for s in slides], ensure_ascii=False).encode("utf-8")
     if "pptx" not in skip:
         (out / "deck.pptx").write_bytes(b"PK\x03\x04 fake pptx " + body)

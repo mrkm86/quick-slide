@@ -36,11 +36,17 @@ import shutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 OUTPUT_FILES = ("deck.pptx", "deck.pdf", "build.json", "deck-info.json", "inspect.md", "deck.html")
 RECORD_FILES = ("build.json", "deck-info.json", "inspect.md")
 LAYOUT = "layout.json"
 STAGE = ".quick-slide-stage"
+# 発表の画面（html-slide の段ごとの再生）が読む、回ごとの HTML と画像・字体の置き場（回のフォルダの中）
+PRESENT = "present"
+PRESENT_FONT_TYPES = frozenset({".ttf", ".otf", ".woff", ".woff2"})
+_FONT_URL = re.compile(r'url\("file://([^"]+)"\)')
+_ASSET_SRC = re.compile(r'\bsrc="assets/([^"/]+)"')
 
 
 def file_sha(path: Path) -> str:
@@ -183,6 +189,38 @@ def snapshot(mode: str, work: Path, run_dir: Path, pages: list[dict[str, Any]]) 
         out[no] = {"file": str(shot) if shot else None, "picture_sha": picture_sha}
     write_json(pictures / "index.json", index)
     return out
+
+
+def present_font_name(path: str) -> str:
+    """字体ファイルの、発表の画面での名前（元のパスの sha256 の先頭 16 桁＋拡張子）。配る側も同じ式で引く。"""
+    return hashlib.sha256(path.encode("utf-8")).hexdigest()[:16] + Path(path).suffix.lower()
+
+
+def snapshot_present(work: Path, run_dir: Path) -> bool:
+    """発表の画面（html-slide の段ごとの再生）のために、deck.html とそれが読む画像・字体を回のフォルダへ控える。
+
+    - `deck.html` は写す（小さい。エンジンは次の回の前に作業フォルダの出力を消す）
+    - 画像（`assets/`）と字体は**ハードリンク**（別のボリュームなら写す）。エンジンは `assets/` に書く前に
+      同じ名前を消す（deck.py）ので、控えの側の中身は変わらない
+    - 控えるのは deck.html が読むものだけ。字体は拡張子が許可リストのものだけ（元のパスは名前の式に使うだけで、配信には出さない）
+    deck.html が無い（エンジンが書かなかった）ときは何もせず False。
+    """
+    src = work / "deck.html"
+    if not src.is_file():
+        return False
+    html = src.read_text(encoding="utf-8")
+    dest = run_dir / PRESENT
+    _copy(src, dest / "deck.html")
+    for m in _ASSET_SRC.finditer(html):
+        asset = work / "assets" / m.group(1)
+        if asset.is_file():
+            _link(asset, dest / "assets" / m.group(1))
+    for m in _FONT_URL.finditer(html):
+        path = unquote(m.group(1))
+        font = Path(path)
+        if font.suffix.lower() in PRESENT_FONT_TYPES and font.is_file():
+            _link(font, dest / "fonts" / present_font_name(path))
+    return True
 
 
 def snapshot_index(run_dir: Path) -> dict[str, Any]:
