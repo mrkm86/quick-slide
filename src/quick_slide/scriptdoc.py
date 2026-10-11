@@ -172,3 +172,32 @@ def fresh_id(base: str, taken: set[str]) -> str:
 
 def deep(page: dict[str, Any]) -> dict[str, Any]:
     return copy.deepcopy(page)
+
+
+def with_hidden(data: dict[str, Any], key: str, hidden: bool) -> dict[str, Any]:
+    """ページ `key` の非表示を替えた台本（元は替えない）。描かない直し（画面の口）とワーカーの両方が使う。"""
+    slides = []
+    for s in data.get("slides") or []:
+        if isinstance(s, dict) and s.get("id") == key:
+            s = dict(s)
+            if hidden:
+                s[HIDDEN_KEY] = True
+            else:
+                s.pop(HIDDEN_KEY, None)
+        slides.append(s)
+    return {**data, "slides": slides}
+
+
+def with_order(data: dict[str, Any], wanted: list[str]) -> dict[str, Any]:
+    """ページを `wanted`（台本の id）の順に並べた台本。並びに無いページ（頼んだあとに足されたページ）は、
+    前にいたページのすぐ後ろへ置く。"""
+    slides = slides_of(data)
+    by_key = {str(s.get("id")): s for s in slides}
+    order = [k for k in dict.fromkeys(wanted) if k in by_key]
+    for i, s in enumerate(slides):
+        k = str(s.get("id"))
+        if k in order:
+            continue
+        prev = next((str(slides[j].get("id")) for j in range(i - 1, -1, -1) if str(slides[j].get("id")) in order), None)
+        order.insert(order.index(prev) + 1 if prev else 0, k)
+    return {**data, "slides": [by_key[k] for k in order]}

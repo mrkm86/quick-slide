@@ -153,23 +153,44 @@ def route_create_export(server: "QuickSlideServer", req: "Request") -> "Response
             raise ApiError(409, "export_unsupported", reason)
         shown = store.shown_run(deck_id)
         head = store.head_script(deck_id)
-    path = _run_file(server, shown, fmt)
+        tidy = next((j for j in store.open_jobs(deck_id)
+                     if (j.get("request") or {}).get("op") == "render" and (j.get("request") or {}).get("reason") == "tidy"),
+                    None)
+    # 見せる回が、いまの台本より古い（描かない直し＝非表示・並べ替えの後で、まだ組み直していない）なら、その回の
+    # ファイルは配らない（隠したページが入っている・並びが違う）
+    stale = shown is not None and head is not None and shown.get("script_id") != head["id"]
+    path = None if stale else _run_file(server, shown, fmt)
     produced = False
     if path is None:
-        # 見せる回にその形式が無い: いまの台本をいまの設定で描き直してから配る
+        # 見せる回にその形式が無い（または古い）: いまの台本をいまの設定で描き直してから配る。
+        # 描かない直しの後の組み直しが待っている・走っているなら、それを待つ（同じ台本を 2 回描かない）。
+        # ただしその回がこの形式を作らないこともあるので、終わってから形式を確かめ、無ければ描き直す
         if head is None:
             raise ApiError(409, "no_pages", NO_PAGES_REASON)
+        wait = min(EXPORT_WAIT_SECONDS, server.settings.worker.render_timeout_seconds + 60)
+        run = None
+        if tidy is not None:
+            server.wake_worker()
+            if _wait_for_job(server, deck_id, tidy["id"], wait) is None:
+                return _json(202, {"export": {"id": None, "format": fmt, "state": "building", "download_url": None,
+                                              "job_id": tidy["id"]}, "message": BUILDING_MESSAGE})
+            with server.store_lock:
+                run = server.store.run(tidy["run_id"])
+                head = server.store.head_script(deck_id)
+            if run["state"] != "done" or run.get("script_id") != (head or {}).get("id") or _run_file(server, run, fmt) is None:
+                run = None
+        if run is None:
+            with server.store_lock:
+                result = server.store.create_edit(deck_id, {"op": "render", "source": "screen", "reason": "export",
+                                                            "format": fmt})
+            server.wake_worker()
+            job = _wait_for_job(server, deck_id, result["job"]["id"], wait)
+            if job is None:
+                return _json(202, {"export": {"id": None, "format": fmt, "state": "building", "download_url": None,
+                                              "job_id": result["job"]["id"]}, "message": BUILDING_MESSAGE})
+            with server.store_lock:
+                run = server.store.run(result["run"]["id"])
         with server.store_lock:
-            result = server.store.create_edit(deck_id, {"op": "render", "source": "screen", "reason": "export",
-                                                        "format": fmt})
-        server.wake_worker()
-        job = _wait_for_job(server, deck_id, result["job"]["id"], min(EXPORT_WAIT_SECONDS,
-                                                                       server.settings.worker.render_timeout_seconds + 60))
-        if job is None:
-            return _json(202, {"export": {"id": None, "format": fmt, "state": "building", "download_url": None,
-                                          "job_id": result["job"]["id"]}, "message": BUILDING_MESSAGE})
-        with server.store_lock:
-            run = server.store.run(result["run"]["id"])
             row = _live_deck_row(server.store, deck_id)
         path = _run_file(server, run if run["state"] == "done" else None, fmt)
         if path is None:

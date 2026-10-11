@@ -42,6 +42,8 @@ from ..scriptdoc import (
     page_id_problems,
     screen_pages,
     slides_of,
+    with_hidden,
+    with_order,
 )
 from ..writer import jlint as JLINT
 from ..writer.backends import WriterFailed, ask, choose_backend
@@ -431,16 +433,7 @@ def _duplicate(ctx: Context, deck_id: str, req: dict[str, Any], data: dict[str, 
 def _visibility(ctx: Context, deck_id: str, req: dict[str, Any], data: dict[str, Any]) -> EditResult:
     key = _key(ctx, deck_id, req.get("page"), data)
     hidden = bool(req.get("hidden"))
-    slides = []
-    for s in data.get("slides") or []:
-        if isinstance(s, dict) and s.get("id") == key:
-            s = dict(s)
-            if hidden:
-                s[HIDDEN_KEY] = True
-            else:
-                s.pop(HIDDEN_KEY, None)
-        slides.append(s)
-    new = {**data, "slides": slides}
+    new = with_hidden(data, key, hidden)
     if not any(not is_hidden(s) for s in slides_of(new)):
         raise EditRefused("最後の 1 ページは非表示にできません。")
     return EditResult(data=new, plan=RenderPlan(), summary="非表示にしました。" if hidden else "表示に戻しました。",
@@ -453,17 +446,7 @@ def _reorder(ctx: Context, deck_id: str, req: dict[str, Any], data: dict[str, An
         k = ctx.call(ctx.store.page_key_of, pid) if isinstance(pid, str) else None
         if k is not None and k in _positions(data) and k not in wanted:
             wanted.append(k)
-    slides = slides_of(data)
-    by_key = {str(s.get("id")): s for s in slides}
-    order = list(wanted)
-    # 頼んだあとに足されたページ（並びに無い）は、前にいたページのすぐ後ろへ
-    for i, s in enumerate(slides):
-        k = str(s.get("id"))
-        if k in order:
-            continue
-        prev = next((str(slides[j].get("id")) for j in range(i - 1, -1, -1) if str(slides[j].get("id")) in order), None)
-        order.insert(order.index(prev) + 1 if prev else 0, k)
-    return EditResult(data={**data, "slides": [by_key[k] for k in order]}, plan=RenderPlan(), summary="並べ替えました。")
+    return EditResult(data=with_order(data, wanted), plan=RenderPlan(), summary="並べ替えました。")
 
 
 def _restore(ctx: Context, deck_id: str, req: dict[str, Any], data: dict[str, Any], mode: str,

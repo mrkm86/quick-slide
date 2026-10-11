@@ -312,6 +312,7 @@ def fake_tools(testcase, *, mode: str = "ok", images: bool = True, skills_dir: P
         "HTML_SLIDE_CODEX": str(SKILLS_DIR / "html-slide" / "tests" / "fake_codex.py"),
         "IMAGE_SLIDE_CODEX": str(SKILLS_DIR / "image-slide" / "tests" / "fake_codex.py"),
         "HTML_SLIDE_CACHE": str(tmp / "html-slide-cache"), "IMAGE_SLIDE_CACHE": str(tmp / "image-slide-cache"),
+        "MOTION_SLIDE_CACHE": str(tmp / "motion-slide-cache"),
         "HTML_SLIDE_CONFIG": str(tmp / "no-config.yaml"), "IMAGE_SLIDE_CONFIG": str(tmp / "no-config.yaml"),
         **(extra or {}),
     }

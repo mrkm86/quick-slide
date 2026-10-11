@@ -24,9 +24,9 @@ from typing import TYPE_CHECKING, Any
 from ..engines import engine_for
 from ..enums import EDIT_SOURCES, ORIGIN_RUNTIMES
 from ..errors import NotFoundError, ValidationError
-from ..scriptdoc import one_page
+from ..scriptdoc import one_page, screen_pages, with_hidden, with_order
 from ..security.secret_scan import find_secret_like
-from .deck_routes import NO_PAGES_REASON, _counts, _deck_not_found, _json, _live_deck_row, card_public, deck_view
+from .deck_routes import NO_PAGES_REASON, _counts, _tidy, _deck_not_found, _json, _live_deck_row, card_public, deck_view
 from .errors import ApiError
 from .vocabulary import (
     INSERT_TEXT_REQUIRED_REASON,
@@ -251,6 +251,41 @@ def route_duplicate(server: "QuickSlideServer", req: "Request") -> "Response":
     return _accepted(server, deck_id, result, f"{page['position']}ページを複製しています。")
 
 
+def _apply_now(server: "QuickSlideServer", deck_id: str, op: str, change: Any, detail: dict[str, Any]) -> dict[str, Any] | None:
+    """描かない直し（非表示・並べ替え）を、仕事を待たずに台本へ当てる。錠を取ってから呼ぶ。
+
+    当てたら、発表用の HTML と書き出しを新しい並びに揃える組み直し（`render` の `reason: tidy`）を 1 つ入れる
+    （待っているものがあれば足さない）。画面はその間も新しい並びと前の絵を出す（`page_view`）。
+    デッキの直しの仕事が待っている・走っているときは当てずに None を返す（呼ぶ側はこれまでどおり仕事にする。
+    走っている直しは古い台本を元に新しい台本を作るので、割り込むと、ここで当てた直しが消える）。
+    組み直し（tidy）だけが動いているときは当てる: 組み直しは台本を書き換えないので消えない。走っている組み直しは
+    古い並びで描き終えるが、待っている組み直しを 1 つ足すので、最後は新しい並びに揃う。
+    """
+    store = server.store
+    if any(not _tidy(j) for j in store.open_jobs(deck_id)):
+        return None
+    head = store.head_script(deck_id)
+    if head is None:
+        raise ApiError(409, "no_pages", NO_PAGES_REASON)
+    args = store.deck_run_args(deck_id)
+    data = change(store.load_script(head))
+    store.apply_screen_edit(deck_id, data, screen_pages(args, data), op=op, detail=detail)
+    tidy = None if store.tidy_job_waiting(deck_id) else store.create_edit(
+        deck_id, {"op": "render", "source": "screen", "reason": "tidy"})
+    return {"tidy": tidy}
+
+
+def _applied(server: "QuickSlideServer", deck_id: str, applied: dict[str, Any], message: str, **extra: Any) -> "Response":
+    server.wake_worker()
+    tidy = applied.get("tidy")
+    with server.store_lock:
+        card = card_public(server.store.deck_card(server.store.deck(deck_id)))
+    return _json(200, {"applied": True, "job_id": tidy["job"]["id"] if tidy else None,
+                       "run_id": tidy["run"]["id"] if tidy else None,
+                       "revision_id": tidy["run"]["id"] if tidy else None,
+                       "started": True, "queued": False, "message": message, "deck": card, **extra})
+
+
 def route_visibility(server: "QuickSlideServer", req: "Request") -> "Response":
     deck_id, slide_id = req.params["deck_id"], req.params["slide_id"]
     body = req.json_object()
@@ -265,14 +300,23 @@ def route_visibility(server: "QuickSlideServer", req: "Request") -> "Response":
         page = _page(pages, slide_id)
         if hidden and not page["hidden"] and sum(1 for p in pages if not p["hidden"]) <= 1:
             raise ApiError(409, "last_visible_page", "最後の 1 ページは非表示にできません。")
-        result = store.create_edit(deck_id, {"op": "visibility", "page": slide_id, "hidden": hidden, "source": "screen",
-                                             "positions": [page["position"]]})
+        key = page["key"]
+        applied = _apply_now(server, deck_id, "visibility", lambda data: with_hidden(data, key, hidden),
+                             {"page": slide_id, "hidden": hidden})
+        if applied is None:
+            result = store.create_edit(deck_id, {"op": "visibility", "page": slide_id, "hidden": hidden,
+                                                 "source": "screen", "positions": [page["position"]]})
+    if applied is not None:
+        word = "非表示にしました。" if hidden else "表示に戻しました。"
+        return _applied(server, deck_id, applied, f"{page['position']}ページを{word}")
     word = "非表示にしています。" if hidden else "表示に戻しています。"
     return _accepted(server, deck_id, result, f"{page['position']}ページを{word}")
 
 
 def route_reorder(server: "QuickSlideServer", req: "Request") -> "Response":
-    """並べ替え。送るのは全順序（v1 と同じ）。答えのページは**新しい並び**（描き終えるまでは前の絵のまま）。"""
+    """並べ替え。送るのは全順序（v1 と同じ）。答えのページは**新しい並び**。
+
+    仕事が無ければその場で台本に当てる（描かない直し）。あれば仕事にする（描き終えるまでは前の絵のまま）。"""
     deck_id = req.params["deck_id"]
     body = req.json_object()
     ids = body.get("slide_ids")
@@ -285,10 +329,15 @@ def route_reorder(server: "QuickSlideServer", req: "Request") -> "Response":
         _no_structure(args)
         if sorted(ids) != sorted(p["slide_id"] for p in pages) or len(set(ids)) != len(ids):
             raise ApiError(409, "structure_changed", STRUCTURE_CHANGED)
-        result = store.create_edit(deck_id, {"op": "reorder", "order": ids, "source": "screen"})
         by_id = {p["slide_id"]: p for p in pages}
+        keys = [by_id[sid]["key"] for sid in ids]
+        applied = _apply_now(server, deck_id, "reorder", lambda data: with_order(data, keys), {"pages": len(ids)})
+        result = None if applied is not None else store.create_edit(deck_id, {"op": "reorder", "order": ids,
+                                                                              "source": "screen"})
         ordered = [{**by_id[sid], "position": i} for i, sid in enumerate(ids, 1)]
         card = card_public(store.deck_card(store.deck(deck_id)))
+    if applied is not None:
+        return _applied(server, deck_id, applied, "並びを保存しました。", pages=ordered, counts=_counts(ordered))
     server.wake_worker()
     return _json(200, {"deck": card, "revision_id": result["run"]["id"], "pages": ordered, "counts": _counts(ordered),
                        "job_id": result["job"]["id"], "started": True, "message": "並びを保存しました。"})

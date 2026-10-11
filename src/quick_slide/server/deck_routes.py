@@ -291,6 +291,11 @@ def live_state(store, deck_id: str) -> dict[str, Any]:
     return {"working": True, "reason": "working"} if store.deck_working(deck_id) else dict(LIVE_IDLE)
 
 
+def _tidy(job: dict[str, Any]) -> bool:
+    req = job.get("request") or {}
+    return req.get("op") == "render" and req.get("reason") == "tidy"
+
+
 def deck_view(store, deck_id: str) -> dict[str, Any]:
     """スライドの画面と実況の両方が読む材料（同じ式を 2 か所に書かない）。錠を取ってから呼ぶ。"""
     from .page_view import pages_view, pending_inserts
@@ -303,9 +308,13 @@ def deck_view(store, deck_id: str) -> dict[str, Any]:
     revision = None if shown is None else {"id": shown["id"], "revision": shown["number"], "reason": "run",
                                            "created_at": shown["created_at"]}
     resume = resume_capability(store, deck_id, latest, shown)
+    planning = planning_state(latest)
+    if planning["active"] and jobs and all(_tidy(j) for j in jobs):
+        # 描かない直しの後の組み直しは裏で走らせる。画面は新しい並びと前の絵をもう出しているので、帯は出さない
+        planning = dict(PLANNING_IDLE)
     return {
         "row": row, "pages": pages, "revision": revision,
-        "planning": planning_state(latest), "live": live_state(store, deck_id),
+        "planning": planning, "live": live_state(store, deck_id),
         "limit": limit_state(row, latest, resume), "seq": store.last_event_seq(deck_id),
         "pending_inserts": pending_inserts(store, jobs),
         "capabilities": deck_capabilities(row, pages=pages, args=(shown or latest or {}).get("args") or {},

@@ -166,7 +166,6 @@ def present_view(server: "QuickSlideServer", deck_id: str) -> dict[str, Any]:
     if shown is None:
         return out
     head = store.head_script(deck_id)
-    hidden = {p["page_id"] for p in store.script_pages(head["id"]) if p["hidden"]} if head else set()
     run_dir = server.root.run_dir(deck_id, shown["id"])
     if engine.mode == "motion":
         steps = _clicks(run_dir)   # 場面＝ページ・拍＝段（1 拍目が段 0。クリックの数が段の数）
@@ -175,18 +174,37 @@ def present_view(server: "QuickSlideServer", deck_id: str) -> dict[str, Any]:
         steps = _steps(run_dir)
         html_name = "deck.html"
     has_html = (run_dir / W.PRESENT / html_name).is_file() if engine.mode in ("presentation", "motion") else False
+    # 並びと非表示は**いまの台本**に従う（描かない直し＝非表示・並べ替えは、組み直す前から発表に効く）。
+    # 絵と回の HTML の区切りは、見せる回からページの id で引く。見せる回で描いていないページ（表示に戻したばかり）は、
+    # いまの中身のまま前の回で描いた絵を出す
+    rows = {p["page_id"]: p for p in store.run_pages(shown["id"])}
+    order = store.script_pages(head["id"]) if head else []
+    earlier: dict[str, dict[str, Any]] = {}
+    for h in store.page_history(deck_id):   # 新しい回から
+        earlier.setdefault((h["page_id"], h.get("content_sha256")), h)
     pages = []
-    for p in store.run_pages(shown["id"]):
-        if p["page_id"] in hidden or p["state"] != "ready" or p["asset_state"] != "ready" or not p["asset_id"]:
+    missing_section = False
+    for sp in order:
+        if sp["hidden"]:
             continue
-        pages.append({
-            "no": len(pages) + 1,
-            "slide_id": p["page_id"],
-            "title": p["title"],
-            "image_url": asset_url(p["asset_id"]),
-            "section": p["page_no"] - 1,       # 回の HTML の section の番号（0 から）。html が無ければ使わない
-            "steps": steps.get(p["page_no"], 0) if has_html else 0,
-        })
+        p = rows.get(sp["page_id"])
+        if p is not None and p["state"] == "ready" and p["asset_state"] == "ready" and p["asset_id"]:
+            pages.append({"no": len(pages) + 1, "slide_id": p["page_id"], "title": sp["title"],
+                          "image_url": asset_url(p["asset_id"]),
+                          "section": p["page_no"] - 1,       # 回の HTML の section の番号（0 から）。html が無ければ使わない
+                          "steps": steps.get(p["page_no"], 0) if has_html else 0})
+            continue
+        h = earlier.get((sp["page_id"], sp.get("content_sha256"))) if sp.get("content_sha256") else None
+        if h is not None and h.get("asset_id") and h.get("asset_state") == "ready":
+            missing_section = True
+            pages.append({"no": len(pages) + 1, "slide_id": sp["page_id"], "title": sp["title"],
+                          "image_url": asset_url(h["asset_id"]), "section": None, "steps": 0})
+    # 回の HTML を使えるのは、見せるページが全部その回の区切りにあるときだけ（無いページが混ざったら、組み直しが
+    # 終わるまでページの絵で出す）。モーションは中のエンジンが自分の並びで進むので、台本が回より新しければ絵で出す
+    if missing_section or (engine.mode == "motion" and head is not None and shown.get("script_id") != head["id"]):
+        has_html = False
+        for p in pages:
+            p["steps"] = 0
     out["run_id"] = shown["id"]
     out["pages"] = pages
     out["message"] = None if pages else NO_PAGES_MESSAGE

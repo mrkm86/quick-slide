@@ -77,6 +77,7 @@ EVENT_KINDS = (
     # P3: 直す
     "edit_requested",  # 直しを受け付けた（仕事を作った）
     "script_accepted", # 台本の版をデッキのいまの台本にした
+    "edit_applied",    # 描かない直し（非表示・並べ替え）を、回を作らずに当てた
     # P5: 書き出しの配布
     "export_created",  # 描いた回のファイルを書き出しとして記録した（回・形式・sha256）
 )

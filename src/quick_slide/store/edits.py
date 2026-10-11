@@ -60,6 +60,30 @@ class EditsMixin(StoreBase):
             }, deck_id=deck_id)
             return {"job": job, "run": run, "ahead": ahead}
 
+    def apply_screen_edit(self, deck_id: str, data: dict[str, Any], pages: list[dict[str, Any]], *, op: str,
+                          detail: dict[str, Any]) -> dict[str, Any]:
+        """描かない直し（非表示・並べ替え）: 台本の版を 1 つ進めて、いまの台本にする。回は作らない。
+
+        呼ぶ側は、そのデッキの仕事が待っていない・走っていないことを同じ錠の中で確かめてから呼ぶ（走っている直しは
+        古い台本を元に新しい台本を作るので、割り込むと、ここで当てた直しが消える）。戻り値は台本の版の行。
+        """
+        require(op, ("visibility", "reorder"), "edit.op")
+        with self.transaction():
+            script = self.save_script(deck_id, data, written_by="screen", writer_backend=None, intake_id=None,
+                                      run_id=None)
+            self.set_script_check(script["id"], 0, [])
+            self.accept_script(script["id"], pages)
+            self.append_event("edit_applied", {"op": op, "script_version": script["version"], **detail}, deck_id=deck_id)
+            return script
+
+    def tidy_job_waiting(self, deck_id: str) -> bool:
+        """描かない直しの後の組み直し（`render` の `reason: tidy`）が、まだ始まらずに待っているか。待っていれば足さない。"""
+        for r in self._all("SELECT request_json FROM jobs WHERE deck_id=? AND state='queued'", (deck_id,)):
+            req = load_json(r["request_json"]) or {}
+            if req.get("op") == "render" and req.get("reason") == "tidy":
+                return True
+        return False
+
     def open_jobs(self, deck_id: str) -> list[dict[str, Any]]:
         """待っている・走っている仕事（古い順）。画面の「待っている差し込み」と、どのページを直している途中かに使う。"""
         rows = self._all("SELECT id FROM jobs WHERE deck_id=? AND state IN ('queued','running') ORDER BY created_at,rowid",

@@ -155,6 +155,11 @@ def _generated_pages(store: Any, deck_id: str, shown: dict[str, Any]) -> set[str
     return out
 
 
+def _drawn_before(rows: list[dict[str, Any]], content: str | None) -> bool:
+    """前の回（新しいものから）で、いまの中身（sha256）のまま描いた絵があるか。中身が分からない行は数えない。"""
+    return content is not None and any(r.get("content_sha256") == content and r.get("asset_id") for r in rows)
+
+
 def job_targets(jobs: list[dict[str, Any]]) -> dict[str, str]:
     """直している途中のページ（page_ids の id）→ running / queued。"""
     out: dict[str, str] = {}
@@ -204,6 +209,10 @@ def pages_view(store: Any, deck_id: str, *, shown: dict[str, Any] | None, latest
                 display = {**display, "reason": row["warnings"][0]}
         elif p["hidden"]:
             display = page_display("ready" if image_url else "unstarted")
+        elif row is None and image_url and _drawn_before(history.get(pid, []), p.get("content_sha256")):
+            # 見せる回では描いていない（非表示だった）が、いまの中身のまま前の回で描いたページ。
+            # 表示に戻したばかり（描かない直し）。組み直しを待たずに、その絵を出す
+            display = page_display("ready")
         elif working:
             display = page_display("generating")
         elif failed_last:

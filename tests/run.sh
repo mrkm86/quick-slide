@@ -22,7 +22,7 @@ chmod +x "$ROOT"/tests/fakes/fake_*.py "$REFUSE" "$ROOT"/skills/*/tests/fake_cod
 export QUICK_SLIDE_CLAUDE="$REFUSE" QUICK_SLIDE_CODEX_TEXT="$REFUSE" HTML_SLIDE_CODEX="$REFUSE" IMAGE_SLIDE_CODEX="$REFUSE"
 SCRATCH="$(mktemp -d -t quick-slide-tests)"
 trap 'rm -rf "$SCRATCH"' EXIT
-export HTML_SLIDE_CACHE="$SCRATCH/html-slide-cache" IMAGE_SLIDE_CACHE="$SCRATCH/image-slide-cache"
+export HTML_SLIDE_CACHE="$SCRATCH/html-slide-cache" IMAGE_SLIDE_CACHE="$SCRATCH/image-slide-cache" MOTION_SLIDE_CACHE="$SCRATCH/motion-slide-cache"
 export CODEX_HOME="$SCRATCH/no-codex-home"
 
 cd "$ROOT"
