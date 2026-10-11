@@ -1,7 +1,6 @@
 """画面（web/app。v1 から写したもの）とサーバの突き合わせ。JavaScript は動かさない（動かす試験は tests/live）。
 
 - 画面が呼ぶ URL はすべてサーバのルート表にある（P3 以降の口も「まだ使えない」と答えるために残っている）
-- 固定の 1 行（新しいスライドは会話から作ります）は HTML とサーバの語彙で同じ
 - 画面は新しいウィンドウを開かず、外のサイトから何も読み込まない
 """
 
@@ -14,7 +13,6 @@ import uuid
 from helpers import REPO
 
 from quick_slide.server.app import ROUTES
-from quick_slide.server.vocabulary import NEW_DECK_NOTICE
 
 WEB = REPO / "web" / "app"
 _LITERAL = re.compile(r'"(/api/[^"]*)"')
@@ -56,10 +54,6 @@ class ScreenAndServerAgreeTests(unittest.TestCase):
         for path in ("/", "/slides", f"/slides/{uuid.uuid4()}", "/settings", "/settings/styles", "/settings/server",
                      f"/settings/brands/{uuid.uuid4()}"):
             self.assertTrue(routed(path), path)
-
-    def test_the_new_deck_notice_matches_the_vocabulary(self) -> None:
-        html = (WEB / "index.html").read_text(encoding="utf-8")
-        self.assertIn(f">{NEW_DECK_NOTICE}<", html)
 
     def test_no_new_windows_and_no_outside_resources(self) -> None:
         for f in WEB.iterdir():

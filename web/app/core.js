@@ -279,12 +279,6 @@
     document.querySelectorAll(".topbar a[data-route]").forEach(function (a) {
       if (a.dataset.route === r.name) { a.setAttribute("aria-current", "page"); } else { a.removeAttribute("aria-current"); }
     });
-    // 「新しいスライドは会話から作ります」はホームと一覧（入口を探す画面）でだけ出す。
-    // デッキの画面は今まさに作っている/見ている最中なので噛み合わない（利用者の指摘、2026-09-14）。
-    // ごみ箱は一覧の中のトグルであり別ルートではないので一覧と同じ扱いになる。設定は対象外。
-    // 文言・要素そのものは消さない（正本は vocabulary.NEW_DECK_NOTICE）。表示・非表示だけを切り替える。
-    var newDeckNotice = document.getElementById("new-deck-notice");
-    if (newDeckNotice) { newDeckNotice.hidden = (r.name !== "home" && r.name !== "list"); }
     var seq = ++renderSeq;
     var view = SS.views[r.name];
     var guard = function () { return seq === renderSeq; };

@@ -72,10 +72,6 @@
       .catch(function (e) { t = null; SS.toast(e.message || "ブラウザの起動を記録できませんでした。", { kind: "error" }); });
   }
 
-  // 「新しいスライドは会話から作ります」の文言は状態に左右されない固定の1行なので HTML に直書きしてある
-  // （server/vocabulary.py の NEW_DECK_NOTICE が正本。ここでは capabilities を読まない）。
-  // どの画面で見せる/隠すかは画面遷移（route）だけで決まるので、その切り替えは core.js の SS.render にある。
-
   Promise.all([
     SS.api("/api/vocabulary").catch(function () { return null; }),
     settingsReady

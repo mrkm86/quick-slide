@@ -31,13 +31,6 @@
 <div class="workspace-status">
   <!-- 稼働中は出さない（利用者の判断。2026-10-11）。問題があるときだけ文を出す（app.js） -->
   <span id="server-state" class="muted small" aria-live="polite" hidden>サーバを確認しています…</span>
-  <div class="workspace-status__action">
-    <!-- 新しいスライドはボタンにしない（利用者の決定。入口は会話。docs/adr/0020 §7 追記）。
-         文言の正本は server/vocabulary.py の NEW_DECK_NOTICE（tests/p6/test_ui_static.py が一致を固定）。
-         ホーム・一覧（入口を探す画面）でだけ出す。デッキの画面は作っている最中なので出さない
-         （利用者の指摘、2026-09-14）。表示・非表示の切り替えは core.js の SS.render（el.hidden）。 -->
-    <span id="new-deck-notice" class="reason">新しいスライドは会話から作ります</span>
-  </div>
 </div>
 <main id="view" tabindex="-1" aria-live="polite"></main>
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
