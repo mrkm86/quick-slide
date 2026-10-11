@@ -1671,11 +1671,14 @@
       var titlePencil = h("button", { class: "btn btn--icon btn--ghost deck-title-edit", type: "button",
                                       "aria-label": "名前を変える", title: "名前を変える" }, pageIcon("pencil"));
       titleInput.hidden = true;
-      var titleBox = h("span", { class: "deck-title" }, titleText, titleInput, titlePencil);
+      // 形式の札は題の横（題は 1 行のまま縮む。札は縮まない）
+      var kindTag = SS.kindTag(deck.mode, deck.mode_label);
+      var titleBox = h("span", { class: "deck-title" }, titleText, titleInput, kindTag, titlePencil);
       var showTitleInput = function (editing) {
         titleText.hidden = editing;
         titleInput.hidden = !editing;
         titlePencil.hidden = editing;
+        if (kindTag) { kindTag.hidden = editing; }
         if (editing) { titleInput.value = deck.title; titleInput.focus(); titleInput.select(); }
       };
       var savingTitle = false;

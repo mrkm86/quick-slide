@@ -103,7 +103,12 @@
   // 必ずラベルと組む: アイコンだけのボタンには呼ぶ側が aria-label を付ける。アイコン自身は読み上げから外す。
   var ICON_PATHS = {
     more_vert: "M480-160q-33 0-56.5-23.5T400-240q0-33 23.5-56.5T480-320q33 0 56.5 23.5T560-240q0 33-23.5 56.5T480-160Zm0-240q-33 0-56.5-23.5T400-480q0-33 23.5-56.5T480-560q33 0 56.5 23.5T560-480q0 33-23.5 56.5T480-400Zm0-240q-33 0-56.5-23.5T400-720q0-33 23.5-56.5T480-800q33 0 56.5 23.5T560-720q0 33-23.5 56.5T480-640Z",
+    // 形式のアイコン（自作の単純な形。Material Symbols の同名の絵に近づけたもの。外周と穴は巻く向きを逆にして抜く）
+    slideshow: "M120-760h720v560H120Zm80 80v400h560v-400Zm200 320v-240l200 120Z",
+    photo_library: "M120-760h720v560H120Zm80 80v400h560v-400Zm40 360 140-180 100 120 80-100 120 160ZM640-660a40 40 0 1 0-80 0 40 40 0 1 0 80 0Z",
+    animation: "M440-480a140 140 0 1 1-280 0 140 140 0 1 1 280 0ZM710-480a90 90 0 1 1-180 0 90 90 0 1 1 180 0ZM860-480a40 40 0 1 1-80 0 40 40 0 1 1 80 0Z",
     add: "M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z",
+    help: "M478-240q21 0 35.5-14.5T528-290q0-21-14.5-35.5T478-340q-21 0-35.5 14.5T428-290q0 21 14.5 35.5T478-240Zm-36-154h74q0-33 7.5-52t42.5-52q26-26 41-49.5t15-56.5q0-56-41-86t-97-30q-57 0-92.5 30T342-618l66 26q5-18 22.5-39t53.5-21q32 0 48 17.5t16 38.5q0 20-12 37.5T506-526q-44 39-54 59t-10 73Zm38 314q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Z",
     close: "m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z",
     arrow_back: "m313-440 224 224-57 56-320-320 320-320 57 56-224 224h487v80H313Z",
     arrow_forward: "M647-440H160v-80h487L423-744l57-56 320 320-320 320-57-56 224-224Z",
@@ -124,9 +129,30 @@
     svg.setAttribute("focusable", "false");
     svg.setAttribute("class", "icon" + (cls ? " " + cls : ""));
     var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", ICON_PATHS[name]);
+    path.setAttribute("d", ICON_PATHS[name] || ICON_PATHS.image);   // 知らない名前は汎用の絵
     svg.appendChild(path);
     return svg;
+  };
+  // ---- スライドの形式（プレゼン・ピッチ・モーション）----
+  // 名前・説明・アイコン・色・書き出せる形式の**正本はサーバの語彙**（`SS.vocab.deck_kinds`。並び順もそこ）。
+  // 画面に形式の名前を書かない。語彙が古くて無いときは、モードの名前だけで出す（アイコンは汎用）。
+  SS.deckKinds = function () {
+    var v = SS.vocab || {};
+    if (Array.isArray(v.deck_kinds) && v.deck_kinds.length) { return v.deck_kinds; }
+    var modes = v.deck_modes || {};
+    return Object.keys(modes).map(function (m) { return { mode: m, label: modes[m], description: "", icon: null, tone: null, outputs: [] }; });
+  };
+  SS.deckKind = function (mode, fallbackLabel) {
+    var all = SS.deckKinds();
+    for (var i = 0; i < all.length; i++) { if (all[i].mode === mode) { return all[i]; } }
+    return { mode: mode, label: fallbackLabel || mode || "", description: "", icon: null, tone: null, outputs: [] };
+  };
+  // 形式の札: 角丸・先頭にアイコン・形式の色（色の組は CSS の `data-tone`。色だけに頼らず、アイコンと字も付ける）
+  SS.kindTag = function (mode, fallbackLabel) {
+    if (!mode) { return null; }
+    var k = SS.deckKind(mode, fallbackLabel);
+    return SS.h("span", { class: "kind-tag", "data-tone": k.tone || "neutral", "data-mode": mode },
+      SS.icon(k.icon || "image"), SS.h("span", { text: k.label }));
   };
   SS.clear = function (el) { while (el.firstChild) { el.removeChild(el.firstChild); } return el; };
 
