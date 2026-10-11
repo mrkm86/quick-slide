@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>雛形の台本</title>
+<!-- crumb: パンくずの頭 ／ chapters: 章（場面の data-ch が番号）／ dur: data-dur が無い拍の長さ ms ／ terms: 下に残す言葉の数 -->
+<script type="application/json" id="ms-config">{"crumb":"雛形","chapters":["見せ方","仕掛け"],"dur":4200,"terms":6}</script>
+<style>
+/* 場面ごとの見た目はここに書く。色は var(--pri) などのトークンだけ使う（references/authoring.md） */
+#s1 .cover{position:absolute;left:180px;top:320px}
+#s1 h1{font-family:var(--head);font-weight:600;font-size:104px;line-height:1.28}
+#s1 .lead{font-size:30px;color:var(--g-mid);margin-top:36px}
+#s2 .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:34px}
+#s2 .col{padding:32px;height:300px;font-size:28px;line-height:1.6}
+#s2 .msg{position:absolute;left:0;right:0;top:360px;font-size:30px}
+#s3 .card.src{position:absolute;left:0;top:0;width:420px;padding:30px;font-size:26px;line-height:1.7}
+#s3 .card.src b{font-size:40px}
+#s3 #tb{position:absolute;left:560px;top:0}
+#s3 .ctl{position:absolute;left:0;top:360px;padding:22px 28px;display:flex;gap:20px;align-items:center;font-size:24px}
+#s3 .ctl input{font-size:24px;padding:6px 12px;width:220px}
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <section class="scene" id="s1" data-beats="2" data-title="表紙" data-norail data-dur="3600,4200">
+    <div class="cover">
+      <h1 class="x" data-in="0">見出しは<br><em>主張で書く</em></h1>
+      <p class="lead x" data-in="1">クリックごとに1つだけ増える</p>
+    </div>
+    <aside class="notes"><p>拍1で話すこと。</p><p>拍2で話すこと。</p></aside>
+  </section>
+
+  <section class="scene" id="s2" data-beats="4" data-ch="0" data-title="出す・消す・照らす" data-term="拍" data-dur="4200,4200,4200,5200">
+    <h2 class="h2 x f" data-in="0" data-out="3">拍ごとに、<em>1つだけ</em>照らす</h2>
+    <h2 class="h2 x f" data-in="3">古いやり方には<em>線を引く</em></h2>
+    <div class="body">
+      <div class="cols">
+        <div class="col card x" data-in="0" data-hl="1" data-hlout="2"><span class="lab">01</span><br>1つ目</div>
+        <div class="col card x" data-in="0" data-hl="2" data-hlout="3" style="transition-delay:.2s"><span class="lab">02</span><br>2つ目</div>
+        <div class="col card x" data-in="0" data-dim="3" style="transition-delay:.4s"><span class="lab">03</span><br><span class="strike" data-st="3">古いやり方</span></div>
+      </div>
+      <div class="msg x" data-in="3"><span class="stamp cross x p" data-in="3">やめる</span></div>
+    </div>
+    <aside class="notes"><p>3つを出す。</p><p>1つ目を照らす。</p><p>2つ目を照らす。</p><p>3つ目に線を引く。</p></aside>
+  </section>
+
+  <section class="scene" id="s3" data-beats="3" data-ch="1" data-title="値がマスへ飛ぶ" data-term="表" data-dur="4200,5600,6000">
+    <h2 class="h2 x f" data-in="0" data-out="1">カードの値が、<em>表のマスへ</em></h2>
+    <h2 class="h2 x f" data-in="1">その場で<em>書き換えられる</em></h2>
+    <div class="body">
+      <div class="card src x" data-in="0"><span class="lab">カード</span><br><b class="v">42</b> 件</div>
+      <div id="tb" class="x f" data-in="0"></div>
+      <div class="ctl card live-zone x" data-in="2"><span class="live">LIVE</span><label>値 <input id="val" value="42"></label></div>
+      <svg class="wires" id="w3"></svg>
+    </div>
+    <aside class="notes"><p>カードと空の表。</p><p>値が飛んで、マスに入る。</p><p>書き換えると表も変わる。</p></aside>
+  </section>
+</div>
+<script>
+// 拍ごとの状態。b は 0 始まり。何度呼ばれても、その拍の見た目を丸ごと決める（戻っても同じになる）
+const COLS = [{ k: "name", label: "項目", w: 200 }, { k: "v", label: "値", w: 200 }];
+const T = (x, v, hl) => x.table("tb", { at: [560, 0], cols: COLS, rows: [{ k: "a", name: "件数", v }], hlCol: hl ? "v" : null });
+MS.hook("s3", (b, x) => {
+  const v = document.getElementById("val").value || "42";
+  const fly = b === 1 && x.step;                       // 拍1→2 と進んだときだけ飛ばす。飛ばずに来たら最初から入っている
+  T(x, b >= 1 && !fly ? v : "", b >= 1);
+  if (fly) x.later(() => x.fly(document.querySelector("#s3 .v"), x.cell("tb", "a:v"), { dx: 14, dy: 8, fs: "21px", onLand: () => T(x, v, true) }), 500);
+  if (b === 2) x.later(() => x.wire("w3", document.querySelector("#s3 .card.src"), x.cell("tb", "a:name")), 700);
+});
+MS.ready(() => document.getElementById("val").addEventListener("input", e => {
+  document.querySelector("#s3 .v").textContent = e.target.value;
+  if (MS.state.S === 2) MS.go(2, MS.state.B);          // 同じ拍を当て直すと、表も書き換わる
+}));
+</script>
+</body>
+</html>

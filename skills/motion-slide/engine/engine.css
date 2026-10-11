@@ -1,0 +1,140 @@
+/* motion-slide エンジンの見た目（道しるべ・拍の出入り・共通の部品）。
+   色は build.py が html-slide のテーマから :root に差し込む（--bg / --ink / --pri / --pri-d / --pri-l / --sky / --acc）。
+   場面ごとの見た目は台本の <style> に書く。ここは全部の台本で同じもの */
+:root{
+  --neg:#C00000; --g-mid:#7F7F7F; --g-l:#D9D9D9; --g-weak:#ADADAD; --g-bg:#F1F1F1; --white:#FFFFFF;
+  --mincho:"YuMincho","Yu Mincho","Hiragino Mincho ProN",serif;
+  --gothic:"YuGothic","Yu Gothic","Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;
+  --mono:"SF Mono","Menlo","Consolas",monospace;
+  --head:var(--mincho);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#E9EEF1;overflow:hidden}
+body{font-family:var(--gothic);font-weight:500;color:var(--ink)}
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:0 0;
+  background:linear-gradient(180deg,var(--sky),var(--bg) 55%);overflow:hidden;cursor:default}
+
+/* ── 背景の流れる線（config の ambient: true） ── */
+#ms-ambient{position:absolute;inset:0;pointer-events:none}
+#ms-ambient path{fill:none;stroke:var(--pri);stroke-width:2;opacity:.13;stroke-dasharray:1400 900;animation:ms-flow 26s linear infinite}
+#ms-ambient path:nth-child(2){opacity:.09;animation-duration:34s;animation-direction:reverse}
+#ms-ambient path:nth-child(3){opacity:.07;stroke-width:1.5;animation-duration:42s}
+@keyframes ms-flow{to{stroke-dashoffset:-4600}}
+
+/* ── 道しるべ（エンジンが作る。台本には書かない） ── */
+#ms-crumb{position:absolute;left:96px;top:48px;font-family:var(--mono);font-size:19px;color:var(--g-weak);letter-spacing:.02em;z-index:5}
+#ms-crumb b{color:var(--ink);font-weight:500}
+#ms-crumb i{font-style:normal;color:var(--pri);margin-left:8px}
+#ms-dots{position:absolute;right:96px;top:52px;display:flex;gap:10px;z-index:5}
+#ms-dots span{width:10px;height:10px;border-radius:50%;background:var(--g-l);transition:background .3s,transform .3s}
+#ms-dots span.done{background:var(--pri-m)}
+#ms-dots span.now{background:var(--pri);transform:scale(1.35)}
+#ms-rail{position:absolute;left:96px;top:300px;width:224px;transition:opacity .6s;z-index:5}
+#ms-rail .ch{font-size:16px;letter-spacing:.14em;color:var(--g-weak);margin-bottom:18px;font-family:var(--mono)}
+#ms-rail ol{list-style:none;border-left:2px solid var(--g-l)}
+#ms-rail li{position:relative;padding:9px 0 9px 18px;font-size:18px;line-height:1.35;color:var(--g-weak);transition:color .4s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ms-rail li .n{font-family:var(--mono);font-size:15px;margin-right:8px}
+#ms-rail li.now{color:var(--ink)}
+#ms-rail li.now::before{content:"";position:absolute;left:-2px;top:6px;bottom:6px;width:3px;background:var(--pri)}
+#ms-rail li.done{color:#8C8C8C}
+#ms-terms{position:absolute;left:96px;bottom:44px;display:flex;gap:10px;align-items:center;z-index:5;max-width:1150px;flex-wrap:nowrap;overflow:hidden}
+#ms-terms .lbl{font-family:var(--mono);font-size:15px;color:var(--g-weak);letter-spacing:.12em;margin-right:6px;white-space:nowrap}
+#ms-terms span.t{font-size:16px;padding:5px 12px;border:1px solid var(--g-l);border-radius:999px;color:var(--g-mid);background:rgba(255,255,255,.7);animation:ms-tin .6s both;white-space:nowrap}
+#ms-terms span.more{font-family:var(--mono);font-size:15px;color:var(--g-weak)}
+#ms-terms span.t.new{border-color:var(--pri);color:var(--pri-d)}
+@keyframes ms-tin{from{opacity:0;transform:translateY(8px)}}
+#ms-logo{position:absolute;right:96px;bottom:38px;background-repeat:no-repeat;z-index:5}
+#ms-bar{position:absolute;left:0;bottom:0;height:4px;background:var(--pri);transition:width .5s;z-index:5}
+#ms-ctrl{position:absolute;right:96px;top:84px;display:flex;gap:10px;align-items:center;z-index:6}
+#ms-ctrl button{font-family:var(--gothic);font-size:15px;padding:5px 14px;border-radius:999px;border:1px solid var(--g-l);background:rgba(255,255,255,.85);color:var(--g-mid);cursor:pointer}
+#ms-ctrl button.on{border-color:var(--pri);color:var(--pri-d)}
+#ms-ctrl .pos{font-family:var(--mono);font-size:14px;color:var(--g-weak)}
+
+/* ── 場面 ── */
+.scene > aside.notes{display:none}
+.scene{position:absolute;inset:0;opacity:0;filter:blur(10px);transition:opacity .7s ease,filter .7s ease;pointer-events:none}
+.scene.active{opacity:1;filter:none;pointer-events:auto}
+.h2{position:absolute;left:340px;right:140px;top:130px;font-family:var(--head);font-weight:600;font-size:64px;line-height:1.3;letter-spacing:.01em}
+.h2 small{display:block;font-family:var(--gothic);font-size:24px;color:var(--g-mid);font-weight:500;margin-top:10px;letter-spacing:0}
+.scene[data-norail] .h2{left:180px}
+.body{position:absolute;left:340px;right:140px;top:330px;bottom:130px}
+.scene[data-norail] .body{left:180px;right:180px}
+em{font-style:normal;color:var(--pri-d);background:linear-gradient(var(--pri),var(--pri)) left bottom/100% 4px no-repeat;padding-bottom:4px}
+.neg{color:var(--neg)}
+.note{font-size:17px;color:var(--g-weak)}
+
+/* 出入り（エンジンが拍で .on を付け外しする） */
+.x{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .7s cubic-bezier(.2,.7,.2,1),filter .6s}
+.x.on{opacity:1;transform:none}
+.x.f{transform:none}
+.x.p{transform:scale(.86)} .x.p.on{transform:none;transition:opacity .4s,transform .55s cubic-bezier(.3,1.6,.5,1)}
+.x.l{transform:translateX(-30px)} .x.l.on{transform:none}
+.x.r{transform:translateX(30px)} .x.r.on{transform:none}
+[data-dim]{transition:opacity .6s,filter .6s}
+.dim:not(.x),.x.on.dim{opacity:.14;filter:blur(2px)}
+.strike{position:relative}
+.strike::after{content:"";position:absolute;left:-4px;right:-4px;top:52%;height:4px;background:var(--neg);transform:scaleX(0);transform-origin:left;transition:transform .45s ease}
+.strike.st::after{transform:scaleX(1)}
+
+/* 共通の部品 */
+.card{background:var(--white);border:1px solid var(--g-l);border-radius:18px;box-shadow:0 8px 28px rgba(64,64,64,.06);
+  transition:opacity .6s ease,transform .7s cubic-bezier(.2,.7,.2,1),filter .6s,border-color .4s,box-shadow .4s}   /* .x の出入りを消さない */
+.card.hl{border-color:var(--pri);box-shadow:0 0 0 10px color-mix(in srgb,var(--pri) 14%,transparent)}
+.badge{display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:var(--pri);color:#fff;font-weight:700;font-size:20px;flex:none}
+.lab{font-family:var(--mono);font-size:16px;letter-spacing:.14em;color:var(--pri-d)}
+.stamp{display:inline-block;padding:10px 22px;border:5px solid var(--neg);color:var(--neg);font-weight:700;font-size:34px;border-radius:10px;background:rgba(255,255,255,.9);transform:rotate(-8deg) scale(1.5)}
+.stamp.ok{border-color:var(--pri);color:var(--pri-d)}
+.stamp.on{transform:rotate(-8deg) scale(1)}
+.live{font-family:var(--mono);font-size:15px;letter-spacing:.14em;color:var(--pri-d);display:inline-flex;align-items:center;gap:8px}
+.live::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--pri);animation:ms-blink 1.4s infinite}
+@keyframes ms-blink{50%{opacity:.25}}
+.arrow{width:46px;height:2px;background:var(--g-mid);position:relative;flex:none}
+.arrow::after{content:"";position:absolute;right:-2px;top:-6px;border:7px solid transparent;border-left:10px solid var(--g-mid)}
+
+/* 線（wire）・手書きの丸（hand）を描く SVG。場面に <svg class="wires" id="…"> を1枚置く */
+svg.wires{position:absolute;inset:0;width:1920px;height:1080px;pointer-events:none;overflow:visible;z-index:4}
+svg.wires .w{fill:none;stroke:var(--pri);stroke-width:3;stroke-dasharray:var(--len);stroke-dashoffset:var(--len);animation:ms-draw .9s ease forwards}
+svg.wires .dot{fill:var(--pri);opacity:0;animation:ms-fade .3s .8s forwards}
+svg.wires .hand{fill:none;stroke-width:5;stroke-linecap:round;stroke-dasharray:var(--len);stroke-dashoffset:var(--len);animation:ms-draw .8s ease-out forwards}
+@keyframes ms-draw{to{stroke-dashoffset:0}}
+@keyframes ms-fade{to{opacity:1}}
+.flyer{position:absolute;z-index:30;pointer-events:none;color:var(--pri-d);white-space:nowrap;transition:left .9s cubic-bezier(.5,0,.25,1),top .9s cubic-bezier(.5,.2,.3,1),font-size .9s,width .9s,height .9s,opacity .3s;text-shadow:0 2px 10px rgba(255,255,255,.9)}
+.landed{animation:ms-land .6s ease}
+@keyframes ms-land{0%{background:color-mix(in srgb,var(--pri) 35%,transparent)}100%{background:transparent}}
+
+/* キー付きの表（MS.table） */
+.mstable{position:absolute;transition:left .6s,top .6s,opacity .5s}
+.mstable .tname{font-family:var(--mono);font-size:17px;color:var(--g-mid);margin-bottom:8px;height:24px}
+.mstable .tcells{position:relative;transition:width .5s,height .5s}
+.mstable .tc{position:absolute;display:flex;align-items:center;padding:0 14px;font-size:21px;border-right:1px solid var(--g-l);border-bottom:1px solid var(--g-l);background:#fff;white-space:nowrap;overflow:hidden;
+  transition:left .55s cubic-bezier(.2,.7,.2,1),top .55s cubic-bezier(.2,.7,.2,1),width .55s,height .55s,opacity .45s,background .4s,color .4s}
+.mstable .tc.head{background:var(--g-bg);font-weight:700;font-size:19px}
+.mstable .tc.head.hl{background:var(--pri);color:#fff}
+.mstable .tc.hl{background:var(--pri-l)}
+.mstable .tc.ok{background:var(--pri-l);color:var(--pri-d);font-weight:700}
+.mstable .tc.bad{background:#FBECEC;color:var(--neg)}
+.mstable .tc.mute{color:var(--g-weak)}
+.mstable .tc.enter{opacity:0;transform:translateY(10px)}
+.mstable .tc.leave{opacity:0}
+.mstable .tc.flash{animation:ms-land .8s ease}
+
+/* 一覧（O）・話す台本（N） */
+#ms-ov{position:absolute;inset:0;background:rgba(255,255,255,.97);opacity:0;pointer-events:none;transition:opacity .35s;padding:56px 96px;z-index:40;overflow:auto}
+#ms-ov.show{opacity:1;pointer-events:auto}
+#ms-ov h2{font-family:var(--head);font-size:40px;font-weight:600}
+#ms-ov .meta{font-size:18px;color:var(--g-weak);margin:6px 0 22px;font-family:var(--mono)}
+#ms-ov .chs{display:flex;flex-direction:column;gap:18px}
+#ms-ov .chn{font-size:14px;letter-spacing:.12em;color:var(--pri-d);margin:0 4px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ms-ov .row{display:grid;grid-template-columns:repeat(6,1fr);gap:18px 16px}
+#ms-ov .sc{min-width:0;padding:8px 10px 12px;border:1px solid var(--g-l);border-radius:12px;background:#fff;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+#ms-ov .sc:hover{border-color:var(--pri-m);box-shadow:0 6px 20px rgba(64,64,64,.08)}
+#ms-ov .sc .th{display:block;width:100%;aspect-ratio:16/9;border-radius:6px;border:1px solid var(--g-l);margin-bottom:8px;background:var(--g-bg)}
+#ms-ov .sc.now{border-color:var(--pri);box-shadow:0 0 0 3px var(--pri)}
+#ms-ov .sc .cht{font-family:var(--mono);font-size:13px;color:var(--pri-d);margin-right:8px}
+#ms-ov .sc .tt{font-size:17px;line-height:1.4;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ms-ov .sc .bt{display:flex;gap:5px;margin-top:8px;padding:0 4px;flex-wrap:wrap}
+#ms-ov .sc .bt span{width:24px;height:24px;border-radius:6px;border:1px solid var(--g-l);font-size:13px;display:flex;align-items:center;justify-content:center;color:var(--g-mid)}
+#ms-ov .sc .bt span:hover{background:var(--pri);color:#fff;border-color:var(--pri)}
+#ms-notes{position:absolute;left:96px;right:96px;bottom:90px;padding:20px 28px;background:rgba(64,64,64,.94);color:#fff;border-radius:14px;font-size:22px;line-height:1.7;z-index:35;display:none}
+#ms-notes.show{display:block}
+@media (prefers-reduced-motion:reduce){#ms-ambient path{animation:none}}

@@ -1,0 +1,13 @@
+# motion-slide の機体ごとの既定。実体は <QUICK_SLIDE_HOME>/engines/motion-slide/config.yaml（既定は ~/.quick-slide。環境変数 MOTION_SLIDE_CONFIG でも指せる）に置く（無くても動く）
+#
+#   mkdir -p ~/.quick-slide/engines/motion-slide && cp config.example.yaml ~/.quick-slide/engines/motion-slide/config.yaml
+#
+# テーマ（色）。html-slide の themes/ の名前か YAML のパス。既定は html-slide の default
+theme: default
+# ロゴ（PNG・透明の地）。絵は変えず、透明な余白の外側を見せないだけ（ロゴは加工しない）
+logo: ~/path/to/logo.png
+logo_alt: 会社名やブランド名
+# ロゴの高さ（px・舞台は 1920×1080）。2段組みのロゴは 50 くらいで読める
+logo_height: 50
+# 出力の根っこ（省くと <QUICK_SLIDE_HOME>/engines/motion-slide/output）。題材ごとのフォルダをこの下に作る
+# out: ~/Documents/motion-slide
