@@ -103,6 +103,7 @@
   // 必ずラベルと組む: アイコンだけのボタンには呼ぶ側が aria-label を付ける。アイコン自身は読み上げから外す。
   var ICON_PATHS = {
     more_vert: "M480-160q-33 0-56.5-23.5T400-240q0-33 23.5-56.5T480-320q33 0 56.5 23.5T560-240q0 33-23.5 56.5T480-160Zm0-240q-33 0-56.5-23.5T400-480q0-33 23.5-56.5T480-560q33 0 56.5 23.5T560-480q0 33-23.5 56.5T480-400Zm0-240q-33 0-56.5-23.5T400-720q0-33 23.5-56.5T480-800q33 0 56.5 23.5T560-720q0 33-23.5 56.5T480-640Z",
+    add: "M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z",
     close: "m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z",
     arrow_back: "m313-440 224 224-57 56-320-320 320-320 57 56-224 224h487v80H313Z",
     arrow_forward: "M647-440H160v-80h487L423-744l57-56 320 320-320 320-57-56 224-224Z",
@@ -170,17 +171,22 @@
   var modalSeq = 0;
   function closeMenu() { if (openMenu) { openMenu.remove(); openMenu = null; document.removeEventListener("click", onDocClick, true); document.removeEventListener("keydown", onKey, true); } }
   function onDocClick(e) { if (openMenu && !openMenu.contains(e.target)) { closeMenu(); } }
-  function onKey(e) { if (e.key === "Escape") { closeMenu(); } }
-  // items: [{label, onSelect, disabled, reason, danger}] / "-" は区切り
-  SS.menu = function (anchor, items) {
+  // Esc はメニューだけを閉じる（外側の板・ダイアログまで閉じない）
+  function onKey(e) { if (e.key === "Escape") { e.stopPropagation(); closeMenu(); } }
+  // items: [{label, onSelect, disabled, reason, danger, checked}] / "-" は区切り
+  // `checked` を持つ項目はオン・オフの項目（メニューを開いたときの状態を見せる）
+  // opts: {up: 上へ開く, left: 左端をそろえる}（置いた側が知っていることを宣言する）
+  SS.menu = function (anchor, items, opts) {
+    opts = opts || {};
     if (openMenu && openMenu.__anchor === anchor) { closeMenu(); return; }
     closeMenu();
     var ul = SS.h("ul", { class: "menu", role: "menu" });
     items.forEach(function (it) {
       if (it === "-") { ul.appendChild(SS.h("li", { class: "menu__sep", role: "separator" })); return; }
       var li = SS.h("li", { role: "none" });
-      var b = SS.h("button", { type: "button", role: "menuitem", text: it.label, disabled: !!it.disabled,
-        "aria-disabled": it.disabled ? "true" : null,
+      var toggle = it.checked !== undefined;
+      var b = SS.h("button", { type: "button", role: toggle ? "menuitemcheckbox" : "menuitem", text: it.label, disabled: !!it.disabled,
+        "aria-disabled": it.disabled ? "true" : null, "aria-checked": toggle ? (it.checked ? "true" : "false") : null,
         onclick: function () { if (it.disabled) { return; } closeMenu(); it.onSelect(); } });
       if (it.danger) { b.style.color = "var(--color-error)"; }
       li.appendChild(b);
@@ -191,13 +197,18 @@
     holder.appendChild(ul);
     // 開く向き。既定は下。ボタンが器の下端にあって下に開けない置き場（カードの最下段の行）は
     // 器のクラス `menu-anchor--up` で**上へ**開くと宣言する（置いた側が知っていることなので測らない）
-    if (holder.classList && holder.classList.contains("menu-anchor--up")) {
+    if (opts.up || (holder.classList && holder.classList.contains("menu-anchor--up"))) {
       ul.style.bottom = (holder.clientHeight - anchor.offsetTop + 2) + "px";
     } else {
       ul.style.top = (anchor.offsetTop + anchor.offsetHeight + 2) + "px";
     }
-    var right = holder.clientWidth - (anchor.offsetLeft + anchor.offsetWidth);
-    ul.style.right = Math.max(0, right) + "px";
+    if (opts.left) {
+      ul.style.left = Math.max(0, anchor.offsetLeft) + "px";
+      ul.style.right = "auto";
+    } else {
+      var right = holder.clientWidth - (anchor.offsetLeft + anchor.offsetWidth);
+      ul.style.right = Math.max(0, right) + "px";
+    }
     ul.__anchor = anchor;
     openMenu = ul;
     setTimeout(function () { document.addEventListener("click", onDocClick, true); document.addEventListener("keydown", onKey, true); }, 0);
