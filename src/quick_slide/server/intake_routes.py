@@ -6,6 +6,12 @@ image_look・images を足した）。デッキ（モードはここで決まり
   （一致した文字列は返さない。パターンの名前だけ）
 - 会話の識別子の生値が原稿やタイトルにも入っていたら 400（生値を永続化しない）
 - まだ受けない項目（既存のデッキへの追加・会話抜粋・添付・書式）は 400 `not_ready_in_v2`
+
+**原稿か依頼か**（docs/adr/0002-create-from-screen.md）: `manuscript` と `request` は**ちょうどどちらか 1 つ**。
+- `manuscript`（`origin.kind` は conversation など）: 呼ぶ側がもう材料を整えている。台本係へそのまま渡す（いままでどおり）
+- `request`（`origin.kind=request`）: サーバが下調べ係で Web を調べて原稿を起こしてから、台本係に渡す
+画面（入力欄）と会話（`skills/quick-slide` の `--request`）は同じ口・同じ形で送り、違いは `origin.runtime` だけ。
+答えの `deck_url` はトークンの無い `/slides/<デッキ>`（画面はもう開いているので、こちらへ移る）。
 """
 
 from __future__ import annotations
@@ -39,7 +45,7 @@ def route_intake(server: "QuickSlideServer", req: "Request") -> "Response":
 
     payload = req.json_object()
     extra = server.settings.intake.extra_secret_patterns
-    for field_name, label in (("manuscript", "原稿"), ("transcript_excerpt", "会話抜粋")):
+    for field_name, label in (("manuscript", "原稿"), ("request", "依頼の文"), ("transcript_excerpt", "会話抜粋")):
         value = payload.get(field_name)
         if isinstance(value, str):
             hits = find_secret_like(value, extra)
@@ -61,7 +67,7 @@ def route_intake(server: "QuickSlideServer", req: "Request") -> "Response":
     return Response.json(201, {
         "intake_id": result["intake_id"], "deck_id": result["deck_id"], "deck_title": result["deck_title"],
         "mode": result["mode"], "style": result["style"], "launch_id": result["launch_id"],
-        "job_id": result["job_id"], "run_id": result["run_id"], "url": url,
+        "job_id": result["job_id"], "run_id": result["run_id"], "url": url, "deck_url": f"/slides/{result['deck_id']}",
         "resolution": result["resolution"], "appended": result["appended"],
         "resolution_reason": result["resolution_reason"],
     })

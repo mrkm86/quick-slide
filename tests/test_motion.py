@@ -725,12 +725,12 @@ class MigrationTests(unittest.TestCase):
 
         def shapes(c: sqlite3.Connection) -> dict:
             out = {}
-            for table in ("decks", "runs", "exports"):
+            for table in ("decks", "runs", "exports", "intakes"):
                 out[table] = [(r[1], r[2], r[3]) for r in c.execute(f"PRAGMA table_info({table})")]
             return out
 
         self.assertEqual(shapes(conn), shapes(fresh))
-        self.assertEqual(LATEST_VERSION, 5)
+        self.assertGreaterEqual(LATEST_VERSION, 5)   # 6 で取り込みに依頼の列（docs/adr/0002-create-from-screen.md）
 
 
 class SkillStartTests(unittest.TestCase):

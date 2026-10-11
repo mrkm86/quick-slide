@@ -301,6 +301,8 @@ def catalog(app, req):
     patterns = [dict(AUTO_PATTERN)] + contenttypes.engine_types()
     return Response.json(200, {**groups, "counts": {k: len(v) for k, v in groups.items()},
         "brand_default": copy.deepcopy(PRESET_BRAND_CONFIG),
+        # brand_id を言わずに作ったときに使うブランド（作る画面のブランドの選択肢が「既定」を示す）
+        "default_brand_id": app.store.default_brand_id(),
         "logo_control": {"key": logo_rules.PLACEMENT_KEY, "corners": logo_rules.corner_choices(),
                          "default": dict(logo_rules.DEFAULT_PLACEMENT), "bounds": {}, "canvas": list(logo_rules.CANVAS)},
         "tones": [{"value": t, "label": l} for t, l in zip(TONES, ("硬め", "標準", "柔らかめ"), strict=True)],

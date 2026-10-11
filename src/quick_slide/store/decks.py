@@ -63,11 +63,11 @@ class DecksMixin(StoreBase):
             raise StateError("アーカイブ済みデッキには書き込めません")
         return d
 
-    def recent_decks(self, limit: int = 10) -> list[dict[str, Any]]:
+    def recent_decks(self, limit: int = 10, *, mode: str | None = None) -> list[dict[str, Any]]:
         # 同着（updated_at が同値）は挿入順 = rowid で決める。乱数 id で決めると並びが実行ごとに変わる
         return self._all(
-            "SELECT * FROM decks WHERE deleted_at IS NULL AND archived_at IS NULL AND pinned=0"
-            " ORDER BY updated_at DESC,rowid DESC LIMIT ?", (limit,))
+            "SELECT * FROM decks WHERE deleted_at IS NULL AND archived_at IS NULL AND pinned=0 AND (? IS NULL OR mode=?)"
+            " ORDER BY updated_at DESC,rowid DESC LIMIT ?", (mode, mode, limit))
 
     def pinned_decks(self) -> list[dict[str, Any]]:
         return self._all(

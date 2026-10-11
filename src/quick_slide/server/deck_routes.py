@@ -2,8 +2,9 @@
 
 読み取り（GET。Host 検査のみ）:
 - `GET /api/vocabulary`                      状態名の対応表（正本は `vocabulary.py`）
-- `GET /api/decks/home`                      ピン枠 + 最近 10 件 + 一覧へ送る残り件数
+- `GET /api/decks/home?mode=`                ピン枠 + 最近 10 件 + 一覧へ送る残り件数
 - `GET /api/decks?q=&status=&mode=&archived=&pinned=&tag=&limit=&offset=`  一覧・検索（件数付き）
+  どちらも `modes`（形式ごとの件数。形式の絞り込みを外した同じ条件で数える。並びは `vocabulary.DECK_KINDS`）を返す
 - `GET /api/decks/<id>`                      スライドの画面の材料
 - `GET /api/decks/<id>/progress`             実況の取り直し用の状態
 - `GET /api/trash`                           ごみ箱
@@ -34,11 +35,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs
 
+from ..enums import DECK_MODES
 from ..errors import NotFoundError
 from ..store.management import WORKING_PURGE_REASON
 from .errors import RELOAD_AND_RETRY_MESSAGE, ApiError
 from .later import NOT_READY_REASON
 from .vocabulary import (
+    DECK_KINDS,
     GROUP_LABELS,
     PURGE_ALL_LABEL,
     PURGE_WORDS,
@@ -226,9 +229,10 @@ def _counts(pages: list[dict[str, Any]]) -> dict[str, Any]:
             "headline": progress_headline(total, counts["ready"], counts["generating"])}
 
 
-# 止まっている帯に出す回の終わり方。ログイン切れ・利用枠（台本係の CLI・エンジンの Codex）
+# 止まっている帯に出す回の終わり方。ログイン切れ・利用枠（台本係・下調べ係の CLI・エンジンの Codex）
 STOPPED_KINDS = {"auth": "auth", "dependency": "missing", "writer_auth": "auth", "writer_rate": "rate_limited",
-                 "writer_missing": "missing"}
+                 "writer_missing": "missing", "research_auth": "auth", "research_rate": "rate_limited",
+                 "research_missing": "missing"}
 
 
 RESUME_NOTHING_REASON = "描き直すものはありません。"
@@ -242,6 +246,9 @@ def resume_capability(store, deck_id: str, latest: dict[str, Any] | None, shown:
     head = store.head_script(deck_id)
     behind = head is not None and (shown is None or shown.get("script_id") != head["id"])
     if head is not None and latest is not None and (latest["state"] == "failed" or behind):
+        return {"available": True, "label": RESUME_LABEL, "reason": None}
+    # 台本がまだ無くても、依頼から作るデッキなら下調べ（か台本係）からやり直せる（docs/adr/0002-create-from-screen.md）
+    if head is None and latest is not None and latest["state"] == "failed" and store.retryable_request_intake(deck_id):
         return {"available": True, "label": RESUME_LABEL, "reason": None}
     return {"available": False, "label": RESUME_LABEL, "reason": RESUME_NOTHING_REASON}
 
@@ -283,8 +290,10 @@ def planning_state(latest: dict[str, Any] | None) -> dict[str, Any]:
     if latest["state"] == "done":
         # 一部だけ描けなかったときは、その 1 文を残す（黙って完成に見せない）
         return {"state": "done", "active": False, "message": latest.get("message")}
-    return {"state": latest["state"], "active": True,
-            "message": planning_message(latest["state"], latest.get("progress") or {})}
+    progress = latest.get("progress") or {}
+    # 下調べ（依頼から作る道）は回の状態では writing のまま。帯には段の名前で出す
+    state = "researching" if latest["state"] == "writing" and progress.get("phase") == "researching" else latest["state"]
+    return {"state": state, "active": True, "message": planning_message(latest["state"], progress)}
 
 
 def live_state(store, deck_id: str) -> dict[str, Any]:
@@ -327,10 +336,25 @@ def route_vocabulary(server: "QuickSlideServer", req: "Request") -> "Response":
     return _json(200, vocabulary())
 
 
+def _mode_param(raw: str | None) -> str | None:
+    if raw is None or raw == "":
+        return None
+    if raw not in DECK_MODES:
+        raise ApiError(400, "validation_error", f"mode は {' / '.join(DECK_MODES)} のいずれかで指定してください。")
+    return raw
+
+
+def mode_facets(counts: dict[str, int]) -> list[dict[str, Any]]:
+    """形式の絞り込みの選択肢（`DECK_KINDS` の順・件数つき）。"""
+    return [{"mode": k["mode"], "label": k["label"], "count": int(counts.get(k["mode"], 0))} for k in DECK_KINDS]
+
+
 def route_home(server: "QuickSlideServer", req: "Request") -> "Response":
+    mode = _mode_param(_query(req).get("mode"))
     with server.store_lock:
         assert server.store is not None
-        data = server.store.home_decks()
+        data = server.store.home_decks(mode=mode)
+    data["modes"] = mode_facets(data.pop("mode_counts"))
     data["pinned"] = [card_public(c) for c in data["pinned"]]
     data["recent"] = [card_public(c) for c in data["recent"]]
     data["capabilities"] = CAPABILITIES
@@ -344,7 +368,7 @@ def route_list(server: "QuickSlideServer", req: "Request") -> "Response":
         archived = False  # 既定はアーカイブ済みを含めない（`archived=all` で両方）
     pinned = _bool_param(q.get("pinned"), "pinned")
     status = q.get("status") or None
-    mode = q.get("mode") or None
+    mode = _mode_param(q.get("mode"))
     limit = _int_param(q.get("limit"), "limit", 50)
     offset = _int_param(q.get("offset"), "offset", 0)
     with server.store_lock:
@@ -353,6 +377,7 @@ def route_list(server: "QuickSlideServer", req: "Request") -> "Response":
                                          pinned=pinned, brand_id=q.get("brand") or None, tag=q.get("tag") or None,
                                          limit=limit, offset=offset)
     data["items"] = [card_public(c) for c in data["items"]]
+    data["modes"] = mode_facets(data.pop("mode_counts"))
     data["capabilities"] = CAPABILITIES
     return _json(200, data)
 

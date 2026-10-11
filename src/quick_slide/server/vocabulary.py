@@ -5,13 +5,15 @@
 
 ページの状態（`page_states`）の名前は v1 と同じ。描いた回のページの結果は `run_page_display` が寄せる。
 台本係・描き係がいま何をしているかの 1 文（企画の帯）は `planning_message` が作る。
+スライドの形式（モード）の名前・説明・アイコン・色・書き出せる形式は `DECK_KINDS` 1 か所に持つ（`deck_kinds()` が配る）。
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from ..enums import DECK_MODES, DECK_STATUSES
+from ..enums import DECK_MODES, DECK_STATUSES, EXPORT_FORMATS
+from ..store.intakes import MAX_REQUEST_CHARS, REQUEST_REQUIRED_REASON, REQUEST_TOO_LONG_REASON
 from .later import NOT_READY_REASON
 
 # key → (表示名, 動きのある表現か)
@@ -46,8 +48,30 @@ PAGE_STATE_GROUPS: dict[str, str] = {
 GROUP_LABELS: dict[str, str] = {"ready": "完成", "generating": "生成中", "waiting": "待機", "failed": "要対応"}
 
 DECK_STATUS_LABELS: dict[str, str] = {"draft": "下書き", "review": "レビュー中", "final": "確定"}
-# モード（作るときに決め、あとから替えない）。プレゼン＝html-slide・ピッチ＝image-slide・モーション＝motion-slide
-DECK_MODE_LABELS: dict[str, str] = {"presentation": "プレゼン", "pitch": "ピッチ", "motion": "モーション"}
+# スライドの形式＝モード（作るときに決め、あとから替えない）。プレゼン＝html-slide・ピッチ＝image-slide・モーション＝motion-slide。
+# **並び順もここが正本**（画面の切り替え・一覧の絞り込みの順）。`icon` は Material Symbols の名前、`tone` は画面の色の組の名前
+# （CSS は tone ごとの組を 1 か所に持つ）。書き出せる形式（`outputs`）は手で書かず、`deck_kinds()` が書き出しの可否から作る
+DECK_KINDS: tuple[dict[str, str], ...] = (
+    {"mode": "presentation", "label": "プレゼン", "description": "PowerPoint 互換のプレゼンスライドを作ります",
+     "icon": "slideshow", "tone": "blue"},
+    {"mode": "pitch", "label": "ピッチ", "description": "インパクトのある画像のスライドを作ります",
+     "icon": "photo_library", "tone": "orange"},
+    {"mode": "motion", "label": "モーション", "description": "従来のプレゼンにとらわれない、自由なアニメーションのスライドを作ります",
+     "icon": "animation", "tone": "green"},
+)
+DECK_MODE_LABELS: dict[str, str] = {k["mode"]: k["label"] for k in DECK_KINDS}
+# 形式のカードに小さく出す、書き出せる形式の短い名前（並びもこの順）
+OUTPUT_LABELS: dict[str, str] = {"pptx": "PPTX", "pdf": "PDF", "html": "HTML", "images": "画像"}
+
+# 画面の入力欄から 1 冊作る（`POST /api/intakes` に `request`。docs/adr/0002-create-from-screen.md）
+CREATE_WORDS: dict[str, str] = {
+    "heading": "どんなスライドを作りますか？",
+    "placeholder": "例: 最新の AI 開発の状況を 5 ページのレポートにまとめて",
+    "submit": "作成",
+    "working": "作り始めています…",
+    "empty_reason": REQUEST_REQUIRED_REASON,
+    "too_long_reason": REQUEST_TOO_LONG_REASON,
+}
 
 EDIT_MODE_LABELS: dict[str, str] = {"minor": "微修正", "remake": "作り直し"}
 
@@ -229,6 +253,7 @@ def run_page_display(page_state: str | None, run_state: str, *, has_image: bool)
 # 台本係・描き係がいま何をしているか（スライドの画面の「企画の帯」）。**あと何秒かは言わない**
 PLANNING_MESSAGES: dict[str, str] = {
     "queued": "順番を待っています。前の仕事が終わったら始めます。",
+    "researching": "下調べをしています。",
     "writing": "台本を書いています。",
     "rewriting": "台本を直しています（{round}回目）。",
     "checking": "台本を確かめています。",
@@ -244,6 +269,8 @@ PLANNING_MESSAGES: dict[str, str] = {
 def planning_message(run_state: str, progress: dict[str, Any]) -> str | None:
     if run_state == "queued":
         return PLANNING_MESSAGES["queued"]
+    if run_state == "writing" and progress.get("phase") == "researching":
+        return PLANNING_MESSAGES["researching"]
     if run_state == "writing":
         rnd = int(progress.get("round") or 1)
         return PLANNING_MESSAGES["writing"] if rnd <= 1 else PLANNING_MESSAGES["rewriting"].format(round=rnd)
@@ -277,6 +304,22 @@ def deck_mode_label(mode: str) -> str:
     return DECK_MODE_LABELS.get(mode, "状態を取得できません")
 
 
+def deck_kinds() -> list[dict[str, Any]]:
+    """スライドの形式の一覧（`DECK_KINDS` の順）。`outputs` はそのモードで書き出せる形式（`export_routes.format_refusal`）。"""
+    from .export_routes import format_refusal  # 遅延 import（循環回避）
+
+    assert set(OUTPUT_LABELS) == set(EXPORT_FORMATS), "書き出しの形式が増えたら OUTPUT_LABELS にも足す"
+    assert sorted(k["mode"] for k in DECK_KINDS) == sorted(DECK_MODES), "モードが増えたら DECK_KINDS にも足す"
+    return [{**kind, "outputs": [{"format": f, "label": label} for f, label in OUTPUT_LABELS.items()
+                                 if format_refusal(kind["mode"], f) is None]}
+            for kind in DECK_KINDS]
+
+
+def create_limits() -> dict[str, int]:
+    """入力欄が送る前に自分で数える上限（すべて整数）。"""
+    return {"request": MAX_REQUEST_CHARS}
+
+
 def instruction_words() -> dict[str, str]:
     """修正指示の欄に要る**語**（すべて文字列）。上限（数）は `instruction_limits()` が別の入れ物で持つ。"""
     return {**INSTRUCTION_WORDS,
@@ -305,6 +348,9 @@ def vocabulary() -> dict[str, Any]:
         "groups": GROUP_LABELS,
         "deck_statuses": {s: DECK_STATUS_LABELS[s] for s in DECK_STATUSES},
         "deck_modes": {m: DECK_MODE_LABELS[m] for m in DECK_MODES},
+        "deck_kinds": deck_kinds(),
+        "create": dict(CREATE_WORDS),
+        "create_limits": create_limits(),
         "edit_modes": EDIT_MODE_LABELS,
         "source_kinds": SOURCE_KIND_LABELS,
         "reorder": REORDER_MESSAGES,

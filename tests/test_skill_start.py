@@ -117,6 +117,37 @@ class SkillStartTests(unittest.TestCase):
         calls = [json.loads(p.read_text()) for p in sorted((self.tmp / "writer-calls").glob("*.json"))]
         self.assertTrue(calls[0]["outline"], "台本係に「構成を守る」を言った")
 
+    def test_request_instead_of_a_manuscript_researches_then_draws(self) -> None:
+        """`--request` は画面の入力欄と同じ形（`origin.kind=request`）で送る。違いは runtime だけ。"""
+        request = "会議を短くする工夫をまとめて\n3 ページで、管理職向けに（この行は外に出さない）"
+        rc, out, stdout, stderr = self.start("--request", request, "--mode", "pitch", "--runtime", "claude_code",
+                                             "--wait", "--wait-timeout", "120", "--no-open")
+        self.assertEqual(rc, 0, (out, stderr))
+        self.assertEqual(len(stdout.strip().splitlines()), 1)
+        self.assertEqual(out["result"], "done")
+        self.assertEqual(out["payload"]["origin"]["kind"], "request")
+        self.assertEqual(out["payload"]["origin"]["runtime"], "claude_code")
+        self.assertEqual((out["payload"]["request_chars"], out["payload"]["manuscript_chars"]), (len(request), None))
+        self.assertNotIn("この行は外に出さない", stdout + stderr, "依頼の文を出さない（仮の題にした 1 行目だけ）")
+        self.assertEqual(out["deck_title"], "会議の進め方の今（架空）", "待ったときは下調べ係が付けた題を返す")
+        calls = [json.loads(p.read_text()) for p in sorted((self.tmp / "writer-calls").glob("*.json"))]
+        research = [c for c in calls if c.get("what") == "research"]
+        writes = [c for c in calls if c.get("what") == "make"]
+        self.assertEqual(len(research), 1)
+        self.assertEqual(research[0]["argv"][research[0]["argv"].index("--tools") + 1], "WebSearch,WebFetch")
+        self.assertEqual(writes[0]["request"], request, "台本係にも利用者の依頼として渡る")
+        self.assertIn("- 枚数: 3 枚（表紙と締めを含む）", writes[0]["prompt_lines"], "依頼の枚数が台本係の属性に入る")
+
+    def test_request_input_errors(self) -> None:
+        for args, code in ((("--request", "x", "--manuscript-file", str(self.manuscript)), "input_conflict"),
+                           (("--request", "x", "--request-file", str(self.manuscript)), "input_conflict"),
+                           (("--request", "x", "--outline-fixed"), "input_conflict"),
+                           (("--request", "  "), "request_required")):
+            with self.subTest(args=args):
+                rc, out, _, _ = self.start(*args)
+                self.assertEqual((rc, out["code"]), (2, code))
+        self.assertFalse((self.home / "runtime" / "server.json").exists(), "入力の誤りではサーバを起こさない")
+
     def test_revise_pages_7_8_with_wait_from_the_same_conversation(self) -> None:
         env = {**self.env, "FAKE_WRITER_PAGES": "10"}
         key = ["--conversation-key", "conversation-key-for-the-revise-test-0123"]  # gitleaks:allow（試験用のダミーの会話キー）

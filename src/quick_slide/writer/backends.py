@@ -5,6 +5,11 @@
   `codex` は読み取りだけの砂場（`-s read-only`）・承認を求めない（`-a never`）・利用者の設定を読まない・
   セッションを残さない。作業の根は描いた回の `writer/` の空のフォルダ
 - 応答から JSON のオブジェクトを 1 つだけ取り出す（説明やコードフェンスは許す。壊れた JSON は直さない）
+- 下調べ係（`writer/research.py`）も同じ CLI を同じ旗で呼び、**Web の検索と取得だけ**を足す（`web=True`）:
+  `claude` は道具を WebSearch・WebFetch だけにして、その 2 つだけを前もって許し、ほかは聞かずに断る（`--permission-mode dontAsk`）。
+  `codex` は Web 検索を開き（`--search`・`web_search="live"`）、シェル・ブラウザ・コンピュータ操作の道具を切る
+  （読み取りだけの砂場でもシェルはディスクを読めるので、Web と一緒に持たせると外へ漏らせてしまう）。
+  手元の CLI が絞り方を知らなければ、絞れないまま呼ばずに失敗する
 
 失敗は `WriterFailed(kind, message)`。`kind` は auth / rate / missing / timeout / stopped / failed / format。
 `message` は画面と会話にそのまま出す日本語。
@@ -50,7 +55,17 @@ CLAUDE_WANTED_FLAGS = (
     ("--no-session-persistence",),       # セッションを残さない
 )
 _claude_help_cache: dict[str, str] = {}
-_claude_help_lock = threading.Lock()
+_help_lock = threading.Lock()
+# 下調べ係に許す道具（Claude Code の組み込みの名前）
+WEB_TOOLS = "WebSearch,WebFetch"
+# 下調べ係の codex で切る道具（`codex features list` の名前）。読み取りだけの砂場でもディスクは読めるので、
+# 手元のものを読める道具（シェル・画像を見る・ブラウザ・アプリ・プラグイン・下請け）は全部切り、Web の検索だけを残す
+# （画像を見る道具が残っていると、Web の中の指示で手元の画像を読み、検索語に混ぜて外へ出せる。2026-10-12 の検分）
+CODEX_WEB_DISABLED_FEATURES = ("shell_tool", "unified_exec", "view_image", "image_generation", "browser_use",
+                               "browser_use_external", "browser_use_full_cdp_access", "computer_use", "in_app_browser",
+                               "in_app_local_automation", "apps", "plugins", "remote_plugin", "multi_agent",
+                               "code_mode_host", "skill_mcp_dependency_install")
+_codex_help_cache: dict[str, str] = {}
 
 
 class WriterFailed(Exception):
@@ -117,24 +132,43 @@ def _classify(backend: str, text: str) -> WriterFailed | None:
     return None
 
 
-def _claude_flags(exe: str, env: dict[str, str], cwd: Path) -> list[str]:
-    with _claude_help_lock:
-        help_text = _claude_help_cache.get(exe)
+def _help_text(cache: dict[str, str], cmd: list[str], env: dict[str, str], cwd: Path) -> str:
+    with _help_lock:
+        help_text = cache.get(cmd[0])
         if help_text is None:
-            r = run_process([exe, "--help"], cwd=cwd, env=env, timeout=30)
+            r = run_process(cmd, cwd=cwd, env=env, timeout=30)
             help_text = r.stdout + "\n".join(r.stderr_tail)
-            _claude_help_cache[exe] = help_text
+            cache[cmd[0]] = help_text
+    return help_text
+
+
+def _knows(help_text: str, flag: str) -> bool:
+    return re.search(re.escape(flag) + r"\b", help_text) is not None
+
+
+def _claude_flags(exe: str, env: dict[str, str], cwd: Path, *, web: bool = False) -> list[str]:
+    help_text = _help_text(_claude_help_cache, [exe, "--help"], env, cwd)
     flags: list[str] = []
     for spec in CLAUDE_WANTED_FLAGS:
-        if re.search(re.escape(spec[0]) + r"\b", help_text):
+        if web and spec[0] == "--tools":
+            continue
+        if _knows(help_text, spec[0]):
             flags.extend(spec)
+    if web:
+        # 道具を Web の 2 つに絞れない版では呼ばない（絞らずに呼ぶと、ファイルやシェルの道具も持ってしまう）
+        if not (_knows(help_text, "--tools") and _knows(help_text, "--allowedTools")):
+            raise WriterFailed("missing", "下調べをする Claude Code が古く、Web の検索と取得だけに道具を絞れません。"
+                                          "Claude Code を新しくしてから、もう一度頼んでください。")
+        flags += ["--tools", WEB_TOOLS, "--allowedTools", WEB_TOOLS]
+        if _knows(help_text, "--permission-mode") and "dontAsk" in help_text:
+            flags += ["--permission-mode", "dontAsk"]
     return flags
 
 
 def ask_claude(exe: str, prompt: str, *, job_dir: Path, env: dict[str, str], timeout: float,
-               stop: threading.Event | None) -> str:
+               stop: threading.Event | None, web: bool = False) -> str:
     job_dir.mkdir(parents=True, exist_ok=True)
-    cmd = [exe, "-p", "--output-format", "json", *_claude_flags(exe, env, job_dir)]
+    cmd = [exe, "-p", "--output-format", "json", *_claude_flags(exe, env, job_dir, web=web)]
     r = run_process(cmd, cwd=job_dir, env=env, timeout=timeout, stop=stop, stdin_text=prompt,
                     stderr_path=job_dir / "stderr.txt")
     _raise_for_process(r, "claude")
@@ -152,26 +186,34 @@ def ask_claude(exe: str, prompt: str, *, job_dir: Path, env: dict[str, str], tim
     return text
 
 
-def _codex_command(exe: str, job_dir: Path) -> list[str]:
+def _codex_command(exe: str, job_dir: Path, *, web: bool = False) -> list[str]:
     flags: list[str] = []
-    for setting in ("features.plugins=false", "features.hooks=false", "features.apps=false",
-                    'forced_login_method="chatgpt"'):
+    settings = ["features.plugins=false", "features.hooks=false", "features.apps=false", 'forced_login_method="chatgpt"']
+    if web:
+        settings += [f"features.{name}=false" for name in CODEX_WEB_DISABLED_FEATURES] + ['web_search="live"']
+    for setting in settings:
         flags += ["-c", setting]
+    if web:
+        flags.append("--search")
     return [exe, *flags, "-a", "never", "exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check",
             "-s", "read-only", "-C", str(job_dir), "--color", "never", "--json",
             "-o", str(job_dir / "last-message.txt"), "-"]
 
 
 def ask_codex(exe: str, prompt: str, *, job_dir: Path, env: dict[str, str], timeout: float,
-              stop: threading.Event | None) -> str:
+              stop: threading.Event | None, web: bool = False) -> str:
     job_dir.mkdir(parents=True, exist_ok=True)
+    if web and not _knows(_help_text(_codex_help_cache, [exe, "--help"], env, job_dir), "--search"):
+        # 検索できないまま呼ぶと、記憶だけで原稿を起こしてしまう（黙って記憶で書かせない）
+        raise WriterFailed("missing", "下調べをする Codex が Web 検索（--search）に対応していません。"
+                                      "Codex を新しくするか、設定の writer を claude にしてから、もう一度頼んでください。")
     status = run_process([exe, "login", "status"], cwd=job_dir, env=env, timeout=30, stop=stop)
     said = status.stdout + "\n".join(status.stderr_tail)
     if status.rc != 0 or "Logged in using ChatGPT" not in said:
         raise WriterFailed("auth", LOGIN_HINT["codex"])
     last = job_dir / "last-message.txt"
     last.unlink(missing_ok=True)
-    r = run_process(_codex_command(exe, job_dir), cwd=job_dir, env=env, timeout=timeout, stop=stop,
+    r = run_process(_codex_command(exe, job_dir, web=web), cwd=job_dir, env=env, timeout=timeout, stop=stop,
                     stdin_text=prompt, stdout_path=job_dir / "events.jsonl", stderr_path=job_dir / "stderr.txt")
     _raise_for_process(r, "codex")
     errors = []

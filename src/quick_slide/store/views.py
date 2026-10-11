@@ -72,14 +72,21 @@ class DeckViewsMixin(StoreBase):
             "working": self.deck_working(did),
         }
 
-    def home_decks(self, *, recent_limit: int = 10) -> dict[str, Any]:
-        """ホーム: ピン枠 + 最近（未アーカイブ・未削除・非ピン、更新日時降順 N 件）+ 一覧へ送る残り件数。"""
-        pinned = [self.deck_card(d) for d in self.pinned_decks()]
-        recent = [self.deck_card(d) for d in self.recent_decks(recent_limit)]
+    def home_decks(self, *, recent_limit: int = 10, mode: str | None = None) -> dict[str, Any]:
+        """ホーム: ピン枠 + 最近（未アーカイブ・未削除・非ピン、更新日時降順 N 件）+ 一覧へ送る残り件数。
+
+        `mode` を渡すとその形式だけ。`mode_counts` は形式ごとの未アーカイブ・未削除の件数（絞り込みの選択肢）。"""
+        if mode is not None:
+            require(mode, DECK_MODES, "mode")
+        pinned = [self.deck_card(d) for d in self.pinned_decks() if mode is None or d["mode"] == mode]
+        recent = [self.deck_card(d) for d in self.recent_decks(recent_limit, mode=mode)]
         live_unpinned = int(self._scalar(
-            "SELECT COUNT(*) FROM decks WHERE deleted_at IS NULL AND archived_at IS NULL AND pinned=0"))
+            "SELECT COUNT(*) FROM decks WHERE deleted_at IS NULL AND archived_at IS NULL AND pinned=0"
+            " AND (? IS NULL OR mode=?)", (mode, mode)))
+        counts = {r["mode"]: int(r["n"]) for r in self._all(
+            "SELECT mode,COUNT(*) AS n FROM decks WHERE deleted_at IS NULL AND archived_at IS NULL GROUP BY mode")}
         return {"pinned": pinned, "recent": recent, "recent_limit": recent_limit,
-                "more_count": max(0, live_unpinned - len(recent))}
+                "more_count": max(0, live_unpinned - len(recent)), "mode_counts": counts}
 
     def search_decks(
         self,
@@ -129,9 +136,13 @@ class DeckViewsMixin(StoreBase):
             " AND (:tag IS NULL OR EXISTS(SELECT 1 FROM deck_tags dt JOIN tags t ON t.id=dt.tag_id WHERE dt.deck_id=d.id AND t.name=:tag))"
         )
         total = int(self._scalar("SELECT COUNT(*)" + where, params))
+        # 形式ごとの件数は、形式の絞り込みだけを外した同じ条件で数える（絞り込みの選択肢に件数を添えるため）
+        counts = {r["mode"]: int(r["n"]) for r in self._all(
+            "SELECT d.mode AS mode,COUNT(*) AS n" + where + " GROUP BY d.mode", {**params, "mode": None})}
         # 同着（updated_at が同値）は挿入順 = rowid で決める。乱数 id で決めると並びが実行ごとに変わる
         rows = self._all("SELECT d.*" + where + " ORDER BY d.updated_at DESC,d.rowid DESC LIMIT :limit OFFSET :offset", params)
-        return {"items": [self.deck_card(d) for d in rows], "total": total, "limit": limit, "offset": offset}
+        return {"items": [self.deck_card(d) for d in rows], "total": total, "limit": limit, "offset": offset,
+                "mode_counts": counts}
 
     def all_tags(self) -> list[dict[str, Any]]:
         return self._all(

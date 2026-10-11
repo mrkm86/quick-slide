@@ -18,6 +18,10 @@ P3:
 - `--revise [--deck <ID>] [--pages 7,8] --note "…" [--remake] [--attach <画像>]…`: 会話から直す。スライドを省けば
   この会話から作った一番新しいスライド。`--pages` を省けばスライド全体への指示
 
+依頼から作る: `--request "<依頼>"`（か `--request-file`）を `--manuscript-file` の代わりに渡すと、原稿ではなく依頼の文を
+送り（`origin.kind=request`）、サーバの下調べ係が Web で調べて原稿を起こしてから台本係に渡す。画面の入力欄と同じ口・同じ形で、
+違いは `origin.runtime` だけ。既定はいままでどおり原稿（会話で材料を整えてから送る）。
+
 P5: `--doctor`（導入の確かめ）・`--setup [--yes]`（足りないものを入れる）は `quick_slide_setup.py` に任せる。
 
 **実体（サーバのコード）の探し方**: `--repo` → 環境変数 `QUICK_SLIDE_REPO` → このスキルを載せたプラグインの根
@@ -25,7 +29,7 @@ P5: `--doctor`（導入の確かめ）・`--setup [--yes]`（足りないもの�
 
 出力: **stdout の最終行は JSON 1 行**。終了コードは 0=成功 / 2=入力の誤り / 3=起動できない・届かない / 4=処理の失敗。
 
-秘匿: 原稿本文・会話の識別子の生値を stdout / stderr / ファイルに書かない（JSON に出すのは文字数と
+秘匿: 原稿本文・依頼の文・会話の識別子の生値を stdout / stderr / ファイルに書かない（JSON に出すのは文字数と
 「識別子をどの環境変数から採ったか」の名前だけ）。子プロセスの stderr は読まない（原稿が混ざりうる）。
 
 標準ライブラリだけを使う（サーバ本体を import しない）。
@@ -300,7 +304,17 @@ def build_payload(args: argparse.Namespace) -> tuple[dict[str, Any], str | None]
     runtime, key, key_source = detect_conversation()
     if args.runtime:
         runtime = args.runtime
-    origin: dict[str, Any] = {"kind": "conversation", "runtime": runtime}
+    request_text = None
+    if args.request is not None or args.request_file:
+        if args.manuscript_file or (args.request is not None and args.request_file):
+            raise Failure("input_conflict", "原稿（--manuscript-file）と依頼（--request・--request-file）は、どれか 1 つだけ渡してください。",
+                          EXIT_INPUT)
+        if args.outline_fixed:
+            raise Failure("input_conflict", "依頼から作るときは構成を固定できません（--outline-fixed は原稿と一緒に使います）。", EXIT_INPUT)
+        request_text = args.request if args.request is not None else read_text_file(args.request_file, "依頼")
+        if not request_text.strip():
+            raise Failure("request_required", "依頼が空です。どんなスライドを作るかを書いてください。", EXIT_INPUT)
+    origin: dict[str, Any] = {"kind": "conversation" if request_text is None else "request", "runtime": runtime}
     if args.conversation_key:
         origin["conversation_key"] = args.conversation_key
         key_source = "--conversation-key"
@@ -308,10 +322,11 @@ def build_payload(args: argparse.Namespace) -> tuple[dict[str, Any], str | None]
         origin["conversation_key"] = key
     else:
         key_source = None
-    if not args.manuscript_file:
-        raise Failure("manuscript_required", "原稿がありません。会話から整えた原稿を --manuscript-file で渡してください。", EXIT_INPUT)
-    manuscript = read_text_file(args.manuscript_file, "原稿")
-    if not manuscript.strip():
+    if request_text is None and not args.manuscript_file:
+        raise Failure("manuscript_required", "原稿がありません。会話から整えた原稿を --manuscript-file で渡してください"
+                                             "（サーバに調べてほしいときは --request）。", EXIT_INPUT)
+    manuscript = read_text_file(args.manuscript_file, "原稿") if request_text is None else None
+    if manuscript is not None and not manuscript.strip():
         raise Failure("manuscript_required", "原稿が空です。", EXIT_INPUT)
     attrs: dict[str, Any] = {"mode": args.mode}
     if args.style:
@@ -332,7 +347,11 @@ def build_payload(args: argparse.Namespace) -> tuple[dict[str, Any], str | None]
         attrs["images"] = False
     if args.outline_fixed:
         attrs["outline_fixed"] = True
-    payload: dict[str, Any] = {"schema_version": 1, "origin": origin, "manuscript": manuscript, "deck_attributes": attrs}
+    payload: dict[str, Any] = {"schema_version": 1, "origin": origin, "deck_attributes": attrs}
+    if request_text is None:
+        payload["manuscript"] = manuscript
+    else:
+        payload["request"] = request_text
     if args.title:
         payload["title_hint"] = args.title
     if args.new_deck:
@@ -343,7 +362,8 @@ def build_payload(args: argparse.Namespace) -> tuple[dict[str, Any], str | None]
 def payload_summary(payload: dict[str, Any], key_source: str | None) -> dict[str, Any]:
     """**本文を出さない**要約（文字数と選んだ値だけ）。"""
     return {
-        "manuscript_chars": len(payload["manuscript"]),
+        "manuscript_chars": len(payload["manuscript"]) if "manuscript" in payload else None,
+        "request_chars": len(payload["request"]) if "request" in payload else None,
         "title_hint": payload.get("title_hint"),
         "deck_attributes": payload.get("deck_attributes") or {},
         "force_new_deck": bool(payload.get("force_new_deck")),
@@ -406,13 +426,14 @@ def finished_fields(done: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def conversation_message(body: dict[str, Any]) -> str:
+def conversation_message(body: dict[str, Any], *, researching: bool = False) -> str:
     title = body.get("deck_title") or "無題のスライド"
     if body.get("resolution") == "resent":
         return f"同じ内容をさっき受け付けたスライド「{title}」を開きます。"
     mode = {"presentation": "プレゼン（編集できて動く PPTX）", "pitch": "ピッチ（1 枚ずつ絵で描く資料）",
             "motion": "モーション（クリックで拍が進む Web プレゼン）"}.get(body.get("mode"), "プレゼン（編集できて動く PPTX）")
-    return f"新しいスライド「{title}」を{mode}で作り始めました。台本を書いて描き終えると、画面にページが出ます。"
+    first = "Web で下調べをして原稿を起こし、台本を書いて" if researching else "台本を書いて"
+    return f"新しいスライド「{title}」を{mode}で作り始めました。{first}描き終えると、画面にページが出ます。"
 
 
 # --- 実行 ---------------------------------------------------------------
@@ -569,12 +590,16 @@ def run(args: argparse.Namespace) -> int:
         "status": "ready", "url": body["url"], "deck_id": body.get("deck_id"), "deck_title": body.get("deck_title"),
         "mode": body.get("mode"), "style": body.get("style"), "resolution": body.get("resolution"),
         "intake_id": body.get("intake_id"), "launch_id": body.get("launch_id"), "job_id": body.get("job_id"),
-        "message": conversation_message(body), "opened": opened, "browser_mode": mode, "server": server,
+        "message": conversation_message(body, researching="request" in payload), "opened": opened, "browser_mode": mode, "server": server,
         "payload": payload_summary(payload, key_source), "deck_url": deck_url(record, body["deck_id"]),
     }
     if args.wait and body.get("job_id"):
         done = wait_job(record, body["deck_id"], body["job_id"], args.wait_timeout)
         out.update(finished_fields(done))
+        if "request" in payload:   # 依頼から作ったときの題は下調べ係が付け直す（受け付けたときの題は仮）
+            status, view = request(record, "GET", f"/api/decks/{body['deck_id']}", timeout=30.0)
+            if status == 200 and isinstance(view, dict):
+                out["deck_title"] = (view.get("deck") or {}).get("title") or out["deck_title"]
         if done.get("ok"):
             out["message"] = f"「{out['deck_title']}」を {len([p for p in out['pages'] if not p.get('hidden')])} ページで作りました。"
         else:
@@ -590,6 +615,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="quick_slide_start.py",
                                 description="会話から整えた原稿を Quick Slide に投入し、スライドの画面の URL を返す")
     p.add_argument("--manuscript-file", help="原稿（Markdown, UTF-8）のファイル")
+    p.add_argument("--request", help="原稿の代わりに依頼の文（サーバが Web で下調べして原稿を起こす。--manuscript-file とどちらか）")
+    p.add_argument("--request-file", help="依頼の文をファイルで渡す（UTF-8）")
     p.add_argument("--title", help="スライドの仮の題（title_hint）")
     p.add_argument("--mode", choices=MODES, default="presentation",
                    help="presentation（既定・編集できて動く PPTX）／pitch（1 枚ずつ画像生成で丸ごと描く）／"

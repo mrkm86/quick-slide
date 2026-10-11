@@ -14,6 +14,13 @@ payload の形は v1 と同じ（`schema_version`・`origin{kind,runtime,convers
 - `origin.conversation_key` の生値はこのモジュールのローカル変数にだけ存在し、HMAC 化したら捨てる
 - 原稿は `intakes.manuscript` にだけ置く。payload_json・events・ログに書かない
 
+**原稿か依頼か**（docs/adr/0002-create-from-screen.md）: `manuscript` と `request` はちょうどどちらか 1 つ。
+`request` は「依頼から作る」道で、出所は `origin.kind=request`（逆に kind が request なら `request` が要る）。依頼の文は
+`intakes.request` に置き（`manuscript` は空）、ワーカーが台本係の前に下調べ係を呼んで、起こした原稿を `manuscript` に書く
+（`set_researched`）。台本係には原稿（材料）と別に、依頼の文を利用者の指示として渡す。画面も会話（CLI）も同じ形で送り、
+違いは `origin.runtime` だけ。依頼は原稿と同じく payload_json・events・ログに書かない。
+モード・ブランド・スタイルは依頼の文から読まない（`deck_attributes` の `mode`・`brand_id`・`style` で、原稿の道と同じ）。
+
 まだ受けないもの（`NotReadyError`。サーバは 400 `not_ready_in_v2` にする）: 既存のデッキへの追加
 （`append_to_deck_id`）・会話抜粋・添付・書式。黙って捨てずに断る。
 
@@ -39,7 +46,7 @@ from .base import StoreBase, assert_no_forbidden_keys, dump_json, load_json, rej
 
 log = logging.getLogger("quick_slide.store.intakes")
 
-PAYLOAD_KEYS = {"schema_version", "origin", "title_hint", "manuscript", "transcript_excerpt", "deck_attributes",
+PAYLOAD_KEYS = {"schema_version", "origin", "title_hint", "manuscript", "request", "transcript_excerpt", "deck_attributes",
                 "attachments", "append_to_deck_id", "force_new_deck"}
 ORIGIN_KEYS = {"kind", "runtime", "conversation_key"}
 DECK_ATTRIBUTE_KEYS = {"purpose", "audience", "style_note", "page_count", "brand_id", "mode", "style", "image_look",
@@ -49,6 +56,14 @@ NOT_READY_ATTRIBUTES = ("format_id", "format_values", "format_options")
 MAX_PAGE_COUNT = 40
 RESEND_WINDOW_SECONDS = 10 * 60
 MAX_TEXT_ATTRIBUTE_CHARS = 2000
+# 依頼の文の上限（画面の入力欄。画面は `/api/vocabulary` の `create_limits.request` を読んで送る前に数える）
+MAX_REQUEST_CHARS = 2000
+REQUEST_REQUIRED_REASON = "どんなスライドを作るかを書いてください。"
+BOTH_OR_NEITHER_REASON = ("原稿（manuscript）か依頼（request）の、どちらか 1 つだけを入れてください。"
+                          "材料を整えてあるなら原稿を、サーバに調べてほしいなら依頼を送ります")
+REQUEST_TOO_LONG_REASON = f"依頼の文が長すぎます。{MAX_REQUEST_CHARS}文字以内にしてください。"
+# 依頼から作るデッキの、下調べが終わるまでの仮の題（依頼の 1 行目をこの字数で切る）
+PROVISIONAL_TITLE_CHARS = 40
 
 
 class NotReadyError(QuickSlideError):
@@ -71,11 +86,11 @@ class IntakesMixin(StoreBase):
         raw_key = p["origin"].get("conversation_key")  # 生値。この関数のローカルだけ
         conv_hash = conversation_hash(self._hmac_key, runtime, raw_key) if raw_key is not None else None
         del raw_key
-        stored = {k: v for k, v in p.items() if k not in ("manuscript", "transcript_excerpt")}
+        stored = {k: v for k, v in p.items() if k not in ("manuscript", "request", "transcript_excerpt")}
         stored["origin"] = {k: v for k, v in p["origin"].items() if k != "conversation_key"}
         assert_no_forbidden_keys(stored, "intakes.payload_json")
-        request_sha = hashlib.sha256(json.dumps(
-            [p["manuscript"], p.get("title_hint"), attrs], ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+        asked = [p["manuscript"], p.get("title_hint"), attrs] + ([p["request"]] if p.get("request") else [])
+        request_sha = hashlib.sha256(json.dumps(asked, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
         with self.transaction():
             now = self.now()
@@ -83,7 +98,8 @@ class IntakesMixin(StoreBase):
                 again = self._resent_intake(conv_hash, request_sha, now)
                 if again is not None:
                     return self._answer_resent(again, launch_requested_via, p["origin"]["kind"])
-            title = (p.get("title_hint") or "").strip() or f"無題のスライド（{now[:10]} {now[11:16]} UTC）"
+            title = ((p.get("title_hint") or "").strip() or provisional_title(p.get("request"))
+                     or f"無題のスライド（{now[:10]} {now[11:16]} UTC）")
             deck = self.create_deck(
                 title, mode=attrs["mode"],
                 brand_revision_id=self._intake_brand_revision(attrs.get("brand_id")),
@@ -98,15 +114,16 @@ class IntakesMixin(StoreBase):
             intake_id = self.new_id()
             self._exec(
                 "INSERT INTO intakes(id,deck_id,origin_kind,origin_runtime,conversation_hash,request_sha256,title_hint,"
-                " manuscript,payload_json,launch_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                " manuscript,request,payload_json,launch_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 (intake_id, deck_id, p["origin"]["kind"], runtime, conv_hash, request_sha, p.get("title_hint"),
-                 p["manuscript"], dump_json(stored), launch_id, now))
+                 p["manuscript"], p.get("request"), dump_json(stored), launch_id, now))
             run = self.create_run(deck_id, args=self.run_args_from_attributes(attrs, origin_runtime=runtime))
             job = self.create_job(deck_id, run_id=run["id"], intake_id=intake_id)
             self.append_event("intake_created", {
                 "intake_id": intake_id, "origin_kind": p["origin"]["kind"], "origin_runtime": runtime,
                 "launch_id": launch_id, "job_id": job["id"], "run_id": run["id"], "mode": attrs["mode"],
                 "style": attrs["style"], "manuscript_chars": len(p["manuscript"]),
+                "request_chars": len(p["request"]) if p.get("request") else None,
                 "has_conversation_key": conv_hash is not None,
             }, deck_id=deck_id)
         log.info("intake %s -> deck %s (%s/%s)", intake_id, deck_id, attrs["mode"], attrs["style"])
@@ -179,6 +196,13 @@ class IntakesMixin(StoreBase):
             raise ValidationError("intake.title_hint は文字列か null")
         if isinstance(title, str) and len(title) > 200:
             raise ValidationError("タイトルは 200 文字以内にしてください")
+        has_manuscript, has_request = payload.get("manuscript") is not None, payload.get("request") is not None
+        if has_manuscript == has_request:
+            raise ValidationError(BOTH_OR_NEITHER_REASON)
+        if has_request != (origin["kind"] == "request"):
+            raise ValidationError("依頼（request）を送るときは origin.kind を request に、原稿を送るときは request 以外にしてください")
+        if has_request:
+            return self._validate_request_intake(payload)
         manuscript = payload.get("manuscript")
         if not isinstance(manuscript, str) or not manuscript.strip():
             raise ValidationError("原稿（manuscript）が空です。会話から整えた原稿を入れてください")
@@ -203,6 +227,32 @@ class IntakesMixin(StoreBase):
         out["deck_attributes"] = attrs
         out["attachments"] = []
         out["force_new_deck"] = force_new
+        return out
+
+    def _validate_request_intake(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """依頼から作る取り込み（`request`）。原稿・会話抜粋・添付・追加・構成の固定は一緒に受けない。"""
+        cfg = self.settings.intake
+        request = payload.get("request")
+        if not isinstance(request, str) or not request.strip():
+            raise ValidationError(REQUEST_REQUIRED_REASON)
+        if len(request) > MAX_REQUEST_CHARS:
+            raise ValidationError(REQUEST_TOO_LONG_REASON)
+        if find_secret_like(request, cfg.extra_secret_patterns):
+            raise ValidationError("依頼の文に秘密情報らしい文字列が含まれています。除いてから送ってください")
+        for k in ("transcript_excerpt", "append_to_deck_id"):
+            if payload.get(k) is not None:
+                raise ValidationError(f"依頼から作るときは {k} を送れません")
+        if payload.get("attachments"):
+            raise ValidationError("依頼から作るときは画像を添付できません")
+        force_new = payload.get("force_new_deck", False)
+        if not isinstance(force_new, bool):
+            raise ValidationError("intake.force_new_deck は真偽値")
+        raw = payload.get("deck_attributes")
+        if isinstance(raw, dict) and raw.get("outline_fixed"):
+            raise ValidationError("依頼から作るときは構成を固定できません（構成は下調べ係が起こします）")
+        attrs = self._validate_attributes(raw)
+        out = dict(payload)
+        out.update(request=request.strip(), manuscript="", deck_attributes=attrs, attachments=[], force_new_deck=force_new)
         return out
 
     def _validate_attributes(self, raw: Any, *, manuscript: str = "") -> dict[str, Any]:
@@ -283,28 +333,111 @@ class IntakesMixin(StoreBase):
         return self.preset_style_revision_id(preset_style_for(attrs["mode"], attrs["style"]))
 
     def _intake_brand_revision(self, brand_id: str | None) -> str:
-        """明示の brand_id → 設定の既定 → 利用者のブランド（最新）→ 既定（無彩色）。P4 で描く回に効かせる。"""
+        """明示の brand_id → 既定（`default_brand_id`）。P4 で描く回に効かせる。"""
         if brand_id is not None:
             b = self._one("SELECT current_revision_id FROM brands WHERE id=? AND deleted_at IS NULL", (brand_id,))
             if b is None:
                 raise ValidationError("deck_attributes.brand_id のブランドが見つかりません")
             return b["current_revision_id"]
-        if self.settings.default_brand_id:
-            b = self._one("SELECT current_revision_id FROM brands WHERE id=? AND deleted_at IS NULL",
-                          (self.settings.default_brand_id,))
-            if b is not None:
-                return b["current_revision_id"]
-        user = self._one("SELECT current_revision_id FROM brands WHERE kind='user' AND deleted_at IS NULL"
-                         " ORDER BY updated_at DESC,rowid DESC LIMIT 1")
-        if user is not None:
-            return user["current_revision_id"]
-        rev = self._scalar("SELECT current_revision_id FROM brands WHERE id=?", (PRESET_BRAND_ID,))
+        rev = self._scalar("SELECT current_revision_id FROM brands WHERE id=?", (self.default_brand_id(),))
         if rev is None:
             raise StateError("既定ブランドが初期化されていません")
         return rev
+
+    def default_brand_id(self) -> str:
+        """brand_id を言わずに作ったときのブランド: 設定の既定 → 利用者のブランド（最新）→ 付属（無彩色）。
+        画面のブランドの選択肢も、どれが既定かをここで知る（`GET /api/settings` の `default_brand_id`）。"""
+        if self.settings.default_brand_id:
+            b = self._one("SELECT id FROM brands WHERE id=? AND deleted_at IS NULL", (self.settings.default_brand_id,))
+            if b is not None:
+                return b["id"]
+        user = self._one("SELECT id FROM brands WHERE kind='user' AND deleted_at IS NULL"
+                         " ORDER BY updated_at DESC,rowid DESC LIMIT 1")
+        return user["id"] if user is not None else PRESET_BRAND_ID
+
+    # --- 下調べ ---
+    def set_researched(self, intake_id: str, run_id: str, *, manuscript: str, title: str | None,
+                       purpose: str | None, audience: str | None, page_count: int | None, sources: int) -> dict[str, Any]:
+        """下調べ係が起こした原稿を取り込みに書き、題・目的・読み手・枚数をデッキと描いた回に入れる。
+
+        原稿を書くのは 1 度だけ（もう原稿があれば StateError）。題は、利用者がまだ仮の題（依頼の 1 行目）のままにしている
+        ときだけ替え、目的・読み手は空のときだけ埋める（画面で先に直したものを上書きしない）。枚数は依頼に書いてあったときだけ
+        来るので、回の引数に無いときだけ入れる。戻り値は回の引数に足したもの。
+        """
+        with self.transaction():
+            row = self._get("intakes", intake_id)
+            if row["request"] is None or row["manuscript"]:
+                raise StateError("この取り込みの原稿はもうあります")
+            self._exec("UPDATE intakes SET manuscript=? WHERE id=?", (manuscript, intake_id))
+            deck = self.deck(row["deck_id"])
+            fields: dict[str, str] = {}
+            if title and deck["title"] == provisional_title(row["request"]):
+                fields["title"] = title
+            if purpose and not deck["purpose"]:
+                fields["purpose"] = purpose
+            if audience and not deck["audience"]:
+                fields["audience"] = audience
+            if fields:
+                self.update_deck_metadata(row["deck_id"], **fields)
+            args = self.run(run_id)["args"]
+            update: dict[str, Any] = {}
+            if page_count and not args.get("page_count"):
+                update["page_count"] = page_count
+            for k in ("purpose", "audience"):
+                if fields.get(k):
+                    update[k] = fields[k]
+            if update:
+                self.update_run_args(run_id, update)
+            self.append_event("intake_researched", {
+                "intake_id": intake_id, "run_id": run_id, "manuscript_chars": len(manuscript), "sources": sources,
+                "fields": sorted(fields), "page_count": update.get("page_count"),
+            }, deck_id=row["deck_id"])
+        return update
+
+    def retryable_request_intake(self, deck_id: str) -> dict[str, Any] | None:
+        """「生成を再開」で作り直せる依頼の取り込み: 台本がまだ無い（下調べか台本係で止まった）デッキの、依頼から作る
+        取り込み（一番新しいもの）。無ければ None。"""
+        if self.head_script(deck_id) is not None:
+            return None
+        return self._one("SELECT id,origin_runtime,manuscript,payload_json FROM intakes"
+                         " WHERE deck_id=? AND request IS NOT NULL ORDER BY created_at DESC,rowid DESC LIMIT 1", (deck_id,))
+
+    def retry_request_intake(self, deck_id: str) -> dict[str, Any]:
+        """台本がまだ無い依頼のデッキを作り直す: 同じ取り込みで新しい回と「1 冊を作る」仕事を作る（`create_edit` と同じ形
+        {job, run, ahead} を返す）。原稿がまだ無ければ下調べから、下調べが済んでいれば台本係から（`worker/research.py`）。
+        下調べが前の回に入れた枚数・目的・読み手は、新しい回にも持ち越す。"""
+        with self.transaction():
+            row = self.retryable_request_intake(deck_id)
+            if row is None:
+                raise StateError("作り直せる依頼がありません")
+            ahead = int(self._scalar("SELECT COUNT(*) FROM jobs WHERE deck_id=? AND state IN ('queued','running')",
+                                     (deck_id,)))
+            attrs = (load_json(row["payload_json"]) or {}).get("deck_attributes") or {}
+            args = self.run_args_from_attributes(attrs, origin_runtime=row["origin_runtime"])
+            prev = self._one("SELECT r.args_json FROM jobs j JOIN runs r ON r.id=j.run_id WHERE j.intake_id=?"
+                             " ORDER BY r.number DESC LIMIT 1", (row["id"],))
+            prev_args = load_json(prev["args_json"]) if prev else {}
+            for k in ("page_count", "purpose", "audience"):
+                if prev_args.get(k) and not args.get(k):
+                    args[k] = prev_args[k]
+            run = self.create_run(deck_id, args=args)
+            job = self.create_job(deck_id, run_id=run["id"], intake_id=row["id"])
+            self.append_event("intake_retried", {"intake_id": row["id"], "job_id": job["id"], "run_id": run["id"],
+                                                 "researched": bool(row["manuscript"]), "ahead": ahead}, deck_id=deck_id)
+            return {"job": job, "run": run, "ahead": ahead, "researched": bool(row["manuscript"])}
 
     # --- 参照 ---
     def intake(self, intake_id: str) -> dict[str, Any]:
         row = self._get("intakes", intake_id)
         row["payload"] = load_json(row.pop("payload_json"))
         return row
+
+
+def provisional_title(request: str | None) -> str | None:
+    """依頼から作るデッキの仮の題: 依頼の最初の空でない行を `PROVISIONAL_TITLE_CHARS` 字で切ったもの。"""
+    if not request:
+        return None
+    line = next((ln.strip() for ln in request.splitlines() if ln.strip()), "")
+    if not line:
+        return None
+    return line if len(line) <= PROVISIONAL_TITLE_CHARS else line[:PROVISIONAL_TITLE_CHARS - 1] + "…"

@@ -21,7 +21,9 @@ DECK_MODES = ("presentation", "pitch", "motion")
 LAUNCH_REQUESTED_VIA = ("start", "open", "ensure_external")
 LAUNCH_STATES = ("pending", "attached", "expired", "cancelled")
 ATTACHED_VIA = ("integrated", "external", "unknown")
-ORIGIN_KINDS = ("conversation", "paste", "file", "headless")
+# 取り込みの出所。request は「依頼から作る」道（原稿の代わりに依頼の文。下調べ係が原稿を起こす。画面も会話も同じ。
+# docs/adr/0002-create-from-screen.md）。ほかは原稿を持ってくる道
+ORIGIN_KINDS = ("conversation", "paste", "file", "headless", "request")
 ORIGIN_RUNTIMES = ("claude_code", "codex", "browser", "cli", "other")
 # 台本の版を誰が書いたか・どの LLM で書いたか
 SCRIPT_WRITTEN_BY = ("writer", "screen", "conversation")
@@ -68,6 +70,8 @@ EVENT_KINDS = (
     "clipboard_copy",
     # P2: 会話から 1 冊（取り込み → 台本係 → 検査 → 描き係）
     "intake_created",
+    "intake_researched",
+    "intake_retried",     # 台本がまだ無い依頼から作るデッキを「生成を再開」で作り直す（新しい回と仕事。下調べから）  # 依頼から下調べ係が原稿を起こした（原稿そのものは書かない。字数・出典の数だけ）
     "job_started",
     "job_finished",
     "script_saved",

@@ -58,6 +58,7 @@ from ..settings import Settings
 from ..writer import jlint as JLINT
 from ..writer.backends import WriterFailed, ask, choose_backend
 from ..writer.prompt import ContractMissing, build_prompt
+from .research import research_manuscript
 from .tools import Tools
 
 log = logging.getLogger("quick_slide.worker")
@@ -140,7 +141,8 @@ def _writer_progress(round_no: int, rounds: int, backend: str, phase: str) -> di
 def make(ctx: Context, job: dict[str, Any]) -> str:
     """仕事を最後まで流す。戻り値は描いた回の終わりの状態（done / failed）。失敗も台帳に書いてから返る。
 
-    段（台帳に書いてから始める）: 確かめる（ピッチは Codex のログイン）→ 書く ⇄ 検査 → 描く → 取り込む → 終わり。
+    段（台帳に書いてから始める）: 確かめる（ピッチは Codex のログイン）→ （依頼から作るときは下調べ）→ 書く ⇄ 検査 →
+    描く → 取り込む → 終わり。
     `job.resume_from` が render なら描くところから、import なら取り込むところから続ける（サーバが途中で止まったとき）。
     """
     store = ctx.store
@@ -163,6 +165,9 @@ def make(ctx: Context, job: dict[str, Any]) -> str:
         ctx.call(store.set_run_record, run_id, {"prerequisites": {"checked": pre.rc is not None, "rc": pre.rc}})
         if not pre.ok:
             return fail(pre.message or "", pre.failure_kind or "engine", pre.rc)
+        # 依頼から作る取り込み（画面の入力欄）は、台本係の前に下調べ係が原稿を起こす（worker/research.py）
+        if research_manuscript(ctx, job, run) is not None:
+            return "failed"
         accepted = write_script(ctx, job, run)
         if isinstance(accepted, str):
             return accepted
@@ -436,6 +441,8 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
         ctx.call(store.fail_run, run_id, message=message, failure_kind=kind, rc=rc)
         return "failed"
 
+    # 止めたときの次の一歩。依頼から作るデッキは台本が無くても「生成を再開」でやり直せる（docs/adr/0002-create-from-screen.md）
+    again = "「生成を再開」でもう一度書きます。" if intake.get("request") else "もう一度会話から頼んでください。"
     available = {"claude": ctx.tools.claude_path(), "codex": ctx.tools.codex_path()}
     try:
         backend, why = choose_backend(ctx.settings.writer, intake["origin_runtime"], available)
@@ -446,6 +453,8 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
     env = child_env(home=home, extra=ctx.tools.extra_env)
     ctx.call(store.set_run_record, run_id, {"settings": {
         "writer_setting": ctx.settings.writer, "writer": backend, "writer_reason": why, "max_check_rounds": rounds,
+        # どちらの道で来たか（原稿を持ってきた／依頼から下調べした。docs/adr/0002-create-from-screen.md）
+        "intake_path": "request" if intake.get("request") else "manuscript",
         "style": args.get("style"), "image_look": args.get("image_look"), "images": args.get("images"),
         "page_count": args.get("page_count"), "style_note": args.get("style_note") or None,
         "outline_fixed": bool(args.get("outline_fixed")), "outline_pages": len(outline) or None,
@@ -458,12 +467,13 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
     problems: list[str] | None = None
     for round_no in range(1, rounds + 1):
         if ctx.stop.is_set():
-            return fail("サーバを止めたので、台本を書くのを中断しました。もう一度会話から頼んでください。", "stopped")
+            return fail("サーバを止めたので、台本を書くのを中断しました。" + again, "stopped")
         ctx.call(store.set_run_state, run_id, "writing", progress=_writer_progress(round_no, rounds, backend, "writing"),
                  args_update={"writer": backend, "writer_reason": why})
         try:
             prompt = build_prompt(engine, args, manuscript=intake["manuscript"], title_hint=intake["title_hint"],
-                                  skills_dir=ctx.tools.skills_dir, previous=previous, problems=problems)
+                                  skills_dir=ctx.tools.skills_dir, previous=previous, problems=problems,
+                                  request=intake.get("request"))
         except ContractMissing as exc:
             return fail(f"エンジンの台本の決まり（{exc}）が見つかりません。導入をやり直してください。", "contract")
         try:
@@ -503,7 +513,7 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
         ctx.call(store.set_script_check, script["id"], -1 if result.rc is None else result.rc,
                  result.problems + result.warnings + jl_notes)
         if result.stopped:
-            return fail("サーバを止めたので、台本を確かめるのを中断しました。もう一度会話から頼んでください。", "stopped")
+            return fail("サーバを止めたので、台本を確かめるのを中断しました。" + again, "stopped")
         if result.rc == 0:
             return script, data
         if result.rc == 2 and LOOK.theme_refused(result.problems):

@@ -375,8 +375,13 @@ def route_resume(server: "QuickSlideServer", req: "Request") -> "Response":
         cap = view["capabilities"]["resume"]
         if not cap["available"]:
             raise ApiError(409, "nothing_to_resume", cap["reason"] or "描き直すものはありません。")
-        result = store.create_edit(deck_id, {"op": "render", "source": "screen"})
-    return _accepted(server, deck_id, result, "いまの台本で描き直しています。")
+        if store.head_script(deck_id) is None:   # 台本がまだ無い依頼のデッキは、下調べ（か台本係）から作り直す
+            result = store.retry_request_intake(deck_id)
+            message = "台本を書き直しています。" if result["researched"] else "もう一度下調べをしています。"
+        else:
+            result = store.create_edit(deck_id, {"op": "render", "source": "screen"})
+            message = "いまの台本で描き直しています。"
+    return _accepted(server, deck_id, result, message)
 
 
 REBUILD_NOTICES = {

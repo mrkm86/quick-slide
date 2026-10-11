@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
-"""偽物の `claude`（`claude -p --output-format json` の形だけ真似る）。本物の LLM は呼ばない。"""
+"""偽物の `claude`（`claude -p --output-format json` の形だけ真似る）。本物の LLM は呼ばない。
+
+道具が空（`--tools ""`）なら台本係、Web の 2 つだけ（`--tools WebSearch,WebFetch` と同じものを `--allowedTools`）なら
+下調べ係として答える（`research_common.py`）。ほかの道具の渡し方は断る。"""
 import json
 import pathlib
 import sys
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import research_common as R  # noqa: E402
 import writer_common as W  # noqa: E402
+
+WEB_TOOLS = "WebSearch,WebFetch"
 
 HELP = """Usage: claude [options] [command] [prompt]
   -p, --print  --output-format <format>  --tools <tools...>  --strict-mcp-config
   --disable-slash-commands  --no-session-persistence  --safe-mode
+  --allowedTools, --allowed-tools <tools...>
+  --permission-mode <mode>  (choices: "acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
 """
 
 
@@ -22,10 +30,20 @@ def main() -> int:
     if "-p" not in argv or argv[argv.index("--output-format") + 1] != "json":
         print("fake claude: -p --output-format json だけ受ける", file=sys.stderr)
         return 2
-    if argv[argv.index("--tools") + 1] != "":
-        print("fake claude: 道具を空にしていない", file=sys.stderr)
+    tools = argv[argv.index("--tools") + 1]
+    prompt = sys.stdin.read()
+    if tools == WEB_TOOLS:
+        allowed = argv[argv.index("--allowedTools") + 1] if "--allowedTools" in argv else None
+        mode = argv[argv.index("--permission-mode") + 1] if "--permission-mode" in argv else None
+        if allowed != WEB_TOOLS or mode != "dontAsk" or not R.is_research(prompt):
+            print("fake claude: Web の道具は下調べ係にだけ、その 2 つだけを許して渡す", file=sys.stderr)
+            return 2
+        text, failure = R.answer_for("claude", prompt, argv)
+    elif tools != "" or R.is_research(prompt):
+        print("fake claude: 道具を空にしていない（下調べ係なら Web の 2 つだけ）", file=sys.stderr)
         return 2
-    text, failure = W.answer_for("claude", sys.stdin.read())
+    else:
+        text, failure = W.answer_for("claude", prompt)
     if failure == "keys":
         print("fake claude: API キーが渡ってきた", file=sys.stderr)
         return 3

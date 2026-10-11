@@ -43,6 +43,10 @@ from .base import StoreBase, dump_json, load_json
 INTERRUPTED_MESSAGE = "台本を書いている途中でサーバが止まったため、中断しました。もう一度会話から頼んでください。"
 GAVE_UP_MESSAGE = "サーバが何度も途中で止まったため、作るのをやめました。もう一度会話から頼んでください。"
 EDIT_INTERRUPTED_MESSAGE = "直している途中でサーバが止まったため、中断しました。もう一度頼んでください。"
+# 依頼から作る取り込み（docs/adr/0002-create-from-screen.md）は、台本がまだ無くても「生成を再開」でやり直せる
+# （画面からも会話からも同じ。`store.retry_request_intake`）
+RESEARCH_INTERRUPTED_MESSAGE = "下調べの途中でサーバが止まったため、中断しました。「生成を再開」でもう一度調べます。"
+REQUEST_INTERRUPTED_MESSAGE = "台本を書いている途中でサーバが止まったため、中断しました。「生成を再開」でもう一度書きます。"
 # 続きから戻すのは、この回数まで（止まり続ける仕事を延々と回さない）
 MAX_JOB_ATTEMPTS = 3
 
@@ -276,10 +280,19 @@ class RunsMixin(StoreBase):
                 self._finish_job_row(r["id"], "failed", "interrupted", now)
                 if run["state"] in RUN_ACTIVE_STATES:
                     message = GAVE_UP_MESSAGE if stage is not None else (
-                        EDIT_INTERRUPTED_MESSAGE if r["kind"] == "edit" else INTERRUPTED_MESSAGE)
+                        EDIT_INTERRUPTED_MESSAGE if r["kind"] == "edit" else self._make_interrupted_message(r, run))
                     self._end_run(r["run_id"], "failed", message=message, failure_kind="interrupted")
                 out["failed"].append(r["id"])
         return out
+
+    def _make_interrupted_message(self, job: dict[str, Any], run: dict[str, Any]) -> str:
+        """1 冊を作る仕事が書く段で止まったときの文。依頼から作る取り込みなら「生成を再開」でやり直せると言う。"""
+        intake_id = self._scalar("SELECT intake_id FROM jobs WHERE id=?", (job["id"],))
+        request = intake_id and self._scalar("SELECT request FROM intakes WHERE id=?", (intake_id,))
+        if not request:
+            return INTERRUPTED_MESSAGE
+        researching = (load_json(run["progress_json"]) or {}).get("phase") == "researching"
+        return RESEARCH_INTERRUPTED_MESSAGE if researching else REQUEST_INTERRUPTED_MESSAGE
 
     def fail_interrupted_jobs(self) -> list[str]:
         """起動時の掃除の口（`server/app.run_startup_sweep`）。戻した仕事も失敗にした仕事も数に入る。"""
