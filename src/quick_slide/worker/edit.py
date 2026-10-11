@@ -10,9 +10,14 @@
 | duplicate | ページを複製してすぐ後ろに置く（新しい id。ピッチは区画の絵を写して描き直さない） | 呼ばない |
 | visibility | 非表示 / 表示（台本の `_hidden`。エンジンに渡す台本からは抜く） | 呼ばない |
 | reorder | 並べ替え | 呼ばない |
-| restore | 版スタックの前の姿に戻す（その回の台本のページの中身に戻し、絵だけが違ったなら、その回の絵をエンジンが読む場所へ戻す） | 呼ばない |
-| render | いまの台本で描き直す（止まった回の再開・書き出す形式が見せる回に無いとき） | 呼ばない |
-| rebuild | 設定を替えて組み直す（いまの台本を、いまのブランド・スタイル・書式で。P5） | 呼ばない |
+| restore | 版スタックの前の姿に切り替える（その回の台本のページの中身に戻し、ページに `_pin`＝その回の id を書く。描くときはその回の絵と書き出しの部品を使う） | 呼ばない |
+| render | いまの台本で描き直す（止まった回の再開・書き出す形式が見せる回に無いとき・描かない直しの後の組み直し） | 呼ばない |
+| rebuild | 設定を替えて組み直す（いまの台本を、いまのブランド・スタイル・書式で。版の印は全部外す。P5） | 呼ばない |
+
+**版の印（`_pin`）の決まり**（`docs/adr/0001-version-pins.md`）: 切り替えた版は、そのページの中身が変わるまで指したまま。
+直す（revise。絵だけの直しも）・分ける・複製の写しでは外れる（写しは印を持たない）。非表示・並べ替え・差し込み・
+描き直し（render）では残る。組み直し（rebuild）は利用者が頼んだ描き直しなので、全部外す（新しい版ができてよい）。
+普段は画面の口（`edit_routes.route_adopt`）がその場で当て、ここの restore は直しの仕事が待っているときだけ通る。
 """
 
 from __future__ import annotations
@@ -27,11 +32,13 @@ from typing import Any
 from .. import motion
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, engine_for
+from ..pins import PinRefused, pin_source
 from ..render import look as LOOK
 from ..render import workspace as W
 from ..render.runner import DOCTOR_HINT, check_prerequisites, dependency_message
 from ..scriptdoc import (
     HIDDEN_KEY,
+    PIN_KEY,
     deep,
     dumps,
     engine_view,
@@ -44,6 +51,8 @@ from ..scriptdoc import (
     slides_of,
     with_hidden,
     with_order,
+    with_restored,
+    without_pins,
 )
 from ..writer import jlint as JLINT
 from ..writer.backends import WriterFailed, ask, choose_backend
@@ -127,10 +136,13 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
             result = _reorder(ctx, deck_id, req, data)
         elif op == "restore":
             result = _restore(ctx, deck_id, req, data, engine.mode, args)
-        elif op in ("render", "rebuild"):
-            # 描き直し（再開・書き出しの形式が無いとき）と、設定を替えて組み直す（P5）。どちらも台本はそのまま、
+        elif op == "render":
+            # 描き直し（再開・書き出しの形式が無いとき・描かない直しの後の組み直し）。台本はそのまま（版の印も残す）。
             # 設定（ブランド・スタイル・書式）はこの回の最初に読み直してある（settle_look）。描いた絵はキャッシュから
             result = EditResult(data=data, plan=RenderPlan())
+        elif op == "rebuild":
+            # 設定を替えて組み直す（P5）。利用者が頼んだ描き直しなので、版の印は外して全ページをいまの作りで描く
+            result = EditResult(data=without_pins(data), plan=RenderPlan())
         else:
             return fail("知らない直しです。", "edit")
     except EditRefused as exc:
@@ -364,6 +376,8 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
         if patch.problems:
             return None, patch.problems
         new = apply_revision(data, patch) if patch.script_changes else data
+        # 絵だけ直すページも新しい姿になるので、前の版の印を外す（中身を直したページは apply_revision が外す）
+        new = without_pins(new, {pp.key for pp in patch.image_changes})
         plan = RenderPlan(deck=bool(patch.script_changes) or not patch.image_changes)
         for pp in patch.image_changes:
             plan.revise.append({"key": pp.key, "slot": (pp.image or {}).get("slot"),
@@ -413,6 +427,7 @@ def _duplicate(ctx: Context, deck_id: str, req: dict[str, Any], data: dict[str, 
     at = next(i for i, s in enumerate(slides) if isinstance(s, dict) and s.get("id") == key)
     copy = deep(slides[at])
     copy.pop(HIDDEN_KEY, None)
+    copy.pop(PIN_KEY, None)   # 写しは新しいページ（指している回にはこのページが無い）
     scene_ids = {str(s.get("id")) for s in slides_of(data)}
     if mode == "motion":
         # 場面の id・中の要素の id・stage の要素の id は、まとめて 1 つの使用済みの集合（DOM の id は台本全体で重ねられない）。
@@ -451,38 +466,14 @@ def _reorder(ctx: Context, deck_id: str, req: dict[str, Any], data: dict[str, An
 
 def _restore(ctx: Context, deck_id: str, req: dict[str, Any], data: dict[str, Any], mode: str,
              args: dict[str, Any]) -> EditResult:
+    """版の切り替え（直しの仕事が待っていたとき。普段は画面の口がその場で当てる）。中身を戻して版の印を書くだけで、
+    絵と書き出しの部品は描くとき（`render_and_import`）に、印の指す回から持ってくる。"""
     if one_page(args):
         raise EditRefused("台本の全ページを 1 枚に描くスタイル（infographic）では、ページの版から戻せません。")
     key = _key(ctx, deck_id, req.get("page"), data)
-    store = ctx.store
     try:
-        old_run = ctx.call(store.run, req.get("run"))
-    except Exception:  # noqa: BLE001 - 無い回
-        raise EditRefused("その版はもうありません。画面を読み込み直してください。") from None
-    if old_run["deck_id"] != deck_id or old_run["state"] != "done" or not old_run.get("script_id"):
-        raise EditRefused("その版には戻せません。")
-    old_script = ctx.call(store.load_script, ctx.call(store.script, old_run["script_id"]))
-    old_page = next((s for s in slides_of(old_script) if s.get("id") == key), None)
-    if old_page is None:
-        raise EditRefused("その版にはこのページがありません。")
-    restored = deep(old_page)
-    restored.pop(HIDDEN_KEY, None)
-    slides = []
-    for s in data.get("slides") or []:
-        if isinstance(s, dict) and s.get("id") == key:
-            new = dict(restored)
-            if is_hidden(s):
-                new[HIDDEN_KEY] = True
-            s = new
-        slides.append(s)
-    old_dir = ctx.root.run_dir(deck_id, old_run["id"])
-    plan = RenderPlan()
-    if mode == "pitch":
-        no = next((r["page_no"] for r in ctx.call(store.run_pages, old_run["id"]) if r.get("key") == key), None)
-        got = W.pitch_picture(old_dir, key, legacy_no=no)
-        if got is not None:
-            plan.seeds[key] = got
-    elif mode == "presentation":
-        plan.restore_presentation.append((old_dir, key))
-    return EditResult(data={**data, "slides": slides}, plan=plan, summary="前の版に戻しました。",
-                      routes={key: "restore"})
+        old_page = ctx.call(pin_source, ctx.store, deck_id, req.get("run"), key)
+    except PinRefused as exc:
+        raise EditRefused(exc.message) from None
+    return EditResult(data=with_restored(data, key, old_page, str(req.get("run"))), plan=RenderPlan(),
+                      summary="前の版に戻しました。", routes={key: "restore"})

@@ -141,7 +141,7 @@ def plan_one_page(deck, theme, logo, refs, layouts, style, a, warnings) -> dict:
     return {"deck": deck, "theme": theme, "logo": logo, "refs": refs, "pages": [page], "warnings": warnings, "style": style}
 
 
-def _redo_set(spec: str | None, n: int) -> set[int]:
+def _redo_set(spec: str | None, n: int, flag: str = "--redo") -> set[int]:
     if not spec:
         return set()
     if spec == "all":
@@ -156,7 +156,7 @@ def _redo_set(spec: str | None, n: int) -> set[int]:
             out.add(int(part))
     bad = sorted(x for x in out if not 1 <= x <= n)
     if bad:
-        raise S.ScriptError(f"--redo のページ番号が範囲の外: {bad}（1〜{n}）")
+        raise S.ScriptError(f"{flag} のページ番号が範囲の外: {bad}（1〜{n}）")
     return out
 
 
@@ -270,6 +270,7 @@ def cmd_deck(a) -> int:
             fmts = tuple(f for f in fmts if f != "pdf")
         pl = plan(a, cfg)
         redo = _redo_set(a.redo, len(pl["pages"]))
+        keep = _redo_set(getattr(a, "keep", None), len(pl["pages"]), "--keep") - redo
     except (S.ScriptError, ValueError) as e:
         print(f"NG: {e}", file=sys.stderr)
         return getattr(e, "rc", 2)
@@ -311,6 +312,12 @@ def cmd_deck(a) -> int:
                 log(f"警告: {pg['no']}枚目は台本が変わっているが、revise では描き直さない（deck を流すと描き直す）")
         elif target is None and raw.is_file() and old.get("key") == pg["key"] and pg["no"] not in redo:
             pg["gen"] = {**old, "status": "cached"}
+        elif target is None and raw.is_file() and pg["no"] in keep:
+            # --keep: 呼ぶ側が置いた絵（前に描いた版）を、鍵が合わなくても使う（ADR 0017）。鍵は前のまま残すので、
+            # --keep を付けずに流せば、そのときの中身と設定で描き直す
+            pg["gen"] = {**old, "status": "cached", "kept": True}
+            if old.get("key") != pg["key"]:
+                log(f"{pg['no']}枚目は置いてある絵をそのまま使う（--keep。描く指示は変わっているが描き直さない）")
         else:
             todo.append(pg)
     if target is not None:
@@ -558,6 +565,8 @@ def main(argv=None) -> int:
     d.add_argument("--parallel", type=int, help=f"同時に描く数（既定 {DEFAULT_PARALLEL}・設定の max_parallel）")
     d.add_argument("--retries", type=int, default=1, help="1枚ごとの描き直しの回数（既定 1）")
     d.add_argument("--redo", help="前に描いた絵を使わずに描き直すページ（3,5 / 2-4 / all）")
+    d.add_argument("--keep", help="区画に置いてある絵を、描く指示（鍵）が変わっていても描き直さずに使うページ（3,5 / 2-4）。"
+                                  "前の版の絵を置いて組み直すとき用（ADR 0017）。--redo が勝つ")
     d.add_argument("--format", help=FORMAT_HELP)
     d.add_argument("--no-pdf", action="store_true", help=argparse.SUPPRESS)   # 前の口（--format から pdf を外す）
     r = sub.add_parser("revise", help="描いた1枚を指示で直す（微修正・作り直し）→ PPTX・PDF を組み直す（ADR 0012）")
@@ -574,7 +583,7 @@ def main(argv=None) -> int:
     r.add_argument("--no-pdf", action="store_true", help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
     if a.cmd == "revise":
-        a.redo, a.parallel = None, 1
+        a.redo, a.keep, a.parallel = None, None, 1
         a.mode = "remake" if a.remake else "minor"
     return {"check": cmd_check, "auth": cmd_auth, "deck": cmd_deck, "revise": cmd_deck}[a.cmd](a)
 

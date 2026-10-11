@@ -127,6 +127,60 @@ def case_deck_formats():
     assert H.main(["deck", "--script", str(script), "--out", str(out), "--no-fill", "--format", "gif"]) == 2
 
 
+def case_assemble():
+    """--parts と assemble（ADR 0024）: 2つの回（テーマ違い）のページを混ぜて PPTX・PDF を組む。ページの中身は元のまま・
+    読めない PDF は止める・指示の誤りは rc=2。"""
+    import pdfpages as PDF
+    from pptx import Presentation
+    work = TMP / "assemble"
+    work.mkdir()
+    shutil.copytree(SAMPLE.parent / "assets", work / "assets")
+    sc = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    sc["slides"] = sc["slides"][:4]
+    script = work / "deck.json"
+    script.write_text(json.dumps(sc, ensure_ascii=False), encoding="utf-8")
+    outs = {}
+    for theme in ("default", "forest"):
+        out = work / theme
+        rc = H.main(["deck", "--script", str(script), "--out", str(out), "--no-odp", "--no-fill", "--theme", theme,
+                     "--format", "pptx,pdf", "--parts", str(out / "parts.json")])
+        assert rc == 0, rc
+        parts = json.loads((out / "parts.json").read_text())
+        assert len(parts["slides"]) == 4 and PDF.page_count(out / "deck.pdf") == 4
+        outs[theme] = (out, parts)
+    (a, pa), (b, pb) = outs["default"], outs["forest"]
+    picks = [(a, pa, 1), (b, pb, 2), (a, pa, 3)]
+    man = work / "manifest.json"
+    man.write_text(json.dumps({"title": "混ぜた資料", "size": pa["size"], "slides": [p["slides"][n - 1] for _, p, n in picks],
+                               "pdf": [[str(d / "deck.pdf"), n] for d, _, n in picks]}, ensure_ascii=False))
+    mixed = work / "mixed"
+    assert H.main(["assemble", "--manifest", str(man), "--out", str(mixed)]) == 0
+    assert PDF.page_count(mixed / "deck.pdf") == 3
+    for i, (d, _, n) in enumerate(picks, 1):
+        assert PDF.page_streams(mixed / "deck.pdf", i) == PDF.page_streams(d / "deck.pdf", n), f"{i} ページ目が元と違う"
+    assert PDF.page_streams(a / "deck.pdf", 2) != PDF.page_streams(b / "deck.pdf", 2), "テーマ違いなのに同じページ"
+
+    def texts(path, n):
+        sl = Presentation(str(path)).slides[n - 1]
+        return [sh.text_frame.text for sh in sl.shapes if getattr(sh, "has_text_frame", False)], \
+            sl.notes_slide.notes_text_frame.text if sl.has_notes_slide else ""
+    for i, (d, _, n) in enumerate(picks, 1):
+        assert texts(mixed / "deck.pptx", i) == texts(d / "deck.pptx", n), f"{i} 枚目の文字・ノートが元と違う"
+    # PDF 1.5 の相互参照のストリームは読まない（混ぜずに止める）
+    bad = work / "xref-stream.pdf"
+    bad.write_bytes(b"%PDF-1.5\n1 0 obj\n<</Type /XRef /Size 1>>\nstream\n\nendstream\nendobj\nstartxref\n9\n%%EOF\n")
+    try:
+        PDF.assemble([(bad, 1)], work / "never.pdf")
+    except PDF.PdfError:
+        pass
+    else:
+        raise AssertionError("相互参照のストリームを読んだ")
+    man.write_text(json.dumps({"slides": [], "pdf": [[str(bad), 1]]}))
+    assert H.main(["assemble", "--manifest", str(man), "--out", str(work / "bad")]) == 1
+    man.write_text("{")
+    assert H.main(["assemble", "--manifest", str(man), "--out", str(work / "bad")]) == 2
+
+
 CASES = {k[5:]: v for k, v in globals().items() if k.startswith("case_")}
 
 if __name__ == "__main__":

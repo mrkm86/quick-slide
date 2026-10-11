@@ -62,12 +62,12 @@ class EditsMixin(StoreBase):
 
     def apply_screen_edit(self, deck_id: str, data: dict[str, Any], pages: list[dict[str, Any]], *, op: str,
                           detail: dict[str, Any]) -> dict[str, Any]:
-        """描かない直し（非表示・並べ替え）: 台本の版を 1 つ進めて、いまの台本にする。回は作らない。
+        """描かない直し（非表示・並べ替え・版の切り替え）: 台本の版を 1 つ進めて、いまの台本にする。回は作らない。
 
         呼ぶ側は、そのデッキの仕事が待っていない・走っていないことを同じ錠の中で確かめてから呼ぶ（走っている直しは
         古い台本を元に新しい台本を作るので、割り込むと、ここで当てた直しが消える）。戻り値は台本の版の行。
         """
-        require(op, ("visibility", "reorder"), "edit.op")
+        require(op, ("visibility", "reorder", "restore"), "edit.op")
         with self.transaction():
             script = self.save_script(deck_id, data, written_by="screen", writer_backend=None, intake_id=None,
                                       run_id=None)

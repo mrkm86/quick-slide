@@ -6,11 +6,22 @@
 
 **エンジンはデッキの作業フォルダ（`work/`）に描き、終わった回を `runs/<回>/` へ控える**（P3。理由は
 `render/workspace.py`）。台本はいまの台本から非表示のページを抜いて `scripts/engine.json` に書いて渡す。
+
+**版を切り替えたページ**（台本の `_pin`。`pins.py`・`docs/adr/0001-version-pins.md`）は、描くたびに、その版を描いた回の
+ものを使う（新しい版を作らない）:
+- ピッチ: その版の絵を区画に置き、`--keep` でその絵を使わせてエンジンを呼ぶ（ブランドの色・スタイルを替えて描く指示の鍵が
+  変わっていても描き直さない。その絵で PPTX・PDF まで組む）
+- プレゼン: 生成の枠の絵を区画へ戻してから描き、描き終えたら、ページの画像をその版の回のものに張り替え、
+  書き出し（PPTX・PDF）をページごとの部品から組み直す（その版の部品＋この回の部品。エンジンの `assemble`）。
+  部品の無い版（部品を残す前の回）は、書き出しだけこの回で描いたものを使う
+- モーション: ページの画像をその版の回のものに張り替える（HTML 1枚は中身から組む。場面のキャッシュで撮り直さない）
 """
 
 from __future__ import annotations
 
 import logging
+import shutil
+import subprocess
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -21,6 +32,8 @@ from .. import motion
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, Engine, engine_for, engine_marker
 from ..paths import DataRoot
+from ..pins import Pin
+from ..pins import resolve as resolve_pins
 from ..render import look as LOOK
 from ..render import workspace as W
 from ..render.runner import (
@@ -38,6 +51,7 @@ from ..scriptdoc import (
     outline_headings,
     output_pages,
     page_id_problems,
+    pins_of,
     screen_pages,
 )
 from ..settings import Settings
@@ -47,6 +61,8 @@ from ..writer.prompt import ContractMissing, build_prompt
 from .tools import Tools
 
 log = logging.getLogger("quick_slide.worker")
+# 書き出しをページごとの部品から組む時間の上限（PPTX は python-pptx・PDF はページを抜いて並べるだけ。数秒で終わる）
+ASSEMBLE_TIMEOUT_SECONDS = 120
 
 
 class Abandoned(BaseException):
@@ -227,19 +243,30 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
     else:
         ctx.call(store.set_run_state, run_id, "rendering", progress=first)
     script_path = W.write_engine_script(ctx.root.engine_script_path(deck_id), engine_script_view(data, args))
+    pins: dict[str, Pin] = {} if one_page(args) else ctx.call(resolve_pins, store, deck_id, pins_of(data), pages)
 
     placed: dict[str, str] = {}
     if engine.mode == "pitch" and not one_page(args):
+        for key, pin in pins.items():   # 版を切り替えたページは、その版の絵を区画に置く（鍵が合えば描かない）
+            got = None if key in plan.seeds else W.pitch_picture(pin.run_dir, key, legacy_no=pin.row["page_no"])
+            if got is not None:
+                plan.seeds[key] = got
         placed = W.arrange_pitch_cache(work, [p["key"] for p in pages], area=known_pitch_area(ctx, deck_id, work),
                                        seeds=plan.seeds, aliases=plan.aliases, fallback=_pitch_fallback(ctx, deck_id))
     restored = 0
     for old_dir, key in plan.restore_presentation:
         restored += W.restore_presentation_pictures(old_dir, key)
+    if engine.mode == "presentation":
+        for key, pin in pins.items():   # 生成の枠の絵をその版のものへ（部品の無い版の書き出しも、その絵で描く）
+            restored += W.restore_presentation_pictures(pin.run_dir, key)
 
     position = {p["key"]: p["no"] for p in pages}
     commands: list[tuple[str, list[str]]] = []
+    # 版を切り替えたページは、置いたその版の絵を鍵が合わなくても使わせる（ピッチ。描き直すと別の絵になり版が増える）
+    keep = [position[k] for k in pins if placed.get(k) == "seed" and k in position]
     if plan.deck or not plan.revise:
-        commands.append(("engine", engine.deck_command(ctx.tools.python, ctx.tools.skills_dir, script_path, work, args)))
+        commands.append(("engine", engine.deck_command(ctx.tools.python, ctx.tools.skills_dir, script_path, work, args,
+                                                       keep=keep)))
     for i, r in enumerate(plan.revise, 1):
         if r["key"] not in position:
             ctx.call(store.fail_run, run_id, message="直すページが描くページの中にありません（非表示にしたページは直せません）。",
@@ -252,6 +279,7 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
         "engine": engine_marker(ctx.tools.skills_dir, engine),
         "argv": [c for _, c in commands], "work": str(work), "engine_script": str(script_path),
         "plan": plan.record(), "cache_placed": placed, "pictures_restored": restored,
+        "pins": {k: pin.run_id for k, pin in pins.items()},
     })
 
     def on_change(snapshot: dict[str, Any], marks: dict[int, str]) -> None:
@@ -294,6 +322,10 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
         s = snap.get(no) or {}
         info["file"] = s.get("file") if info.get("file") else None
         info["picture_sha"] = s.get("picture_sha")
+    if outcome.state == "done" and engine.keeps_parts:
+        W.snapshot_parts(work, run_dir, pages)   # 書き出しの部品をページごとに（版を混ぜた書き出しの材料）
+    if outcome.state == "done" and pins and engine.mode in ("presentation", "motion"):
+        ctx.call(store.set_run_record, run_id, {"pinned": adopt_pins(ctx, engine, run_dir, pages, pins, outcome)})
     if message and outcome.state == "done":
         outcome.message = (outcome.message + " " if outcome.message else "") + message
     ctx.call(store.enter_importing, run_id, outcome.to_record())
@@ -302,6 +334,72 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
     log.info("run %s: %s rc=%s pages=%d", run_id, outcome.state, outcome.rc,
              sum(1 for p in outcome.pages.values() if p.get("file")))
     return outcome.state
+
+
+def adopt_pins(ctx: Context, engine: Engine, run_dir: Path, pages: list[dict[str, Any]], pins: dict[str, Pin],
+               outcome: RenderOutcome) -> dict[str, Any]:
+    """描き終えた回に、版を切り替えたページを、その版の回から持ち込む（プレゼン・モーション）。記録を返す。
+
+    プレゼンは先に書き出しを組み直す（部品のある版のページはその版の部品、ほかはこの回の部品）。組めなかったら
+    エンジンの書き出しのまま（全ページいまの作り）にして、持ち込んだページの部品は控えない（ページの画像と食い違うので）。
+    ページの画像・絵の控え・発表の区切りの在りかは、組めても組めなくても持ち込む（画面と版の数え方を揃える）。"""
+    by_key = {p["key"]: p for p in pages}
+    record: dict[str, Any] = {"pages": {}, "assembled": None}
+    if engine.keeps_parts:
+        exact = {k for k, pin in pins.items() if W.has_parts(pin.run_dir, k)}
+        if exact:
+            record["assembled"] = _assemble(ctx, engine, run_dir, pages, pins, exact)
+            if not record["assembled"]:
+                exact = set()
+        for k, pin in pins.items():
+            if not (k in exact and W.adopt_part(pin.run_dir, run_dir, k, by_key[k]["no"])):
+                W.drop_part(run_dir, k)
+        record["exact"] = sorted(exact)
+    for k, pin in pins.items():
+        no = by_key[k]["no"]
+        present = W.present_source(pin.run_dir, pin.run_id, k, pin.row["page_no"]) if engine.mode == "presentation" else None
+        shot = W.adopt_page(pin.run_dir, pin.row["page_no"], run_dir, no, k, present=present)
+        info = outcome.pages.get(no)
+        if shot is None or info is None:
+            continue
+        info["file"] = str(shot)
+        info["picture_sha"] = pin.row.get("picture_sha256") or info.get("picture_sha")
+        info["warnings"] = list(pin.row.get("warnings") or [])
+        record["pages"][k] = pin.run_id
+    return record
+
+
+def _assemble(ctx: Context, engine: Engine, run_dir: Path, pages: list[dict[str, Any]], pins: dict[str, Pin],
+              exact: set[str]) -> bool:
+    """この回の書き出し（deck.pptx・deck.pdf）を、ページごとの部品から組み直す。組めたか。"""
+    slides, picks = [], []
+    for p in pages:
+        part = W.load_part(pins[p["key"]].run_dir if p["key"] in exact else run_dir, p["key"])
+        if part is None or part["pdf"] is None:
+            log.warning("書き出しの部品が揃わないので、版を混ぜずに書き出します（%s）", p["key"])
+            return False
+        slides.append(part["slide"])
+        picks.append(list(part["pdf"]))
+    cmd_dir = run_dir / "assemble"
+    shutil.rmtree(cmd_dir, ignore_errors=True)
+    manifest = cmd_dir / "manifest.json"
+    W.write_json(manifest, {**W.parts_deck(run_dir), "slides": slides, "pdf": picks})
+    cmd = engine.assemble_command(ctx.tools.python, ctx.tools.skills_dir, manifest, cmd_dir)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=ASSEMBLE_TIMEOUT_SECONDS,
+                           env=child_env(home=ctx.root.root, extra=ctx.tools.extra_env), cwd=str(run_dir))
+        ok = r.returncode == 0 and (cmd_dir / "deck.pptx").is_file() and (cmd_dir / "deck.pdf").is_file()
+        if not ok:
+            log.warning("書き出しを部品から組めませんでした（rc=%s）: %s", r.returncode, (r.stderr or "").strip()[:300])
+        else:
+            for name in ("deck.pptx", "deck.pdf"):
+                (cmd_dir / name).replace(run_dir / name)   # 控えのハードリンクを外して入れ替える（作業フォルダ側は変えない）
+        return ok
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("書き出しを部品から組めませんでした: %s", exc)
+        return False
+    finally:
+        shutil.rmtree(cmd_dir, ignore_errors=True)
 
 
 def check_candidate(ctx: Context, engine: Engine, run: dict[str, Any], data: dict[str, Any]):
@@ -385,7 +483,8 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
             previous, problems = data, ["NG: slides（ページのオブジェクトの配列）が無いか空"]
             continue
         for s in slides:
-            s.pop("_hidden", None)   # 非表示は画面が決める（台本係は書かない）
+            s.pop("_hidden", None)   # 非表示と版の印は画面が決める（台本係は書かない）
+            s.pop("_pin", None)
         script = ctx.call(store.save_script, deck_id, data, written_by="writer", writer_backend=backend,
                           intake_id=intake["id"], run_id=run_id, round_no=round_no)
         ctx.call(store.set_run_state, run_id, "checking", progress=_writer_progress(round_no, rounds, backend, "checking"))

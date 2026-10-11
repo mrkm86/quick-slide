@@ -234,9 +234,9 @@ def _script_listing(script: dict[str, Any]) -> list[str]:
 
 
 def _plain_script(script: dict[str, Any]) -> str:
-    from ..scriptdoc import HIDDEN_KEY
+    from ..scriptdoc import HIDDEN_KEY, PIN_KEY
 
-    shown = {**script, "slides": [{k: v for k, v in s.items() if k != HIDDEN_KEY}
+    shown = {**script, "slides": [{k: v for k, v in s.items() if k not in (HIDDEN_KEY, PIN_KEY)}
                                   for s in script.get("slides") or [] if isinstance(s, dict)]}
     return json.dumps(shown, ensure_ascii=False, indent=1)
 

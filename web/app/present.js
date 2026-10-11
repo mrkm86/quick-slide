@@ -12,7 +12,8 @@
 //   }
 //   - image-slide: 見せる版のページの PNG を順に出す（段は無い）。html-slide の回の HTML が無い古い回もこれで出す
 //   - html-slide:  回の HTML を仕切りの中（<iframe sandbox="allow-scripts">・同一オリジンの許可なし）で開き、
-//                  postMessage で「このページの何段目まで」を送る（再生は present-frame.js）
+//                  postMessage で「このページの何段目まで」を送る（再生は present-frame.js）。版を切り替えたページは
+//                  別の回の HTML にあるので、回ごとに仕切りを開いて、ページごとに見せる仕切りを替える
 //   - motion-slide: 回の HTML 1枚（自前のエンジン window.MS を持つ）を、同じ仕切りの中で動かす。外枠のページ＝場面・段＝拍で、
 //                   postMessage（present-motion-frame.js が中でつなぐ）で MS.go を送り、中の状態の変化（中でのクリック・キー・
 //                   自動再生）を外枠の進み具合に返す。一覧・全画面・Esc は外枠のものを使う（中の一覧は出さない）
@@ -103,14 +104,22 @@
   }
 
   // ---- 部品 2: html-slide の回の HTML を仕切りの中で段ごとに再生する ----
+  // 版を切り替えたページは、その版を描いた回の HTML にある（ページの html.url）。回ごとに仕切りを 1 つずつ最初にまとめて開き、
+  // 全部の準備ができてから始める。ページを替えるときは、そのページの回の仕切りだけを見せる（回をまたぐときは中の切り替えの
+  // 動きを使わずに飛ぶ。段 0 の要素の出方は残る）
   function frameAdapter() {
-    var frame = null, pages = [], info = [], readyResolve = null, readyReject = null, timer = null, onMessage = null;
-    function send(msg) {
+    var frames = [], pages = [], shown = null, timer = null, onMessage = null;
+    function urlOf(page, data) { return page && page.html && page.html.url ? page.html.url : data.html.url; }
+    function frameOf(page) {
+      for (var k = 0; k < frames.length; k++) { if (frames[k].url === page.url) { return frames[k]; } }
+      return null;
+    }
+    function send(f, msg) {
       msg.qs = "present";
       msg.v = 1;
       // 仕切りの中のオリジンは不透明（null）で宛先に書けない。送る中身は「何ページ目の何段目か」だけなので "*" でよい。
       // 受ける側（present-frame.js）が差出人（親の window）とオリジンを確かめる
-      if (frame && frame.contentWindow) { frame.contentWindow.postMessage(msg, "*"); }
+      if (f && f.el && f.el.contentWindow) { f.el.contentWindow.postMessage(msg, "*"); }
     }
     function isReady(d) {
       return d && typeof d === "object" && d.qs === "present" && d.v === 1 && d.type === "ready" && Array.isArray(d.sections) &&
@@ -119,45 +128,58 @@
     return {
       name: "frame",
       mount: function (slideEl, data) {
-        pages = data.pages;
+        pages = data.pages.map(function (p) { return { page: p, url: urlOf(p, data) }; });
         return new Promise(function (resolve, reject) {
-          readyResolve = resolve;
-          readyReject = reject;
+          var waiting = 0;
           onMessage = function (e) {
-            // 差出人はこの iframe だけ・オリジンは不透明（"null"）・合図の形が合うものだけ
-            if (!frame || e.source !== frame.contentWindow || e.origin !== "null") { return; }
-            if (isReady(e.data)) {
-              info = e.data.sections;
-              clearTimeout(timer);
-              if (readyResolve) { readyResolve(); readyResolve = readyReject = null; }
-            }
+            // 差出人はこの画面の仕切りのどれかだけ・オリジンは不透明（"null"）・合図の形が合うものだけ
+            if (e.origin !== "null" || !isReady(e.data)) { return; }
+            var f = null;
+            for (var k = 0; k < frames.length; k++) { if (frames[k].el && e.source === frames[k].el.contentWindow) { f = frames[k]; } }
+            if (!f || f.info) { return; }
+            f.info = e.data.sections;
+            waiting -= 1;
+            if (waiting === 0) { clearTimeout(timer); resolve(); }
           };
           window.addEventListener("message", onMessage);
-          frame = document.createElement("iframe");
-          frame.setAttribute("sandbox", "allow-scripts");     // 同一オリジンの許可は付けない（API・セッションに触れさせない）
-          frame.setAttribute("title", "スライド");
-          frame.setAttribute("tabindex", "-1");
-          frame.src = data.html.url;
-          slideEl.appendChild(frame);
-          timer = setTimeout(function () {
-            if (readyReject) { readyReject(new Error("timeout")); readyResolve = readyReject = null; }
-          }, READY_TIMEOUT_MS);
+          pages.forEach(function (p) {
+            if (frameOf(p)) { return; }
+            var el = document.createElement("iframe");
+            el.setAttribute("sandbox", "allow-scripts");     // 同一オリジンの許可は付けない（API・セッションに触れさせない）
+            el.setAttribute("title", "スライド");
+            el.setAttribute("tabindex", "-1");
+            el.className = "is-off";
+            el.src = p.url;
+            frames.push({ url: p.url, el: el, info: null });
+            waiting += 1;
+            slideEl.appendChild(el);
+          });
+          timer = setTimeout(function () { reject(new Error("timeout")); }, READY_TIMEOUT_MS);
         });
       },
       steps: function (i) {
-        var page = pages[i];
-        if (!page) { return 0; }
-        var s = info[page.section];
-        return s ? s.steps : page.steps;
+        var p = pages[i];
+        if (!p) { return 0; }
+        var f = frameOf(p), s = f && f.info ? f.info[p.page.section] : null;
+        return s ? s.steps : p.page.steps;
       },
       show: function (i, step, dir) {
-        var page = pages[i];
-        if (page) { send({ type: "show", page: page.section, step: step, dir: dir }); }
+        var p = pages[i], f = p ? frameOf(p) : null;
+        if (!f) { return; }
+        var across = shown !== null && shown !== f;
+        send(f, { type: "show", page: p.page.section, step: step, dir: across ? 0 : dir });
+        if (shown !== f) {
+          f.el.classList.remove("is-off");
+          if (shown) { shown.el.classList.add("is-off"); }
+          shown = f;
+        }
       },
       dispose: function () {
         clearTimeout(timer);
         if (onMessage) { window.removeEventListener("message", onMessage); }
-        if (frame) { frame.remove(); frame = null; }
+        frames.forEach(function (f) { if (f.el) { f.el.remove(); } });
+        frames = [];
+        shown = null;
       }
     };
   }

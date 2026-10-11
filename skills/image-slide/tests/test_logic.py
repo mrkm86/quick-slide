@@ -604,6 +604,32 @@ def t_deck_cache_and_redo():
 
 
 
+
+def t_deck_keep():
+    """--keep: 置いてある絵を、描く指示（鍵）が変わっていても描き直さずに使う。鍵は前のまま（付けなければ描き直す）・--redo が勝つ。"""
+    root = tmpdir()
+    home = fake_home(root)
+    out = root / "out"
+    data = json.loads(SAMPLE.read_text())
+    p = write_script(root, data)
+    rc, _, se, _ = run(["deck", "--script", str(p), "--out", str(out), "--no-pdf"], root, home=home)
+    check(rc == 0, se)
+    area = rawdir(root, out)
+    before = (area / "slide-02.png").read_bytes()
+    shutil.rmtree(root / "calls")
+    data["slides"][1]["headline"] = "困りごとの半分は、前の日に分かっていた"
+    p = write_script(root, data)
+    rc, so, se, calls = run(["deck", "--script", str(p), "--out", str(out), "--no-pdf", "--keep", "2"], root, home=home)
+    check(rc == 0 and not calls, f"--keep のページを描き直した: {calls}")
+    check((area / "slide-02.png").read_bytes() == before, "--keep のページの絵が替わった")
+    b = json.loads((out / "build.json").read_text())
+    check(b["slides"][1].get("kept") is True and b["slides"][1]["status"] == "cached", b["slides"][1])
+    rc, so, se, calls = run(["deck", "--script", str(p), "--out", str(out), "--no-pdf", "--keep", "2", "--redo", "2"], root, home=home)
+    check(rc == 0 and [c["page"] for c in _execs(calls)] == [2], "--redo が --keep に勝っていない")
+    rc, _, se, _ = run(["deck", "--script", str(p), "--out", str(out), "--keep", "9"], root, home=home)
+    check(rc == 2 and "--keep" in se and "範囲の外" in se, se)
+
+
 def t_cache_area():
     """描いた絵はキャッシュの区画に置き、出力フォルダに raw/・base/ を残さない。前の形の raw/ は区画へ移して描き直さない（ADR 0015）。"""
     import cache as K

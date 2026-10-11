@@ -59,6 +59,7 @@ echo "--- 認証と並列（偽物の codex）"
 run "並列で描く・認証の確認は1回・API キーを渡さない・隔離ホームは別々で消える・実 auth.json は不変" deck_parallel
 run "出力: 既定で PPTX・PDF・ページの画像・サムネイル・--format で選ぶ・誤りは rc=2・減ったページの画像を消す・outputs.py は html-slide と同じ" formats_and_thumbs
 run "同じ中身は描き直さない（codex も認証も呼ばない）・変えたページだけ・--redo" deck_cache_and_redo
+run "--keep: 置いてある絵は鍵が変わっても描き直さない・鍵は前のまま・--redo が勝つ（ADR 0017）" deck_keep
 run "描いた絵はキャッシュの区画・出力フォルダに raw/・base/ を残さない・前の形の raw/ は移して使い回す（ADR 0015）" cache_area
 run "キャッシュの上限: 古い区画から消す・今の区画・少し前の区画・印の無いフォルダは消さない・0 は消さない・cache.py は html-slide と同じ" cache_trim
 run "置き場: 根っこは QUICK_SLIDE_HOME（既定 ~/.quick-slide）・設定と出力は engines/<スキル>/・キャッシュは ~/Library/Caches/quick-slide/・環境変数と設定が優先・places.py は html-slide と同じ" places

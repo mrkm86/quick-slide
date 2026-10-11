@@ -4,7 +4,7 @@
 状態を変える（POST。Host + Origin + セッションの 3 重検査は `app._route` が掛ける）:
 - `POST /api/decks/<id>/instructions`  {scope: page|pages|deck, slide_id?, slide_ids?, text, edit_mode?, attachments?,
                                         confirm_pages?, source?, origin_runtime?}  ページを指定した直し
-- `POST /api/decks/<id>/adopt`         {choices: {slide_id: version_id}}  版スタックの前の姿に戻す
+- `POST /api/decks/<id>/adopt`         {choices: {slide_id: version_id}}  版スタックの前の姿に切り替える（描き直さない）
 - `POST /api/decks/<id>/pages/insert`  {after_slide_id, text, attachments?}  差し込み
 - `POST /api/decks/<id>/pages/<slide_id>/duplicate`・`/visibility` {hidden}・`/pages/reorder` {slide_ids}
 - `POST /api/decks/<id>/resume`        いまの台本で描き直す（止まった回の再開）
@@ -24,7 +24,8 @@ from typing import TYPE_CHECKING, Any
 from ..engines import engine_for
 from ..enums import EDIT_SOURCES, ORIGIN_RUNTIMES
 from ..errors import NotFoundError, ValidationError
-from ..scriptdoc import one_page, screen_pages, with_hidden, with_order
+from ..pins import PinRefused, pin_source
+from ..scriptdoc import one_page, screen_pages, with_hidden, with_order, with_restored
 from ..security.secret_scan import find_secret_like
 from .deck_routes import NO_PAGES_REASON, _counts, _tidy, _deck_not_found, _json, _live_deck_row, card_public, deck_view
 from .errors import ApiError
@@ -177,38 +178,60 @@ def route_instructions(server: "QuickSlideServer", req: "Request") -> "Response"
 
 
 def route_adopt(server: "QuickSlideServer", req: "Request") -> "Response":
-    """版スタックの前の姿を押した: 「そのページをその姿に戻す」直し（戻すのも前に進む 1 回）。"""
+    """版スタックの前の姿を押した: そのページをその版に**切り替える**（描き直さない。docs/adr/0001-version-pins.md）。
+
+    台本のそのページを前の版の中身に戻し、版の印（`_pin`）にその版を描いた回を書く。直しの仕事が無ければその場で当て
+    （答えのページはもう切り替えた姿）、発表用の HTML と書き出しは裏の組み直し（tidy）が、印の指す回の部品で揃える。
+    直しの仕事が待っている・走っているときは、これまでどおり仕事にする（ワーカーの restore が同じ印を書く）。"""
     deck_id = req.params["deck_id"]
     body = req.json_object()
     choices = body.get("choices")
     if not isinstance(choices, dict) or not choices:
         raise ApiError(400, "validation_error", "choices（ページ → 版）を送ってください。")
+    applied = None
+    made = []
     with server.store_lock:
         store = server.store
         _live_deck_row(store, deck_id)
         pages, args = _head_pages(store, deck_id)
         if one_page(args):
             raise ApiError(409, "not_for_infographic", INFOGRAPHIC_REASON)
-        made = []
-        same = 0
+        picks = []
         for sid, vid in choices.items():
             page = _page(pages, sid)
             version = next((v for v in page["versions"] if v["id"] == vid), None)
             if version is None:
                 raise ApiError(409, "version_not_found", "その版は見つかりません。画面を読み込み直してください。")
             if version["active"] and page["display"]["key"] == "ready":
-                same += 1
                 continue
-            made.append(store.create_edit(deck_id, {"op": "restore", "page": sid, "run": vid, "source": "screen",
-                                                    "positions": [page["position"]]}))
+            picks.append((page, vid))
+
+        def change(data: dict[str, Any]) -> dict[str, Any]:
+            for page, vid in picks:
+                try:
+                    old = pin_source(store, deck_id, vid, page["key"])
+                except PinRefused as exc:
+                    raise ApiError(409, "version_not_adoptable", exc.message) from None
+                data = with_restored(data, page["key"], old, vid)
+            return data
+
+        if picks:
+            applied = _apply_now(server, deck_id, "restore", change,
+                                 {"pages": [p["slide_id"] for p, _ in picks], "runs": [v for _, v in picks]})
+            if applied is None:
+                made = [store.create_edit(deck_id, {"op": "restore", "page": p["slide_id"], "run": vid, "source": "screen",
+                                                    "positions": [p["position"]]}) for p, vid in picks]
         view = deck_view(store, deck_id)
         card = card_public(store.deck_card(view["row"]))
+    if applied is not None:
+        return _applied(server, deck_id, applied, "前の版に切り替えました。", pages=view["pages"],
+                        counts=_counts(view["pages"]))
     if not made:
         return _json(200, {"deck": card, "revision_id": view["revision"]["id"] if view["revision"] else None,
                            "pages": view["pages"], "counts": _counts(view["pages"]), "started": False,
                            "message": "そのページはもうこの版です。"})
     server.wake_worker()
-    message = "前の版に戻しています。戻し終えると画面の絵が替わります。"
+    message = "前の版に切り替えています。終わると画面の絵が替わります。"
     if made[0]["ahead"]:
         message += QUEUED_TAIL
     return _json(200, {"deck": card, "revision_id": made[-1]["run"]["id"], "pages": view["pages"],
@@ -252,7 +275,7 @@ def route_duplicate(server: "QuickSlideServer", req: "Request") -> "Response":
 
 
 def _apply_now(server: "QuickSlideServer", deck_id: str, op: str, change: Any, detail: dict[str, Any]) -> dict[str, Any] | None:
-    """描かない直し（非表示・並べ替え）を、仕事を待たずに台本へ当てる。錠を取ってから呼ぶ。
+    """描かない直し（非表示・並べ替え・版の切り替え）を、仕事を待たずに台本へ当てる。錠を取ってから呼ぶ。
 
     当てたら、発表用の HTML と書き出しを新しい並びに揃える組み直し（`render` の `reason: tidy`）を 1 つ入れる
     （待っているものがあれば足さない）。画面はその間も新しい並びと前の絵を出す（`page_view`）。

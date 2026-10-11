@@ -7,6 +7,7 @@
     revise      生成の枠の絵1枚を指示で直す（微修正＝今の絵を土台に・作り直し＝渡さない）。直したら deck を組み直す
     check       台本（--script）か HTML（--html）を検査する。PPTX は作らない
     deck        台本 → HTML → PPTX・PDF・ページの画像・サムネイル（--format で選ぶ）→ 照合 → inspect.md
+    assemble    ページごとの部品（PPTX の部品 JSON・PDF の何ページ目か）を並べて、PPTX・PDF を 1 本ずつ書く（ADR 0024）
     render      決まりに沿った HTML → PPTX
     from-video  html-video が焼いた解説動画（<出力>/<preset>）→ PPTX
     verify      PPTX のクリックとノートの照合（--odp で LibreOffice の読み取りも）
@@ -37,6 +38,7 @@ import codex_run as X  # noqa: E402
 import deck  # noqa: E402
 import imagegen as G  # noqa: E402
 import outputs as OUT  # noqa: E402
+import pdfpages as PDF  # noqa: E402
 import places as PL  # noqa: E402
 import render as R  # noqa: E402
 import verify as V  # noqa: E402
@@ -429,7 +431,8 @@ def cmd_deck(a) -> int:
     report = None
     if "pptx" in fmts:
         try:
-            report = R.render(html, out / "deck.pptx", report_path=out / "build.json")
+            report = R.render(html, out / "deck.pptx", report_path=out / "build.json",
+                              parts_path=Path(a.parts).expanduser() if a.parts else None)
         except R.RenderError as e:
             (out / "deck-info.json").write_text(json.dumps(info, ensure_ascii=False, indent=1) + "\n")
             say_violations(e.violations)
@@ -467,6 +470,43 @@ def cmd_deck(a) -> int:
     if fill_rc:
         log("NG: 描けなかった画像の枠がある（仮の枠で組んだ）。もう一度 deck を流すと、その枠だけ描き直す")
     return rc or out_rc or fill_rc
+
+
+def cmd_assemble(a) -> int:
+    """ページごとの部品を並べて PPTX と PDF を書く（版の違うページを混ぜた書き出し。ADR 0024）。
+
+    `--manifest` の JSON: {"title", "size", "slides": [部品 JSON の slides の 1 枚（画像の src は絶対パスか data URI）],
+    "pdf": [[PDF のパス, 何ページ目か（1 から）], …]}。slides があれば `<out>/deck.pptx`、pdf があれば `<out>/deck.pdf`。
+    PDF が読めない形（Chrome の印刷でない）なら PDF は書かずに rc=1（PPTX は書く）。
+    """
+    try:
+        man = json.loads(Path(a.manifest).expanduser().read_text(encoding="utf-8"))
+        slides, picks = man.get("slides") or [], man.get("pdf") or []
+        if not isinstance(slides, list) or not isinstance(picks, list):
+            raise ValueError("slides と pdf は配列")
+        picks = [(str(p), int(n)) for p, n in picks]
+    except (OSError, ValueError, TypeError) as e:
+        print(f"NG: 組み立ての指示が読めない: {e}", file=sys.stderr)
+        return 2
+    out = Path(a.out).expanduser()
+    out.mkdir(parents=True, exist_ok=True)
+    rc = 0
+    if slides:
+        import pptx_writer
+        parts = {"version": 1, "mode": "contract", "title": man.get("title") or "", "size": man.get("size"),
+                 "slides": slides}
+        tmp = out / "deck.pptx.tmp"
+        rep = pptx_writer.write(parts, tmp)
+        os.replace(tmp, out / "deck.pptx")
+        print(f"pptx: {out / 'deck.pptx'}（{len(rep['slides'])}枚）")
+    if picks:
+        try:
+            n = PDF.assemble(picks, out / "deck.pdf")
+            print(f"pdf: {out / 'deck.pdf'}（{n}ページ）")
+        except (OSError, PDF.PdfError) as e:
+            print(f"NG: PDF を組み立てられなかった: {e}", file=sys.stderr)
+            rc = 1
+    return rc
 
 
 def cmd_render(a) -> int:
@@ -575,6 +615,8 @@ def deck_args(d) -> None:
                                     "png はページの画像（slides/slide-NN.png）、thumbs は全ページを並べた一覧（thumbs.png）。例: --format png")
     d.add_argument("--no-png", action="store_true", help=argparse.SUPPRESS)   # 前の口（--format から png・thumbs を外す）
     d.add_argument("--no-odp", action="store_true", help="LibreOffice での照合を飛ばす")
+    d.add_argument("--parts", help="PPTX の部品 JSON（extract.mjs の出力。形は references/parts-format.md）を書き出す先。"
+                                   "ページごとに残して、版の違うページを混ぜた書き出しを assemble で組むのに使う（ADR 0024）")
 
 
 def main(argv=None) -> int:
@@ -616,6 +658,9 @@ def main(argv=None) -> int:
                     help="作り直し（今の絵を渡さずに描き直す。テイストを変えるとき）。付けなければ微修正（今の絵を土台に、指示だけ直す）")
     rv.add_argument("--note", help="直す指示（文）")
     rv.add_argument("--attach", action="append", help="参考画像（何枚でも。キャラ・土台と合わせて5枚まで）")
+    asm = sub.add_parser("assemble", help="ページごとの部品を並べて PPTX・PDF を書く（版の違うページを混ぜた書き出し）")
+    asm.add_argument("--manifest", required=True, help="組み立ての指示（JSON。形は cmd_assemble の説明）")
+    asm.add_argument("--out", required=True, help="deck.pptx・deck.pdf を書くフォルダ")
     r = sub.add_parser("render", help="決まりに沿った HTML → PPTX")
     r.add_argument("--html", required=True)
     r.add_argument("--out")
@@ -632,7 +677,8 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     try:
         return {"images": cmd_images, "catalog": cmd_catalog, "check": cmd_check, "deck": cmd_deck, "render": cmd_render,
-                "from-video": cmd_from_video, "verify": cmd_verify, "fill": cmd_fill, "revise": cmd_revise}[a.cmd](a)
+                "from-video": cmd_from_video, "verify": cmd_verify, "fill": cmd_fill, "revise": cmd_revise,
+                "assemble": cmd_assemble}[a.cmd](a)
     except R.RenderError as e:
         print(f"NG: {e}", file=sys.stderr)
         return e.rc

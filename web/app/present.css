@@ -46,6 +46,8 @@ body { font: var(--font-weight-400) var(--font-size-16)/var(--line-height-150) v
 .pr__slide img { object-fit: contain; opacity: 0; }
 .pr__slide img.is-on { opacity: 1; }
 .pr__slide iframe { pointer-events: none; background: var(--pr-bg); }
+/* html-slide で回の違うページが混ざったとき: 見せていない回の仕切り（準備は済ませておく） */
+.pr__slide iframe.is-off { visibility: hidden; }
 /* 画面全体を受ける面（クリックの左右・スワイプ）。iframe の上に置くので、フォーカスは外枠に残る */
 .pr__hit { position: absolute; inset: 0; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: pinch-zoom; -webkit-tap-highlight-color: transparent; }
 /* 中が自分で操作を受けるエンジン（motion-slide）: 面を重ねず、タップ・スワイプ・LIVE の部品は中で受ける（橋渡しが外枠と同じ決まりにする） */

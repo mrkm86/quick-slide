@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..scriptdoc import HIDDEN_KEY, PAGE_ID_RE, slides_of
+from ..scriptdoc import HIDDEN_KEY, PAGE_ID_RE, PIN_KEY, slides_of
 
 ROUTES = ("script", "image", "both", "keep")
 MAX_SPLIT = 3
@@ -76,7 +76,7 @@ def image_paths(value: Any) -> set[str]:
     return out
 
 
-def _check_page(page: Any, where: str, allowed_paths: set[str], forbidden_keys=("_characters", "_layout", HIDDEN_KEY),
+def _check_page(page: Any, where: str, allowed_paths: set[str], forbidden_keys=("_characters", "_layout", HIDDEN_KEY, PIN_KEY),
                 *, motion: bool = False) -> list[str]:
     if not isinstance(page, dict):
         return [f"NG: {where}: ページはオブジェクトで書く"]
@@ -203,6 +203,7 @@ def apply_revision(script: dict[str, Any], patch: Patch) -> dict[str, Any]:
         first = dict(first)
         if page.get(HIDDEN_KEY) is True:
             first[HIDDEN_KEY] = True   # 非表示の印は台本係ではなく画面が持つ
+        # 版の印（_pin）は持ち越さない: 直したページは新しい姿なので、前の版の絵は使わない
         out.append(first)
         out.extend(rest)
     return {**script, "slides": out}

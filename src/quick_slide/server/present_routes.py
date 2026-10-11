@@ -9,6 +9,8 @@
 見せる版は、編集の画面でいま見せている版（`shown_run`＝描き終えた一番新しい回）。非表示のページは並びに入れない。
 ページの絵はどのエンジンでも PNG（`image_url`）を持ち、html-slide の回に HTML の控えがあれば `html` に在りかが入る
 （無い古い回は `html` が null で、画面はページの PNG で出す）。段の数 `steps` は回の `build.json`（html-slide の記録）から。
+html-slide の各ページは `html`（{url, section}）にも、そのページの区切りがある回の HTML を持つ。版を切り替えたページ
+（`pins.py`）は、その版を描いた回の HTML なので、ページによって回が違うことがある（画面は回ごとに仕切りを開いて切り替える）。
 
 **仕切りの中の文書（deck.html）の安全設定。** エンジンの HTML は `<style>` を使い、字体を `file://` で読み、再生のために
 スクリプトが要る。だから編集の画面の CSP（`default-src 'self'`）とは別に、次の CSP を付ける:
@@ -42,6 +44,7 @@ from urllib.parse import unquote
 from ..engines import engine_for
 from ..errors import NotFoundError
 from ..ids import is_uuid
+from ..pins import head_pins
 from ..render import workspace as W
 from .deck_routes import _live_deck_row
 from .errors import ApiError, not_found
@@ -167,19 +170,34 @@ def present_view(server: "QuickSlideServer", deck_id: str) -> dict[str, Any]:
         return out
     head = store.head_script(deck_id)
     run_dir = server.root.run_dir(deck_id, shown["id"])
-    if engine.mode == "motion":
-        steps = _clicks(run_dir)   # 場面＝ページ・拍＝段（1 拍目が段 0。クリックの数が段の数）
-        html_name = "index.html"
-    else:
-        steps = _steps(run_dir)
-        html_name = "deck.html"
+    motion = engine.mode == "motion"
+    html_name = "index.html" if motion else "deck.html"
     has_html = (run_dir / W.PRESENT / html_name).is_file() if engine.mode in ("presentation", "motion") else False
-    # 並びと非表示は**いまの台本**に従う（描かない直し＝非表示・並べ替えは、組み直す前から発表に効く）。
-    # 絵と回の HTML の区切りは、見せる回からページの id で引く。見せる回で描いていないページ（表示に戻したばかり）は、
-    # いまの中身のまま前の回で描いた絵を出す
+    steps_of: dict[str, dict[int, int]] = {}
+
+    def steps(run_id: str) -> dict[int, int]:
+        if run_id not in steps_of:
+            folder = server.root.run_dir(deck_id, run_id)
+            # 場面＝ページ・拍＝段（1 拍目が段 0。クリックの数が段の数）
+            steps_of[run_id] = _clicks(folder) if motion else _steps(folder)
+        return steps_of[run_id]
+
+    def source(run_id: str, key: str | None, no: int) -> dict[str, Any] | None:
+        """そのページの回の HTML の区切り（html-slide）。版を切り替えたページは、その版を描いた回の区切り
+        （回の pictures/index.json の `present`）。その回に発表用の HTML が無ければ None。"""
+        got = W.present_source(server.root.run_dir(deck_id, run_id), run_id, key or "", no)
+        if got is None or not (server.root.run_dir(deck_id, got["run"]) / W.PRESENT / "deck.html").is_file():
+            return None
+        return got
+
+    # 並びと非表示は**いまの台本**に従う（描かない直し＝非表示・並べ替え・版の切り替えは、組み直す前から発表に効く）。
+    # 絵はそのページが指す版（版を切り替えたページはその版の回の行、ほかは見せる回の行）。見せる回で描いていないページ
+    # （表示に戻したばかり）は、いまの中身のまま前の回で描いた絵を出す
     rows = {p["page_id"]: p for p in store.run_pages(shown["id"])}
     order = store.script_pages(head["id"]) if head else []
-    earlier: dict[str, dict[str, Any]] = {}
+    fresh = head is not None and shown.get("script_id") == head["id"]   # 見せる回は、いまの台本で描いた回
+    pins = head_pins(store, deck_id, head, order)
+    earlier: dict[tuple[str, Any], dict[str, Any]] = {}
     for h in store.page_history(deck_id):   # 新しい回から
         earlier.setdefault((h["page_id"], h.get("content_sha256")), h)
     pages = []
@@ -187,29 +205,48 @@ def present_view(server: "QuickSlideServer", deck_id: str) -> dict[str, Any]:
     for sp in order:
         if sp["hidden"]:
             continue
-        p = rows.get(sp["page_id"])
-        if p is not None and p["state"] == "ready" and p["asset_state"] == "ready" and p["asset_id"]:
-            pages.append({"no": len(pages) + 1, "slide_id": p["page_id"], "title": sp["title"],
-                          "image_url": asset_url(p["asset_id"]),
-                          "section": p["page_no"] - 1,       # 回の HTML の section の番号（0 から）。html が無ければ使わない
-                          "steps": steps.get(p["page_no"], 0) if has_html else 0})
-            continue
-        h = earlier.get((sp["page_id"], sp.get("content_sha256"))) if sp.get("content_sha256") else None
-        if h is not None and h.get("asset_id") and h.get("asset_state") == "ready":
-            missing_section = True
-            pages.append({"no": len(pages) + 1, "slide_id": sp["page_id"], "title": sp["title"],
-                          "image_url": asset_url(h["asset_id"]), "section": None, "steps": 0})
-    # 回の HTML を使えるのは、見せるページが全部その回の区切りにあるときだけ（無いページが混ざったら、組み直しが
+        pin = pins.get(sp["key"])
+        p = pin.row if pin is not None else rows.get(sp["page_id"])
+        run_id = pin.run_id if pin is not None else shown["id"]
+        if p is None or p["state"] != "ready" or p["asset_state"] != "ready" or not p["asset_id"]:
+            h = earlier.get((sp["page_id"], sp.get("content_sha256"))) if sp.get("content_sha256") else None
+            if h is None or not h.get("asset_id") or h.get("asset_state") != "ready":
+                continue
+            p, run_id = h, h["run_id"]
+        entry: dict[str, Any] = {"no": len(pages) + 1, "slide_id": sp["page_id"], "title": sp["title"],
+                                 "image_url": asset_url(p["asset_id"]), "section": None, "steps": 0}
+        if motion:
+            # HTML 1枚は見せる回のもの（中身から組むので、版を切り替えた場面も見せる回の中にある。ページの絵だけが版の回の絵）。
+            # 見せる回の台本がいまの台本と同じときだけ使える（古ければ下で全部ページの絵にする）
+            here = rows.get(sp["page_id"])
+            if fresh and here is not None and here["state"] == "ready":
+                entry["section"] = here["page_no"] - 1   # 回の HTML 1枚の場面の番号（0 から）
+                entry["steps"] = steps(shown["id"]).get(here["page_no"], 0)
+            else:
+                missing_section = True
+        elif engine.mode == "presentation":
+            src = source(run_id, sp["key"], p["page_no"])
+            if src is None:
+                missing_section = True
+            else:
+                # 回の HTML の section の番号（0 から）と、その HTML の在りか（版の違うページが混ざると、回ごとに違う）
+                entry["section"] = src["section"]
+                entry["steps"] = steps(src["run"]).get(src["section"] + 1, 0)
+                entry["html"] = {"url": f"/present/{deck_id}/{src['run']}/deck.html", "section": src["section"]}
+        pages.append(entry)
+    # 回の HTML を使えるのは、見せるページが全部どこかの回の区切りにあるときだけ（無いページが混ざったら、組み直しが
     # 終わるまでページの絵で出す）。モーションは中のエンジンが自分の並びで進むので、台本が回より新しければ絵で出す
-    if missing_section or (engine.mode == "motion" and head is not None and shown.get("script_id") != head["id"]):
+    if missing_section or (motion and not fresh):
         has_html = False
+    if not has_html:
         for p in pages:
             p["steps"] = 0
+            p.pop("html", None)
     out["run_id"] = shown["id"]
     out["pages"] = pages
     out["message"] = None if pages else NO_PAGES_MESSAGE
     if has_html and pages:
-        out["html"] = {"url": f"/present/{deck_id}/{shown['id']}/{html_name}", "sections": len(steps) or None}
+        out["html"] = {"url": f"/present/{deck_id}/{shown['id']}/{html_name}", "sections": len(steps(shown["id"])) or None}
     return out
 
 

@@ -23,6 +23,7 @@ description: html-slide と同じ台本（資料用の JSON）から、画像生
 | 資料を作る（全ページを描いて PPTX・PDF・ページの画像・サムネイルまで） | `deck` |
 | 週報・月報に貼る画像だけ欲しい／ざっと一覧で見たい | `deck --format png` ／ `deck --format thumbs` |
 | 一部のページだけ描き直す | `deck --redo 3,5`（中身を変えたページは言わなくても描き直す） |
+| 区画に置いた前の絵を、色・スタイルを替えた後でも描き直さずに使う（呼ぶ側が前の版の絵を置いて組み直すとき） | `deck --keep 3,5`（[ADR 0017](docs/adr/0017-keep-placed-pictures.md)。`--redo` が勝つ） |
 | 描いた1枚を指示で直す（「Hana を右へ」「黒板の手描きに」） | `revise --page 4 --note "…"`（既定は微修正＝今の絵を土台に渡す。テイストを変えるなら `--remake`＝渡さない。参考画像は `--attach`・ADR 0012） |
 
 すべて `python3 <このスキルのフォルダ>/scripts/image_slide.py <入口> …`（引数は `--help`）。

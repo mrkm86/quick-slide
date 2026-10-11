@@ -5,7 +5,9 @@
   エンジンに渡す台本からは非表示のページごと抜く。`engine_view`）。非表示も台本の版に入るので、戻せる
 - **台本の版のファイルは `dumps` の 1 つの書き方で書く**（キーの順は読んだまま・字下げ 1）。指定外のページは
   同じオブジェクトをそのまま書くので、版をまたいでも 1 文字も変わらない
-- ページの中身の sha256（`content_sha`）は非表示の印を除いて取る（版スタックで「同じ姿」をまとめる鍵）
+- **版の切り替えはページに `_pin: "<回の id>"`** と書く（そのページは、その回で描いた絵と書き出しの部品を使う。
+  描き直さない。`docs/adr/0001-version-pins.md`）。非表示と同じく、エンジンに渡す台本からは抜く
+- ページの中身の sha256（`content_sha`）は非表示と版の印を除いて取る（版スタックで「同じ姿」をまとめる鍵）
 """
 
 from __future__ import annotations
@@ -20,13 +22,15 @@ from . import motion
 
 PAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 HIDDEN_KEY = "_hidden"
+PIN_KEY = "_pin"
+_MARKS = (HIDDEN_KEY, PIN_KEY)   # 画面が持つ印（中身ではない。台本係は書かない・エンジンには渡さない）
 INFOGRAPHIC_KEY = "infographic"
 
 # 台本のページから「見出し」と「本文」を取り出すときに読み飛ばすキー（話す台本・動き・描き方の注文・画像の枠）
 _NOT_CONTENT = {"type", "talk", "transition", "steps", "fx", "id", "role", "image", "_visual", "_characters", "_layout",
                 "layout", "split", "side", "text_side", "tone", "fit", "widths", "focus", "accent", "highlight",
                 "current", "arrow", "value_labels", "min", "max", "x", "y", "trend", "initials", "path", "prompt", "alt",
-                HIDDEN_KEY}
+                *_MARKS}
 
 # 構成（会話で合意したページ割り）の見出し: `## 3. 会議の4割は何も決めずに終わっている`
 OUTLINE_HEADING_RE = re.compile(r"^##\s*(\d+)\s*[.．、。)]\s*(\S.*)$", re.M)
@@ -41,11 +45,17 @@ def is_hidden(page: dict[str, Any]) -> bool:
     return page.get(HIDDEN_KEY) is True
 
 
+def pin_of(page: dict[str, Any]) -> str | None:
+    """そのページが指している版（描いた回の id）。無ければ None。"""
+    v = page.get(PIN_KEY)
+    return v if isinstance(v, str) and v else None
+
+
 def content_sha(page: Any) -> str:
-    """ページ（か、ページの並び）の中身の sha256。非表示の印は入れない（隠しても同じ姿）。"""
+    """ページ（か、ページの並び）の中身の sha256。非表示と版の印は入れない（隠しても・版を指しても同じ姿）。"""
     def strip(v: Any) -> Any:
         if isinstance(v, dict):
-            return {k: strip(x) for k, x in v.items() if k != HIDDEN_KEY}
+            return {k: strip(x) for k, x in v.items() if k not in _MARKS}
         if isinstance(v, list):
             return [strip(x) for x in v]
         return v
@@ -59,12 +69,12 @@ def slides_of(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def engine_view(data: dict[str, Any]) -> dict[str, Any]:
-    """エンジンに渡す台本: 非表示のページを抜く（印も消す）。ほかは同じ。"""
+    """エンジンに渡す台本: 非表示のページを抜く（非表示と版の印も消す）。ほかは同じ。"""
     visible = []
     for s in slides_of(data):
         if is_hidden(s):
             continue
-        visible.append({k: v for k, v in s.items() if k != HIDDEN_KEY})
+        visible.append({k: v for k, v in s.items() if k not in _MARKS})
     return {**data, "slides": visible}
 
 
@@ -201,3 +211,34 @@ def with_order(data: dict[str, Any], wanted: list[str]) -> dict[str, Any]:
         prev = next((str(slides[j].get("id")) for j in range(i - 1, -1, -1) if str(slides[j].get("id")) in order), None)
         order.insert(order.index(prev) + 1 if prev else 0, k)
     return {**data, "slides": [by_key[k] for k in order]}
+
+
+def pins_of(data: dict[str, Any]) -> dict[str, str]:
+    """ページの id → 指している版（描いた回の id）。"""
+    return {str(s.get("id")): pin_of(s) for s in slides_of(data) if pin_of(s)}  # type: ignore[misc]
+
+
+def without_pins(data: dict[str, Any], keys: set[str] | None = None) -> dict[str, Any]:
+    """版の印を外した台本（`keys` を渡せばそのページだけ。元は替えない）。印の無いページは同じオブジェクトのまま。"""
+    slides = []
+    for s in data.get("slides") or []:
+        if isinstance(s, dict) and PIN_KEY in s and (keys is None or s.get("id") in keys):
+            s = {k: v for k, v in s.items() if k != PIN_KEY}
+        slides.append(s)
+    return {**data, "slides": slides}
+
+
+def with_restored(data: dict[str, Any], key: str, old_page: dict[str, Any], run_id: str) -> dict[str, Any]:
+    """ページ `key` を前の版の中身（`old_page`）に戻し、その版を描いた回（`run_id`）を指す台本。非表示はいまのまま。
+    版の切り替え（画面の口とワーカーの両方）が使う。"""
+    restored = {k: v for k, v in copy.deepcopy(old_page).items() if k not in _MARKS}
+    restored[PIN_KEY] = run_id
+    slides = []
+    for s in data.get("slides") or []:
+        if isinstance(s, dict) and s.get("id") == key:
+            new = dict(restored)
+            if is_hidden(s):
+                new[HIDDEN_KEY] = True
+            s = new
+        slides.append(s)
+    return {**data, "slides": slides}

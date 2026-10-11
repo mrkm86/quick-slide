@@ -16,7 +16,12 @@ P3 は**どの回もデッキの `work/` に描き**（台本は `scripts/engine
   - ピッチ: キャッシュの区画の `slide-NN.png`（ロゴ・透かしの前の絵）と鍵の `slide-NN.json` → `pictures/<ページの id>.png|json`
   - プレゼン: 生成の枠の絵 `gen-<鍵>.png`（と `.json`）→ `pictures/gen-<鍵>.png|json`
   - 区画の絵はエンジンが名前の付け替え（rename）で入れ替えるので、ハードリンクの控えは書き換わらない
-- `pictures/index.json`: ページの id → 何枚目だったか・枠（プレゼン）
+- `pictures/index.json`: ページの id → 何枚目だったか・枠（プレゼン）・発表の区切りの在りか（`present`。版を切り替えた
+  ページは、その版を描いた回の deck.html の区切り）
+- **書き出しの部品**（`parts/`。プレゼンだけ）: ページごとの PPTX の部品（`parts/<ページの id>.json`。エンジンの
+  `--parts` の出力を 1 枚ずつに分け、画像は `parts/img/` へハードリンク）と、その回の `deck.pdf` の何ページ目か。
+  版の違うページを混ぜた書き出しを組むのに使う（`docs/adr/0001-version-pins.md`）。部品の無いページ（この仕組みの前の回・
+  部品を残す前の版を指しているページ）は、混ぜずにいまの作りで描いたものを書き出す
 
 **ピッチの区画の並べ直し**（`arrange_pitch_cache`）: image-slide は区画の絵を**何枚目か**（`slide-NN`）で持ち、
 鍵（描く指示の sha。何枚目かは入らない）が同じなら使い回す。ページを差し込む・隠す・並べ替えると番号がずれて
@@ -39,13 +44,17 @@ from typing import Any
 from urllib.parse import unquote
 
 # motion-slide は index.html（HTML 1枚）と check/（全拍の検査の画像と記録）も書く
-OUTPUT_FILES = ("deck.pptx", "deck.pdf", "build.json", "deck-info.json", "inspect.md", "deck.html", "index.html")
+OUTPUT_FILES = ("deck.pptx", "deck.pdf", "build.json", "deck-info.json", "inspect.md", "deck.html", "index.html",
+                "parts.json")
 OUTPUT_DIRS = ("check",)
 RECORD_FILES = ("build.json", "deck-info.json", "inspect.md")
 LAYOUT = "layout.json"
 STAGE = ".quick-slide-stage"
 # 発表の画面（html-slide の段ごとの再生）が読む、回ごとの HTML と画像・字体の置き場（回のフォルダの中）
 PRESENT = "present"
+# 書き出しの部品（ページごとの PPTX の部品と、deck.pdf の何ページ目か）の置き場（回のフォルダの中）
+PARTS = "parts"
+PARTS_FILE = "parts.json"
 PRESENT_FONT_TYPES = frozenset({".ttf", ".otf", ".woff", ".woff2"})
 _FONT_URL = re.compile(r'url\("file://([^"]+)"\)')
 _ASSET_SRC = re.compile(r'\bsrc="assets/([^"/]+)"')
@@ -377,3 +386,139 @@ def presentation_slots(work: Path, no: int) -> list[dict[str, Any]]:
             out.append({"slot": x.get("slot"), "origin": x.get("origin"), "exists": bool(x.get("exists")),
                         "prompt": x.get("prompt") or ""})
     return out
+
+
+# --- 書き出しの部品（プレゼン）と、版を切り替えたページの持ち込み --------------------------------------------
+
+def has_parts(run_dir: Path, key: str) -> bool:
+    """その回に、そのページの書き出しの部品があるか（無ければ、混ぜた書き出しにはできない）。"""
+    return (run_dir / PARTS / f"{key}.json").is_file()
+
+
+def _part_images(slide: dict[str, Any], resolve: Callable[[str], str | None]) -> bool:
+    """部品の画像の `src` を `resolve` で書き換える（data URI はそのまま）。書き換えられない画像があれば False。"""
+    ok = True
+    for prim in slide.get("prims") or []:
+        if isinstance(prim, dict) and prim.get("type") == "img" and isinstance(prim.get("src"), str) \
+                and not prim["src"].startswith("data:"):
+            got = resolve(prim["src"])
+            if got is None:
+                ok = False
+            else:
+                prim["src"] = got
+    return ok
+
+
+def _keep_image(src: Path, img_dir: Path) -> str | None:
+    """部品の画像を回の `parts/img/` に張る（中身の sha256 の名前）。回の中の相対パス（`img/…`）を返す。"""
+    if not src.is_file():
+        return None
+    name = file_sha(src)[:16] + (src.suffix.lower() or ".png")
+    dst = img_dir / name
+    if not dst.is_file():
+        _link(src, dst)
+    return f"img/{name}"
+
+
+def snapshot_parts(work: Path, run_dir: Path, pages: list[dict[str, Any]]) -> int:
+    """エンジンの部品 JSON（`work/parts.json`）をページごとに分けて回の `parts/` へ控える。控えたページの数。
+
+    画像は回の `parts/img/` へ張り、`src` を回の中の相対パスにする（作業フォルダの画像は次の回で消える）。
+    PDF はその回の `deck.pdf` の何ページ目か（`pdf`）。部品の数がページの数と合わなければ何も控えない。"""
+    parts = read_json(work / PARTS_FILE)
+    slides = parts.get("slides") if isinstance(parts.get("slides"), list) else None
+    if not slides or len(slides) != len(pages):
+        return 0
+    dest = run_dir / PARTS
+    shutil.rmtree(dest, ignore_errors=True)
+    has_pdf = (run_dir / "deck.pdf").is_file()
+    n = 0
+    for p, slide in zip(pages, slides):
+        if not isinstance(slide, dict):
+            continue
+        slide = json.loads(json.dumps(slide))
+        if not _part_images(slide, lambda src: _keep_image(Path(src), dest / "img")):
+            continue
+        write_json(dest / f"{p['key']}.json", {"slide": slide, "pdf": p["no"] if has_pdf else None})
+        n += 1
+    write_json(dest / "deck.json", {"title": parts.get("title") or "", "size": parts.get("size")})
+    return n
+
+
+def load_part(run_dir: Path, key: str) -> dict[str, Any] | None:
+    """そのページの書き出しの部品（画像の `src` は絶対パス・`pdf` は (deck.pdf のパス, 何ページ目か) か None）。"""
+    raw = read_json(run_dir / PARTS / f"{key}.json")
+    slide = raw.get("slide")
+    if not isinstance(slide, dict):
+        return None
+    base = run_dir / PARTS
+    if not _part_images(slide, lambda src: str(base / src) if (base / src).is_file() else None):
+        return None
+    no = raw.get("pdf")
+    pdf = (str(run_dir / "deck.pdf"), no) if isinstance(no, int) and (run_dir / "deck.pdf").is_file() else None
+    return {"slide": slide, "pdf": pdf}
+
+
+def adopt_part(src_dir: Path, run_dir: Path, key: str, no: int) -> bool:
+    """版を切り替えたページの部品を、その版の回から持ち込む（画像は張り直し・PDF はこの回の `no` ページ目にする。
+    この回の deck.pdf は、持ち込んだページを `no` ページ目に入れて組み直してある前提）。"""
+    raw = read_json(src_dir / PARTS / f"{key}.json")
+    slide = raw.get("slide")
+    if not isinstance(slide, dict):
+        return False
+    dest = run_dir / PARTS
+    base = src_dir / PARTS
+    if not _part_images(slide, lambda src: _keep_image(base / src, dest / "img")):
+        return False
+    write_json(dest / f"{key}.json", {"slide": slide, "pdf": no if (run_dir / "deck.pdf").is_file() else None})
+    return True
+
+
+def drop_part(run_dir: Path, key: str) -> None:
+    (run_dir / PARTS / f"{key}.json").unlink(missing_ok=True)
+
+
+def parts_deck(run_dir: Path) -> dict[str, Any]:
+    return read_json(run_dir / PARTS / "deck.json")
+
+
+def present_source(run_dir: Path, run_id: str, key: str, no: int | None) -> dict[str, Any] | None:
+    """そのページの発表の区切りの在りか {"run": 回の id, "section": 0 から}（その回の pictures/index.json の
+    `present`。無ければその回の何枚目か）。分からなければ None。"""
+    entry = (snapshot_index(run_dir).get("pages") or {}).get(key) or {}
+    got = entry.get("present")
+    if isinstance(got, dict) and isinstance(got.get("run"), str) and isinstance(got.get("section"), int):
+        return got
+    if isinstance(no, int) and no >= 1:
+        return {"run": run_id, "section": no - 1}
+    return None
+
+
+def adopt_page(src_dir: Path, src_no: int, run_dir: Path, no: int, key: str, *,
+               present: dict[str, Any] | None) -> Path | None:
+    """版を切り替えたページの絵を、その版の回から持ち込む: ページの画像（`slides/slide-NN.png`）を張り替え、
+    絵の控え（`pictures/`）と目録の行を写し、発表の区切りの在りか（`present`）を書く。張った画像のパス（無ければ None）。"""
+    src_png = src_dir / "slides" / f"slide-{src_no:02d}.png"
+    if not src_png.is_file():
+        return None
+    shot = run_dir / "slides" / f"slide-{no:02d}.png"
+    _link(src_png, shot)
+    src_entry = (snapshot_index(src_dir).get("pages") or {}).get(key) or {}
+    index = snapshot_index(run_dir)
+    if index:
+        entry = {k: v for k, v in src_entry.items() if k != "present"}
+        for slot in entry.get("slots") or []:
+            name = slot.get("file") if isinstance(slot, dict) else None
+            if name and (src_dir / "pictures" / name).is_file():
+                _link(src_dir / "pictures" / name, run_dir / "pictures" / name)
+                side = (src_dir / "pictures" / name).with_suffix(".json")
+                if side.is_file():
+                    _copy(side, run_dir / "pictures" / side.name)
+        if entry.get("picture") and (src_dir / "pictures" / entry["picture"]).is_file():
+            _link(src_dir / "pictures" / entry["picture"], run_dir / "pictures" / entry["picture"])
+        entry["no"] = no
+        if present is not None:
+            entry["present"] = present
+        index.setdefault("pages", {})[key] = entry
+        write_json(run_dir / "pictures" / "index.json", index)
+    return shot

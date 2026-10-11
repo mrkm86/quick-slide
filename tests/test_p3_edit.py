@@ -16,6 +16,7 @@ from pathlib import Path
 
 from helpers import FAKES, fake_tools, intake_payload, start_server, wait_until_idle, writer_calls
 
+from quick_slide.scriptdoc import dumps, without_pins
 from quick_slide.settings import Settings, WorkerSettings
 
 from test_engines_e2e import html_slide_ready
@@ -258,7 +259,7 @@ class PitchEditTests(EditBase):
         self.assertEqual(p8["versions"][0]["version"], 1)
         self.assertTrue(p8["versions"][0]["active"], "戻した姿が使用中")
         self.assertEqual(len(p8["versions"]), 2, "同じ姿は 1 つにまとめる")
-        self.assertEqual(self.head(deck)[1], before_bytes)
+        self.assertEqual(dumps(without_pins(self.head(deck)[0])), before_bytes, "台本は（版の印を除いて）元のまま")
         with self.fx.server.store_lock:
             rows = {r["key"]: r for r in self.fx.store.run_pages(run["id"])}
             first = {r["key"]: r for r in self.fx.store.run_pages(self.fx.store.runs_for_deck(deck)[-1]["id"])}
@@ -291,7 +292,10 @@ class PitchEditTests(EditBase):
         run = self.wait(deck)
         self.assertEqual(run["state"], "done", run["message"])
         self.assertEqual(self.drawn_pages(calls), [], "前の絵を区画へ戻すので描かない")
-        self.assertEqual(self.head(deck)[1], first_bytes, "台本も 1 冊目と同じ姿に戻る")
+        data, _ = self.head(deck)
+        self.assertEqual(next(s for s in data["slides"] if s["id"] == "p-seven").get("_pin"), p7["versions"][1]["id"],
+                         "戻したページは、その版を描いた回を指す")
+        self.assertEqual(dumps(without_pins(data)), first_bytes, "台本も（版の印を除いて）1 冊目と同じ姿に戻る")
         p7 = next(p for p in self.view(deck)["pages"] if p["key"] == "p-seven")
         self.assertEqual((p7["version"], p7["title"]), (1, "立ったまま話すと短くなる"))
         self.assert_screen_matches_pptx(deck)

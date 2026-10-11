@@ -22,6 +22,8 @@ IMAGE_LOOKS = ("photo", "illustration", "handdrawn")
 FORMATS = "pptx,pdf,png,thumbs"
 # motion-slide は PPTX・PDF を作らない（出口は HTML 1枚）
 MOTION_FORMATS = "png,thumbs"
+# 書き出しの部品（PPTX の部品 JSON）をエンジンに書かせる名前（作業フォルダの中。`render/workspace.py` が回へページごとに分けて控える）
+PARTS_FILE = "parts.json"
 
 RC_OK = 0
 RC_PARTIAL = 1
@@ -62,6 +64,12 @@ class Engine:
     page_word: str = "ページ"
     # ブランドにロゴが無いとき「ロゴなし」をはっきり渡すか。motion-slide は渡さないと機体の設定のロゴを既定に使う
     logo_none_when_absent: bool = False
+    # 書き出しの部品（PPTX の部品 JSON）を回に残すか。版の違うページを混ぜた書き出しを組むのに使う（html-slide だけ。
+    # image-slide は区画の絵を戻せばエンジンがそのまま組むので要らない。docs/adr/0001-version-pins.md）
+    keeps_parts: bool = False
+    # 区画に置いた絵を、描く指示（鍵）が変わっていても使わせる口（`deck --keep`）があるか。版を切り替えたページの絵を
+    # 描き直させない（image-slide だけ。ブランドの色・スタイルを替えた後でも、その版の絵で組む）
+    takes_keep: bool = False
 
     def entry_path(self, skills_dir: Path) -> Path:
         return skills_dir / self.skill / self.entry
@@ -106,9 +114,24 @@ class Engine:
             cmd.append("--quick")
         return cmd
 
-    def deck_command(self, python: str, skills_dir: Path, script: Path, out: Path, args: dict[str, Any]) -> list[str]:
-        return [python, str(self.entry_path(skills_dir)), "deck", "--script", str(script), "--out", str(out),
-                *self.style_args(args), *self.brand_args(args), "--format", self.formats, *self.deck_extra]
+    def parts_args(self, out: Path) -> list[str]:
+        return ["--parts", str(out / PARTS_FILE)] if self.keeps_parts else []
+
+    def deck_command(self, python: str, skills_dir: Path, script: Path, out: Path, args: dict[str, Any], *,
+                     keep: list[int] | None = None) -> list[str]:
+        """描く。`keep` は、区画に置いた絵を鍵が合わなくても使わせるページ（何枚目か。`takes_keep` のエンジンだけ）。"""
+        cmd = [python, str(self.entry_path(skills_dir)), "deck", "--script", str(script), "--out", str(out),
+               *self.style_args(args), *self.brand_args(args), "--format", self.formats, *self.deck_extra,
+               *self.parts_args(out)]
+        if keep and self.takes_keep:
+            cmd += ["--keep", ",".join(str(n) for n in sorted(keep))]
+        return cmd
+
+    def assemble_command(self, python: str, skills_dir: Path, manifest: Path, out: Path) -> list[str] | None:
+        """ページごとの部品を並べて PPTX・PDF を書く（`keeps_parts` のエンジンだけ）。"""
+        if not self.keeps_parts:
+            return None
+        return [python, str(self.entry_path(skills_dir)), "assemble", "--manifest", str(manifest), "--out", str(out)]
 
     def revise_command(self, python: str, skills_dir: Path, script: Path, out: Path, args: dict[str, Any], *,
                        page: int, note: str, remake: bool = False, slot: str | None = None,
@@ -122,7 +145,7 @@ class Engine:
         """
         cmd = [python, str(self.entry_path(skills_dir)), "revise", "--script", str(script), "--out", str(out),
                *self.style_args(args), *self.brand_args(args), "--format", self.formats, *self.deck_extra,
-               "--page", str(page), "--note", note]
+               *self.parts_args(out), "--page", str(page), "--note", note]
         if slot and self.mode == "presentation":
             cmd += ["--slot", slot]
         if remake:
@@ -145,13 +168,13 @@ ENGINES: dict[str, Engine] = {
         mode="presentation", skill="html-slide", entry="scripts/html_slide.py",
         styles=("standard", "visual"), default_style="standard",
         contract_docs=("html-slide/references/deck-format.md",),
-        deck_extra=("--no-odp",), label="プレゼン（編集できて動く PPTX）"),
+        deck_extra=("--no-odp",), keeps_parts=True, label="プレゼン（編集できて動く PPTX）"),
     # ピッチ: 同じ台本を 1 枚ずつ画像生成で丸ごと描く
     "pitch": Engine(
         mode="pitch", skill="image-slide", entry="scripts/image_slide.py",
         styles=("visual", "standard", "infographic"), default_style="visual",
         contract_docs=("html-slide/references/deck-format.md", "image-slide/references/intake.md"),
-        takes_style_note=True, needs_codex_auth=True, takes_logo_white=True, check_takes_brand=True,
+        takes_style_note=True, needs_codex_auth=True, takes_logo_white=True, check_takes_brand=True, takes_keep=True,
         label="ピッチ（1 枚ずつ画像生成で描く）"),
     # モーション: クリックで拍が進む Web プレゼン（HTML 1枚）。場面ごとの台本（JSON）を組み、全部の拍を Chrome で検査する。
     # 画像の枠・Codex は使わない。テーマとロゴだけ受ける（スタイル・透かし・ロゴの角は無い）

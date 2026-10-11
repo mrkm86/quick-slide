@@ -703,6 +703,9 @@
           ctx.adopt(p.slide_id, pick.id, adopt, said, function () { if (ctx.closeDialog) { ctx.closeDialog(); } });
         });
       }
+      // 部品を残していない前の回の版に切り替えたページ（html-slide）。画面と発表はその版の絵のまま、
+      // 書き出しだけ今の作りで描き直す。文はサーバのもの（`export_note`）
+      if (p.export_note) { stage.appendChild(h("p", { class: "vdlg__export-note small", text: p.export_note })); }
       var foot = h("div", { class: "vdlg__foot" },
         h("p", { class: "vdlg__why small", text: already || !canAdopt.available || !pick ? why : "" }), said, adopt);
       SS.clear(el).appendChild(list);

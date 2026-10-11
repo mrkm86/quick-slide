@@ -73,10 +73,6 @@ CARD_WORDS: dict[str, str] = {
 # カード 1 枚に出す枚数の言い方（「11枚」）。**数を入れるのはサーバ**（`deck_routes.card_public`）
 CARD_PAGE_COUNT = "{n}枚"
 
-# 全画面共通バーの案内。**`vocabulary()` からは配らない**（`web/app/index.html` に同じ文字列を直書きしてあり、
-# `tests/test_screen_static.py` が一致を固定する）。状態にも capabilities にも依存しない固定の 1 行。
-NEW_DECK_NOTICE = "新しいスライドは会話から作ります"
-
 # 版の見せ方の語。画面に出す語は「使用中」
 VERSION_WORDS: dict[str, str] = {
     "stack_label": "ページの版",
@@ -130,6 +126,10 @@ EXPORT_WORDS: dict[str, str] = {
     "building": "書き出しています…",
     "success": "ダウンロードしました",
 }
+
+# 切り替えた版が、書き出しの部品を残す前の回で描いたもの（ページの `export_note`）。画面と発表はその版の絵で出し、
+# 書き出し（PPTX・PDF）だけ、そのページをいまの作りで描き直す（docs/adr/0001-version-pins.md）
+PIN_EXPORT_REDRAW_NOTE = "書き出しでは、今の作りで描き直します"
 
 # 隙間にページを足すときの語。ボタンの語だけは `capabilities.insert_page.label` から来る
 INSERT_TEXT_REQUIRED_REASON = "どんなページが欲しいかを書いてください。画像だけでは足せません。"

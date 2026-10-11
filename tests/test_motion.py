@@ -494,7 +494,19 @@ class EditTests(MotionBase):
         r = self.fx.post(f"/api/decks/{self.deck}/adopt", {"choices": {pages[1]["slide_id"]: old["id"]}})
         self.assertEqual(r.status, 200, r.body)
         self.assertEqual(self.wait()["state"], "done")
-        self.assertEqual(self.head(self.deck)["slides"][1], before["slides"][1])
+        after = self.head(self.deck)["slides"][1]
+        self.assertEqual(after.pop("_pin"), old["id"], "戻した場面は、その版を描いた回を指す（描き直さない）")
+        self.assertEqual(after, before["slides"][1])
+        page = self.view(self.deck)["pages"][1]
+        self.assertEqual((len(page["versions"]), page["version"], page["pinned"]), (2, old["version"], True),
+                         "切り替えても版は増えない")
+        # 組み直しの後は、発表は見せる回の HTML 1枚（中身から組み直してある）で、切り替えた場面も拍で進む
+        data = self.fx.get(f"/api/decks/{self.deck}/present").json()
+        shown = wait_until_idle(self.fx, self.deck)
+        self.assertEqual(data["html"]["url"], f"/present/{self.deck}/{shown['id']}/index.html",
+                         "版を切り替えた場面があっても、ページの絵だけにしない")
+        self.assertEqual([p["section"] for p in data["pages"]], [0, 1, 2, 3])
+        self.assertEqual([p["steps"] for p in data["pages"]], [1, 2, 1, 1])
 
     def test_rebuild_takes_the_new_brand_and_notice_says_no_chatgpt(self) -> None:
         look = self.fx.get(f"/api/decks/{self.deck}/look").json()

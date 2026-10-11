@@ -138,6 +138,7 @@ outputs "--format: 省けば4つ・決まった順・誤りは止める" formats
 outputs "サムネイル: 16ページまでは thumbs.png・超えたら番号つき・前の回の分を消す・見出しの選び方・減ったページの画像を消す" thumbs
 outputs "PDF 用の写し: 不透明な PNG は JPEG・透過のある絵は PNG のまま・相対パスは file: URL" print_html
 outputs "deck（Chrome）: 既定で4つ・--format で PPTX を作らない・減ったページの画像を消す・PDF は PPTX と同じ大きさ" deck_formats
+outputs "--parts と assemble: テーマ違いの 2 回のページを混ぜて PPTX・PDF を組む・ページの中身は元のまま・読めない PDF は止める（ADR 0024）" assemble
 
 fill() { run "$1" python3 "$DIR/test_fill.py" "$2"; }
 fill "fill: まだ絵の無い生成の枠だけ描く・持ち込みは触らない・2回目は描かない・API キーを渡さない・ページ番号を指示に入れない" fill_generates_missing

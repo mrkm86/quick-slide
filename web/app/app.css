@@ -144,8 +144,8 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 .settings-link:hover { background: var(--brand-soft); color: var(--ink); }
 .settings-link[aria-current="page"] { background: var(--brand-soft); color: var(--brand); box-shadow: inset 0 -4px 0 var(--brand); }
 .workspace-status { max-width: 1208px; margin: 0 auto; padding: var(--space-5) 24px 0; display: flex; align-items: center; gap: var(--space-4); }
-.workspace-status__action { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: var(--space-3); }
 .workspace-status .reason { font-size: var(--font-size-16); }
+.workspace-status:has(> #server-state[hidden]) { display: none; }   /* 中身はサーバの問題の 1 文だけ。出ていないときは帯ごと詰める */
 
 /* ---- ボタン（DADS: 主＝塗り・副＝枠・第3＝文字。大きさは M 48 / S 36（押す範囲は 44 以上））---- */
 .btn {
@@ -747,7 +747,6 @@ details > summary:hover { color: var(--color-primitive-blue-900); text-decoratio
   .topbar { gap: var(--space-3); }
   .topnav { margin-left: 0; }
   .workspace-status { align-items: flex-start; }
-  .workspace-status__action { max-width: 75%; }
   .home-hero { min-height: 264px; padding: 24px; grid-template-columns: 1.1fr 1fr; }
   .home-hero h1 { font-size: var(--font-size-36); }
   .home-hero__description { max-width: 24em; }
@@ -763,8 +762,6 @@ details > summary:hover { color: var(--color-primitive-blue-900); text-decoratio
   .topnav a:any-link { padding: 0 8px; }
   main { padding: 24px 16px; }
   .workspace-status { padding: 16px 16px 0; flex-wrap: wrap; gap: 8px; }
-  .workspace-status__action { max-width: none; width: 100%; }
-  .workspace-status__action .reason { margin-right: auto; }
   .home-hero { grid-template-columns: minmax(0, 1fr); padding: 24px 24px 8px; margin-bottom: 32px; }
   .home-hero__art { width: 100%; max-width: 344px; justify-self: center; }
   .home-hero h1 { font-size: var(--font-size-32); }
@@ -1133,6 +1130,7 @@ html.is-locked { overflow: hidden; }
 .vdlg__tag { font-weight: var(--font-weight-700); }
 .vdlg__no { font-weight: var(--font-weight-700); color: var(--color-text); }
 .vdlg__note { overflow-wrap: anywhere; }
+.vdlg__export-note { grid-column: 1 / -1; margin: 0; color: var(--color-text-muted); }
 .vdlg__foot { grid-area: foot; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2) var(--space-3); }
 .vdlg__why, .vdlg__said { margin: 0; flex: 1 1 12em; color: var(--color-text-muted); }
 .vdlg__why:empty, .vdlg__said:empty { display: none; }

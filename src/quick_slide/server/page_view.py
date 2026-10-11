@@ -1,13 +1,15 @@
 """スライドの画面のページ（P3）。`deck_routes.deck_view` がここを呼ぶ。
 
-**ページの並びはデッキのいまの台本**（`deck_heads`。非表示のページも入る）。絵は**見せる回**（描き終えた
-一番新しい回）のものを出す。何も動いていないとき、いまの台本は見せる回の台本と同じなので、画面のページと
-書き出す PPTX の並び・枚数（非表示を除く）は一致する。直している間は、新しい並びに前の絵を出し、
-直している途中のページに「生成中」「待機中」を付ける（描き終えると絵が替わる）。
+**ページの並びはデッキのいまの台本**（`deck_heads`。非表示のページも入る）。**ページの絵は、そのページが指す版の
+もの**: 版を切り替えたページ（台本の `_pin`。`pins.py`）はその版を描いた回の絵、ほかは**見せる回**（描き終えた
+一番新しい回）の絵。描かない直し（非表示・並べ替え・版の切り替え）はその場で台本に当たり、書き出しと発表用の HTML は
+裏の組み直し（tidy）が追いかけて揃える。直している間は、新しい並びに前の絵を出し、直している途中のページに
+「生成中」「待機中」を付ける（描き終えると絵が替わる）。
 
 **版スタック** は、そのページの描き終えた回をまたいだ「姿」の並び。姿は（台本のページの中身の sha256・
 絵の sha256）で決め、同じ姿の回は 1 つにまとめる。番号（v1, v2 …）は姿が初めて出た順。前の版を押すと
-「その姿に戻す」直し（`POST /adopt` → 版から戻す仕事）になる。候補を作って選ぶ v1 の形は無い（`candidates` は空）。
+その版に切り替わる（`POST /adopt`。描き直さないので新しい版はできない）。使用中の版は、印のあるページは印の回の姿、
+ほかは見せる回の姿。候補を作って選ぶ v1 の形は無い（`candidates` は空）。
 """
 
 from __future__ import annotations
@@ -15,10 +17,11 @@ from __future__ import annotations
 from typing import Any
 
 from ..engines import engine_for
+from ..pins import head_pins
 from ..render import workspace as W
 from ..scriptdoc import one_page, screen_pages
 from .later import NOT_READY_REASON
-from .vocabulary import EDIT_MODE_LABELS, SOURCE_KIND_LABELS, page_display, run_page_display
+from .vocabulary import EDIT_MODE_LABELS, PIN_EXPORT_REDRAW_NOTE, SOURCE_KIND_LABELS, page_display, run_page_display
 
 NO_PICTURE_REASON = "このページには直せる絵がありません。指示は文字・構成の直しになります。"
 NO_REVISE_REASON = "モーションには絵だけを直す操作がありません。指示は場面の中身（文字・図・動き）の直しになります。"
@@ -189,12 +192,16 @@ def pages_view(store: Any, deck_id: str, *, shown: dict[str, Any] | None, latest
     working = bool(jobs)
     generated = _generated_pages(store, deck_id, shown) if mode == "presentation" else set()
     failed_last = latest is not None and latest["state"] == "failed"
+    pins = head_pins(store, deck_id, head, head_pages)
     out = []
     for p in head_pages:
         pid = p["page_id"]
         row = shown_rows.get(pid)
-        versions, active = page_versions(history.get(pid, []), shown["id"], requests, page_id=pid,
-                                         legacy_content=legacy)
+        pin = pins.get(p["key"])
+        versions, active = page_versions(history.get(pid, []), pin.run_id if pin else shown["id"], requests,
+                                         page_id=pid, legacy_content=legacy)
+        if pin is not None:
+            row = pin.row   # 版を切り替えたページ: その版を描いた回の絵（組み直しの前から）
         has_image = bool(row and row["state"] == "ready" and row.get("asset_id") and row.get("asset_state") == "ready")
         image_url = asset_url(row["asset_id"]) if has_image else None
         same = bool(row) and (row.get("content_sha256") is None or p.get("content_sha256") is None
@@ -203,6 +210,8 @@ def pages_view(store: Any, deck_id: str, *, shown: dict[str, Any] | None, latest
             image_url = next((v["image_url"] for v in versions if v["image_url"]), None)
         if pid in targets:
             display = page_display("generating" if targets[pid] == "running" else "queued_slot")
+        elif pin is not None:
+            display = page_display("ready")
         elif row is not None and same:
             display = run_page_display(row["state"], shown["state"], has_image=has_image)
             if row["warnings"] and display["key"] == "failed":
@@ -246,6 +255,11 @@ def pages_view(store: Any, deck_id: str, *, shown: dict[str, Any] | None, latest
             "item": None,
             "attempts": [],
             "versions": versions,
+            # 版を切り替えたページか（台本の `_pin` が効いている）。切り替えた版を描き直さずに使っている
+            "pinned": pin is not None,
+            # 書き出しについての短い注（無ければ None）。部品を残す前の回の版に切り替えたページは、書き出しだけいまの作りで描き直す
+            "export_note": PIN_EXPORT_REDRAW_NOTE if pin is not None and engine_for(mode).keeps_parts
+                           and not W.has_parts(pin.run_dir, p["key"]) else None,
         })
     return out
 

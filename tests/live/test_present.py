@@ -142,3 +142,38 @@ class FramePresentTest(PresentLiveBase):
         self.assertEqual(seen[-1], "4 / 4段 1 / 1")
         press(page, "ArrowLeft")
         page.until("document.getElementById('count').textContent.indexOf('段 0 / 1') >= 0", what="戻ると段が減る")
+
+    def test_a_switched_page_plays_from_its_own_run(self) -> None:
+        """版を切り替えたページは、その版を描いた回の HTML で見せる（回ごとの仕切りを切り替える）。"""
+        deck = self.make("presentation", "claude_code")
+        p2 = self.fx.get(f"/api/decks/{deck}").json()["pages"][1]
+        r = self.fx.post(f"/api/decks/{deck}/instructions", {"scope": "pages", "slide_ids": [p2["slide_id"]],
+                                                             "text": "見出しを短くして"})
+        self.assertEqual(r.status, 200, r.body)
+        self.assertEqual(wait_until_idle(self.fx, deck)["state"], "done")
+        p2 = self.fx.get(f"/api/decks/{deck}").json()["pages"][1]
+        v1 = p2["versions"][-1]
+        r = self.fx.post(f"/api/decks/{deck}/adopt", {"choices": {p2["slide_id"]: v1["id"]}})
+        self.assertEqual(r.status, 200, r.body)
+        shown = wait_until_idle(self.fx, deck)
+        self.assertEqual(shown["state"], "done")
+        data = self.fx.get(f"/api/decks/{deck}/present").json()
+        self.assertIn(v1["id"], data["pages"][1]["html"]["url"])
+        self.assertIn(shown["id"], data["pages"][2]["html"]["url"])
+        page = self.open(deck, "?p=2")
+        self.assertEqual(page.eval("document.querySelectorAll('#slide iframe').length"), 2, "回ごとに仕切りを 1 つ")
+        visible = "[...document.querySelectorAll('#slide iframe')].filter(f => !f.classList.contains('is-off')).map(f => f.src)"
+        self.assertEqual(len(page.eval(visible)), 1)
+        self.assertIn(v1["id"], page.eval(visible)[0], "2 ページ目は v1 の回の HTML")
+        self.assertTrue(count(page).startswith("2 / 4"))
+        for _ in range(10):   # 2 ページ目の段を出し切ってから 3 ページ目へ
+            if count(page).startswith("3 / 4"):
+                break
+            before = count(page)
+            press(page, "ArrowRight")
+            page.until(f"document.getElementById('count').textContent !== {before!r}", what="進む")
+        page.until(f"{visible}.length === 1 && {visible}[0].indexOf({shown['id']!r}) >= 0", what="3 ページ目は新しい回の HTML")
+        press(page, "ArrowLeft")
+        page.until(f"{visible}[0].indexOf({v1['id']!r}) >= 0", what="戻ると v1 の回の仕切りに戻る")
+        self.assertTrue(count(page).startswith("2 / 4"))
+        page.raise_if_broken()

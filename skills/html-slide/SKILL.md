@@ -27,6 +27,7 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 | 決まりに沿った HTML が手元にある | `render` |
 | html-video が焼いた解説動画を PPTX にする | `from-video` |
 | できた PPTX の、クリックとノートの照合 | `verify` |
+| 違う回のページを混ぜた PPTX・PDF を組む（呼ぶ側が、ページごとの部品を残しておく。`deck --parts <JSON>`） | `assemble --manifest <JSON> --out <フォルダ>`（[ADR 0024](docs/adr/0024-page-parts-and-assemble.md)） |
 
 すべて `python3 <このスキルのフォルダ>/scripts/html_slide.py <入口> …`（引数は `--help`）。
 終了コード: 0=成功 / 1=実行時エラー（描けなかった画像の枠がある・deck は仮の枠で組む）/ 2=台本・HTML の誤り（決まり違反・はみ出し・照合のずれ）/ 4=依存不足・Codex の認証。
@@ -77,7 +78,7 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 
 | パス | 中身 |
 |---|---|
-| `scripts/html_slide.py` | 入口（catalog / images / fill / revise / check / deck / render / from-video / verify） |
+| `scripts/html_slide.py` | 入口（catalog / images / fill / revise / check / deck / assemble / render / from-video / verify） |
 | `scripts/imagegen.py`・`scripts/codex_run.py` | 生成の枠の描く指示・鍵・画風・キャラ ／ Codex の認証と並列の生成（image-slide の写し） |
 | `scripts/deck.py`・`scripts/deck_types.py` | 台本 → HTML（画面の型23種と画像の置き方）・雛形・画像の枠の一覧 |
 | `scripts/deck_style.py`・`styles/` | スタイル（standard・visual・カスタム）の読み込みと検査・既定の当て方 |
@@ -87,6 +88,7 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 | `scripts/from_video.py` | html-video の HTML（GSAP の時刻）→ 部品 |
 | `scripts/verify.py` | PPTX を開き直して、クリックとノートの照合・LibreOffice での読み取りの照合 |
 | `scripts/snapshot.mjs` | ページの画像を撮る・PDF に印刷する |
+| `scripts/pdfpages.py` | PDF のページを選んで 1 本にまとめる（Chrome の印刷の形だけを読む。標準ライブラリだけ・ADR 0024） |
 | `scripts/browser.py` | Node・puppeteer-core・Chrome の在りか（ADR 0016。`python3 scripts/browser.py` で JSON） |
 | `scripts/outputs.py` | `--format` の読み方・サムネイル（image-slide と同じファイル） |
 | `templates/`・`themes/` | 資料の CSS と字体の読み込み ／ 色 |
