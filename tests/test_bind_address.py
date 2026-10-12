@@ -257,7 +257,7 @@ class OtherSpellingsOfLoopbackTests(unittest.TestCase):
     def test_other_spellings_of_everywhere_are_refused(self) -> None:
         for host in ("0:0:0:0:0:0:0:0", "::0", "::ffff:0.0.0.0"):
             self.assertIsNotNone(bind_refusal(host), host)
-            self.assertIn("ぜんぶの口", bind_refusal(host) or "", host)
+            self.assertIn("すべてのネットワーク", bind_refusal(host) or "", host)
 
     def test_no_one_compares_loopback_as_a_string_any_more(self) -> None:
         """判定は `is_loopback_host` の 1 か所。文字列の一覧で比べる場所が戻ってきたら落とす。"""

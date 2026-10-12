@@ -56,10 +56,10 @@
       if (last.fallback && last.message) { SS.toast(last.message, { kind: "error", sticky: true }); }
       else { SS.toast("再起動しました。"); }
     }
-    // 待ち受けの設定が動いているサーバと食い違う（画面で保存した・手で直した）→ どの画面からも「この機械」へ行ける
+    // 待ち受けの設定が動いているサーバと食い違う（画面で保存した・手で直した）→ どの画面からも「アクセス」の設定へ行ける
     if (j && j.settings && j.settings.restart_required && location.pathname !== "/settings/server") {
       var link = SS.h("a", { class: "restart-link", href: "/settings/server", "data-nav": true,
-        text: "設定を効かせるには再起動が必要です" });
+        text: "設定を反映するには再起動が必要です" });
       el.parentNode.insertBefore(link, el.nextSibling);
     }
   }).catch(function () { var el = document.getElementById("server-state"); el.textContent = "サーバに接続できません"; el.hidden = false; });

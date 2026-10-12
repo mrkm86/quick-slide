@@ -302,8 +302,8 @@ class QuickSlideServer:
             except OSError as exc:
                 if exc.errno == errno.EADDRNOTAVAIL:
                     raise StartupError(
-                        f"アドレス {self.host} はこの機械に無いので、そこでは待てません。"
-                        "この機械のアドレスを書いてください") from exc
+                        f"IP アドレス {self.host} はこのパソコンに割り当てられていないため、使えません。"
+                        "このパソコンの IP アドレスを書いてください") from exc
                 raise StartupError(
                     f"ポート {self.port} に bind できません（{exc.__class__.__name__}）。"
                     "別のアプリがこのポートを使っている可能性があります。そのアプリを止めるか、設定 server.port を変えてください。"

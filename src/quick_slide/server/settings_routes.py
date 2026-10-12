@@ -486,14 +486,14 @@ def save_server(app, req):
     b = payload(req, ("host", "host_names", "port"))
     host = b.get("host")
     if not isinstance(host, str) or not host.strip():
-        raise ApiError(400, "bad_bind_address", "この機械のどのアドレスで待つかを書いてください。")
+        raise ApiError(400, "bad_bind_address", "公開する IP アドレスを入力してください。")
     names_raw = b.get("host_names") or []
     if isinstance(names_raw, str) or not isinstance(names_raw, list):
-        raise ApiError(400, "bad_host_names", "名前は一行に一つずつ書いてください。")
+        raise ApiError(400, "bad_host_names", "ホスト名は 1 行に 1 つずつ書いてください。")
     names = [n.strip() for n in names_raw if isinstance(n, str) and n.strip()]
     port = b.get("port")
     if port is not None and (isinstance(port, bool) or not isinstance(port, int) or not (1024 <= port <= 65535)):
-        raise ApiError(400, "bad_port", "ポートは 1024〜65535 の数で書いてください。")
+        raise ApiError(400, "bad_port", "ポート番号は 1024〜65535 の数字で入力してください。")
     try:
         save_server_section(app.root.settings_path, host=host.strip(), host_names=names, port=port)
     except ValidationError as exc:

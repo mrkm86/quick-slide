@@ -193,15 +193,15 @@ def bind_refusal(host: str) -> str | None:
         return None
     if is_wildcard_host(host):
         return (
-            f"server.host={host!r} は「ぜんぶの口」を意味します。ここには開きません。"
-            "どの網に出すのかを選んで、そのアドレスを書いてください"
+            f"{host} は「すべてのネットワーク」を意味するため使えません（server.host）。"
+            "公開するネットワークの IP アドレスを書いてください"
         )
     try:
         ipaddress.ip_address(host)
     except ValueError:
         return (
-            f"server.host={host!r} は名前です。アドレスで書いてください。"
-            "名前は、引いた先がどこなのかを設定を読んだだけでは決められません"
+            f"{host} は名前です。IP アドレスで書いてください（server.host）。"
+            "名前のままでは、どのネットワークに公開されるかを設定から決められないためです"
         )
     return None
 

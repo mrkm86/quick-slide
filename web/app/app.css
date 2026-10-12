@@ -842,7 +842,7 @@ details > summary:hover { color: var(--color-primitive-blue-900); text-decoratio
 .setting-field--optional label { display: flex; align-items: center; gap: var(--space-2); min-height: var(--tap); cursor: pointer; }
 .setting-field--optional input[type=checkbox] { width: 24px; height: 24px; padding: 0; }
 
-/* 「この機械」の画面（/settings/server。ADR 0049） */
+/* 「アクセス」の画面（/settings/server。ADR 0049） */
 .setting-panel { max-width: 46rem; }
 .setting-choices { display: grid; gap: var(--space-2); }
 .setting-choice { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-2); cursor: pointer; }
