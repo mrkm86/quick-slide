@@ -78,7 +78,7 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
     def test_settings_screens(self) -> None:
         page = self.open("/settings", "document.querySelectorAll('.setting-row').length >= 1", "ブランドの一覧")
         page = self.open(f"/settings/brands/{PRESET_BRAND_ID}",
-                         "document.querySelector('.brand-editor__preview .reason') !== null"
+                         "document.querySelector('.brand-editor__preview .help-tip') !== null"
                          " && !!document.querySelector('.carousel .sample')", "ブランドの編集と見本")
         self.assertEqual(page.eval("document.querySelectorAll('.corner-choice').length"), 3)
         page = self.open("/settings/styles", "document.querySelectorAll('.pattern-choice').length >= 1",

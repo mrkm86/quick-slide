@@ -20,6 +20,7 @@ from PIL import Image, UnidentifiedImageError
 from .. import contenttypes
 from .. import logo as logo_rules
 from .. import palette
+from .. import slide_palette
 from ..errors import NotFoundError, StateError, ValidationError
 from ..engines import ENGINES
 from ..ids import PRESET_STYLE_STANDARD_ID, is_uuid
@@ -52,7 +53,7 @@ ENGINE_STYLE_LABELS = {"standard": "standard（説明・報告）", "visual": "v
                        "infographic": "infographic（1枚のポスター）"}
 CAPABILITIES = {
     "format": {"available": False, "label": "書式を登録",
-               "reason": "書式（フッタ・ページ番号・透かし）は、ブランドの編集画面の「書式」で設定します。"},
+               "reason": "フッター（表示文字・ページ番号）とウォーターマークは、ブランドの編集画面で設定します。"},
     # 「元の文書」は**入力に渡す文書**で、我々の成果物（画面では「スライド」）ではない。
     # ここを「スライド」にすると意味が逆になるので、成果物と混ざらない言い方にする。
     "infer": {"available": False, "label": "元の文書から色・字体を読み取る", "reason": "元の文書からの読み取りはまだ使えません。色と字体を下の欄で指定してください。"},
@@ -233,7 +234,7 @@ def upload(app, req):
 
 
 def brand_preview(app, b):
-    """見本に要る値: 配色（`palette`）・ロゴの位置（`logo_xywh`）・フッタ文字。
+    """見本に要る値: 配色（`palette`）・スライドが塗る色の役（`slide`）・ロゴの位置（`logo_xywh`）・フッタ文字。
 
     v1 の画面が読む形（`canvas` / `clean_area` / `logo_xywh` / `image_url` / `warnings` / `copyright` / `palette`）を保つ。
     **`clean_area` はいつも null**（v2 ではロゴの予約枠を持たない。置き場所はエンジンが描くときに決める）。
@@ -269,8 +270,11 @@ def brand_preview(app, b):
     result["copyright"] = {"text": footer_text, "status": "not_checked",
                            "message": "フッタは中身のページの左下に入ります（表紙・章扉・写真の全面のページには入りません）。"
                                       "ロゴが入らない角は、描くときにエンジンが別の角へ逃がします。"}
-    result["theme"] = palette.engine_theme(palette.snapshot_colors(config["colors"]))
+    slide = slide_palette.slide_colors(config["colors"])
+    result["theme"] = slide["theme"]
     result["palette"] = colors
+    # プレゼン（html-slide）が実際に塗る色の役（DADS のキーカラーの作り方）。見本はこれで塗る
+    result["slide"] = {key: slide[key] for key in ("roles", "adjusted", "problems", "error", "overrides")}
     return result
 
 
@@ -343,9 +347,10 @@ def merge_brand_config(previous, submitted):
 
     - 上の段: 送られたキーはそのまま使う（`logo`・`footer` は中身ごと置き換え。中のキーはどれも画面が扱う）。
       送られなかったキーは前の改訂の値を写す。画面から消せないキーは、画面から消せないままにする
-    - `colors` の中: 画面が扱う色（基本色・強調色・情報色・詳しく指定する 5 色）は**送られたものだけ**
-      （送らない＝「算出に戻す」なので持ち越さない）。画面が扱わない役割色（`semantic` の success / warning / error、
-      `gray`）は、前の改訂で**人が決めた値だけ**を持ち越す（`palette.custom_roles`。算出値は基本色に合わせて算出し直す）。
+    - `colors` の中: 画面が扱う色（基本色・強調色と、「他の要素の色」で変えられる地の色・面の色・本文・補足）は
+      **送られたものだけ**（送らない＝「自動に戻す」なので持ち越さない）。画面が扱わない役割色（`semantic` の
+      success / warning / error、`gray`、画面から外した情報色・主役色（淡・濃）・区切り線）は、前の改訂で
+      **人が決めた値だけ**を持ち越す（`palette.custom_roles`。算出値は基本色に合わせて算出し直す）。
       送られた側に同じ役割があれば送られた側が勝つ
     - 形が違う（オブジェクトでない）ときは何もせずに返し、検査に断らせる
     """
@@ -359,6 +364,9 @@ def merge_brand_config(previous, submitted):
         return merged
     if "gray" in kept and "gray" not in colors:
         colors["gray"] = kept["gray"]
+    for key in palette.LEGACY_OVERRIDES:
+        if key in kept and key not in colors:
+            colors[key] = kept[key]
     custom = kept.get("semantic") or {}
     sent = colors.get("semantic") if isinstance(colors.get("semantic"), dict) else {}
     if custom and set(custom) - set(sent):

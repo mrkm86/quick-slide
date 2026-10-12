@@ -164,7 +164,11 @@ class SettingsScreensTest(unittest.TestCase):
                   " var w = document.querySelectorAll('.brand-format input[type=text]')[1]; w.value = '配布禁止';"
                   " w.dispatchEvent(new Event('input', {bubbles: true}));"
                   " Array.from(document.querySelectorAll('.corner-choice')).find(b => b.textContent.indexOf('左下') >= 0).click(); })()")
-        page.until("!!document.querySelector('.sample .sample__pageno') && !!document.querySelector('.sample .sample__watermark')"
+        # 表紙・章扉にはフッタとページ番号が入らない（エンジンの決まり）。中身のページ（箇条書き）の見本で確かめる
+        page.until("!!document.querySelector('.sample--cover .sample__watermark') && !document.querySelector('.sample--cover .sample__footer')",
+                   what="表紙の見本は透かしだけ")
+        page.eval("document.querySelectorAll('.carousel__dot')[2].click()")
+        page.until("!!document.querySelector('.sample--bullets .sample__pageno') && !!document.querySelector('.sample .sample__watermark')"
                    " && !!document.querySelector('.sample .sample__footer')", what="見本に下の部品が出ること")
         page.until("Array.from(document.querySelectorAll('.settings-actions button')).some(b => b.textContent === '保存する' && !b.disabled)",
                    what="保存できること")

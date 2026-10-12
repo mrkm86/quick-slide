@@ -11,9 +11,10 @@
     script.onerror = function () { reject(new SS.ApiError("設定画面を読み込めませんでした。再読み込みしてください。", "settings_load")); };
     document.head.appendChild(script);
   });
-  var settingsLink = SS.h("a", { class: "settings-link", href: "/settings", "data-nav": true,
-    "data-route": "settings", "aria-label": "設定", title: "設定" });
+  // 設定への入口。DADS の決まり（アイコンは文字のラベルと組む）に沿って「設定」と書く。現在地の印はホーム・スライドと同じ（太字と下の線）
+  var settingsLink = SS.h("a", { class: "settings-link", href: "/settings", "data-nav": true, "data-route": "settings" });
   settingsLink.appendChild(document.getElementById("settings-icon").content.cloneNode(true));
+  settingsLink.appendChild(SS.h("span", { class: "settings-link__label", text: "設定" }));
   document.querySelector(".topbar__right").appendChild(settingsLink);
 
   function describeClient() {
