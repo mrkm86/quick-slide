@@ -29,6 +29,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "dads" / "scripts"))
 import cache as K  # noqa: E402
 import keycolors as KC  # noqa: E402
+import deck_palette as DP  # noqa: E402
 import deck_style as DS  # noqa: E402
 import deck_types as T  # noqa: E402
 import places as PL  # noqa: E402
@@ -82,81 +83,9 @@ def _hex(v, what) -> str:
     return s
 
 
-def _rgb(h):
-    return tuple(int(h[i:i + 2], 16) / 255 for i in (1, 3, 5))
-
-
-def _to_hex(c):
-    return "#" + "".join(f"{round(max(0, min(1, v)) * 255):02x}" for v in c)
-
-
-def mix(fg, alpha, bg) -> str:
-    """fg を alpha で bg に重ねた色。"""
-    return _to_hex(tuple(alpha * a + (1 - alpha) * b for a, b in zip(_rgb(fg), _rgb(bg))))
-
-
-def ratio(a, b) -> float:
-    def lum(h):
-        def ch(v):
-            return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
-        r, g, b_ = (ch(v) for v in _rgb(h))
-        return 0.2126 * r + 0.7152 * g + 0.0722 * b_
-    la, lb = sorted((lum(a), lum(b)), reverse=True)
-    return (la + 0.05) / (lb + 0.05)
-
-
-# DADS の値（skills/dads/tokens/slide.json の color と同じ。tests が見比べる）
-INK, MUTED, GRAY_SURFACE = "#333333", "#666666", "#f2f2f2"          # Gray-800・Gray-600・Gray-50
-RULE, RULE_WEAK = "#767676", "#949494"                              # Gray-536（どの地でも 3:1）・Gray-420（白の地だけ 3:1）
-SEMANTIC = {                                                         # 意味の色。-1 は枠・図形（3:1）、-2 は文字・アイコン・塗り（4.5:1）。白い面の上だけ
-    "success-1": "#259d63", "success-2": "#197a4b", "error-1": "#ec0000", "error-2": "#ce0000",
-    "warning-yellow-1": "#b78f00", "warning-yellow-2": "#927200", "warning-orange-1": "#fb5b01", "warning-orange-2": "#c74700",
-}
-
-
-def _darken(color: str, grounds: list[str], need: float) -> str:
-    """color の色相・彩度を保ち（OKLCH）、どの地の上でも need 以上になるまで明度を下げた色（初めから満たせばそのまま）。"""
-    L, c, h = KC.to_oklch(color)
-    x = color
-    while not all(ratio(x, g) >= need - 1e-9 for g in grounds):
-        L -= 0.004
-        if L <= 0:
-            return "#000000"
-        x = KC.from_oklch(L, c, h)
-    return x
-
-
-def _key(brand: str, bg: str, surface: str, what: str) -> dict:
-    """主役の色 1 つから、DADS のキーカラーの作り方で色の役を作る（primary・accent で同じ）。
-
-    ブランドの色が DADS のプリミティブの段そのままなら、その色相の段（keycolors.ramp_key_colors）。そうでなければ、同じ色相のまま
-    明度だけを動かして作る（keycolors.brand_key_colors）。
-      key    … 4.5:1（地・surface・淡い地の全部の上）。文字にも使う
-      tint   … 同じ色相のごく淡い地
-      mark   … 意味のある図形・線・棒（地・surface・淡い地の上で 3:1）。key より明るい
-      deco   … 飾りの面だけ（セカンダリー。情報を持たせない）
-      strong … 白い文字を載せる面（key か、足りなければターシャリー）
-    """
-    try:
-        kc = KC.brand_key_colors(brand, bg)
-    except ValueError as e:
-        raise DeckError(f"テーマの {what}（{brand}）から読める色を作れない: {e}")
-    fam = KC.nearest_primitive(kc["primary"]["hex"])
-    if fam["delta"] == 0 and fam["family"] != "solid-gray":
-        r = KC.ramp_key_colors(fam["family"], bg)
-        key, sec, ter, tint = (r[k]["hex"] for k in ("primary", "secondary", "tertiary", "background"))
-        steps = [x["hex"] for x in KC.ramp(fam["family"])]
-        grounds = [bg, surface, tint]
-        key = _darken(key, grounds, 4.5)
-        mark = next((x for x in steps if all(ratio(x, g) >= 3.0 for g in grounds)), key)
-    else:
-        key, sec, ter, tint = (kc[k]["hex"] for k in ("primary", "secondary", "tertiary", "background"))
-        grounds = [bg, surface, tint]
-        key = _darken(key, grounds, 4.5)
-        mark = _darken(sec, grounds, 3.0)
-    white = "#ffffff"
-    strong = key if ratio(white, key) >= 4.5 else ter
-    return {"key": key, "tint": tint, "mark": mark, "deco": sec, "strong": strong}
+# 色の役の作り方の正本は deck_palette.py（ほかの道具からも同じ色を出せるように分けた）。ここでは名前を引き継ぐ
+from deck_palette import (GRAY_SURFACE, INK, MUTED, RULE, RULE_WEAK, SEMANTIC, TEXT_GROUNDS,  # noqa: E402,F401
+                          _darken, _rgb, _to_hex, contrast_problems, mix, ratio)
 
 
 def palette(t: dict) -> dict:
@@ -180,28 +109,20 @@ def palette(t: dict) -> dict:
     """
     bg, ink = t["background"], t["ink"]
     white = "#ffffff"
-    surface = t.get("surface") or (GRAY_SURFACE if bg == white else mix(ink, 0.04, bg))
-    pk = _key(t["primary"], bg, surface, "primary")
-    ak = _key(t["accent"], bg, surface, "accent") if t.get("accent") and t["accent"] != t["primary"] else pk
-    grounds = [bg, surface, pk["tint"], ak["tint"]]
-    p = {"bg": bg, "ink": ink, "surface": surface}
-    p["muted"] = t.get("muted") or _darken(MUTED, grounds, 4.5)
-    p["faint"] = _darken(RULE, [bg], 4.5)             # 透かし。地の上だけ
-    p["rule"] = _darken(RULE, grounds, 3.0)
-    p["rule-weak"] = RULE_WEAK if ratio(RULE_WEAK, bg) >= 3.0 else p["rule"]
-    p["bar"] = p["rule-weak"]
-    p["tint"] = pk["tint"]
-    p["primary-soft"] = pk["tint"]
-    p["accent-soft"] = ak["tint"]
+    try:
+        base = DP.base_palette(t)
+    except ValueError as e:
+        raise DeckError(str(e)) from e
+    # 並びは前と同じ（CSS 変数の並び＝出す HTML を変えない）: 共通 → 主役の色の役 → 差し色の役 → 幕 → 意味の色
+    p = {k: v for k, v in base.items() if k not in DP.SEMANTIC and not k.startswith(("primary", "accent", "on-"))}
+    p["primary-soft"], p["accent-soft"] = base["primary-soft"], base["accent-soft"]
+    pk = {"key": base["primary"], "deco": base["primary-decor"]}
+    ak = {"key": base["accent"], "deco": base["accent-decor"]}
     # 写真の上（暗幕の地）: 色を白に寄せて、一番薄い暗幕を白い写真に重ねた地で 4.5 を越える一番濃い色
     thin = mix(ink, min(T.OVERLAYS.values()), white)
     for name, k in (("primary", pk), ("accent", ak)):
-        p[name] = k["key"]
-        p[f"{name}-text"] = k["key"]
-        p[f"{name}-mark"] = k["mark"]
-        p[f"{name}-decor"] = k["deco"]
-        p[f"{name}-strong"] = k["strong"]
-        p[f"on-{name}"] = white if ratio(white, k["strong"]) >= 4.5 else ink
+        for role in (name, f"{name}-text", f"{name}-mark", f"{name}-decor", f"{name}-strong", f"on-{name}"):
+            p[role] = base[role]
         p[f"{name}-on-dark"] = next((c for c in (mix(k["deco"], 1 - n / 40, white) for n in range(41)) if ratio(c, thin) >= 4.5), white)
     r, g, b = (int(p["ink"][i:i + 2], 16) for i in (1, 3, 5))
     p["scrim"] = f"rgba({r}, {g}, {b}, {T.SCRIM_ALPHA})"      # 全面写真の上の文字の地
@@ -214,36 +135,8 @@ def palette(t: dict) -> dict:
     veil_ground = mix(bg, T.HERO_VEIL, "#000000")
     for name, k in (("primary", pk), ("accent", ak)):
         p[f"{name}-on-light"] = _darken(k["key"], [veil_ground], 4.5)
-    p.update(SEMANTIC)
+    p.update(DP.SEMANTIC)
     return p
-
-
-# 検査する組み合わせ。文字は大きさによらず 4.5（DADS は大きな文字の緩和を使わない）。図形・罫・枠は 3
-TEXT_GROUNDS = ("bg", "surface", "tint", "accent-soft")
-
-
-def contrast_problems(p: dict) -> list[str]:
-    """実際に描く「文字 × 地」「図形・罫 × 地」の組み合わせで、足りないものを返す（空なら合格）。"""
-    need = []
-    for fg in ("ink", "muted", "primary-text", "accent-text"):
-        for g in TEXT_GROUNDS:
-            need.append((fg, g, 4.5))
-    need += [("faint", "bg", 4.5),
-             ("on-primary", "primary-strong", 4.5), ("on-accent", "accent-strong", 4.5)]
-    for g in TEXT_GROUNDS:                      # 罫・枠・軸
-        need.append(("rule", g, 3.0))
-    need += [("rule-weak", "bg", 3.0), ("bar", "bg", 3.0)]
-    for g in ("bg", "surface", "tint"):         # 意味のある図形・線・棒
-        need.append(("primary-mark", g, 3.0))
-    for g in ("bg", "surface", "accent-soft"):
-        need.append(("accent-mark", g, 3.0))
-    need += [("primary-strong", "bg", 3.0), ("accent-strong", "bg", 3.0)]    # 面の境
-    bad = []
-    for fg, g, n in need:
-        r = ratio(p[fg], p[g])
-        if r < n - 1e-9:
-            bad.append(f"{fg}（{p[fg]}）× {g}（{p[g]}）のコントラスト {r:.2f} が {n} 未満")
-    return bad
 
 
 def overlay_problems(p: dict, used: dict) -> list[str]:
