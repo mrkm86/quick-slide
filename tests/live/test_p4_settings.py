@@ -185,10 +185,9 @@ class SettingsScreensTest(unittest.TestCase):
         self.assertEqual(saved["config"]["footer"]["text"], "試験の資料")
         self.assertEqual(saved["config"]["logo"], {"variant": "transparent", "placement": {"corner": "bottom-left"}})
         self.assertEqual(sorted(a["role"] for a in saved["assets"]), ["logo_transparent", "optional"], "差し絵は消えない")
-        # 一覧: 書式の登録は押せず、理由はブランドの編集画面を指す
-        page = self.open("/settings", "document.querySelectorAll('.setting-row').length >= 2", "ブランドの一覧")
-        self.assertTrue(page.eval("Array.from(document.querySelectorAll('button')).find(b => b.textContent === '書式を登録').disabled"))
-        self.assertIn("ブランドの編集画面", page.eval("document.querySelector('#view').textContent"))
+        # 一覧: 書式はブランドの編集画面で設定するので、「書式を登録」は置かない
+        page = self.open("/settings/brands", "document.querySelectorAll('.setting-row').length >= 2", "ブランドの一覧")
+        self.assertFalse(page.eval("Array.from(document.querySelectorAll('button')).some(b => b.textContent === '書式を登録')"))
         self.assertEqual(page.errors, [])
 
     def test_style_types_engine_style_and_image_look(self) -> None:

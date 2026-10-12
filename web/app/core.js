@@ -66,12 +66,16 @@
   };
 
   SS.uploadImage = function (file) {
+    return SS.postFile("/api/settings/images", file, "画像を送信できませんでした。接続を確認して選び直してください。");
+  };
+  // ファイルのバイト列をそのまま送る（画像・ブランドの ZIP）。答えは JSON
+  SS.postFile = function (url, file, networkMessage) {
     return session().then(function (token) {
-      return fetch("/api/settings/images", { method: "POST", headers: {
+      return fetch(url, { method: "POST", headers: {
         "Content-Type": "application/octet-stream", "X-Quick-Slide-Session": token
       }, body: file });
     }).then(parse, function () {
-      throw new SS.ApiError("画像を送信できませんでした。接続を確認して選び直してください。", "upload_network", 0);
+      throw new SS.ApiError(networkMessage || "ファイルを送信できませんでした。接続を確認してやり直してください。", "upload_network", 0);
     });
   };
 
@@ -120,6 +124,10 @@
     image: "M200-120q-33 0-56.500-23.500T120-200v-560q0-33 23.500-56.500T200-840h560q33 0 56.500 23.500T840-760v560q0 33-23.500 56.500T760-120H200Zm0-80h560v-560H200v560Zm40-80h480L570-480 450-320l-90-120-120 160Zm-40 80v-560 560Z",
     visibility_off: "m644-428-58-58q9-47-27-88t-93-32l-58-58q17-8 34.500-12t37.500-4q75 0 127.500 52.500T660-500q0 20-4 37.500T644-428Zm128 126-58-56q38-29 67.500-63.500T832-500q-50-101-143.500-160.500T480-720q-29 0-57 4t-55 12l-62-62q41-17 84-25.500t90-8.500q151 0 269 83.500T920-500q-23 59-60.500 109.500T772-302Zm20 246L624-222q-35 11-70.500 16.500T480-200q-151 0-269-83.500T40-500q21-53 53-98.500t73-81.500L56-792l56-56 736 736-56 56ZM222-624q-29 26-53 57t-41 67q50 101 143.500 160.500T480-280q20 0 39-2.500t39-5.500l-36-38q-11 3-21 4.500t-21 1.500q-75 0-127.500-52.500T300-500q0-11 1.500-21t4.500-21l-84-82Zm319 93Zm-151 75Z",
     download: "M480-320 280-520l56-58 104 104v-326h80v326l104-104 56 58-200 200ZM240-160q-33 0-56.5-23.5T160-240v-120h80v120h480v-120h80v120q0 33-23.5 56.5T720-160H240Z",
+    // 読み込む（設定のブランドの ZIP。skills/dads/icons の upload と同じ絵）
+    upload: "M450-313v-371L330-564l-43-43 193-193 193 193-43 43-120-120v371h-60ZM220-160q-24 0-42-18t-18-42v-143h60v143h520v-143h60v143q0 24-18 42t-42 18H220Z",
+    // 先へ進む（設定のトップのリンクの行。skills/dads/icons の chevron-right と同じ絵）
+    chevron_right: "M530-481 332-679l43-43 241 241-241 241-43-43 198-198Z",
     // 取り除く（設定のロゴの画像。skills/dads/icons の delete と同じ絵）
     delete: "M261-120q-24.75 0-42.37-17.63Q201-155.25 201-180v-570h-41v-60h188v-30h264v30h188v60h-41v570q0 24-18 42t-42 18H261Zm438-630H261v570h438v-570ZM367-266h60v-399h-60v399Zm166 0h60v-399h-60v399ZM261-750v570-570Z",
     // プレビュー（設定のブランドの見本を開く。skills/dads/icons の eye と同じ絵）
@@ -295,7 +303,8 @@
     var m = /^\/slides\/([0-9a-f-]{36})$/.exec(p);
     if (m) { return { name: "deck", deckId: m[1] }; }
     if (p === "/slides") { return { name: "list" }; }
-    if (p === "/settings") { return { name: "settings", section: "brands" }; }
+    if (p === "/settings") { return { name: "settings", section: "index" }; }
+    if (p === "/settings/brands") { return { name: "settings", section: "brands" }; }
     if (p === "/settings/styles") { return { name: "settings", section: "styles" }; }
     if (p === "/settings/server") { return { name: "settings", section: "server" }; }
     var b = /^\/settings\/brands\/([0-9a-f-]{36})$/.exec(p);

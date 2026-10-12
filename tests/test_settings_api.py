@@ -80,7 +80,7 @@ class SettingsApiTests(unittest.TestCase):
             self.assertEqual(len(self.catalog[key]), self.catalog["counts"][key])
         self.assertEqual(self.catalog["counts"], {"brands": 1, "styles": 3})
         self.assertEqual(set(self.catalog["style_dials"]), {"typeface", "density", "visual_ratio"})
-        self.assertIn("format", self.catalog["capabilities"])
+        self.assertNotIn("format", self.catalog["capabilities"], "書式はブランドの編集画面で設定する（一覧の「書式を登録」はやめた）")
 
     def test_logo_control_offers_the_three_engine_positions_without_reserved_frames(self):
         control = self.catalog["logo_control"]
@@ -461,11 +461,11 @@ class SettingsApiTests(unittest.TestCase):
     # --- 境界 ---
     def test_settings_shell_routes_return_html(self):
         brand_id = self.catalog["brands"][0]["id"]
-        for path in ("/settings", "/settings/styles", "/settings/server", f"/settings/brands/{brand_id}"):
+        for path in ("/settings", "/settings/brands", "/settings/styles", "/settings/server", f"/settings/brands/{brand_id}"):
             response = self.fx.get(path)
             self.assertEqual(response.status, 200, (path, response.body))
             self.assertIn("text/html", response.headers["content-type"])
-        for bad in ("/settings/brands", "/settings/brands/", "/settings/brands/not-a-uuid", f"/settings/brands/{brand_id}/"):
+        for bad in ("/settings/brands/", "/settings/brands/not-a-uuid", f"/settings/brands/{brand_id}/"):
             self.assertEqual(self.fx.get(bad).status, 404, bad)
 
     def test_unknown_and_malformed_inputs_are_japanese(self):
