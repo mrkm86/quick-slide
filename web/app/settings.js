@@ -615,7 +615,7 @@
     }
 
     // パンくず（設定 › ブランド › 名前）は帯の上。名前の欄がこの画面の見出し（H1）で、帯と一緒に上に貼り付く
-    var crumbs = breadcrumb([{ label: "設定", href: "/settings" }, { label: "ブランド", href: "/settings" }, { label: data.name }]);
+    var crumbs = breadcrumb([{ label: "設定", href: "/settings" }, { label: "ブランド", href: "/settings/brands" }, { label: data.name }]);
     // プレビューのボタン（狭い画面だけ出す。PC はプレビューを右に常に出す）。押すと全画面の板で見本を開く
     var previewButton = h("button", { type: "button", class: "btn brand-editor__preview-button", "aria-haspopup": "dialog" },
       SS.icon("eye"), text("span", "プレビュー", "brand-editor__preview-label"));
@@ -634,7 +634,7 @@
         if (!SS.confirm("「" + data.name + "」を削除します。作成済みのスライドは残ります。よろしいですか？")) { return; }
         SS.api("/api/settings/brands/" + item.id + "/delete", { method: "POST", body: { expected_revision_id: revisionId } }).then(function (result) {
           if (!result.deleted) { throw new SS.ApiError("削除を確認できませんでした。", "delete_unverified"); }
-          dirty = false; SS.settingsLeave = null; SS.toast("ブランドを削除しました。", { sticky: true }); SS.navigate("/settings");
+          dirty = false; SS.settingsLeave = null; SS.toast("ブランドを削除しました。", { sticky: true }); SS.navigate("/settings/brands");
         }).catch(fail);
       }, "btn--danger btn--small"));
       rail.appendChild(danger);
@@ -681,9 +681,10 @@
     preview();
   }
 
-  // ---- 一覧画面（/settings）----
-  var SETTINGS_TABS = [
-    { section: "brands", href: "/settings", label: "ブランド", title: "ブランド",
+  // ---- 設定のトップ（/settings）と、各設定の画面の見出し ----
+  // 設定の中の行き先。トップはこの並びでリンクの一覧を出す（タブはやめた: 狭い画面で崩れるため）
+  var SETTINGS_SECTIONS = [
+    { section: "brands", href: "/settings/brands", label: "ブランド", title: "ブランド",
       lead: "ロゴと配色を、スライドスタイルとは別に管理します。" },
     { section: "styles", href: "/settings/styles", label: "スライドスタイル", title: "スライドスタイル",
       lead: "スライドの型を登録します。ブランドの見た目とは別に管理します。" },
@@ -691,18 +692,24 @@
       lead: "Quick Slide を、このパソコンだけで使うか、ほかのパソコンやスマートフォンからも開けるようにするかを決めます。" }
   ];
 
-  // 見出しの段: H1「設定」（どこにいるか。ホーム・スライドの H1 と同じ段）→ タブ（設定の中の行き先）→ H2（タブの中身）と説明
+  // 各設定の画面の見出し: パンくず（設定 › いまの画面）→ H1（いまの画面の名前）と説明
   function settingsHead(section) {
-    var current = SETTINGS_TABS.filter(function (t) { return t.section === section; })[0] || SETTINGS_TABS[0];
+    var current = SETTINGS_SECTIONS.filter(function (t) { return t.section === section; })[0] || SETTINGS_SECTIONS[0];
     return [
-      text("h1", "設定"),
-      h("nav", { class: "settings-tabs", "aria-label": "設定の画面" },
-        SETTINGS_TABS.map(function (t) {
-          return h("a", { href: t.href, "data-nav": true,
-            "aria-current": t.section === current.section ? "page" : null, text: t.label });
-        })),
-      h("div", { class: "settings-section-head" }, text("h2", current.title), text("p", current.lead, "muted"))
+      breadcrumb([{ label: "設定", href: "/settings" }, { label: current.label }]),
+      h("div", { class: "settings-section-head" }, text("h1", current.title), text("p", current.lead, "muted"))
     ];
+  }
+
+  // 設定のトップ: H1「設定」と、各設定へのリンクの一覧（行全体がリンク。名前と説明と「›」）
+  function settingsIndex(root) {
+    var list = h("ul", { class: "settings-index" });
+    SETTINGS_SECTIONS.forEach(function (t) {
+      list.appendChild(h("li", null, h("a", { class: "settings-index__link", href: t.href, "data-nav": true },
+        h("span", { class: "settings-index__text" }, text("span", t.label, "settings-index__name"), text("span", t.lead, "settings-index__lead")),
+        SS.icon("chevron_right", "settings-index__chevron"))));
+    });
+    SS.clear(root).appendChild(h("div", { class: "settings-page" }, text("h1", "設定"), list));
   }
 
   // パンくず（DADS: ヘッダーとページ見出しの間に現在地を階層で示す）。最後の段（いまのページ）はリンクにしない
@@ -737,10 +744,12 @@
     menuButton.addEventListener("click", function () {
       var edit = entry.capabilities.edit, remove = entry.capabilities.delete;
       SS.menu(menuButton, [
-        { label: "改名", disabled: !edit.available, reason: edit.reason, onSelect: function () {
+        { label: "名前を変更", disabled: !edit.available, reason: edit.reason, onSelect: function () {
           SS.textModal({ title: "ブランドの名前を変更", label: "名前", value: entry.name, submitLabel: "変更する",
             onSubmit: function (value) { return saveAs(value, true).then(function (saved) { SS.toast("「" + saved.name + "」に変更しました。"); reload(); }); } });
         } },
+        { label: "エクスポート", disabled: entry.kind === "preset", reason: "付属のブランドはエクスポートできません。複製してからエクスポートしてください。",
+          onSelect: function () { exportBrand(entry); } },
         { label: "複製", onSelect: function () {
           SS.textModal({ title: "ブランドを複製", label: "新しい名前", value: entry.name + " のコピー", submitLabel: "複製する",
             onSubmit: function (value) { return saveAs(value, false).then(function (saved) { SS.toast("「" + saved.name + "」を作りました。"); SS.navigate("/settings/brands/" + saved.id); }); } });
@@ -762,8 +771,85 @@
       menuButton);
   }
 
+  // ---- ブランドのエクスポート・インポート（ZIP。形はサーバの brand_package.py）----
+  // エクスポート: サーバが作った ZIP を受け取り、ブランドの名前のファイルとして保存させる
+  function exportBrand(entry) {
+    fetch("/api/settings/brands/" + entry.id + "/export").then(function (r) {
+      if (!r.ok) { return r.json().then(function (j) { throw new SS.ApiError((j && j.error && j.error.message) || "エクスポートできませんでした。", "export_failed", r.status); }, function () { throw new SS.ApiError("エクスポートできませんでした。", "export_failed", r.status); }); }
+      return r.blob();
+    }).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var a = h("a", { href: url, download: entry.name.replace(/[\\/:*?"<>|]/g, "_") + ".zip" });
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+      SS.toast("「" + entry.name + "」をエクスポートしました。ZIP をそのまま渡せば、相手の Quick Slide でインポートできます。");
+    }).catch(SS.toastError);
+  }
+
+  // エクスポートした日時（サーバは UTC で持つ）を、この機械の時刻で「2026/10/12 19:13」の形にする。読めなければ出さない
+  function exportedAt(value) {
+    var d = value ? new Date(value) : null;
+    if (!d || isNaN(d.getTime())) { return ""; }
+    return d.toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  }
+
+  // インポート: まず中身を確かめ（何も保存しない）、同じ ID のブランドがあれば「上書き／別のブランドとして追加／やめる」を選ばせる
+  function importBrand(file, opener) {
+    SS.postFile("/api/settings/brands/import/check", file, "ZIP を送信できませんでした。接続を確認してやり直してください。").then(function (check) {
+      var pkg = check.package, existing = check.existing, choices = check.choices || [];
+      var error = h("p", { class: "notice notice--error small", role: "alert", hidden: true });
+      var swatches = h("span", { class: "setting-row__swatches", "aria-hidden": "true" });
+      [pkg.colors.primary, pkg.colors.accent].forEach(function (c) { var chip = h("span", { class: "setting-row__swatch" }); chip.style.background = c; swatches.appendChild(chip); });
+      var facts = h("ul", { class: "import-dialog__facts small" },
+        text("li", "ロゴ: " + (pkg.logos.length ? "あり（" + pkg.logos.length + " 枚）" : "なし")),
+        text("li", "フッター: " + (pkg.footer || "なし")),
+        text("li", "ウォーターマーク: " + (pkg.watermark || "なし")),
+        exportedAt(pkg.exported_at) ? text("li", "エクスポートした日時: " + exportedAt(pkg.exported_at)) : null);
+      var lead;
+      if (existing && choices.indexOf("replace") >= 0) {
+        lead = h("div", { class: "notice import-dialog__same" }, text("p", "同じブランド「" + existing.name + "」がすでにあります（ID が同じです）。"),
+          text("p", "上書きすると、このブランドの新しい版になります。前の版も履歴に残ります。", "small"));
+      } else if (existing) {
+        lead = text("p", "付属のブランドと ID が同じなので、別のブランドとして追加します。", "notice small");
+      } else {
+        lead = null;
+      }
+      var close = h("button", { class: "btn btn--icon btn--ghost", type: "button", "aria-label": "閉じる" }, SS.icon("close"));
+      var actions = h("div", { class: "modal-actions import-dialog__actions" });
+      var dlg = h("dialog", { class: "kind-help import-dialog", "aria-labelledby": "import-dialog-title" },
+        h("div", { class: "kind-help__head" }, h("h2", { id: "import-dialog-title", text: "ブランドをインポート" }), close),
+        h("div", { class: "import-dialog__brand" }, swatches, text("p", pkg.name, "import-dialog__name")), facts, lead, error, actions);
+      var busy = false;
+      function done() { if (dlg.open) { dlg.close(); } }
+      function run(mode, label) {
+        if (busy) { return; }
+        busy = true; error.hidden = true;
+        var url = "/api/settings/brands/import?mode=" + mode + (mode === "replace" ? "&expected_revision_id=" + encodeURIComponent(existing.current_revision_id) : "");
+        SS.postFile(url, file, "ZIP を送信できませんでした。接続を確認してやり直してください。").then(function (result) {
+          if (result.verified !== true) { throw new SS.ApiError("インポートした結果を確認できませんでした。一覧を読み直してください。", "import_unverified"); }
+          done();
+          SS.toast("「" + result.item.name + "」を" + label + "。");
+          SS.navigate("/settings/brands/" + result.item.id);
+        }).catch(function (e) { busy = false; error.textContent = e && e.message ? e.message : "インポートできませんでした。"; error.hidden = false; });
+      }
+      function choice(label, cls, mode, toastLabel) { actions.appendChild(button(label, function () { run(mode, toastLabel); }, cls)); }
+      if (choices.indexOf("replace") >= 0) {
+        choice("上書きする", "btn--primary", "replace", "上書きしました");
+        choice("別のブランドとして追加", "", "add", "別のブランドとして追加しました");
+      } else {
+        choice(existing ? "追加する" : "インポート", "btn--primary", "add", existing ? "追加しました" : "インポートしました");
+      }
+      actions.appendChild(button("やめる", done, "btn--ghost"));
+      close.addEventListener("click", done);
+      dlg.addEventListener("click", function (e) { if (e.target === dlg) { done(); } });
+      dlg.addEventListener("close", function () { dlg.remove(); if (opener && opener.isConnected) { opener.focus(); } });
+      document.body.appendChild(dlg);
+      dlg.showModal();
+    }).catch(SS.toastError);
+  }
+
   function brandsScreen(root, catalog) {
-    function reload() { SS.navigate("/settings", true); }
+    function reload() { SS.navigate("/settings/brands", true); }
     var rows = h("div", { class: "setting-rows" });
     catalog.brands.forEach(function (entry) { rows.appendChild(brandRow(entry, reload)); });
     if (!catalog.brands.length) { rows.appendChild(text("p", "登録されたブランドがありません。", "reason")); }
@@ -776,12 +862,14 @@
           });
         } });
     }, "btn--primary");
-    var cap = catalog.capabilities.format;
+    var picker = h("input", { type: "file", accept: ".zip,application/zip", hidden: true });
+    picker.addEventListener("change", function () { var file = picker.files[0]; picker.value = ""; if (file) { importBrand(file, importButton); } });
+    var importButton = button("", function () { picker.click(); });
+    importButton.appendChild(SS.icon("upload")); importButton.appendChild(text("span", "インポート"));
+    // 書式（フッター・ページ番号・ウォーターマーク）はブランドの編集画面で設定する。一覧に「書式を登録」は置かない
     SS.clear(root).appendChild(h("div", { class: "settings-page" }, settingsHead("brands"),
-      h("div", { class: "settings-toolbar" }, create),
-      rows,
-      h("fieldset", { disabled: !cap.available }, SS.disabledButton(catalog.capabilities, "format")),
-      text("p", cap.reason, "reason")));
+      h("div", { class: "settings-toolbar" }, create, importButton, picker),
+      rows));
   }
 
   // ---- スライドスタイル ----
@@ -1035,6 +1123,7 @@
 
   SS.views.settings = function (root, route, guard) {
     SS.clear(root).appendChild(text("p", "設定を読み込んでいます…"));
+    if (route.section === "index") { settingsIndex(root); return Promise.resolve(); }
     return SS.api("/api/settings").then(function (catalog) {
       if (!guard()) { return; }
       if (route.section === "styles") { return stylesScreen(root, catalog); }
@@ -1044,7 +1133,7 @@
         if (!item) {
           SS.clear(root).appendChild(h("div", { class: "settings-page" },
             h("div", { class: "notice notice--error", role: "alert" }, text("p", "このブランドは見つかりません。一覧から選び直してください。")),
-            h("p", null, h("a", { href: "/settings", "data-nav": true, text: "← 一覧" }))));
+            h("p", null, h("a", { href: "/settings/brands", "data-nav": true, text: "← ブランドの一覧" }))));
           return;
         }
         return brandEditor(root, catalog, item);

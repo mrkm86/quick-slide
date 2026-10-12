@@ -793,18 +793,20 @@ details > summary:hover { color: var(--color-primitive-blue-900); text-decoratio
 
 /* P5 settings: colors are theme tokens, dimensions below are UI layout only. */
 .settings-page { max-width: 1400px; margin: auto; padding: 0; }   /* 余白は main が持つ（H1 の位置をホーム・スライドの画面とそろえる） */
-/* タブ（DADS: 枠 1px gray-420・選んだものは太字と上の太線 key-900・押せる高さ 48 以上）。
-   現在地は aria-current で示し、色だけに頼らず太字にする */
-.settings-tabs { display: flex; flex-wrap: wrap; margin: var(--space-4) 0; padding-left: 1px; border-bottom: 1px solid var(--color-border); }
-.settings-section-head { display: grid; gap: var(--space-1); margin: 0 0 var(--space-4); }
+/* 各設定の画面の見出し: パンくず → H1 と説明（タブはやめた: 狭い画面で崩れるため） */
+.settings-section-head { display: grid; gap: var(--space-1); margin: var(--space-2) 0 var(--space-4); }
 .settings-section-head p { margin: 0; }
-.settings-tabs a:any-link {
-  display: inline-flex; align-items: center; min-height: 56px; padding: 0 var(--space-5); margin: 0 0 -1px -1px;
-  color: var(--ink); text-decoration: none; background: var(--color-neutral-solid-gray-50);
-  border: 1px solid var(--color-border); border-top: 5px solid var(--color-border);
-}
-.settings-tabs a:hover { background: var(--brand-soft); text-decoration: underline; text-decoration-thickness: 1px; color: var(--ink); }
-.settings-tabs a[aria-current="page"] { color: var(--ink); font-weight: var(--font-weight-700); background: var(--color-neutral-white); border-top-color: var(--color-key-900); border-bottom-color: var(--color-neutral-white); }
+/* 設定のトップ: 各設定へのリンクの一覧（DADS のリソースリスト: 行全体がリンク・名前と説明・右に「›」） */
+.settings-index { list-style: none; margin: var(--space-5) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.settings-index__link:any-link { display: flex; align-items: center; gap: var(--space-3); min-height: 72px; padding: var(--space-3) var(--space-4);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-2); color: var(--ink); text-decoration: none; }
+.settings-index__link:hover { background: var(--brand-soft); }
+.settings-index__link:hover .settings-index__name { text-decoration-thickness: 3px; }
+.settings-index__text { display: grid; gap: var(--space-1); flex: 1 1 auto; min-width: 0; }
+.settings-index__name { font-size: var(--font-size-18); font-weight: var(--font-weight-700); color: var(--color-primitive-blue-1000);
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.settings-index__lead { color: var(--color-text-muted); font-size: var(--font-size-16); }
+.settings-index__chevron { width: 24px; height: 24px; fill: currentColor; flex: none; color: var(--color-text-muted); }
 .settings-layout { display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: var(--space-6); align-items: start; }
 .settings-list { position: sticky; top: 96px; max-height: calc(100vh - 112px); overflow: auto; }
 .settings-list h2 { font-size: var(--font-size-20); margin-top: var(--space-5); }
@@ -1514,6 +1516,14 @@ body[data-route="deck"] .topbar { padding: 0 var(--deck-pad); }
 .kind-help__head h2 { font-size: var(--font-size-20); }
 .kind-help__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); }
 .kind-help__item { display: grid; gap: var(--space-1); justify-items: start; }
+/* ブランドの読み込み（ZIP）の確かめの板 */
+.import-dialog__brand { display: flex; align-items: center; gap: var(--space-2); }
+.import-dialog__name { margin: 0; font-size: var(--font-size-20); font-weight: var(--font-weight-700); overflow-wrap: anywhere; }
+.import-dialog__facts { margin: var(--space-2) 0 var(--space-3); padding-left: 1.2em; color: var(--color-text-muted); }
+.import-dialog__same p { margin: 0; }
+.import-dialog__same p + p { margin-top: var(--space-1); }
+.import-dialog__actions { flex-wrap: wrap; }
+.settings-toolbar .btn .icon { width: 20px; height: 20px; fill: currentColor; }
 /* 全体の「チェック・ラジオを持つ label」の並び（横 1 列）より、カードの縦の並びを優先する */
 label.kind-card:has(> input[type="radio"]) { display: grid; align-items: start; gap: var(--space-1); cursor: pointer; }
 .create__brand { display: flex; align-items: center; gap: var(--space-2); }
