@@ -59,6 +59,8 @@ def validate_brand_config(config: dict[str, Any], assets: list[dict[str, Any]]) 
             "border",
             "surface",
             "base",
+            "ink",
+            "muted",
         },
         "brand.colors",
     )
@@ -67,7 +69,7 @@ def validate_brand_config(config: dict[str, Any], assets: list[dict[str, Any]]) 
     if "info" in colors:
         require_hex_color(colors["info"], "brand.colors.info")
     # 拡張役割（すべて省略可）。値があるときだけ検証する。
-    for key in ("primary_light", "primary_dark", "border", "surface", "base"):
+    for key in ("primary_light", "primary_dark", "border", "surface", "base", "ink", "muted"):
         if key in colors:
             require_hex_color(colors[key], f"brand.colors.{key}")
     if "semantic" in colors:

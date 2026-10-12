@@ -86,8 +86,12 @@ def preview_box(size: tuple[int, int], corner: str) -> dict[str, Any]:
 
 
 def corner_choices() -> list[dict[str, Any]]:
-    """設定画面の角の選択肢。v1 の予約枠（`clean_area`）は返さない（画面は無ければ描かない）。"""
-    return [{"value": c, "label": LOGO_POSITION_LABELS[c]} for c in LOGO_POSITIONS]
+    """設定画面の角の選択肢。v1 の予約枠（`clean_area`）は返さない。
+
+    `mark` は角の小さな絵に描く印の位置（枠いっぱいの横長のロゴを置いたときの `[x, y, w, h]`。1920×1080）。
+    画面は角の名前から位置を作らず、この数字を canvas で割るだけ。"""
+    return [{"value": c, "label": LOGO_POSITION_LABELS[c], "mark": preview_box((_BOX_W, _BOX_H), c)["logo_xywh"]}
+            for c in LOGO_POSITIONS]
 
 
 def chrome_boxes(logo_xywh: list[int] | None, corner: str, *, footer: bool, page_numbers: bool,

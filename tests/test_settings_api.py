@@ -89,6 +89,8 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual([c["value"] for c in control["corners"]], ["bottom-right", "bottom-left", "top-right"])
         self.assertEqual([c["label"] for c in control["corners"]], ["右下", "左下", "右上"])
         self.assertTrue(all("clean_area" not in c for c in control["corners"]))
+        # 角の小さな絵の印（枠いっぱいのロゴを置いた位置）。画面は角の名前から位置を作らない
+        self.assertEqual([c["mark"] for c in control["corners"]], [[1471, 999, 329, 44], [120, 999, 329, 44], [1471, 24, 329, 44]])
         self.assertEqual(control["canvas"], [1920, 1080])
 
     def test_layout_patterns_are_auto_then_the_engine_types(self):
@@ -215,11 +217,11 @@ class SettingsApiTests(unittest.TestCase):
 
     # --- 編集画面が送らないキーを消さない（送られたキーが勝ち、送られなかったキーは持ち越す） ---
     def screen_body(self, item, *, name, primary=None, accent=None, extra_colors=None):
-        """編集画面（web/app/settings.js の brandEditor）が組み直して送る形。fonts・semantic・gray は送らない。"""
+        """編集画面（web/app/settings.js の brandEditor）が組み直して送る形。fonts・semantic・gray と、画面から外した
+        情報色・主役色（淡・濃）・区切り線は送らない。「他の要素の色」で変えた色（base・surface・ink・muted）だけを extra_colors で送る。"""
         colors = item["config"]["colors"]
         c = {"schema_version": 1,
-             "colors": {"primary": primary or colors["primary"], "accent": accent or colors["accent"],
-                        "info": colors.get("info") or colors["semantic"]["info"], **(extra_colors or {})},
+             "colors": {"primary": primary or colors["primary"], "accent": accent or colors["accent"], **(extra_colors or {})},
              "logo": {"variant": "none", "placement": dict(self.catalog["logo_control"]["default"])},
              "footer": {"text": "", "style": {"position": "footer_center"}}}
         return {"name": name, "config": c, "assets": [], "expected_revision_id": item["current_revision_id"]}
@@ -259,14 +261,31 @@ class SettingsApiTests(unittest.TestCase):
         self.assertNotEqual(colors["primary_dark"], copied["config"]["colors"]["primary_dark"])
 
     def test_a_color_the_screen_manages_can_still_be_cleared(self):
+        """「他の要素の色」で変えた色（本文・補足・地の色・面の色）は、送らなければ自動に戻る。"""
         copied = self.duplicate_preset()
-        with_border = self.save(self.screen_body(copied, name="罫線つき", extra_colors={"border": "#123456"}),
-                                "/" + copied["id"])["item"]
-        self.assertEqual(with_border["config"]["colors"]["border"], "#123456")
-        cleared = self.save(self.screen_body(with_border, name="罫線を戻した"), "/" + copied["id"])["item"]
-        derived = palette.derive(copied["config"]["colors"]["primary"], copied["config"]["colors"]["accent"])["derived"]
-        self.assertEqual(cleared["config"]["colors"]["border"], derived["border"], "チェックを外した色は算出に戻る")
+        changed = self.save(self.screen_body(copied, name="文字の色を変えた", extra_colors={"ink": "#1A1A1A", "muted": "#555555", "base": "#FAF7F0"}),
+                            "/" + copied["id"])["item"]
+        self.assertEqual({k: changed["config"]["colors"][k] for k in ("ink", "muted", "base")},
+                         {"ink": "#1A1A1A", "muted": "#555555", "base": "#FAF7F0"})
+        theme = palette.engine_theme(changed["config"]["colors"])
+        self.assertEqual((theme["ink"], theme["muted"], theme["background"]), ("#1A1A1A", "#555555", "#FAF7F0"))
+        cleared = self.save(self.screen_body(changed, name="自動に戻した"), "/" + copied["id"])["item"]
+        self.assertNotIn("ink", cleared["config"]["colors"], "送らなかった本文の色は自動に戻る")
+        self.assertNotIn("muted", cleared["config"]["colors"])
+        self.assertEqual(cleared["config"]["colors"]["base"], "#FFFFFF")
         self.assertEqual(cleared["config"]["fonts"], copied["config"]["fonts"])
+
+    def test_overrides_removed_from_the_screen_are_kept_when_a_person_chose_them(self):
+        """画面から外した上書き（情報色・主役色（淡・濃）・区切り線）は、人が決めた値なら保存し直しても消えない。"""
+        copied = self.duplicate_preset()
+        config = copy.deepcopy(copied["config"])
+        config["colors"].update({"border": "#123456", "info": "#0E7490"})
+        legacy = self.save({"name": "区切り線つき", "config": config, "assets": [],
+                            "expected_revision_id": copied["current_revision_id"]}, "/" + copied["id"])["item"]
+        self.assertEqual(legacy["config"]["colors"]["border"], "#123456")
+        again = self.save(self.screen_body(legacy, name="名前だけ変えた"), "/" + copied["id"])["item"]
+        self.assertEqual(again["config"]["colors"]["border"], "#123456", "画面が送らない区切り線は持ち越す")
+        self.assertEqual(again["config"]["colors"]["semantic"]["info"], "#0E7490", "情報色も持ち越す")
 
     def test_keys_that_are_sent_win(self):
         copied = self.duplicate_preset()

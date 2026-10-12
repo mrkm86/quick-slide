@@ -106,6 +106,76 @@ class PaletteTests(unittest.TestCase):
         self.assertEqual(payload["input"], {"primary": "#0DB4F2", "accent": "#0DB4F2", "info": None})
         self.assertEqual(payload["note"], "配色は算出値です。生成される絵で実際にこの色が使われる保証はありません。")
 
+    def test_preview_gives_the_colors_the_presentation_engine_paints(self):
+        """見本の色（slide.roles）は、描く回と同じテーマからエンジンの deck.palette が作る色と同じ。"""
+        config = self.simple_config()
+        config["colors"] = {"primary": "#F5A623", "accent": "#399DD1"}
+        response = self.fx.post("/api/settings/brands/preview", {"config": config, "assets": []})
+        self.assertEqual(response.status, 200, response.body)
+        slide = response.json()["slide"]
+        self.assertIsNone(slide["error"])
+        self.assertEqual(slide["problems"], [])
+        engine = _engine_palette({k: v.lower() for k, v in response.json()["theme"].items()})
+        for role, value in slide["roles"].items():
+            self.assertEqual(value, engine[role], role)
+        # 橙は白の地で 4.5:1 に届かないので、同じ色相のまま濃くした色を使う（そのことを画面に伝える）
+        self.assertEqual([a["role"] for a in slide["adjusted"]], ["primary", "accent"])
+        self.assertNotEqual(slide["roles"]["primary"], "#f5a623")
+        self.assertGreaterEqual(_contrast_ratio(slide["roles"]["primary"].upper(), "#FFFFFF"), 4.5)
+
+    def test_reading_the_engine_palette_leaves_no_module_or_bytecode_behind(self):
+        import sys
+
+        from quick_slide import slide_palette
+
+        folders = (slide_palette.DECK_PALETTE.parent, slide_palette.KEYCOLORS.parent)
+        before = {folder: (folder / "__pycache__").exists() for folder in folders}
+        # ほかの試験が先に keycolors を読んでいることがある。読む前と同じ状態に戻ること（足さない・差し替えない）
+        modules = {name: sys.modules.get(name) for name in ("keycolors", "deck_palette")}
+        slide_palette._module = None      # 読み直させる
+        slide_palette.slide_colors({"primary": "#0DB4F2", "accent": "#0DB4F2"})
+        for name, module in modules.items():
+            self.assertIs(sys.modules.get(name), module, name)
+        for folder in folders:
+            self.assertEqual((folder / "__pycache__").exists(), before[folder], folder)
+
+    def test_the_text_colors_a_person_chose_reach_the_engine_and_unreadable_ones_are_reported(self):
+        from quick_slide import slide_palette
+
+        colors = {"primary": "#F5A623", "accent": "#399DD1", "ink": "#1A1A1A", "muted": "#555555"}
+        self.assertEqual({k: palette.snapshot_colors(colors)[k] for k in ("ink", "muted")}, {"ink": "#1A1A1A", "muted": "#555555"})
+        theme = palette.engine_theme(palette.snapshot_colors(colors))
+        self.assertEqual((theme["ink"], theme["muted"]), ("#1A1A1A", "#555555"))
+        self.assertNotIn("muted", palette.engine_theme(palette.snapshot_colors({"primary": "#F5A623", "accent": "#399DD1"})),
+                         "決めていない補足の色は渡さない（エンジンが DADS の Gray-600 を使う）")
+        out = slide_palette.slide_colors(colors)
+        self.assertEqual(out["problems"], [])
+        self.assertEqual((out["roles"]["ink"], out["roles"]["muted"]), ("#1a1a1a", "#555555"))
+        self.assertTrue(out["overrides"]["ink"]["applied"] and out["overrides"]["muted"]["applied"])
+        # 読めない補足の色は、エンジンの検査で問題として返る（画面は保存させない）
+        pale = slide_palette.slide_colors({"primary": "#F5A623", "accent": "#399DD1", "muted": "#DDDDDD"})
+        self.assertTrue(pale["problems"])
+        # 本文が読みにくくなる面の色はエンジンに渡さず、使っていないことと理由を返す
+        dark = slide_palette.slide_colors({"primary": "#F5A623", "accent": "#399DD1", "surface": "#999999"})
+        self.assertNotIn("surface", dark["theme"])
+        self.assertFalse(dark["overrides"]["surface"]["applied"])
+        self.assertTrue(dark["overrides"]["surface"]["reason"])
+
+
+def _engine_palette(theme: dict) -> dict:
+    """エンジンの deck.py の palette()（描く回が使うもの）を子のプロセスで呼ぶ。"""
+    import json
+    import subprocess
+    import sys
+
+    from quick_slide.paths import SKILLS_DIR
+
+    code = ("import json, sys; sys.path.insert(0, sys.argv[1]); import deck; "
+            "print(json.dumps(deck.palette(json.loads(sys.argv[2]))))")
+    out = subprocess.run([sys.executable, "-B", "-c", code, str(SKILLS_DIR / "html-slide" / "scripts"), json.dumps(theme)],
+                         capture_output=True, text=True, check=True)
+    return json.loads(out.stdout)
+
 
 class PaletteContrastTests(unittest.TestCase):
     def test_semantic_contrast_across_hues_and_lightnesses(self):
