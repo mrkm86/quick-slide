@@ -341,17 +341,17 @@
     say = say || function () {};
     return SS.api("/api/server/restart", { method: "POST", body: { mode: mode } }).then(function (r) {
       var oldInstance = r.instance_id, id = r.restart_id, target = r.same_url ? null : r.expected_url;
-      say(mode === "wait" && r.running_jobs ? "走っている仕事（" + r.running_jobs + " 件）が終わるのを待っています…" : "再起動しています…");
+      say(mode === "wait" && r.running_jobs ? "処理中の作業（" + r.running_jobs + " 件）が終わるのを待っています…" : "再起動しています…");
       var downSince = null;
       return new Promise(function (resolve) {
         function land(base) {
           var path = location.pathname + "?restarted=" + encodeURIComponent(id);
-          say("つなぎ直しています…");
+          say("再接続しています…");
           resolve(base || location.origin);
           if (base) { location.href = base + path; } else { location.replace(path); }
         }
         function down() {
-          if (downSince === null) { downSince = Date.now(); say("新しいサーバが起きるのを待っています…"); }
+          if (downSince === null) { downSince = Date.now(); say("再起動が終わるのを待っています…"); }
           if (target && Date.now() - downSince > RESTART_GRACE_MS) { land(target); return; }
           setTimeout(tick, RESTART_POLL_MS);
         }

@@ -479,8 +479,8 @@
       lead: "ロゴと配色を、スライドスタイルとは別に管理します。" },
     { section: "styles", href: "/settings/styles", label: "スライドスタイル", title: "スライドスタイル",
       lead: "スライドの型を登録します。ブランドの見た目とは別に管理します。" },
-    { section: "server", href: "/settings/server", label: "この機械", title: "この機械",
-      lead: "このスライド置き場を、どこから開けるようにするかを決めます。" }
+    { section: "server", href: "/settings/server", label: "アクセス", title: "アクセス",
+      lead: "Quick Slide を、このパソコンだけで使うか、ほかのパソコンやスマートフォンからも開けるようにするかを決めます。" }
   ];
 
   function settingsHead(section) {
@@ -694,7 +694,7 @@
   }
 
 
-  // ---- この機械の口（/settings/server。ADR 0049）----
+  // ---- アクセス（どこから開けるか。/settings/server。ADR 0049）----
   function serverScreen(root, catalog) {
     var state = catalog.server;
     var shut = state.bind_scope === "loopback";   // ループバックかはサーバがアドレスの意味で決めた値を使う
@@ -702,23 +702,23 @@
     var dirty = false;
 
     var choice = h("div", { class: "setting-field" },
-      text("span", "どこから開けるか"),
+      text("span", "開ける範囲"),
       h("div", { class: "setting-choices" },
-        radio("here", "この機械の中だけ", "いちばん安全です。ほかの機械のブラウザからは開けません。", shut),
-        radio("out", "ほかの機械からも開ける", "書いたアドレスの網から開けるようになります。", !shut)));
+        radio("here", "このパソコンだけ（おすすめ）", "このパソコンのブラウザからだけ開けます。いちばん安全です。", shut),
+        radio("out", "ほかの端末からも開けるようにする", "指定したネットワーク（社内 LAN や VPN など）につながっているパソコンやスマートフォンから開けます。", !shut)));
 
-    var addr = field("待つアドレス", shut ? "" : state.host,
+    var addr = field("公開する IP アドレス", shut ? "" : state.host,
       { placeholder: "100.100.1.23", spellcheck: "false", autocapitalize: "off" });
-    var names = field("この名前でも開けるようにする", state.host_names.join("\n"),
+    var names = field("ホスト名（任意）", state.host_names.join("\n"),
       { multiline: true, rows: "3", placeholder: "my-mac\nmy-mac.example.net", spellcheck: "false", autocapitalize: "off" });
-    var port = field("ポート", String(state.port || ""), { inputmode: "numeric", maxlength: 5, spellcheck: "false" });
+    var port = field("ポート番号", String(state.port || ""), { inputmode: "numeric", maxlength: 5, spellcheck: "false" });
     port.el.addEventListener("input", function () { dirty = true; SS.settingsLeave = { dirty: function () { return dirty; } }; });
     var away = h("div", { class: "setting-away" }, addr.node,
-      text("p", "この機械に生えているアドレスを1つ書きます。「ぜんぶ」を意味する 0.0.0.0 は書けません。どの網に出すのかを選んでください。", "small muted"),
+      text("p", "このパソコンに割り当てられている IP アドレスを 1 つ入力します。どのネットワークに公開されるかは、このアドレスで決まります。すべてのネットワークを意味する 0.0.0.0 は使えません。", "small muted"),
       names.node,
-      text("p", "名前は一行に一つ。書いた名前でだけ開けます。書かないとアドレスでしか開けません。", "small muted"),
+      text("p", "IP アドレスの代わりに名前で開きたいときに書きます。1 行に 1 つずつ。空欄なら IP アドレスで開きます。", "small muted"),
       h("div", { class: "notice notice--warn" },
-        text("p", "Quick Slide には合言葉がありません。ここで開けた網から届く端末は、誰でもスライドを読めて、消せて、画像の枠を使えます。自分の端末しかいない網にだけ開いてください。")));
+        text("p", "Quick Slide にはパスワードがありません。公開したネットワークにつながっている人は誰でも、スライドの閲覧・削除や、画像生成の利用枠の消費ができてしまいます。自分の端末だけがつながっているネットワークにだけ公開してください。")));
 
     function radio(value, label, note, checked) {
       var input = h("input", { type: "radio", name: "server-openness", value: value });
@@ -745,15 +745,15 @@
       };
       var portText = port.el.value.trim();
       if (portText && String(state.port) !== portText) {
-        if (!/^[0-9]{1,5}$/.test(portText)) { SS.clear(errors).appendChild(text("p", "ポートは数で書いてください。", "notice notice--error")); return; }
+        if (!/^[0-9]{1,5}$/.test(portText)) { SS.clear(errors).appendChild(text("p", "ポート番号は数字で入力してください。", "notice notice--error")); return; }
         body.port = parseInt(portText, 10);
       }
       SS.clear(errors);
       save.disabled = true;
       SS.api("/api/settings/server", { method: "POST", body: body }).then(function (result) {
-        if (result.verified !== true) { throw new SS.ApiError("保存できたか確かめられませんでした。画面を読み直してください。", "save_unverified"); }
+        if (result.verified !== true) { throw new SS.ApiError("保存できたか確認できませんでした。画面を読み込み直してください。", "save_unverified"); }
         dirty = false; SS.settingsLeave = null;
-        SS.toast("保存しました。「再起動」を押すと効きます。");
+        SS.toast("保存しました。「再起動」を押すと反映されます。");
         SS.navigate("/settings/server", true);
       }).catch(function (error) {
         save.disabled = false;
@@ -762,28 +762,28 @@
     }, "btn--primary");
 
     var now = shut
-      ? "いまは、この機械の中だけに開いています。"
-      : "いまは " + state.host + " に開いています。ほかの機械から届きます。";
+      ? "現在は、このパソコンからだけ開けます。"
+      : "現在は " + state.host + " で公開しています。ほかの端末からも開けます。";
     var live = state.restart_required || state.settings_error ? restartBanner(state) : null;
 
     away.hidden = shut;
     SS.clear(root).appendChild(h("div", { class: "settings-page" }, settingsHead("server"),
       h("div", { class: "setting-panel" },
         text("p", now, "muted"), live, choice, away, port.node,
-        text("p", "ふつうは 7801 のままにします。変えたら、開く URL のポートも変わります。", "small muted"), errors,
+        text("p", "通常は 7801 のままで構いません。変えると、開くときの URL の番号も変わります。", "small muted"), errors,
         h("div", { class: "setting-actions" }, save))));
   }
 
-  // 「再起動が必要」の帯（この機械の画面）。走っている仕事があれば「終わるのを待って」と「今すぐ」を出す。
+  // 「再起動が必要」の帯（アクセスの画面）。処理中の作業があれば「終わるのを待って」と「今すぐ」を出す。
   // 押したあとの進み・つなぎ直し・新しい URL への移動は core.js の SS.restartServer
   function restartBanner(state) {
     var box = h("div", { class: "notice notice--warn restart-banner", role: "status" });
     if (state.settings_error) {
-      box.appendChild(text("p", "設定のファイルを読めません（" + state.settings_error + "）。直すまで再起動はできません。"));
+      box.appendChild(text("p", "設定ファイルを読み込めません（" + state.settings_error + "）。ファイルを直すまで再起動できません。"));
       return box;
     }
-    box.appendChild(text("p", "保存した待ち受けはまだ効いていません。動いているサーバは " + state.running_url
-      + " で待っています。再起動すると " + state.expected_url + " で開き直します。"));
+    box.appendChild(text("p", "保存した設定はまだ反映されていません。現在は " + state.running_url
+      + " で動いています。再起動すると " + state.expected_url + " で開けるようになります。"));
     var progress = text("p", "", "small restart-banner__progress");
     var buttons = h("div", { class: "setting-actions restart-banner__actions" });
     function go(mode) {
@@ -795,13 +795,13 @@
       });
     }
     if (!state.restartable) {
-      box.appendChild(text("p", "このサーバは画面から再起動できません。コマンド（start）で起動し直してください。", "small"));
+      box.appendChild(text("p", "この画面からは再起動できません。コマンド（start）で起動し直してください。", "small"));
       return box;
     }
     if (state.running_jobs > 0) {
-      buttons.appendChild(button("終わるのを待って再起動（" + state.running_jobs + " 件）", function () { go("wait"); }, "btn--primary restart-wait"));
+      buttons.appendChild(button("処理中の " + state.running_jobs + " 件が終わってから再起動", function () { go("wait"); }, "btn--primary restart-wait"));
       buttons.appendChild(button("今すぐ再起動", function () {
-        if (!SS.confirm("走っている仕事を止めて再起動します。描いている途中のものは再起動のあと続きから描き、台本を書いている途中のものは失敗になります。よろしいですか？")) { return; }
+        if (!SS.confirm("処理中の作業を止めて再起動します。画像を描いている途中のものは、再起動のあとに続きから描きます。台本を書いている途中のものは失敗になります。よろしいですか？")) { return; }
         go("now");
       }, "restart-now"));
     } else {
