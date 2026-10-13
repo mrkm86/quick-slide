@@ -18,7 +18,9 @@ class ChildEnvTest(unittest.TestCase):
         # 会話しているアプリが Claude Code をこのトークンでログインさせていることがある。消すと台本係が止まる
         self.assertEqual(env["ANTHROPIC_AUTH_TOKEN"], "t")
         self.assertEqual(env["CLAUDE_CODE_OAUTH_TOKEN"], "t")
-        self.assertEqual(env["QUICK_SLIDE_HOME"], "/tmp/qs-home")
+        self.assertEqual(env["QUICK_SLIDE_HOME"], str(Path("/tmp/qs-home")))
+        # エンジンの stdout・stderr を UTF-8 にそろえる（Windows の既定は cp932 で、サーバが読み違える）
+        self.assertEqual(env["PYTHONUTF8"], "1")
 
     def test_extra_cannot_put_an_api_key_back(self) -> None:
         env = child_env(home=Path("/tmp/qs-home"), base={}, extra={"OPENAI_API_KEY": "x"})
