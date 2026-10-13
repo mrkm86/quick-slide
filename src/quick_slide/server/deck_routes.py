@@ -422,7 +422,11 @@ def _purge_all_capability(ready: int) -> dict[str, Any]:
 
 
 def route_deck(server: "QuickSlideServer", req: "Request") -> "Response":
+    from .. import edit_kinds
+    from .edit_routes import can_generate_images  # 遅延 import（循環回避）
+
     deck_id = req.params["deck_id"]
+    can_generate = can_generate_images(server)   # エンジンに聞く（少し掛かる）ので、鍵の外で
     with server.store_lock:
         assert server.store is not None
         store = server.store
@@ -443,6 +447,8 @@ def route_deck(server: "QuickSlideServer", req: "Request") -> "Response":
         "capabilities": view["capabilities"],
         # 書き出しのメニューの形式（モードで決まる。可否は capabilities.export と、ここの形式ごとの理由）
         "export_formats": _export_formats(view["row"]["mode"]),
+        # 修正の欄の「何を直しますか？」に出す種類と選択肢（モードと機械で決まる。docs/adr/0008-edit-kinds.md）
+        "edit_kinds": edit_kinds.offered(view["row"]["mode"], can_generate=can_generate),
     })
 
 

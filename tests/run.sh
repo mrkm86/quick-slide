@@ -34,5 +34,5 @@ cd "$ROOT"
 "$PY" -m unittest discover -s tests -t tests "$@"
 rc=$?
 # 念のため（PYTHONDONTWRITEBYTECODE を外して走らせた後でも残さない）
-find "$ROOT/src" "$ROOT/tests" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null
+find "$ROOT/src" "$ROOT/tests" "$ROOT/skills" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null   # エンジンを子で呼ぶ試験が skills にも残す
 exit $rc

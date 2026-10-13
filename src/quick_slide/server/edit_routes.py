@@ -3,7 +3,8 @@
 
 状態を変える（POST。Host + Origin + セッションの 3 重検査は `app._route` が掛ける）:
 - `POST /api/decks/<id>/instructions`  {scope: page|pages|deck, slide_id?, slide_ids?, text, edit_mode?, attachments?,
-                                        confirm_pages?, source?, origin_runtime?}  ページを指定した直し
+                                        kind?, options?, confirm_pages?, source?, origin_runtime?}  ページを指定した直し
+                                        （kind・options は「何を直しますか？」。docs/adr/0008-edit-kinds.md）
 - `POST /api/decks/<id>/adopt`         {choices: {slide_id: version_id}}  版スタックの前の姿に切り替える（描き直さない）
 - `POST /api/decks/<id>/pages/insert`  {after_slide_id, text, attachments?}  差し込み
 - `POST /api/decks/<id>/pages/<slide_id>/duplicate`・`/visibility` {hidden}・`/pages/reorder` {slide_ids}
@@ -21,9 +22,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from .. import edit_kinds
 from ..engines import engine_for
 from ..enums import EDIT_SOURCES, ORIGIN_RUNTIMES
 from ..errors import NotFoundError, ValidationError
+from ..ids import PRESET_STYLE_STANDARD_ID, PRESET_STYLE_VISUAL_ID
 from ..pins import PinRefused, pin_source
 from ..scriptdoc import one_page, screen_pages, with_hidden, with_order, with_restored
 from ..security.secret_scan import find_secret_like
@@ -128,6 +131,11 @@ def _accepted(server: "QuickSlideServer", deck_id: str, result: dict[str, Any], 
                        "message": message, "deck": card, **extra})
 
 
+def can_generate_images(server: "QuickSlideServer") -> bool:
+    """この機械で絵を生成できるか（Codex がある）。確かめ方はピッチを作り始められるかと同じ（docs/adr/0005）。"""
+    return "pitch" not in server.kind_refusals()
+
+
 def _numbers(positions: list[int]) -> str:
     return "・".join(str(n) for n in positions)
 
@@ -144,12 +152,20 @@ def route_instructions(server: "QuickSlideServer", req: "Request") -> "Response"
         raise ApiError(400, "validation_error", "edit_mode は minor か remake です。")
     source, runtime = _source(body)
     text = _text(server, body, required=TEXT_REQUIRED_REASON)
+    can_generate = can_generate_images(server)   # エンジンに聞く（少し掛かる）ので、鍵の外で
     with server.store_lock:
         store = server.store
         row = _live_deck_row(store, deck_id)
         atts = _attachments(store, body, row)
-        if not text and not atts:
+        try:
+            kind, options = edit_kinds.parse(row["mode"], body.get("kind"), body.get("options"), can_generate=can_generate)
+        except ValueError as exc:
+            raise ApiError(400, "edit_kind_invalid", str(exc)) from None
+        if kind is None and not text and not atts:
             raise ApiError(400, "text_required", TEXT_REQUIRED_REASON)
+        lack = edit_kinds.missing(kind, options, text=text, attachments=len(atts))
+        if lack:
+            raise ApiError(400, "text_required" if kind == "text" else "attachment_required", lack)
         pages, _ = _head_pages(store, deck_id)
         if scope == "page":
             chosen = [_page(pages, body.get("slide_id"))]
@@ -172,6 +188,7 @@ def route_instructions(server: "QuickSlideServer", req: "Request") -> "Response"
         result = store.create_edit(deck_id, {
             "op": "revise", "scope": scope, "pages": [p["slide_id"] for p in chosen], "positions": positions,
             "text": text, "edit_mode": edit_mode, "attachments": atts, "source": source, "origin_runtime": runtime,
+            "kind": kind, "options": options, "can_generate": can_generate,
         })
     what = "スライド全体" if scope == "deck" else f"{_numbers(positions)}ページ"
     return _accepted(server, deck_id, result, f"{what}の直しを受け付けました。直し終えると画面の絵が替わります。")
@@ -246,6 +263,7 @@ def route_insert(server: "QuickSlideServer", req: "Request") -> "Response":
     if not text:
         raise ApiError(400, "text_required", INSERT_TEXT_REQUIRED_REASON)
     source, runtime = _source(body)
+    can_generate = can_generate_images(server)   # エンジンに聞く（少し掛かる）ので、鍵の外で
     with server.store_lock:
         store = server.store
         row = _live_deck_row(store, deck_id)
@@ -256,7 +274,7 @@ def route_insert(server: "QuickSlideServer", req: "Request") -> "Response":
         if after is not None:
             _page(pages, after)
         result = store.create_edit(deck_id, {"op": "insert", "after": after, "text": text, "attachments": atts,
-                                             "source": source, "origin_runtime": runtime})
+                                             "source": source, "origin_runtime": runtime, "can_generate": can_generate})
     return _accepted(server, deck_id, result, "ページを足しています。できると画面に出ます。", task_id=result["job"]["id"])
 
 
@@ -385,17 +403,30 @@ def route_resume(server: "QuickSlideServer", req: "Request") -> "Response":
 
 
 REBUILD_NOTICES = {
-    "presentation": "いまの台本のまま、選んだブランド（色・ロゴ・書式）とスタイルで組み直します。文章は変わりません。"
-                    "描いた絵はそのまま使います（画風が変わるスタイルを選んだときだけ、絵を描き直します）。",
-    "pitch": "いまの台本のまま、選んだブランドとスタイルで描き直します。ピッチは色やスタイルが絵の描き方に入るので、"
+    "presentation": "いまの台本のまま、選んだブランド（色・ロゴ・書式）と見せ方で組み直します。文章は変わりません。"
+                    "描いた絵はそのまま使います（画風が変わる見せ方を選んだときだけ、絵を描き直します）。",
+    "pitch": "いまの台本のまま、選んだブランドと見せ方で描き直します。ピッチは色や見せ方が絵の描き方に入るので、"
              "変えたページの絵を描き直します（ChatGPT の枠を使います）。何も変えなければ描きません。",
     "motion": "いまの台本のまま、選んだブランドの色とロゴで組み直します。文章と動きは変わりません。"
               "全部の拍を開いて確かめ直すので、場面が多いと数分かかります（ChatGPT の枠は使いません）。",
 }
 
 
+# 組み直しで選べる見せ方（docs/adr/0009）。付属のスタイルのうち、あとから替えられる 2 つだけ。
+# 1 枚にまとめる（infographic）はデッキの最初の回で決まり替えられない。モーションは見せ方を持たない（テーマとロゴだけ）
+REBUILD_STYLES = {PRESET_STYLE_STANDARD_ID: "説明・報告（文字と図で説明する）",
+                  PRESET_STYLE_VISUAL_ID: "ビジュアル（絵で印象を残す）"}
+
+
 def _named(row: dict[str, Any]) -> dict[str, Any]:
     return {"id": row["id"], "name": row["name"], "kind": row["kind"], "deleted": row["deleted_at"] is not None}
+
+
+def _rebuild_styles(store: Any, mode: str) -> list[dict[str, Any]]:
+    if not engine_for(mode).takes_style:
+        return []
+    rows = {t["id"]: t for t in store.list_styles()}
+    return [{**_named(rows[sid]), "name": label} for sid, label in REBUILD_STYLES.items() if sid in rows]
 
 
 def route_look(server: "QuickSlideServer", req: "Request") -> "Response":
@@ -407,9 +438,10 @@ def route_look(server: "QuickSlideServer", req: "Request") -> "Response":
         brand = store.brand(store.brand_revision(row["brand_revision_id"])["brand_id"])
         style = store.style(store.style_revision(row["style_revision_id"])["style_id"])
         brands = [_named(b) for b in store.list_brands()]
-        styles = [_named(t) for t in store.list_styles()]
+        styles = _rebuild_styles(store, row["mode"])
         caps = deck_view(store, deck_id)["capabilities"]
-    return _json(200, {"deck_id": deck_id, "mode": row["mode"], "brand": _named(brand), "style": _named(style),
+    current = {**_named(style), "name": REBUILD_STYLES.get(style["id"], style["name"])}
+    return _json(200, {"deck_id": deck_id, "mode": row["mode"], "brand": _named(brand), "style": current,
                        "brands": brands, "styles": styles, "notice": REBUILD_NOTICES[row["mode"]],
                        "capability": caps["rebuild"]})
 

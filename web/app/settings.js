@@ -5,8 +5,6 @@
   "use strict";
   var SS = window.SS, h = SS.h;
   var clone = function (value) { return JSON.parse(JSON.stringify(value)); };
-  var styleKeys = ["emphasis_prompt", "tone", "typeface", "density", "visual_ratio", "allowed_layouts", "style_recipe", "margins", "canvas",
-    "engine_style", "image_look", "style_note"];
   var LOGO_ROLE = { normal: "logo_normal", white: "logo_white", transparent: "logo_transparent", symbol: "logo_symbol" };
   var nextInput = 0;
   SS.settingsLeave = null;
@@ -20,12 +18,6 @@
     var id = "setting-input-" + (++nextInput);
     var control = h(attrs && attrs.multiline ? "textarea" : "input", Object.assign({ id: id, type: "text" }, attrs || {}));
     control.value = value == null ? "" : value;
-    return { el: control, node: h("label", { class: "setting-field", for: id }, text("span", label), control) };
-  }
-  function select(label, value, options) {
-    var id = "setting-input-" + (++nextInput);
-    var control = h("select", { id: id }, options.map(function (option) { return h("option", { value: option.value, text: option.label }); }));
-    control.value = value;
     return { el: control, node: h("label", { class: "setting-field", for: id }, text("span", label), control) };
   }
   function normalizeHex(value) {
@@ -355,28 +347,8 @@
     return { node: h("div", { class: "slide-colors-wrap" }, problems, details), update: update, details: details };
   }
 
-  // ---- ヘルプ（見出しの横の「？」）----
-  // 説明は押したときだけ出す。<details> なので、キーボードでも開け、読み取り専用の fieldset の中でも押せる（ボタンは無効になる）。
-  // 外を押すか Esc で閉じる。中身は見出しの行の下に、行の幅で重ねて出す
-  function helpTip(topic, paragraphs) {
-    var summary = h("summary", { class: "help-tip__button", "aria-label": topic + "の説明", title: topic + "の説明" }, SS.icon("help"));
-    var panel = h("div", { class: "help-tip__panel" }, paragraphs.map(function (line) { return text("p", line); }));
-    var tip = h("details", { class: "help-tip" }, summary, panel);
-    // 幅は見出しの行の長さに引きずられない: 最大 32rem で、画面の左右 16px の内側に収まる幅と位置に置く（行が短いと細長くなるため）
-    function fit() {
-      var row = (tip.parentNode || tip).getBoundingClientRect(), view = document.documentElement.clientWidth, gutter = 16;
-      var width = Math.min(512, view - gutter * 2);
-      var left = Math.max(gutter - row.left, Math.min(0, view - gutter - (row.left + width)));
-      panel.style.width = width + "px"; panel.style.left = left + "px";
-    }
-    function off() { document.removeEventListener("click", onClick, true); document.removeEventListener("keydown", onKey, true); }
-    function onClick(event) { if (!tip.isConnected) { off(); return; } if (!tip.contains(event.target)) { tip.open = false; } }
-    function onKey(event) { if (!tip.isConnected) { off(); return; } if (event.key === "Escape") { tip.open = false; summary.focus(); } }
-    tip.addEventListener("toggle", function () {
-      if (tip.open) { fit(); document.addEventListener("click", onClick, true); document.addEventListener("keydown", onKey, true); } else { off(); }
-    });
-    return tip;
-  }
+  // ヘルプ（見出しの横の「？」）は共通の部品（core.js の SS.helpTip）
+  var helpTip = SS.helpTip;
   // 見出し（や項目名）と、その横の「？」を 1 行に並べる。helps が無ければ見出しだけ
   function titleRow(heading, topic, helps) {
     return helps && helps.length ? h("div", { class: "title-row" }, heading, helpTip(topic, helps)) : heading;
@@ -685,9 +657,7 @@
   // 設定の中の行き先。トップはこの並びでリンクの一覧を出す（タブはやめた: 狭い画面で崩れるため）
   var SETTINGS_SECTIONS = [
     { section: "brands", href: "/settings/brands", label: "ブランド", title: "ブランド",
-      lead: "ロゴと配色を、スライドスタイルとは別に管理します。" },
-    { section: "styles", href: "/settings/styles", label: "スライドスタイル", title: "スライドスタイル",
-      lead: "スライドの型を登録します。ブランドの見た目とは別に管理します。" },
+      lead: "スライドに載せるロゴと配色を管理します。" },
     { section: "server", href: "/settings/server", label: "アクセス", title: "アクセス",
       lead: "Quick Slide を、このパソコンだけで使うか、ほかのパソコンやスマートフォンからも開けるようにするかを決めます。" },
     { section: "samples", href: "/settings/samples", label: "見本", title: "見本",
@@ -877,136 +847,6 @@
       rows));
   }
 
-  // ---- スライドスタイル ----
-  function styleEditor(panel, catalog, item, copying, onDone, selectAllPatterns) {
-    var data = clone(item), readonly = item.kind === "preset" && !copying;
-    var form = h("fieldset", { disabled: readonly }), errors = h("div", { role: "alert" });
-    var name = field("名前", data.name + (copying ? " のコピー" : ""), { maxlength: 200, placeholder: "例: 経理向け月次報告" });
-    var emphasis = field("誰に向けるか・どう書くか", data.config.emphasis_prompt || "", { multiline: true, rows: 6, required: true, placeholder: "例: 経営会議の参加者に向け、結論と数値を先に示す。専門用語は短く説明する。" });
-    var tone = select("文章の調子", data.config.tone, catalog.tones);
-    function dialOptions(key) {
-      return [{ value: "", label: "指定なし（これまでどおり）" }].concat(catalog.style_dials[key]);
-    }
-    var typeface = select("文字の感じ", data.config.typeface || "", dialOptions("typeface"));
-    var density = select("密度", data.config.density || "", dialOptions("density"));
-    var visualRatio = select("絵の量", data.config.visual_ratio || "", dialOptions("visual_ratio"));
-    var recipe = field("描き味の補足（任意）", data.config.style_recipe || "", { placeholder: "例: 紙に描いたような柔らかい線" });
-    // エンジンのスタイル（モードごと）・画風・作風の一言（P4。描く回のたびにエンジンへ渡る）
-    var engineStyle = data.config.engine_style || {}, defaults = catalog.engine_style_defaults || {};
-    var presentationStyle = select("プレゼン（編集できる PPTX）の見せ方", engineStyle.presentation || defaults.presentation, catalog.engine_styles.presentation);
-    var pitchStyle = select("ピッチ（絵で描く資料）の見せ方", engineStyle.pitch || defaults.pitch, catalog.engine_styles.pitch);
-    var imageLook = select("画風", data.config.image_look || "", [{ value: "", label: "指定なし（見せ方の既定）" }].concat(catalog.image_looks));
-    var styleNote = field("作風の一言（任意）", data.config.style_note || "", { maxlength: (catalog.limits || {}).style_note || 400, placeholder: "例: 落ち着いた色で、余白を広く" });
-
-    // 使うパターン = 台本係が使ってよいページの型（エンジンの型の一覧）。「おまかせ」はすべて（ほかと一緒には選べない）
-    var currentPatterns = data.config.allowed_layouts || ["auto"];
-    var patternInputs = [], autoInput = null, patternError = h("div", { role: "alert" });
-    var patternStatus = h("div", { class: "pattern-picker__status", "aria-live": "polite" });
-    var patternGrid = h("div", { class: "pattern-grid" });
-    catalog.layout_patterns.forEach(function (option) {
-      var id = "style-pattern-" + (++nextInput);
-      var input = h("input", { type: "checkbox", id: id, value: option.value });
-      input.checked = option.value === "auto" ? (selectAllPatterns || currentPatterns.indexOf("auto") !== -1)
-        : (!selectAllPatterns && currentPatterns.indexOf(option.value) !== -1);
-      if (option.value === "auto") { autoInput = input; } else { patternInputs.push(input); }
-      patternGrid.appendChild(h("label", { class: "pattern-choice" + (option.value === "auto" ? " pattern-choice--auto" : ""), for: id }, input,
-        h("span", { class: "pattern-choice__copy" }, text("strong", option.label), text("span", option.use, "pattern-choice__use"))));
-    });
-    var patterns = h("fieldset", { class: "pattern-picker" }, text("legend", "使うパターン（ページの型）"),
-      text("p", "「おまかせ」なら台本係がすべての型から選びます。使う型をしぼるときは「おまかせ」を外して、使う型だけを選びます。", "small muted"),
-      h("div", { class: "pattern-picker__actions" },
-        button("おまかせに戻す", function () { autoInput.checked = true; patternInputs.forEach(function (input) { input.checked = false; }); syncPatternProblem(); }, "btn--small"),
-        button("型をすべて外す", function () { autoInput.checked = false; patternInputs.forEach(function (input) { input.checked = false; }); syncPatternProblem(); }, "btn--small")),
-      patternStatus, patternGrid, patternError);
-
-    var saveButton = button("保存する", save, "btn--primary");
-    function selectedPatterns() {
-      if (autoInput && autoInput.checked) { return ["auto"]; }
-      return patternInputs.filter(function (input) { return input.checked; }).map(function (input) { return input.value; });
-    }
-    autoInput.addEventListener("change", function () { if (autoInput.checked) { patternInputs.forEach(function (input) { input.checked = false; }); } });
-    patternInputs.forEach(function (input) { input.addEventListener("change", function () { if (input.checked) { autoInput.checked = false; } }); });
-    function syncPatternProblem() {
-      var chosen = selectedPatterns(), empty = chosen.length === 0;
-      SS.clear(patternStatus);
-      patternStatus.appendChild(text("p", chosen[0] === "auto" ? "おまかせ（すべての型）" : chosen.length + "種類の型を選択中", "small"));
-      SS.clear(patternError);
-      if (empty) { patternError.appendChild(text("p", "使うパターンを1つ以上選んでください。", "notice notice--error small")); }
-      saveButton.disabled = readonly || empty;
-      return empty;
-    }
-    patternInputs.concat([autoInput]).forEach(function (input) { input.addEventListener("change", syncPatternProblem); });
-    function body() {
-      var c = {};
-      styleKeys.forEach(function (key) { if (Object.prototype.hasOwnProperty.call(data.config, key)) { c[key] = clone(data.config[key]); } });
-      c.emphasis_prompt = emphasis.el.value.trim(); c.tone = tone.el.value;
-      [["typeface", typeface], ["density", density], ["visual_ratio", visualRatio]].forEach(function (entry) {
-        if (entry[1].el.value) { c[entry[0]] = entry[1].el.value; } else { delete c[entry[0]]; }
-      });
-      if (recipe.el.value.trim() || Object.prototype.hasOwnProperty.call(data.config, "style_recipe")) {
-        c.style_recipe = recipe.el.value.trim();
-      } else { delete c.style_recipe; }
-      c.allowed_layouts = selectedPatterns();
-      c.engine_style = { presentation: presentationStyle.el.value, pitch: pitchStyle.el.value };
-      if (imageLook.el.value) { c.image_look = imageLook.el.value; } else { delete c.image_look; }
-      if (styleNote.el.value.trim() || Object.prototype.hasOwnProperty.call(data.config, "style_note")) {
-        c.style_note = styleNote.el.value.trim();
-      } else { delete c.style_note; }
-      return { name: name.el.value.trim(), config: c, source_id: copying ? item.id : undefined,
-        expected_revision_id: item ? item.current_revision_id : undefined };
-    }
-    function save() {
-      SS.clear(errors);
-      if (!name.el.value.trim()) { errors.appendChild(text("p", "名前を入力してください。", "notice notice--error")); return; }
-      if (!emphasis.el.value.trim()) { errors.appendChild(text("p", "誰に向けて、どう書くかを入力してください。", "notice notice--error")); return; }
-      if (syncPatternProblem()) { return; }
-      SS.api("/api/settings/styles" + (item && !copying ? "/" + item.id : ""), { method: "POST", body: body() }).then(function (result) {
-        if (result.verified !== true) { throw new SS.ApiError("保存結果を確認できませんでした。", "save_unverified"); }
-        SS.toast("スタイルを保存しました。", { sticky: true }); onDone();
-      }).catch(function (error) { SS.clear(errors).appendChild(text("p", safeError(error), "notice notice--error")); });
-    }
-    SS.clear(panel); panel.appendChild(text("h2", copying ? "複写してスタイルを作る" : "スライドスタイルを編集"));
-    if (readonly) { panel.appendChild(text("p", item.capabilities.edit.reason, "notice")); }
-    if (item && !copying) { panel.appendChild(button("複写して作る", function () { styleEditor(panel, catalog, item, true, onDone, false); })); }
-    panel.appendChild(errors); panel.appendChild(form);
-    form.appendChild(name.node);
-    form.appendChild(text("h3", "文章のこと", "style-section-title"));
-    form.appendChild(emphasis.node);
-    form.appendChild(text("p", "想定する読み手と、何をどの順で伝えるかを書きます。企画と画像づくりの両方に使います。", "small muted style-field-help"));
-    form.appendChild(tone.node);
-    form.appendChild(text("h3", "絵のこと", "style-section-title"));
-    form.appendChild(h("div", { class: "style-dials" }, typeface.node, density.node, visualRatio.node));
-    form.appendChild(text("p", "密度を「詰める」にすると、要素を多く置く見せ方です。", "small muted style-field-help"));
-    form.appendChild(recipe.node);
-    form.appendChild(text("h3", "描き方（エンジン）", "style-section-title"));
-    form.appendChild(h("div", { class: "style-dials" }, presentationStyle.node, pitchStyle.node, imageLook.node));
-    form.appendChild(styleNote.node);
-    form.appendChild(text("p", "スライドを次に描くときから効きます（描いてあるスライドは、直すか組み直すまで変わりません）。全ページを1枚に描く infographic は、ピッチで最初に描くときにだけ選べます。", "small muted style-field-help"));
-    form.appendChild(patterns);
-    form.appendChild(h("div", { class: "settings-actions" }, saveButton));
-    syncPatternProblem();
-    if (item && !copying && !readonly) {
-      panel.appendChild(button("一覧から削除", function () {
-        if (!SS.confirm("「" + item.name + "」を一覧から削除します。よろしいですか？")) { return; }
-        SS.api("/api/settings/styles/" + item.id + "/delete", { method: "POST", body: { expected_revision_id: item.current_revision_id } }).then(function (result) { if (!result.deleted) { throw new SS.ApiError("削除を確認できませんでした。", "delete_unverified"); } SS.toast("スタイルを削除しました。", { sticky: true }); onDone(); }).catch(function (error) { SS.clear(errors).appendChild(text("p", safeError(error), "notice notice--error")); });
-      }, "btn--small"));
-    }
-  }
-
-  function stylesScreen(root, catalog) {
-    var panel = h("section", { class: "settings-editor", "aria-label": "スライドスタイルの編集" });
-    var list = h("aside", { class: "settings-list", "aria-label": "スライドスタイル一覧" });
-    function reload() { SS.navigate("/settings/styles", true); }
-    function renderEditor(item, copying, selectAllPatterns) { styleEditor(panel, catalog, item, copying, reload, selectAllPatterns); }
-    SS.clear(root).appendChild(h("div", { class: "settings-page" }, settingsHead("styles"), h("div", { class: "settings-layout" }, list, panel)));
-    var startingStyle = catalog.styles.filter(function (entry) { return entry.id === catalog.style_default_id; })[0] || catalog.styles[0];
-    list.appendChild(button("新しいスライドスタイル", function () { renderEditor(startingStyle, true, true); }, "btn--primary"));
-    catalog.styles.forEach(function (entry) { list.appendChild(button(entry.name + (entry.kind === "preset" ? " · 付属" : ""), function () { renderEditor(entry, false); }, "setting-list-item")); });
-    list.appendChild(text("p", "付属スタイルは複写して使えます。", "small muted"));
-    renderEditor(catalog.styles[0] || null, false);
-  }
-
-
   // ---- アクセス（どこから開けるか。/settings/server。ADR 0049）----
   function serverScreen(root, catalog) {
     var state = catalog.server;
@@ -1177,7 +1017,6 @@
     if (route.section === "samples") { return samplesScreen(root, guard); }
     return SS.api("/api/settings").then(function (catalog) {
       if (!guard()) { return; }
-      if (route.section === "styles") { return stylesScreen(root, catalog); }
       if (route.section === "server") { return serverScreen(root, catalog); }
       if (route.section === "brand") {
         var item = catalog.brands.filter(function (entry) { return entry.id === route.brandId; })[0] || null;
