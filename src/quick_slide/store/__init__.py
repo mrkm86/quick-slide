@@ -26,11 +26,13 @@ from .launches import LaunchesMixin
 from .management import DeckManagementMixin
 from .presets import PresetsMixin
 from .runs import RunsMixin
+from .samples import SamplesMixin
 from .styles import StylesMixin
 from .views import DeckViewsMixin
 
 
 class Store(
+    SamplesMixin,
     ExportsMixin,
     IntakesMixin,
     EditsMixin,

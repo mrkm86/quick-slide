@@ -1,0 +1,11 @@
+{
+ "id": "presentation",
+ "order": 1,
+ "mode": "presentation",
+ "title": "プレゼンの見本",
+ "subtitle": "型で組み、PowerPoint で直せる資料",
+ "purpose": "プレゼンで何ができるかを、見本の資料そのもので見せる",
+ "audience": "Quick Slide を使い始めた人",
+ "style": "standard",
+ "overrides": {}
+}

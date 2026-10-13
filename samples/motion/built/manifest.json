@@ -1,0 +1,79 @@
+{
+ "args": {
+  "audience": "Quick Slide を使い始めた人",
+  "images": false,
+  "look": {
+   "allowed_types": null,
+   "brand_revision_id": "{{BRAND_REVISION_ID}}",
+   "emphasis": "報告・提案を読む人に向け、結論と数値を先に示す。比較は同じ観点で並べ、単位と前年比を添える。",
+   "footer": "",
+   "logo": null,
+   "logo_position": "bottom-right",
+   "logo_white": null,
+   "page_numbers": false,
+   "style_revision_id": "{{STYLE_REVISION_ID}}",
+   "theme": "{{RUN_DIR}}/settings/theme.yaml",
+   "tone": "standard",
+   "watermark": ""
+  },
+  "mode": "motion",
+  "overrides": {},
+  "page_count": 5,
+  "purpose": "モーションで何ができるかを、見本の資料そのもので見せる",
+  "style": "standard",
+  "style_note": ""
+ },
+ "engine": "motion-slide",
+ "files": {
+  "build.json": "342d250ac271734a1939922852097167380d5e790b0be42bad652a035f5af456",
+  "deck-info.json": "342d250ac271734a1939922852097167380d5e790b0be42bad652a035f5af456",
+  "index.html": "784afd3793798a8f4171bc26418f51180c590e96f9041e0de68a345f29b8ca0b",
+  "pictures/index.json": "f8d51ff65d9197e351914b40f02e3134731075e3a2bf2f205c15d70926de0c36",
+  "present/index.html": "784afd3793798a8f4171bc26418f51180c590e96f9041e0de68a345f29b8ca0b",
+  "settings/theme.yaml": "6a90509a82d7b287c2fade753a959ec6cbb9ceaa3722d7489ffddc27ee5ecab5",
+  "slides/slide-01.png": "613e10b52e065b09baa3b679e4ec08aea3f8107f4d8474dd666a2859c410717e",
+  "slides/slide-02.png": "c9506d1847edb0d982fcb76a28ae65e591e06b4d3a9efe730215f5d898af4288",
+  "slides/slide-03.png": "6ae437be1860d6e4d4449dda2f7538ce04e945fe1ca0bef93985a62583a9ab53",
+  "slides/slide-04.png": "7a3e71667ae70d54b0d47df97f15cd3c246737bca5840a9e8b30d5ef91c960dc",
+  "slides/slide-05.png": "068d8e166f039f8201fb7aba382370a1d9a654c82b4ca0723ef2a470c91b42ff"
+ },
+ "format": "quick-slide-sample",
+ "format_version": 1,
+ "id": "motion",
+ "links": {},
+ "mode": "motion",
+ "pages": [
+  {
+   "key": "cover",
+   "no": 1,
+   "picture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "warnings": []
+  },
+  {
+   "key": "beats",
+   "no": 2,
+   "picture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "warnings": []
+  },
+  {
+   "key": "fly",
+   "no": 3,
+   "picture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "warnings": []
+  },
+  {
+   "key": "flow",
+   "no": 4,
+   "picture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "warnings": []
+  },
+  {
+   "key": "sample",
+   "no": 5,
+   "picture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "warnings": []
+  }
+ ],
+ "script_sha256": "706c8a4cdd609202de2d5368f3884c9774063552a95090b2999cf0e6e5b7afe4",
+ "version": "87d78b4fb52ecc0fdc9e35ba2168db61950dc22295b8621a867c922785bed7bc"
+}

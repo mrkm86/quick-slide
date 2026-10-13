@@ -1,0 +1,247 @@
+{
+ "title": "モーションの見本",
+ "config": {
+  "crumb": "モーションの見本",
+  "chapters": [
+   "見せ方",
+   "作り方"
+  ],
+  "dur": 4800,
+  "terms": 6
+ },
+ "slides": [
+  {
+   "id": "cover",
+   "title": "表紙",
+   "beats": 3,
+   "norail": true,
+   "dur": [
+    3600,
+    4800,
+    5600
+   ],
+   "style": [
+    "#cover .cover{position:absolute;left:180px;top:290px}",
+    "#cover h1{font-family:var(--head);font-weight:600;font-size:104px;line-height:1.28}",
+    "#cover .lead{font-size:30px;color:var(--g-mid);margin-top:40px}",
+    "#cover .keys{display:flex;gap:16px;align-items:center;margin-top:56px}",
+    "#cover .keys .live{margin-right:8px}",
+    "#cover .keys button{font-family:var(--gothic);font-size:24px;padding:10px 20px;border:1px solid var(--g-l);border-radius:12px;background:var(--white);color:var(--ink);cursor:pointer}",
+    "#cover .keys button:hover{border-color:var(--pri)}",
+    "#cover .keys kbd{font-family:var(--mono);font-weight:700;color:var(--pri-d);margin-right:10px}"
+   ],
+   "html": [
+    "<div class=\"cover\">",
+    "  <h1 class=\"x\" data-in=\"0\">クリックするたび、<br><em>話が一歩</em>進む</h1>",
+    "  <p class=\"lead x\" data-in=\"1\">モーションの見本です。クリックか → キーで進み、← で戻ります</p>",
+    "  <div class=\"keys live-zone x\" data-in=\"2\">",
+    "    <span class=\"live\">LIVE</span>",
+    "    <button type=\"button\" data-k=\"o\"><kbd>O</kbd>一覧</button>",
+    "    <button type=\"button\" data-k=\"p\"><kbd>P</kbd>自動再生</button>",
+    "    <button type=\"button\" data-k=\"m\"><kbd>M</kbd>消音</button>",
+    "    <button type=\"button\" data-k=\"n\"><kbd>N</kbd>話す台本</button>",
+    "    <button type=\"button\" data-k=\"f\"><kbd>F</kbd>全画面</button>",
+    "  </div>",
+    "</div>"
+   ],
+   "script": [
+    "MS.ready(() => document.querySelectorAll(\"#cover .keys button\").forEach(bt => bt.addEventListener(\"click\", e => {",
+    "  e.stopPropagation();",
+    "  bt.blur();",
+    "  const k = bt.dataset.k;",
+    "  if (k === \"f\") {",
+    "    const d = document, p = d.fullscreenElement ? d.exitFullscreen() : d.documentElement.requestFullscreen();",
+    "    if (p && p.catch) p.catch(() => {});",
+    "    return;",
+    "  }",
+    "  dispatchEvent(new KeyboardEvent(\"keydown\", { key: k }));",
+    "})));"
+   ],
+   "talk": [
+    "クリックするたびに、話が一歩ずつ進むスライドです。",
+    "これはモーションの見本。クリックか右矢印キーで進み、左矢印キーで戻ります。",
+    "見方はキー1つで変わります。下のボタンを押して、その場で試してみてください。"
+   ]
+  },
+  {
+   "id": "beats",
+   "title": "拍で1つずつ出す",
+   "beats": 4,
+   "ch": 0,
+   "term": "場面と拍",
+   "dur": [
+    4200,
+    5200,
+    5600,
+    5200
+   ],
+   "style": [
+    "#beats .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:34px}",
+    "#beats .col{padding:30px;font-size:28px;line-height:1.55}",
+    "#beats .col b{display:block;font-family:var(--head);font-size:40px;margin:8px 0 12px}",
+    "#beats .msg{position:absolute;left:0;right:0;top:360px;display:flex;align-items:center;gap:40px;font-size:30px}"
+   ],
+   "html": [
+    "<h2 class=\"h2 x f\" data-in=\"0\" data-out=\"1\">話は<em>場面</em>に分ける</h2>",
+    "<h2 class=\"h2 x f\" data-in=\"1\" data-out=\"3\">場面は<em>拍</em>で進む</h2>",
+    "<h2 class=\"h2 x f\" data-in=\"3\">全部を<em>一度に</em>出さない</h2>",
+    "<div class=\"body\">",
+    "  <div class=\"cols\">",
+    "    <div class=\"col card x\" data-in=\"0\" data-hl=\"0\" data-hlout=\"1\"><span class=\"lab\">01</span><b>場面</b>1つの場面で、<br>言うことは1つ</div>",
+    "    <div class=\"col card x\" data-in=\"1\" data-hl=\"1\" data-hlout=\"2\"><span class=\"lab\">02</span><b>拍</b>1回のクリックで、<br>変わるのは1つ</div>",
+    "    <div class=\"col card x\" data-in=\"2\" data-hl=\"2\" data-hlout=\"3\"><span class=\"lab\">03</span><b>道しるべ</b>上の点、左の章、下の言葉で、いまの場所が分かる</div>",
+    "  </div>",
+    "  <div class=\"msg x\" data-in=\"3\"><span class=\"strike\" data-st=\"3\">一度に全部を並べて、読ませる</span><span class=\"stamp cross x p\" data-in=\"3\">しない</span></div>",
+    "</div>"
+   ],
+   "talk": [
+    "話は場面に分けます。1つの場面で言うことは1つです。",
+    "場面の中はクリックで進みます。この1回を拍と呼び、拍ごとに変わるのは1つだけ。",
+    "いまどこにいるかは、上の点と左の章、それに下に残る言葉で分かります。",
+    "全部を一度に並べて読ませることはしません。打ち消すときも、線と判子で見せます。"
+   ]
+  },
+  {
+   "id": "fly",
+   "title": "値が表へ飛ぶ",
+   "beats": 4,
+   "ch": 0,
+   "term": "値が飛ぶ",
+   "dur": [
+    4600,
+    5200,
+    4600,
+    6000
+   ],
+   "style": [
+    "#fly .card.src{position:absolute;left:0;width:460px;height:130px;padding:22px 30px}",
+    "#fly .card.src .lab{display:block;margin-bottom:8px}",
+    "#fly .card.src .v{font-size:30px;font-weight:700}",
+    "#fly .c1{top:20px}",
+    "#fly .c2{top:190px}",
+    "#fly .c3{top:360px}"
+   ],
+   "html": [
+    "<h2 class=\"h2 x f\" data-in=\"0\" data-out=\"3\">形式ごとの<em>仕上がり</em>を表にする</h2>",
+    "<h2 class=\"h2 x f\" data-in=\"3\">順を追って見せるなら<em>モーション</em></h2>",
+    "<div class=\"body\">",
+    "  <div class=\"card src c1 x\" data-in=\"0\" data-dim=\"1\"><span class=\"lab\">プレゼン</span><b class=\"v\">編集できる PPTX</b></div>",
+    "  <div class=\"card src c2 x\" data-in=\"0\" data-dim=\"2\" style=\"transition-delay:.15s\"><span class=\"lab\">ピッチ</span><b class=\"v\">1枚ずつ描いた絵</b></div>",
+    "  <div class=\"card src c3 x\" data-in=\"0\" data-dim=\"3\" style=\"transition-delay:.3s\"><span class=\"lab\">モーション</span><b class=\"v\">クリックで進む HTML</b></div>",
+    "  <div id=\"fly-tb\" class=\"x f\" data-in=\"0\"></div>",
+    "</div>"
+   ],
+   "script": [
+    "const FLY_COLS = [{ k: \"kind\", label: \"形式\", w: 220 }, { k: \"out\", label: \"仕上がり\", w: 420 }];",
+    "const FLY_ROWS = [[\"pr\", \"プレゼン\", \"編集できる PPTX\"], [\"pi\", \"ピッチ\", \"1枚ずつ描いた絵\"], [\"mo\", \"モーション\", \"クリックで進む HTML\"]];",
+    "const flyTable = (x, n, hl) => x.table(\"fly-tb\", {",
+    "  at: [640, 80], cols: FLY_COLS, rh: 76,",
+    "  rows: FLY_ROWS.map((r, i) => ({ k: r[0], kind: r[1], out: i < n ? r[2] : \"\" })),",
+    "  hlRow: hl ? \"mo\" : null",
+    "});"
+   ],
+   "hook": [
+    "const fly = b >= 1 && x.step;",
+    "flyTable(x, fly ? b - 1 : b, b === 3 && !fly);",
+    "if (fly) x.later(() => x.fly(document.querySelector(\"#fly .c\" + b + \" .v\"), x.cell(\"fly-tb\", FLY_ROWS[b - 1][0] + \":out\"),",
+    "  { dx: 14, dy: 22, fs: \"21px\", onLand: () => flyTable(x, b, b === 3) }), 450);"
+   ],
+   "talk": [
+    "Quick Slide の形式は3つ。左のカードの中身を、右の表へ入れていきます。",
+    "プレゼンは編集できる PPTX になります。カードの言葉が、そのまま表のマスへ飛ぶところを見てください。",
+    "ピッチの仕上がりは、画像生成で1枚ずつ描いた絵です。",
+    "モーションは、クリックで進む HTML 1枚。記事や話題を、順を追って説明したいときに向いています。"
+   ]
+  },
+  {
+   "id": "flow",
+   "title": "線でつなぎ丸で囲む",
+   "beats": 3,
+   "ch": 1,
+   "term": "線と手書きの丸",
+   "dur": [
+    4800,
+    6000,
+    6400
+   ],
+   "style": [
+    "#flow .node{position:absolute;width:240px;height:190px;padding:22px 20px}",
+    "#flow .node .badge{margin-bottom:14px}",
+    "#flow .node b{display:block;font-size:28px;line-height:1.4}",
+    "#flow .node .s{display:block;font-size:22px;color:var(--g-mid);margin-top:6px}",
+    "#flow .n1{left:0;top:30px}",
+    "#flow .n2{left:300px;top:210px}",
+    "#flow .n3{left:600px;top:30px}",
+    "#flow .n4{left:900px;top:210px}",
+    "#flow .n5{left:1200px;top:30px}",
+    "#flow .ask{position:absolute;left:840px;top:470px;width:360px;padding:20px 26px;font-size:24px;line-height:1.5}"
+   ],
+   "html": [
+    "<h2 class=\"h2 x f\" data-in=\"0\" data-out=\"2\">頼めば、<em>台本から</em>組み上がる</h2>",
+    "<h2 class=\"h2 x f\" data-in=\"2\">直すときは<em>選んで指示</em>するだけ</h2>",
+    "<div class=\"body\">",
+    "  <div class=\"node n1 card x\" data-in=\"0\"><span class=\"badge\">1</span><b>会話で頼む</b><span class=\"s\">入力欄からも</span></div>",
+    "  <div class=\"node n2 card x\" data-in=\"0\" style=\"transition-delay:.1s\"><span class=\"badge\">2</span><b>台本を書く</b><span class=\"s\">場面と拍に分ける</span></div>",
+    "  <div class=\"node n3 card x\" data-in=\"0\" style=\"transition-delay:.2s\"><span class=\"badge\">3</span><b>組み立てる</b><span class=\"s\">全部の拍を検査</span></div>",
+    "  <div class=\"node n4 card x\" data-in=\"0\" style=\"transition-delay:.3s\"><span class=\"badge\">4</span><b>見て、直す</b><span class=\"s\">ページを選ぶ</span></div>",
+    "  <div class=\"node n5 card x\" data-in=\"0\" style=\"transition-delay:.4s\"><span class=\"badge\">5</span><b>書き出す</b><span class=\"s\">HTML と画像</span></div>",
+    "  <div class=\"ask card x\" data-in=\"2\"><span class=\"lab\">指示の例</span><br>この図を、もう少し大きく</div>",
+    "  <svg class=\"wires\" id=\"flow-w\"></svg>",
+    "</div>"
+   ],
+   "hook": [
+    "const nodes = [...document.querySelectorAll(\"#flow .node\")];",
+    "const linkNow = () => {",
+    "  for (let i = 0; i < 4; i++) x.wire(\"flow-w\", nodes[i], nodes[i + 1]);",
+    "  document.querySelectorAll(\"#flow-w .w, #flow-w .dot\").forEach(p => { p.style.animation = \"none\"; p.style.strokeDashoffset = \"0\"; p.style.opacity = \"1\"; });",
+    "};",
+    "if (b === 1) for (let i = 0; i < 4; i++) x.later(() => x.wire(\"flow-w\", nodes[i], nodes[i + 1]), (x.step ? 300 : 800) + i * 380);",
+    "if (b === 2) {",
+    "  x.later(linkNow, x.step ? 0 : 800);",
+    "  x.later(() => x.hand(\"flow-w\", nodes[3]), x.step ? 350 : 1100);",
+    "}"
+   ],
+   "talk": [
+    "作り方は5つの段に分かれます。頼む、台本を書く、組み立てる、見て直す、書き出す、の順です。",
+    "線でつなぐと、順番がひと目で追えます。頼むのは会話でも、ホームの入力欄からでもかまいません。",
+    "直すときは、ページを選んで指示を書くだけ。大事なところは、こうして手書きの丸で囲めます。"
+   ]
+  },
+  {
+   "id": "sample",
+   "title": "これは見本です",
+   "beats": 3,
+   "norail": true,
+   "dur": [
+    5200,
+    6400,
+    6400
+   ],
+   "style": [
+    "#sample .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:34px}",
+    "#sample .col{padding:30px 32px;font-size:26px;line-height:1.6}",
+    "#sample .col .lab{display:block;margin-bottom:6px}",
+    "#sample .col ul{list-style:none}",
+    "#sample .col li{margin-top:12px}",
+    "#sample .col .say{color:var(--pri-d)}"
+   ],
+   "html": [
+    "<h2 class=\"h2 x f\" data-in=\"0\" data-out=\"1\">これは<em>見本</em>です</h2>",
+    "<h2 class=\"h2 x f\" data-in=\"1\" data-out=\"2\">自分のスライドは<em>頼んで</em>作る</h2>",
+    "<h2 class=\"h2 x f\" data-in=\"2\">仕上がりは<em>HTML 1枚</em></h2>",
+    "<div class=\"body\">",
+    "  <div class=\"cols\">",
+    "    <div class=\"col card x\" data-in=\"0\" data-hl=\"0\" data-hlout=\"1\"><span class=\"lab\">見本</span><ul><li>消してもかまいません</li><li>設定 › 見本 から、<br>いつでも戻せます</li></ul></div>",
+    "    <div class=\"col card x\" data-in=\"1\" data-hl=\"1\" data-hlout=\"2\"><span class=\"lab\">作る</span><ul><li>会話で頼む<br><span class=\"say\">「この記事を<br>モーションスライドにして」</span></li><li>ホームの入力欄に書いて、<br>モーションを選ぶ</li></ul></div>",
+    "    <div class=\"col card x\" data-in=\"2\" data-hl=\"2\"><span class=\"lab\">仕上がり</span><ul><li>外から何も読み込まない</li><li>Chrome か Edge で開く</li><li>書き出しは HTML と画像</li><li>形式はあとから変えられない</li></ul></div>",
+    "  </div>",
+    "</div>"
+   ],
+   "talk": [
+    "このスライドは見本なので、消してもかまいません。設定の「見本」から、いつでも戻せます。",
+    "自分のスライドを作るときは、会話で「この記事をモーションスライドにして」と頼むか、ホームの入力欄に書いてモーションを選んでください。",
+    "仕上がりは、外から何も読み込まない HTML 1枚。Chrome か Edge で開き、書き出しは HTML とページの画像です。形式は作るときに選ぶもので、あとからは変えられません。"
+   ]
+  }
+ ]
+}

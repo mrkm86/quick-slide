@@ -1,0 +1,11 @@
+{
+ "id": "pitch",
+ "order": 2,
+ "mode": "pitch",
+ "title": "ピッチの見本",
+ "subtitle": "1枚ずつ、絵で語る資料",
+ "purpose": "ピッチで何ができるかを、見本の資料そのもので見せる",
+ "audience": "Quick Slide を使い始めた人",
+ "style": "visual",
+ "overrides": {}
+}

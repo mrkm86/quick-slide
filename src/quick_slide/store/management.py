@@ -528,6 +528,7 @@ class DeckManagementMixin(StoreBase):
 # デッキ 1 つに属する行の**全て**。完全削除がここだけを見て消す（他に書き足さない）。
 # 書き忘れた表があれば commit 時の外部キー検査が落ち、何も消えないまま断る。
 _PURGE_DELETES: tuple[str, ...] = (
+    "DELETE FROM sample_decks WHERE deck_id=:d",
     "DELETE FROM exports WHERE deck_id=:d",
     "DELETE FROM deck_heads WHERE deck_id=:d",
     "DELETE FROM run_pages WHERE run_id IN (SELECT id FROM runs WHERE deck_id=:d)",

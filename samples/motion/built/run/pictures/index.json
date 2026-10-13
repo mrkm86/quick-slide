@@ -1,0 +1,26 @@
+{
+ "mode": "motion",
+ "cache": null,
+ "pages": {
+  "cover": {
+   "no": 1,
+   "slots": []
+  },
+  "beats": {
+   "no": 2,
+   "slots": []
+  },
+  "fly": {
+   "no": 3,
+   "slots": []
+  },
+  "flow": {
+   "no": 4,
+   "slots": []
+  },
+  "sample": {
+   "no": 5,
+   "slots": []
+  }
+ }
+}

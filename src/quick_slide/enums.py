@@ -84,6 +84,8 @@ EVENT_KINDS = (
     "edit_applied",    # 描かない直し（非表示・並べ替え・版の切り替え）を、回を作らずに当てた
     # P5: 書き出しの配布
     "export_created",  # 描いた回のファイルを書き出しとして記録した（回・形式・sha256）
+    # 同梱の見本（docs/adr/0006-bundled-samples.md）
+    "sample_imported",  # 見本を新しいデッキとして入れた・触っていない見本のデッキを新しい版へ進めた
 )
 
 

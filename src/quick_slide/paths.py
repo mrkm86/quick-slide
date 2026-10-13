@@ -20,6 +20,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WEB_APP_DIR = REPO_ROOT / "web" / "app"
 # エンジン（html-slide・image-slide）。サーバは呼ぶだけで、中身は持たない（台本の決まりも実行時にここから読む）
 SKILLS_DIR = REPO_ROOT / "skills"
+# 同梱の見本（モードごとに 1 冊。最初の起動で入れる。docs/adr/0006-bundled-samples.md）
+SAMPLES_DIR = REPO_ROOT / "samples"
 
 
 @dataclass(frozen=True)

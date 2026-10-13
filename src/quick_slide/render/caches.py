@@ -137,6 +137,34 @@ def remove_areas(areas: list[Path]) -> list[str]:
     return failed
 
 
+def engine_cache_base(root: DataRoot, skill: str, deck_id: str, extra_env: dict[str, str] | None = None) -> Path | None:
+    """**エンジンに渡す子の環境**での、そのエンジンの描いた絵のキャッシュの根っこ（置き場の決まり: 環境変数
+    `<スキル>_CACHE` → 設定の `cache_dir` → 既定）。分からなければ None。
+
+    `extra_env` はワーカーが子に足す環境（`Tools.extra_env`）。相対の指定は、エンジンが動くフォルダ（デッキの `work/`）から。"""
+    from ..childenv import child_env
+
+    env = child_env(home=root.root, extra=extra_env)
+    base: Path | None = None
+    try:
+        var = skill.upper().replace("-", "_") + "_CACHE"
+        if env.get(var):
+            base = Path(env[var]).expanduser()
+        else:
+            cfg = engine_config(root, skill, env)
+            if cfg.get("cache_dir"):
+                base = Path(str(cfg["cache_dir"])).expanduser()
+            else:
+                places = _places(skill)
+                if places is not None:
+                    base = Path(places.cache_root(skill, {})).expanduser()
+    except Exception:  # noqa: BLE001
+        base = None
+    if base is not None and not base.is_absolute():
+        base = root.work_dir(deck_id) / base     # エンジンは work/ で動く（`render/runner.py`）
+    return base
+
+
 def seed_duplicate(root: DataRoot, deck_id: str, extra_env: dict[str, str] | None = None) -> int:
     """複製したデッキ（`store.duplicate_deck`）のプレゼンの描いた絵を、そのデッキの区画へ引き継ぐ。張った枚数。
 
@@ -154,7 +182,6 @@ def seed_duplicate(root: DataRoot, deck_id: str, extra_env: dict[str, str] | Non
     `extra_env` はワーカーが子に足す環境（`Tools.extra_env`）。相対の指定は、エンジンが動くフォルダ（`work/`）から。
     ピッチは描くときに控えから区画へ並べ直す（`worker/pipeline._pitch_fallback`）ので、ここでは何もしない。
     """
-    from ..childenv import child_env
     from .workspace import _copy, _link, pitch_area_for, write_json
 
     owner = root.scripts_dir(deck_id).resolve()
@@ -166,22 +193,7 @@ def seed_duplicate(root: DataRoot, deck_id: str, extra_env: dict[str, str] | Non
             jobs.append((run_dir, Path(cache)))
     if not jobs:
         return 0
-    env = child_env(home=root.root, extra=extra_env)
-    base: Path | None = None
-    try:
-        if env.get("HTML_SLIDE_CACHE"):
-            base = Path(env["HTML_SLIDE_CACHE"]).expanduser()
-        else:
-            places = _places("html-slide")
-            cfg = engine_config(root, "html-slide", env)
-            if cfg.get("cache_dir"):
-                base = Path(str(cfg["cache_dir"])).expanduser()
-            elif places is not None:
-                base = Path(places.cache_root("html-slide", {})).expanduser()
-    except Exception:  # noqa: BLE001
-        base = None
-    if base is not None and not base.is_absolute():
-        base = root.work_dir(deck_id) / base     # エンジンは work/ で動く（`render/runner.py`）
+    base = engine_cache_base(root, "html-slide", deck_id, extra_env)
     area = pitch_area_for(owner, (base / "x") if base is not None else jobs[0][1])   # エンジンの cache.area_path と同じ名前
     for run_dir, _ in jobs:                      # 1. 記録を先に
         for rec in (run_dir / "deck-info.json", run_dir / "pictures" / "index.json"):

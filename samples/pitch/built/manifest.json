@@ -1,0 +1,77 @@
+{
+ "args": {
+  "audience": "Quick Slide を使い始めた人",
+  "images": false,
+  "look": {
+   "allowed_types": null,
+   "brand_revision_id": "{{BRAND_REVISION_ID}}",
+   "emphasis": "ピッチや登壇資料を読む人に向け、概念を絵や図解で端的に伝える。文字は見出しと短い補足にとどめ、1ページで1つの印象を残す。",
+   "footer": "",
+   "logo": null,
+   "logo_position": "bottom-right",
+   "logo_white": null,
+   "page_numbers": false,
+   "style_revision_id": "{{STYLE_REVISION_ID}}",
+   "theme": "{{RUN_DIR}}/settings/theme.yaml",
+   "tone": "standard",
+   "watermark": ""
+  },
+  "mode": "pitch",
+  "overrides": {},
+  "page_count": 4,
+  "purpose": "ピッチで何ができるかを、見本の資料そのもので見せる",
+  "style": "visual",
+  "style_note": ""
+ },
+ "engine": "image-slide",
+ "files": {
+  "build.json": "0222278e92a13d051c8d21d99b10a7e02ea9a3d38040bceed25a91b6cb0f7656",
+  "pictures/cover.json": "2809a8a3ed00a3b37bb8a4249f87d904cc162fec6be92b664457b96e6096e59c",
+  "pictures/cover.png": "20e748611dd90026b5901fd8951baee7751f7755e2b2ea33f45701a8d1a94d0b",
+  "pictures/index.json": "f86c9b74d420105ac9b505afdd985643d243c0f0315703e323c0b25f5eb17780",
+  "pictures/p-fix-one-page.json": "78322ab80563755d374d0c4f6272ac4313fc23c63daabd8bbb55797bbf00e9ef",
+  "pictures/p-fix-one-page.png": "453d78500a016714b420b08c61c6df2c63f47690602699d32047dbb388f4b76a",
+  "pictures/p-sample-note.json": "04ca61ec633f4a6e98a4cdb8607c0da3a64cdfd79957b1c979b634935517021a",
+  "pictures/p-sample-note.png": "a15459d9261375cbaf9f46209e046c6dd9419cd899d54939fae601e6fb566c87",
+  "pictures/p-whole-picture.json": "049263d2bd001a597a7eaf0d61158f4c1886695f4659689dbdae2559e444dbb1",
+  "pictures/p-whole-picture.png": "6e613da9254aa4f553f03492e809554f1d566cc8d6bcf5078271d6e44a12be21",
+  "settings/theme.yaml": "112d47867651aeb08aacc9289dd165c37febf5788dcc4784dbc6a0feb058f654",
+  "slides/slide-01.png": "6637851e4c36949851f56c112e023e3352402657201f83decb0cec61425365d4",
+  "slides/slide-02.png": "cf707b216bbfcd6958e18cf0b125c181d4cde400fc8c1aa8f35bcdf8af25b4b2",
+  "slides/slide-03.png": "43872d4affa588c9073565d9bb118163ddc9c1476e6191e23d0eb01236f54b81",
+  "slides/slide-04.png": "5514b33512ea78952be8c547db730a4d73c3ce1fd0870d6ede6555b2260f51a1"
+ },
+ "format": "quick-slide-sample",
+ "format_version": 1,
+ "id": "pitch",
+ "links": {},
+ "mode": "pitch",
+ "pages": [
+  {
+   "key": "cover",
+   "no": 1,
+   "picture_sha256": "20e748611dd90026b5901fd8951baee7751f7755e2b2ea33f45701a8d1a94d0b",
+   "warnings": []
+  },
+  {
+   "key": "p-whole-picture",
+   "no": 2,
+   "picture_sha256": "6e613da9254aa4f553f03492e809554f1d566cc8d6bcf5078271d6e44a12be21",
+   "warnings": []
+  },
+  {
+   "key": "p-fix-one-page",
+   "no": 3,
+   "picture_sha256": "453d78500a016714b420b08c61c6df2c63f47690602699d32047dbb388f4b76a",
+   "warnings": []
+  },
+  {
+   "key": "p-sample-note",
+   "no": 4,
+   "picture_sha256": "a15459d9261375cbaf9f46209e046c6dd9419cd899d54939fae601e6fb566c87",
+   "warnings": []
+  }
+ ],
+ "script_sha256": "1c660654cb8f1e8bbd631daea6f1f851eb9e7ad2c17520b796f31736feca1612",
+ "version": "b0c70644979a6e6f2df5d960cbfc383ac1bdedb82d1e7f645695b8fffd70adef"
+}

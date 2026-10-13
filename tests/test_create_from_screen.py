@@ -16,6 +16,7 @@ from urllib.parse import quote
 from helpers import fake_tools, open_store, start_server, wait_until_idle, writer_calls
 from test_worker import fake_skills_dir, settings
 
+from quick_slide.db.migrate import LATEST_VERSION
 from quick_slide.enums import DECK_MODES, EXPORT_FORMATS
 from quick_slide.server.export_routes import format_refusal
 from quick_slide.server.deck_routes import planning_state
@@ -525,7 +526,7 @@ class MigrationTests(unittest.TestCase):
         conn.execute("INSERT INTO intakes(id,deck_id,origin_kind,origin_runtime,request_sha256,manuscript,request,payload_json,created_at)"
                      " VALUES('i2','d','screen','browser',?,'','依頼','{}',?)", ("1" * 64, t))
         run_migrate(conn)
-        self.assertEqual(user_version(conn), 7)
+        self.assertEqual(user_version(conn), LATEST_VERSION)  # 版 7 を経て最新まで
         self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
         after = dict(conn.execute("SELECT * FROM intakes WHERE id='i'").fetchone())
         self.assertEqual(after, {**before, "request": None})

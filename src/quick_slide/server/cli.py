@@ -20,7 +20,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from ..errors import QuickSlideError, ValidationError
-from ..paths import DataRoot
+from ..paths import SAMPLES_DIR, DataRoot
 from ..settings import BROWSER_MODES, Settings
 from .app import SESSION_HEADER, QuickSlideServer
 from .runtime import http_host, pid_alive, read_record, status
@@ -60,7 +60,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
         return _serve_after_restart(root, args)
     try:
         settings = Settings.load(root.settings_path)
-        server = QuickSlideServer(root, settings=settings, host=args.host, port=args.port, static_root=args.static_root)
+        server = QuickSlideServer(root, settings=settings, host=args.host, port=args.port, static_root=args.static_root,
+                                  samples_dir=SAMPLES_DIR)
         server.start()
     except QuickSlideError as exc:
         _print_json({"ok": False, "code": exc.__class__.__name__, "message": str(exc)})
@@ -88,7 +89,7 @@ def _serve_after_restart(root: DataRoot, args: argparse.Namespace) -> int:
                                      "host_names": list(settings.server.host_names)} == last
         deadline = time.monotonic() + (R.PORT_FREE_WAIT_SECONDS if same else 0)
         while True:
-            server = QuickSlideServer(root, settings=settings, static_root=args.static_root)
+            server = QuickSlideServer(root, settings=settings, static_root=args.static_root, samples_dir=SAMPLES_DIR)
             try:
                 return server.start()
             except QuickSlideError:

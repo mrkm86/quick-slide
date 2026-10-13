@@ -1,0 +1,423 @@
+<!doctype html>
+<!-- html-slide の資料の雛形。二重波かっこの差し込み口は scripts/deck.py が埋める
+     色はテーマ（themes/*.yaml → deck.py が作る CSS 変数）、字体ファイルは設定の fonts から入る。色をここに直接書かない
+     使ってよい CSS は references/contract.md の許可リストの中だけ（transform・filter・clip-path・::before の content・背景画像は使わない） -->
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>プレゼンの見本</title>
+    <style>
+      @font-face { font-family: "Noto Sans JP"; font-weight: 400; src: url("file://{{HOME}}/fonts/noto-sans-jp/NotoSansJP-Regular.ttf"); ascent-override: 93.60%; descent-override: 6.40%; line-gap-override: 0%; }
+      @font-face { font-family: "Noto Sans JP"; font-weight: 700; src: url("file://{{HOME}}/fonts/noto-sans-jp/NotoSansJP-Bold.ttf"); ascent-override: 93.60%; descent-override: 6.40%; line-gap-override: 0%; }
+      :root { --bg: #ffffff; --ink: #333333; --surface: #f2f2f2; --muted: #666666; --faint: #767676; --rule: #767676; --rule-weak: #949494; --bar: #949494; --tint: #eaf7ff; --primary-soft: #eaf7ff; --accent-soft: #eaf7ff; --primary: #0077a1; --primary-text: #0077a1; --primary-mark: #0096cb; --primary-decor: #009fd7; --primary-strong: #0077a1; --on-primary: #ffffff; --primary-on-dark: #79cdea; --accent: #0077a1; --accent-text: #0077a1; --accent-mark: #0096cb; --accent-decor: #009fd7; --accent-strong: #0077a1; --on-accent: #ffffff; --accent-on-dark: #79cdea; --scrim: rgba(51, 51, 51, 0.86); --scrim-0: rgba(51, 51, 51, 0); --scrim-quote: rgba(51, 51, 51, 0.86); --veil: rgba(255, 255, 255, 0.94); --veil-0: rgba(255, 255, 255, 0); --primary-on-light: #00769f; --accent-on-light: #00769f; --success-1: #259d63; --success-2: #197a4b; --error-1: #ec0000; --error-2: #ce0000; --warning-yellow-1: #b78f00; --warning-yellow-2: #927200; --warning-orange-1: #fb5b01; --warning-orange-2: #c74700; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background-color: #8a8f99; }
+      section[data-slide] {
+        position: relative; width: 1920px; height: 1080px; overflow: hidden;
+        background-color: var(--bg); color: var(--ink);
+        font-family: "Noto Sans JP", sans-serif; font-weight: 400; line-height: 1.5;
+      }
+      aside.notes { display: none; }
+      em { font-style: normal; color: var(--accent-text); }
+      .center { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .row { display: flex; align-items: stretch; }
+      .bold { font-weight: 700; }
+      .muted { color: var(--muted); }
+      .accent { color: var(--accent-text); }
+      .on-accent { color: var(--on-accent); }
+      .primary { color: var(--primary-text); }
+      .on-primary { color: var(--on-primary); }
+
+      /* 大きさは DADS の段（64・57・48・45・36・32・28・26・24・22・20・16 と拡張の 80〜200）・行高は 1.0〜1.75 の段・
+         余白は 8・16・24・40・64（と格子の溝 48）・角丸は 0・8・12・16・24・32・full（ADR 0020）。型が書く style も同じ段 */
+      /* 画面をまたいで残すもの（data-keep）: 上の帯・下の文字・ページ番号 */
+      .band { position: absolute; left: 120px; top: 0; width: 160px; height: 8px; background-color: var(--primary-decor); }
+      .footer, .pageno { position: absolute; top: 1008px; font-size: 22px; line-height: 1.5; color: var(--muted); }
+      .footer { left: 120px; width: 1296px; }
+      .pageno { left: 896px; width: 128px; text-align: center; }   /* 中央下（ロゴは角に置くので重ならない・ADR 0008） */
+      /* 透かし（--watermark）。全ページの中央下の端・Gray-536（白の地で 4.5:1）。数字は deck.py の WATERMARK_*（ADR 0009） */
+      .watermark { position: absolute; left: 0; top: 1048px; width: 1920px; font-size: 16px; line-height: 1.7; font-weight: 400;
+                   text-align: center; white-space: nowrap; color: var(--faint); }
+      /* ロゴ（--logo）と、その後ろのロゴと同じ大きさの地。位置と大きさは deck.py が書く */
+      .logo-plate { position: absolute; background-color: var(--bg); }
+      .logo { position: absolute; }
+
+      /* 見出し（すべての中身の型の左上） */
+      .head { position: absolute; left: 120px; top: 80px; width: 1680px; display: flex; flex-direction: column; }
+      .kicker { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--primary-text); margin-bottom: 8px; }
+      .headline { font-size: 64px; line-height: 1.4; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      /* balance は文節を割ることがある（「全部／署」）。そのときは台本の文字に改行（\n）を入れて切れ目を決める（<br> になる） */
+      .sub { font-size: 32px; line-height: 1.5; color: var(--muted); margin-top: 16px; word-break: auto-phrase; }
+      .source { position: absolute; left: 120px; font-size: 22px; line-height: 1.5; color: var(--muted); }
+
+      /* 表紙 */
+      .cover-text { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .cover-label { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--primary-text); margin-bottom: 24px; }
+      .cover-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      .cover-rule { width: 120px; height: 8px; background-color: var(--primary-decor); margin: 40px 0 32px; }
+      .cover-subtitle { font-size: 32px; line-height: 1.5; color: var(--muted); word-break: auto-phrase; }
+      .cover-meta { position: absolute; display: flex; flex-direction: column; }
+      .cover-meta div { font-size: 28px; line-height: 1.5; color: var(--ink); }
+      .photo { position: absolute; object-fit: cover; }
+      /* 全面の表紙（layout: hero）の題の下の幕 */
+      .veil { position: absolute; background-color: var(--veil); }
+      .veil-edge { position: absolute; }
+      /* 暗い幕（tone: dark）の上の文字 */
+      .on-dark .cover-title, .on-dark .cover-subtitle, .on-dark div, .on-dark .sec-title, .on-dark .sec-subtitle { color: #ffffff; }
+      .on-dark em { color: var(--accent-on-dark); }
+      .on-dark .cover-label, .on-dark .sec-label, .on-dark .sec-no { color: var(--primary-on-dark); }
+      .on-dark .cover-rule { background-color: var(--primary-on-dark); }
+      /* 明るい幕（tone: light）の上の色（幕の地で 4.5:1） */
+      .on-light em { color: var(--accent-on-light); }
+      .on-light .cover-label, .on-light .sec-label, .on-light .sec-no { color: var(--primary-on-light); }
+      /* 写真の並び・図・カードの写真（写真の角は 8） */
+      .gal-item { position: absolute; display: flex; flex-direction: column; }
+      .gal-img { object-fit: cover; border-radius: 8px; }
+      .gal-cap { font-size: 26px; line-height: 1.5; color: var(--muted); margin-top: 16px; word-break: auto-phrase; }
+      .figure-img { position: absolute; object-fit: contain; }
+      .fig-cap { position: absolute; font-size: 26px; line-height: 1.5; color: var(--muted); text-align: center; }
+      .card-img { object-fit: cover; border-radius: 8px; margin-bottom: 24px; flex: none; }
+      .quote.on-dark .quote-text, .quote.on-dark .quote-name, .quote.on-dark .quote-role, .quote.on-dark .kicker { color: #ffffff; }
+      .quote.on-dark .qmark { color: var(--primary-on-dark); }
+      /* 注釈つきの画像の番号の丸印（浮かせる印だけ elevation-2。白い縁で写真の上でも 3:1） */
+      .mk-dot { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 9999px;
+                background-color: var(--primary-strong); color: var(--on-primary); border: 4px solid #ffffff;
+                font-size: 26px; line-height: 1; font-weight: 700; box-shadow: 0 2px 12px 2px rgba(0, 0, 0, 0.1), 0 1px 6px 0 rgba(0, 0, 0, 0.3); }
+      /* 画像が無いときの仮の枠（--placeholder・下書き用） */
+      .img-ph { position: absolute; display: flex; align-items: center; justify-content: center; padding: 16px;
+                background-color: var(--surface); border: 4px dashed var(--rule); overflow: hidden; }
+      .img-ph div { line-height: 1.5; color: var(--ink); text-align: center; word-break: auto-phrase; }
+
+      /* 目次 */
+      .agenda { position: absolute; display: flex; flex-direction: column; }
+      .agenda-row { display: flex; align-items: center; border-bottom: 2px solid var(--rule); }
+      .agenda-no { width: 120px; flex: none; font-size: 45px; line-height: 1.4; font-weight: 700; color: var(--primary-text); }
+      .agenda-title { flex: 1; font-size: 45px; line-height: 1.4; font-weight: 700; }
+      .agenda-note { flex: none; font-size: 28px; line-height: 1.4; color: var(--muted); text-align: right; }
+      .agenda-row.dim .agenda-title, .agenda-row.dim .agenda-no { color: var(--muted); font-weight: 400; }
+      .agenda-row.on { background-color: var(--primary-soft); }
+
+      /* 章扉 */
+      .sec-panel { position: absolute; left: 0; top: 0; height: 1080px; background-color: var(--primary-strong); }
+      .sec-label { font-size: 28px; line-height: 1.5; font-weight: 700; }
+      .sec-no { font-size: 200px; line-height: 1.0; font-weight: 700; }
+      .sec-text { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .sec-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      .sec-subtitle { font-size: 32px; line-height: 1.5; color: var(--muted); margin-top: 24px; word-break: auto-phrase; }
+
+      /* 主張 */
+      .stmt { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .stmt-bar { position: absolute; width: 16px; background-color: var(--primary-mark); }
+      .stmt-text { line-height: 1.4; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      .stmt-body { font-size: 32px; line-height: 1.6; color: var(--muted); margin-top: 40px; word-break: auto-phrase; }
+
+      /* 大きな数字 */
+      .bn-main { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .bn-row { display: flex; align-items: baseline; }
+      .bn-value { line-height: 1.0; font-weight: 700; color: var(--primary-text); }
+      .bn-unit { line-height: 1.0; font-weight: 700; color: var(--primary-text); margin-left: 16px; }
+      .bn-label { font-size: 36px; line-height: 1.4; font-weight: 700; margin-top: 24px; word-break: auto-phrase; }
+      .bn-side { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .bn-item { border-top: 2px solid var(--rule); padding: 24px 0; }
+      .bn-item-value { font-size: 57px; line-height: 1.4; font-weight: 700; }
+      .bn-item-text { font-size: 28px; line-height: 1.5; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
+
+      /* カード（箱は必ず外周の枠を持つ: 地と面を 3:1 で分ける。強める箱は 4px の差し色の枠） */
+      .card { display: flex; flex-direction: column; flex: none; min-height: 400px; background-color: var(--surface); border: 2px solid var(--rule);
+              border-radius: 16px; padding: 40px; }
+      .card.hl { background-color: var(--accent-soft); border: 4px solid var(--accent-mark); }
+      .card-bar { width: 56px; height: 8px; background-color: var(--primary-mark); margin-bottom: 24px; }
+      .card.hl .card-bar { background-color: var(--accent-mark); }
+      .card-label { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--primary-text); margin-bottom: 8px; }
+      .card-title { font-size: 45px; line-height: 1.4; font-weight: 700; margin-bottom: 16px; word-break: auto-phrase; }
+      .card-body { font-size: 32px; line-height: 1.6; word-break: auto-phrase; }
+
+      /* アイコン・締めの帯（ADR 0019） */
+      .icon-disc { display: flex; align-items: center; justify-content: center; flex: none; }
+      .li-icon { flex: none; margin-right: 16px; }
+      .take { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 9999px; border: 2px solid var(--primary-mark);
+              background-color: var(--tint); color: var(--ink); font-weight: 700; line-height: 1.4; padding: 0 64px; }
+      .take svg { flex: none; margin-right: 16px; }
+      .take-t { line-height: 1.4; font-weight: 700; color: var(--ink); }
+      /* 札（DADS のチップラベル・ADR 0021）: 24B・高さ 40・角は full。強調・いま（on 濃い面）・済（done 淡い面とチェック）・これから（todo 白に枠）・地に枠（line）。語を必ず添える */
+      .chip { align-self: flex-start; display: flex; align-items: center; flex: none; height: 40px; padding: 0 24px; border-radius: 9999px;
+              font-size: 24px; line-height: 1.0; font-weight: 700; margin-bottom: 16px; white-space: nowrap; }
+      .chip svg { flex: none; margin-right: 8px; }
+      .chip-t { line-height: 1.0; font-size: 24px; font-weight: 700; }
+      .chip.on { background-color: var(--accent-strong); color: var(--on-accent); }
+      .chip.done { background-color: var(--tint); color: var(--primary-text); }
+      .chip.done .chip-t { color: var(--primary-text); }
+      .chip.todo { background-color: var(--bg); color: var(--ink); border: 2px solid var(--rule); }
+      .chip.line { background-color: var(--bg); color: var(--ink); border: 2px solid var(--rule); }
+      .chips { display: flex; align-items: center; margin-bottom: 24px; }
+      .chips .cmp-chip { margin-bottom: 0; }
+      .chips .chip { margin-bottom: 0; margin-left: 16px; }
+
+      /* 図解の型: 式・放射・対（ADR 0019） */
+      .eq-box { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: none; text-align: center;
+                min-height: 0; padding: 40px 32px; }
+      .eq-res { background-color: var(--primary-strong); border-radius: 16px; }
+      .eq-res .eq-title { color: var(--on-primary); }
+      .eq-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .eq-body { line-height: 1.5; color: var(--muted); margin-top: 16px; word-break: auto-phrase; }
+      .eq-chip { line-height: 1.5; font-weight: 700; color: var(--primary-strong); background-color: var(--on-primary);
+                 border-radius: 8px; padding: 8px 24px; margin-top: 16px; }
+      .eq-op { flex: none; display: flex; align-items: center; justify-content: center; font-size: 64px; line-height: 1.0; font-weight: 700;
+               color: var(--primary-text); }
+      .hub-lines { position: absolute; left: 0; top: 0; }
+      .hub-item { position: absolute; flex-direction: row; align-items: center; min-height: 0; padding: 0 32px; }
+      .hub-text { display: flex; flex-direction: column; min-width: 0; }
+      .hub-title { line-height: 1.4; font-weight: 700; }
+      .hub-body { line-height: 1.5; color: var(--muted); margin-top: 8px; }
+      .hub-tag { align-self: flex-start; line-height: 1.5; font-weight: 700; color: var(--primary-text); background-color: var(--tint);
+                 border-radius: 8px; padding: 0 16px; margin-top: 8px; }
+      .hub-center { position: absolute; align-items: center; justify-content: center; text-align: center; min-height: 0; padding: 0 32px;
+                    border: 4px solid var(--primary-mark); }
+      .hub-c-title { line-height: 1.4; font-weight: 700; margin-top: 8px; }
+      .hub-c-body { line-height: 1.5; color: var(--muted); margin-top: 8px; }
+      .pair { position: absolute; min-height: 0; padding: 0; }
+      .pair-left { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+      .pair-label { line-height: 1.4; font-weight: 700; margin-top: 8px; }
+      .pair-box { position: absolute; display: flex; align-items: center; justify-content: center; text-align: center; border-radius: 12px;
+                  padding: 0 24px; line-height: 1.5; word-break: auto-phrase; }
+      .pair-bad { background-color: var(--bg); border: 2px solid var(--rule); color: var(--muted); }
+      .pair-good { background-color: var(--accent-soft); border: 2px solid var(--accent-mark); color: var(--accent-text); font-weight: 700; }
+      /* NG/OK の札: 白い面に意味の色（error-2・success-2）の輪郭と文字・アイコン。語とアイコンを両方添える */
+      .pair-tag { position: absolute; display: flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 9999px; background-color: #ffffff; }
+      .pair-tag svg { flex: none; margin-right: 8px; }
+      .pair-tag-t { font-size: 24px; line-height: 1.0; font-weight: 700; white-space: nowrap; }
+      .pair-bad-tag { border: 2px solid var(--error-2); color: var(--error-2); }
+      .pair-good-tag { border: 2px solid var(--success-2); color: var(--success-2); }
+      .abs-svg { position: absolute; }
+
+      /* 矢羽根 */
+      .flow-item { position: relative; flex: none; }
+      .flow-head { position: relative; }
+      .flow-head svg { position: absolute; left: 0; top: 0; }
+      .flow-label { position: absolute; top: 0; display: flex; align-items: center; justify-content: center; line-height: 1.4; font-weight: 700; }
+      .flow-text { display: flex; flex-direction: column; margin-top: 32px; }
+      .flow-title { line-height: 1.4; font-weight: 700; margin-bottom: 16px; word-break: auto-phrase; }
+      .flow-body { line-height: 1.6; color: var(--ink); word-break: auto-phrase; }
+
+      /* 比較 */
+      .cmp { display: flex; flex-direction: column; flex: none; min-height: 416px; border-radius: 16px; padding: 40px; background-color: var(--surface);
+             border: 2px solid var(--rule); }
+      .cmp.hl { background-color: var(--accent-soft); border: 4px solid var(--accent-mark); }
+      .cmp-chip { align-self: flex-start; line-height: 1.0; font-weight: 700; padding: 8px 24px; border-radius: 9999px; background-color: var(--tint); color: var(--ink); margin-bottom: 24px; }
+      .cmp.hl .cmp-chip { background-color: var(--accent-strong); color: var(--on-accent); }
+      .cmp-title { font-size: 45px; line-height: 1.4; font-weight: 700; margin-bottom: 16px; word-break: auto-phrase; }
+      .cmp-point { display: flex; align-items: flex-start; margin-top: 16px; }
+      .cmp-dot { flex: none; width: 16px; height: 16px; border-radius: 9999px; background-color: var(--muted); margin: 0 24px 0 0; }
+      .cmp.hl .cmp-dot { background-color: var(--accent-mark); }
+      .cmp-text { font-size: 32px; line-height: 1.5; word-break: auto-phrase; }
+      .cmp-gap { flex: none; display: flex; align-items: center; justify-content: center; }
+
+      /* 棒グラフ（非強調の棒は 3:1 以上の bar・強調は accent-mark。軸は rule の 4px） */
+      .bar-group { position: absolute; display: flex; flex-direction: column; align-items: center; }
+      .bar-value { font-size: 36px; line-height: 1.4; font-weight: 700; margin-bottom: 8px; white-space: nowrap; }
+      .bar { border-radius: 8px 8px 0 0; background-color: var(--bar); }
+      .bar.hl { background-color: var(--accent-mark); }
+      .bar-label { position: absolute; font-size: 28px; line-height: 1.5; text-align: center; color: var(--ink); }
+      .bar-label.hl { font-weight: 700; color: var(--accent-text); }
+      .baseline { position: absolute; height: 4px; background-color: var(--rule); }
+      .bar-unit { position: absolute; font-size: 22px; line-height: 1.5; color: var(--muted); }
+      .callout { position: absolute; display: flex; flex-direction: column; justify-content: center; background-color: var(--accent-soft);
+                 border: 2px solid var(--accent-mark); border-radius: 16px; padding: 40px; }
+      .callout-value { line-height: 1.2; font-weight: 700; color: var(--accent-text); }
+      .callout-text { font-size: 28px; line-height: 1.6; margin-top: 16px; word-break: auto-phrase; }
+
+      /* 表 */
+      .table { position: absolute; display: flex; flex-direction: column; }
+      .tr { display: flex; border-bottom: 2px solid var(--rule); }
+      .tr.th { background-color: var(--surface); border-bottom: 4px solid var(--ink); }
+      .td { display: flex; align-items: center; padding: 0 24px; }
+      .td div { line-height: 1.5; word-break: auto-phrase; }
+      .tr.th .td div { font-weight: 700; }
+      .td.hl { background-color: var(--accent-soft); border-left: 4px solid var(--accent-mark); border-right: 4px solid var(--accent-mark); }
+      .td.hl div { font-weight: 700; }
+      .tr.th .td.hl { background-color: var(--accent-strong); }
+      .tr.th .td.hl div { color: var(--on-accent); }
+
+      /* 写真 */
+      .scrim { position: absolute; display: flex; flex-direction: column; background-color: var(--scrim); border-radius: 12px; padding: 48px 56px; }
+      .scrim .headline { color: #ffffff; }
+      .scrim .sub { color: #ffffff; }
+      .scrim em { color: var(--accent-on-dark); }
+      .photo-text { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .caption { position: absolute; font-size: 22px; line-height: 1.5; color: var(--muted); }
+
+      /* 引用 */
+      .qmark { font-size: 200px; line-height: 1.2; margin: -32px 0 -80px -16px; font-weight: 700; color: var(--primary-text); }
+      .quote { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .quote-text { line-height: 1.5; font-weight: 700; word-break: auto-phrase; text-wrap: balance; }
+      .quote-by { display: flex; align-items: baseline; margin-top: 40px; }
+      .quote-name { font-size: 32px; line-height: 1.4; font-weight: 700; }
+      .quote-role { font-size: 28px; line-height: 1.4; color: var(--muted); margin-left: 24px; }
+
+      /* 箇条書き・締めの一覧 */
+      .list { position: absolute; display: flex; flex-direction: column; justify-content: center; }
+      .li { display: flex; align-items: flex-start; }
+      .li-mark { flex: none; width: 16px; height: 16px; background-color: var(--primary-mark); margin-right: 32px; }
+      .li-no { flex: none; width: 64px; height: 64px; border-radius: 9999px; background-color: var(--primary-strong); color: var(--on-primary);
+               display: flex; align-items: center; justify-content: center; font-size: 32px; line-height: 1.0; font-weight: 700; margin-right: 32px; }
+      .li-text { display: flex; flex-direction: column; flex: 1; }
+      .li-title { font-size: 45px; line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .li-body { font-size: 28px; line-height: 1.6; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
+      .side-img { position: absolute; object-fit: cover; border-radius: 8px; }
+      .contact { display: flex; flex-direction: column; justify-content: center; background-color: var(--primary-strong); border-radius: 16px; padding: 40px; }
+      .contact-label { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--on-primary); margin-bottom: 24px; }
+      .contact div.contact-line { font-size: 28px; line-height: 1.5; color: var(--on-primary); }
+      .contact div.contact-strong { font-size: 36px; line-height: 1.4; font-weight: 700; color: var(--on-primary); margin-bottom: 8px; }
+
+      /* 年表（線と丸の縁は rule・いまの丸は accent-mark） */
+      .tl-line { position: absolute; height: 4px; background-color: var(--rule); }
+      .tl-item { position: absolute; display: flex; flex-direction: column; }
+      .tl-dotbox { display: flex; align-items: center; flex: none; }
+      .tl-dot { width: 32px; height: 32px; border-radius: 9999px; background-color: var(--bg); border: 4px solid var(--rule); }
+      /* いまは二重の輪（外 48・内 24）と札「いま」。色だけで示さない */
+      .tl-dot.hl { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border: 4px solid var(--accent-mark); }
+      .tl-dot-in { width: 24px; height: 24px; border-radius: 9999px; background-color: var(--accent-mark); }
+      .tl-when { font-size: 36px; line-height: 1.4; font-weight: 700; color: var(--muted); }
+      .tl-item.hl .tl-when { color: var(--accent-text); }
+      .tl-title { font-size: 36px; line-height: 1.4; font-weight: 700; margin-top: 24px; word-break: auto-phrase; }
+      .tl-body { font-size: 28px; line-height: 1.6; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
+      /* 要約（結論＋根拠） */
+      .sum-col { display: flex; flex-direction: column; flex: none; }
+      .sum-bar { width: 100%; height: 8px; background-color: var(--primary-mark); }
+      .sum-no { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--primary-text); margin-top: 24px; }
+      .sum-value { line-height: 1.4; font-weight: 700; margin-top: 8px; }
+      .sum-title { font-size: 36px; line-height: 1.4; font-weight: 700; margin-top: 8px; word-break: auto-phrase; }
+      .sum-body { font-size: 28px; line-height: 1.6; color: var(--muted); margin-top: 16px; word-break: auto-phrase; }
+
+      /* 指標の並び */
+      .kpi { display: flex; flex-direction: column; flex: none; background-color: var(--surface); border: 2px solid var(--rule); border-radius: 16px; padding: 40px; }
+      .kpi.hl { background-color: var(--accent-soft); border: 4px solid var(--accent-mark); }
+      .kpi-label { font-size: 28px; line-height: 1.5; font-weight: 700; word-break: auto-phrase; }
+      .kpi-value { line-height: 1.0; font-weight: 700; }
+      .kpi-unit { line-height: 1.0; font-weight: 700; margin-left: 16px; }
+      .kpi.hl .kpi-value, .kpi.hl .kpi-unit { color: var(--accent-text); }
+      .kpi-delta { font-size: 28px; line-height: 1.5; font-weight: 700; margin-top: 16px; }
+      .kpi-note { font-size: 22px; line-height: 1.5; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
+
+      /* 折れ線（目盛り線は白の地の上だけの罫 rule-weak） */
+      .grid-line { position: absolute; background-color: var(--rule-weak); }
+      .tick { position: absolute; font-size: 24px; line-height: 1.5; color: var(--muted); text-align: right; }
+      .line-svg { position: absolute; overflow: visible; }
+      .pt-value { position: absolute; font-size: 28px; line-height: 1.4; font-weight: 700; text-align: center; white-space: nowrap; }
+      .legend { position: absolute; display: flex; justify-content: flex-end; }
+      .legend-item { display: flex; align-items: center; margin-left: 40px; }
+      .legend-item svg { margin-right: 16px; }
+      .end-name { position: absolute; line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .legend-name { font-size: 28px; line-height: 1.5; }
+
+      /* 体制・人 */
+      .member { display: flex; flex-direction: column; align-items: center; flex: none; }
+      .face { object-fit: cover; }
+      .face-ini { display: flex; align-items: center; justify-content: center; line-height: 1.0; font-weight: 700;
+                  background-color: var(--tint); color: var(--primary-text); }
+      .member-name { font-size: 36px; line-height: 1.4; font-weight: 700; margin-top: 24px; text-align: center; }
+      .member-role { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--primary-text); margin-top: 8px; text-align: center; }
+      .member-note { font-size: 28px; line-height: 1.5; color: var(--muted); margin-top: 16px; text-align: center; word-break: auto-phrase; }
+
+      /* 2×2 */
+      .mx-focus { position: absolute; background-color: var(--accent-soft); border: 4px solid var(--accent-mark); }
+      .mx-frame { position: absolute; border: 2px solid var(--rule); }
+      .mx-axis { position: absolute; background-color: var(--rule); }
+      .mx-quad { position: absolute; display: flex; flex-direction: column; }
+      .mx-qtitle { font-size: 28px; line-height: 1.5; font-weight: 700; color: var(--muted); }
+      .mx-qtitle.accent { color: var(--accent-text); }
+      .mx-qbody { font-size: 24px; line-height: 1.5; color: var(--muted); margin-top: 8px; }
+      .mx-ylab { position: absolute; display: flex; flex-direction: column; align-items: flex-end; }
+      .mx-ylab div { font-size: 26px; line-height: 1.5; color: var(--muted); text-align: right; }
+      .mx-ylab div.bold { font-weight: 700; color: var(--ink); }
+      .mx-xlab { position: absolute; font-size: 26px; line-height: 1.5; color: var(--muted); }
+      .mx-xlab.bold { font-weight: 700; color: var(--ink); }
+      .mx-item { position: absolute; }
+      .mx-dot { position: absolute; border-radius: 9999px; background-color: var(--ink); }
+      /* 強める点は二重の輪（外 40 の枠と内 16 の点）。色だけで示さない */
+      .mx-dot.hl { background-color: var(--bg); border: 4px solid var(--accent-mark); display: flex; align-items: center; justify-content: center; }
+      .mx-dot-in { width: 16px; height: 16px; border-radius: 9999px; background-color: var(--accent-mark); }
+      .mx-label { position: absolute; line-height: 1.5; font-weight: 700; white-space: nowrap; }
+      .mx-label.accent { color: var(--accent-text); }
+      .callout-title { font-size: 36px; line-height: 1.4; font-weight: 700; color: var(--accent-text); word-break: auto-phrase; }
+      /* お知らせの枠（DADS の注釈ブロック・ADR 0021）: 白い面・意味の色の枠 2px と左の色帯 16。種類はアイコン＋語でも示す */
+      .col { display: flex; flex-direction: column; }
+      .notice { display: flex; flex-direction: row; flex: none; background-color: #ffffff; border: 2px solid var(--rule); }
+      .nt-band { width: 16px; flex: none; align-self: stretch; }
+      .nt-main { display: flex; flex-direction: column; flex: 1; padding: 24px 40px; }
+      .nt-head { display: flex; align-items: center; margin-bottom: 8px; }
+      .nt-label { line-height: 1.5; font-weight: 700; }
+      .nt-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .nt-body { line-height: 1.6; margin-top: 8px; word-break: auto-phrase; }
+      .nt-point { display: flex; align-items: flex-start; margin-top: 8px; }
+      .nt-mark { flex: none; width: 16px; height: 16px; margin-right: 16px; }
+      .nt-text { line-height: 1.5; word-break: auto-phrase; }
+      /* 用語と説明（DADS の説明リスト）: 左に用語（太字）・右に説明。行の区切りは rule の 2px。行の上下の余白は型が style で上書きする（大きく組むとき） */
+      .dl-row { display: flex; align-items: flex-start; flex: none; padding: 16px 0; border-bottom: 2px solid var(--rule); }
+      .dl-row.first { border-top: 2px solid var(--rule); }
+      .dl-head { display: flex; align-items: flex-start; flex: none; }
+      .dl-term { line-height: 1.5; font-weight: 700; word-break: auto-phrase; }
+      .dl-body { flex: none; line-height: 1.5; word-break: auto-phrase; }
+      /* 手順の案内（DADS のステップナビゲーション）: 番号の丸・札・題・補足。丸の形（塗り・二重の輪・白に枠）と札の語で状態を示す */
+      .st-col { position: absolute; display: flex; flex-direction: column; align-items: flex-start; }
+      .st-row { position: absolute; display: flex; align-items: flex-start; }
+      .st-text { display: flex; flex-direction: column; }
+      .st-line { display: flex; align-items: center; }
+      .st-no { width: 80px; height: 80px; flex: none; display: flex; align-items: center; justify-content: center; }
+      .st-no.cur { border-radius: 9999px; border: 4px solid var(--accent-mark); background-color: var(--bg); }
+      .st-dot { display: flex; align-items: center; justify-content: center; border-radius: 9999px; font-size: 32px; line-height: 1.0; font-weight: 700; }
+      .st-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .st-body { line-height: 1.6; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
+      /* スタイルの見た目の調子（look・ADR 0005 追記）。deck.py が差し込む。standard は空 */
+      
+    </style>
+  </head>
+  <body>
+    <section data-slide data-type="cover" data-transition="fade">
+      <svg class="art" viewBox="0 0 880 1080" width="880" height="1080" style="position:absolute; left:1040px; top:0px; width:880px; height:1080px;" data-step="0" data-fx="fade" data-delay="100" data-name="表紙の図形1"><rect x="393.6" y="0" width="486.4" height="756" style="fill:var(--primary-decor)"/></svg>
+      <svg class="art" viewBox="0 0 880 1080" width="880" height="1080" style="position:absolute; left:1040px; top:0px; width:880px; height:1080px;" data-step="0" data-fx="pop" data-delay="280" data-name="表紙の図形2"><rect x="0" y="434.4" width="369.6" height="645.6" style="fill:var(--accent-decor);fill-opacity:0.9"/></svg>
+      <svg class="art" viewBox="0 0 880 1080" width="880" height="1080" style="position:absolute; left:1040px; top:0px; width:880px; height:1080px;" data-step="0" data-fx="pop" data-delay="460" data-name="表紙の図形3"><rect x="0" y="0" width="369.6" height="410.4" style="fill:var(--surface)"/><rect x="640" y="780" width="240" height="300" style="fill:var(--primary-decor);fill-opacity:0.25"/></svg>
+      <svg class="art" viewBox="0 0 880 1080" width="880" height="1080" style="position:absolute; left:1040px; top:0px; width:880px; height:1080px;" data-step="0" data-fx="pop" data-delay="640" data-name="表紙の図形4"><rect x="396.6" y="783" width="216.4" height="294" style="fill:none;stroke:var(--primary-strong);stroke-width:6"/></svg>
+      <div class="cover-text" style="left:160px; top:96px; width:816px; height:720px;"><div class="cover-label" style="font-size:28px" data-step="0" data-fx="fade" data-name="ラベル">Quick Slide の見本</div><div class="cover-title" style="font-size:96px" data-step="0" data-fx="rise" data-delay="150" data-name="題">頼むだけで、<br>あとから直せる資料に</div><div class="cover-rule" data-step="0" data-fx="wipe-right" data-delay="450" data-name="題の下線"></div><div class="cover-subtitle" style="font-size:32px" data-step="0" data-fx="rise" data-delay="600" data-name="副題">プレゼンで作った資料の見本です</div></div>
+      <aside class="notes">プレゼンで作った見本の資料です。プレゼンで何ができるかを、この資料そのものでお見せします。</aside>
+    </section>
+    <section data-slide data-type="equation" data-transition="fade">
+      <div class="band" data-keep="band" data-name="上の帯"></div>
+      <div class="head" style="width:1680px; top:80px"><div class="kicker" style="font-size:28px" data-name="小見出し">仕組み</div><h1 class="headline" style="font-size:80px; line-height:1.4" data-step="0" data-fx="rise" data-name="見出し">型とブランドと動きが、PowerPoint で<em>直せる資料</em>になる</h1></div>
+      <div class="center" style="left:120px; top:394px; width:1680px; height:558px;"><div class="row" style="height:471px"><div class="card eq-box" style="width:354.00px" data-step="1" data-fx="rise" data-delay="100" data-name="要素1"><div class="icon-disc" style="width:128px; height:128px; border-radius:9999px; background-color:var(--tint); margin-bottom:24px;"><svg width="64" height="64" viewBox="0 -960 960 960"><path d="M480-130 120-410l50-37 310 241 310-241 50 37-360 280Zm0-152L120-562l360-280 360 280-360 280Zm0-301Zm0 225 262-204-262-204-262 204 262 204Z" style="fill:var(--primary-text)"/></svg></div><div class="eq-title" style="font-size:45px">画面の型</div><div class="eq-body" style="font-size:26px">中身に合う形を選ぶ</div></div><div class="eq-op" style="width:88px" data-step="2" data-fx="pop" data-name="＋1">＋</div><div class="card eq-box" style="width:354.00px" data-step="2" data-fx="rise" data-delay="100" data-name="要素2"><div class="icon-disc" style="width:128px; height:128px; border-radius:9999px; background-color:var(--tint); margin-bottom:24px;"><svg width="64" height="64" viewBox="0 -960 960 960"><path d="m388-80-20-126q-19-7-40-19t-37-25l-118 54-93-164 108-79q-2-9-2.5-20.5T185-480q0-9 .5-20.5T188-521L80-600l93-164 118 54q16-13 37-25t40-18l20-127h184l20 126q19 7 40.5 18.5T669-710l118-54 93 164-108 77q2 10 2.5 21.5t.5 21.5q0 10-.5 21t-2.5 21l108 78-93 164-118-54q-16 13-36.5 25.5T592-206L572-80H388Zm48-60h88l14-112q33-8 62.5-25t53.5-41l106 46 40-72-94-69q4-17 6.5-33.5T715-480q0-17-2-33.5t-7-33.5l94-69-40-72-106 46q-23-26-52-43.5T538-708l-14-112h-88l-14 112q-34 7-63.5 24T306-642l-106-46-40 72 94 69q-4 17-6.5 33.5T245-480q0 17 2.5 33.5T254-413l-94 69 40 72 106-46q24 24 53.5 41t62.5 25l14 112Zm44-210q54 0 92-38t38-92q0-54-38-92t-92-38q-54 0-92 38t-38 92q0 54 38 92t92 38Zm0-130Z" style="fill:var(--primary-text)"/></svg></div><div class="eq-title" style="font-size:45px">ブランド</div><div class="eq-body" style="font-size:26px">色・ロゴ・フッタ</div></div><div class="eq-op" style="width:88px" data-step="3" data-fx="pop" data-name="＋2">＋</div><div class="card eq-box" style="width:354.00px" data-step="3" data-fx="rise" data-delay="100" data-name="要素3"><div class="icon-disc" style="width:128px; height:128px; border-radius:9999px; background-color:var(--tint); margin-bottom:24px;"><svg width="64" height="64" viewBox="0 -960 960 960"><path d="m387-311 261-169-261-169v338ZM180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Zm0-600v600-600Z" style="fill:var(--primary-text)"/></svg></div><div class="eq-title" style="font-size:45px">順に出る動き</div><div class="eq-body" style="font-size:26px">クリックで1つずつ</div></div><div class="eq-op" style="width:88px" data-step="4" data-fx="pop" data-name="＝">＝</div><div class="eq-box eq-res" style="width:354.00px" data-step="4" data-fx="pop" data-delay="150" data-name="答え"><div class="icon-disc" style="width:128px; height:128px; border-radius:9999px; background-color:var(--on-primary); margin-bottom:24px;"><svg width="64" height="64" viewBox="0 -960 960 960"><path d="M180-180h44l472-471-44-44-472 471v44Zm-60 60v-128l575-574q8-8 19-12.5t23-4.5q11 0 22 4.5t20 12.5l44 44q9 9 13 20t4 22q0 11-4.5 22.5T823-694L248-120H120Zm659-617-41-41 41 41Zm-105 64-22-22 44 44-22-22Z" style="fill:var(--primary-text)"/></svg></div><div class="eq-title" style="font-size:57px">直せる PPTX</div><div class="eq-chip" style="font-size:26px">文字も図形も部品</div></div></div></div>
+      <aside class="notes">［クリック］［クリック］［クリック］［クリック］</aside>
+    </section>
+    <section data-slide data-type="big-number" data-transition="fade">
+      <div class="band" data-keep="band" data-name="上の帯"></div>
+      <div class="head" style="width:1680px; top:80px"><div class="kicker" style="font-size:28px" data-name="小見出し">型</div><h1 class="headline" style="font-size:80px; line-height:1.4" data-step="0" data-fx="rise" data-name="見出し">中身の形に合わせて、型を選んで組む</h1></div>
+      <div class="bn-main" style="left:120px; top:282px; width:920px; height:670px;"><div data-step="1" data-fx="pop" data-name="大きな数字"><div class="bn-row"><div class="bn-value" style="font-size:200px">29</div><div class="bn-unit" style="font-size:80px">種</div></div><div class="bn-label" style="font-size:45px">画面の型（比較・グラフ・表・手順など）</div></div></div>
+      <div class="bn-side" style="left:1120px; top:282px; width:680px; height:670px;"><div class="bn-item" style="border-bottom:2px solid var(--rule);" data-step="2" data-fx="rise" data-name="補足1"><div class="bn-item-value" style="font-size:64px">7</div><div class="bn-item-text" style="font-size:36px">この資料で使った型</div></div></div>
+      <aside class="notes">型は中身の形で選びます。比べるなら比較や表、数字ならグラフ、順番なら矢羽根です。［クリック］この資料も、ページごとに違う型で組んでいます。［クリック］結論を1行で添える帯や、項目に添えるアイコンも使えます。</aside>
+    </section>
+    <section data-slide data-type="flow" data-transition="fade">
+      <div class="band" data-keep="band" data-name="上の帯"></div>
+      <div class="head" style="width:1680px; top:80px"><div class="kicker" style="font-size:28px" data-name="小見出し">流れ</div><h1 class="headline" style="font-size:64px; line-height:1.4" data-step="0" data-fx="rise" data-name="見出し">頼めば、台本から書き出しまで一続きで進む</h1></div>
+      <div class="center" style="left:120px; top:260px; width:1680px; height:692px;"><div class="row" style="gap:8px; align-items:flex-start"><div class="flow-item" style="width:329px" data-step="1" data-fx="rise" data-name="矢羽根1"><div class="flow-head" style="height:120px"><svg width="329" height="120" viewBox="0 0 329 120"><polygon points="1,1 281,1 328,60 281,119 1,119" fill="#eaf7ff" stroke="#0096cb" stroke-width="2" stroke-linejoin="round"/></svg><div class="flow-label primary" style="left:24px; top:0px; width:257px; height:120px; font-size:36px">頼む</div></div><div class="flow-text" style="padding:0 16px 0 8px"><div class="flow-title" style="font-size:57px">会話から</div><div class="flow-body" style="font-size:45px">入力欄からも</div></div></div><div class="flow-item" style="width:329px" data-step="2" data-fx="rise" data-name="矢羽根2"><div class="flow-head" style="height:120px"><svg width="329" height="120" viewBox="0 0 329 120"><polygon points="1,1 281,1 328,60 281,119 1,119 49,60" fill="#eaf7ff" stroke="#0096cb" stroke-width="2" stroke-linejoin="round"/></svg><div class="flow-label primary" style="left:48px; top:0px; width:233px; height:120px; font-size:36px">台本</div></div><div class="flow-text" style="padding:0 16px 0 8px"><div class="flow-title" style="font-size:57px">台本係</div><div class="flow-body" style="font-size:45px">見出しと型</div></div></div><div class="flow-item" style="width:329px" data-step="3" data-fx="rise" data-name="矢羽根3"><div class="flow-head" style="height:120px"><svg width="329" height="120" viewBox="0 0 329 120"><polygon points="1,1 281,1 328,60 281,119 1,119 49,60" fill="#eaf7ff" stroke="#0096cb" stroke-width="2" stroke-linejoin="round"/></svg><div class="flow-label primary" style="left:48px; top:0px; width:233px; height:120px; font-size:36px">描く</div></div><div class="flow-text" style="padding:0 16px 0 8px"><div class="flow-title" style="font-size:57px">型で組む</div><div class="flow-body" style="font-size:45px">色と動きも</div></div></div><div class="flow-item" style="width:329px" data-step="4" data-fx="rise" data-name="矢羽根4"><div class="flow-head" style="height:120px"><svg width="329" height="120" viewBox="0 0 329 120"><polygon points="1,1 281,1 328,60 281,119 1,119 49,60" fill="#eaf7ff" stroke="#0096cb" stroke-width="2" stroke-linejoin="round"/></svg><div class="flow-label primary" style="left:48px; top:0px; width:233px; height:120px; font-size:36px">直す</div></div><div class="flow-text" style="padding:0 16px 0 8px"><div class="flow-title" style="font-size:57px">選んで指示</div><div class="flow-body" style="font-size:45px">そこだけ直る</div></div></div><div class="flow-item" style="width:329px" data-step="5" data-fx="rise" data-name="矢羽根5"><div class="flow-head" style="height:120px"><svg width="329" height="120" viewBox="0 0 329 120"><polygon points="2,2 281,2 327,60 281,118 2,118 50,60" fill="#0077a1" stroke="#333333" stroke-width="4" stroke-linejoin="round"/></svg><div class="flow-label on-accent" style="left:48px; top:0px; width:233px; height:120px; font-size:36px">書き出す</div></div><div class="flow-text" style="padding:0 16px 0 8px"><div class="flow-title" style="font-size:57px">PPTX</div><div class="flow-body" style="font-size:45px">PDF・画像も</div></div></div></div></div>
+      <aside class="notes">頼んでから書き出すまでの流れです。クリックするたびに1段ずつ出ます。［クリック］まず、会話かホームの入力欄で、作りたい資料を伝えてください。［クリック］すると台本係が、ページごとの見出しと型を決めて台本を書きます。［クリック］次はエンジンの番です。台本どおりに組み、ブランドの色や動きも当てます。［クリック］直したいところは、画面でページを選んで指示してください。そのページだけが変わります。［クリック］仕上がったら、PPTX・PDF・ページの画像に書き出して完成です。</aside>
+    </section>
+    <section data-slide data-type="cards" data-transition="fade">
+      <div class="band" data-keep="band" data-name="上の帯"></div>
+      <div class="head" style="width:1680px; top:80px"><div class="kicker" style="font-size:28px" data-name="小見出し">向く資料</div><h1 class="headline" style="font-size:64px; line-height:1.4" data-step="0" data-fx="rise" data-name="見出し">人に説明して、あとで手を入れる資料に向いている</h1></div>
+      <div class="center" style="left:120px; top:260px; width:1680px; height:692px;"><div class="row" style="gap:48px"><div class="card" style="width:384px" data-step="1" data-fx="rise" data-name="カード1"><div class="icon-disc" style="width:96px; height:96px; border-radius:9999px; background-color:var(--tint); margin-bottom:24px;"><svg width="56" height="56" viewBox="0 -960 960 960"><path d="M660-160v-280h140v280H660Zm-250 0v-640h140v640H410Zm-250 0v-440h140v440H160Z" style="fill:var(--primary-text)"/></svg></div><div class="card-title" style="font-size:57px">報告・定例</div><div class="card-body" style="font-size:36px">数字と進み具合</div></div><div class="card" style="width:384px" data-step="2" data-fx="rise" data-name="カード2"><div class="icon-disc" style="width:96px; height:96px; border-radius:9999px; background-color:var(--tint); margin-bottom:24px;"><svg width="56" height="56" viewBox="0 -960 960 960"><path d="M324-111.5Q251-143 197-197t-85.5-127Q80-397 80-480t31.5-156Q143-709 197-763t127-85.5Q397-880 480-880t156 31.5Q709-817 763-763t85.5 127Q880-563 880-480t-31.5 156Q817-251 763-197t-127 85.5Q563-80 480-80t-156-31.5ZM721-239q99-99 99-241t-99-241q-99-99-241-99t-241 99q-99 99-99 241t99 241q99 99 241 99t241-99Zm-411-71q-70-70-70-170t70-170q70-70 170-70t170 70q70 70 70 170t-70 170q-70 70-170 70t-170-70Zm297.5-42.5Q660-405 660-480t-52.5-127.5Q555-660 480-660t-127.5 52.5Q300-555 300-480t52.5 127.5Q405-300 480-300t127.5-52.5Zm-184-71Q400-447 400-480t23.5-56.5Q447-560 480-560t56.5 23.5Q560-513 560-480t-23.5 56.5Q513-400 480-400t-56.5-23.5Z" style="fill:var(--primary-text)"/></svg></div><div class="card-title" style="font-size:57px">提案書</div><div class="card-body" style="font-size:36px">筋道を立てて説得</div></div><div class="card" style="width:384px" data-step="3" data-fx="rise" data-name="カード3"><div class="icon-disc" style="width:96px; height:96px; border-radius:9999px; background-color:var(--tint); margin-bottom:24px;"><svg width="56" height="56" viewBox="0 -960 960 960"><path d="M560-574v-48q33-14 67.5-21t72.5-7q26 0 51 4t49 10v44q-24-9-48.5-13.5T700-610q-38 0-73 9.5T560-574Zm0 220v-49q33-13.5 67.5-20.25T700-430q26 0 51 4t49 10v44q-24-9-48.5-13.5T700-390q-38 0-73 9t-67 27Zm0-110v-48q33-14 67.5-21t72.5-7q26 0 51 4t49 10v44q-24-9-48.5-13.5T700-500q-38 0-73 9.5T560-464ZM248-300q53.57 0 104.28 12.5Q403-275 452-250v-427q-45-30-97.62-46.5Q301.76-740 248-740q-38 0-74.5 9.5T100-707v434q31-14 70.5-20.5T248-300Zm264 50q50-25 98-37.5T712-300q38 0 78.5 6t69.5 16v-429q-34-17-71.82-25-37.82-8-76.18-8-54 0-104.5 16.5T512-677v427Zm-30 90q-51-38-111-58.5T248-239q-36.54 0-71.77 9T106-208q-23.1 11-44.55-3Q40-225 40-251v-463q0-15 7-27.5T68-761q42-20 87.39-29.5 45.4-9.5 92.61-9.5 63 0 122.5 17T482-731q51-35 109.5-52T712-800q46.87 0 91.93 9.5Q849-781 891-761q14 7 21.5 19.5T920-714v463q0 27.89-22.5 42.45Q875-194 853-208q-34-14-69.23-22.5Q748.54-239 712-239q-63 0-121 21t-109 58ZM276-489Z" style="fill:var(--primary-text)"/></svg></div><div class="card-title" style="font-size:57px">社内の資料</div><div class="card-body" style="font-size:36px">手順や決まりの共有</div></div><div class="card" style="width:384px" data-step="4" data-fx="rise" data-name="カード4"><div class="icon-disc" style="width:96px; height:96px; border-radius:9999px; background-color:var(--tint); margin-bottom:24px;"><svg width="56" height="56" viewBox="0 -960 960 960"><path d="M180-180h44l472-471-44-44-472 471v44Zm-60 60v-128l575-574q8-8 19-12.5t23-4.5q11 0 22 4.5t20 12.5l44 44q9 9 13 20t4 22q0 11-4.5 22.5T823-694L248-120H120Zm659-617-41-41 41 41Zm-105 64-22-22 44 44-22-22Z" style="fill:var(--primary-text)"/></svg></div><div class="card-title" style="font-size:57px">自分で仕上げる</div><div class="card-body" style="font-size:36px">PowerPoint で手直し</div></div></div></div>
+      <aside class="notes">［クリック］［クリック］［クリック］［クリック］</aside>
+    </section>
+    <section data-slide data-type="table" data-transition="fade">
+      <div class="band" data-keep="band" data-name="上の帯"></div>
+      <div class="head" style="width:1680px; top:80px"><div class="kicker" style="font-size:28px" data-name="小見出し">モードの選び方</div><h1 class="headline" style="font-size:80px; line-height:1.4" data-step="0" data-fx="rise" data-name="見出し">見せ方に合わせて、3つのモードから選ぶ</h1></div>
+      <div class="table" style="left:120px; top:282px; width:1680px;" data-step="1" data-fx="fade" data-name="表"><div class="tr th" style="height:112px"><div class="td" style="width:240px; justify-content:flex-start"><div style="font-size:28px; text-align:left; font-weight:700;">観点</div></div><div class="td hl" style="width:480px; justify-content:center"><div style="font-size:28px; text-align:center; font-weight:700;">プレゼン</div></div><div class="td" style="width:480px; justify-content:center"><div style="font-size:28px; text-align:center; font-weight:700;">ピッチ</div></div><div class="td" style="width:480px; justify-content:center"><div style="font-size:28px; text-align:center; font-weight:700;">モーション</div></div></div><div class="tr" style="height:112px"><div class="td" style="width:240px; justify-content:flex-start"><div style="font-size:28px; text-align:left; font-weight:700;">描き方</div></div><div class="td hl" style="width:480px; justify-content:center"><div style="font-size:28px; text-align:center; font-weight:700;">型で組む</div></div><div class="td" style="width:480px; justify-content:center"><div style="font-size:28px; text-align:center;">1枚ずつ画像生成</div></div><div class="td" style="width:480px; justify-content:center"><div style="font-size:28px; text-align:center;">クリックで進む Web</div></div></div><div class="tr" style="height:112px"><div class="td" style="width:240px; justify-content:flex-start"><div style="font-size:28px; text-align:left; font-weight:700;">書き出し</div></div><div class="td hl" style="width:480px; justify-content:center"><div style="font-size:28px; text-align:center; font-weight:700;">直せる PPTX・PDF</div></div><div class="td" style="width:480px; justify-content:center"><div style="font-size:28px; text-align:center;">絵の PPTX・PDF</div></div><div class="td" style="width:480px; justify-content:center"><div style="font-size:28px; text-align:center;">HTML 1枚</div></div></div><div class="tr" style="height:112px"><div class="td" style="width:240px; justify-content:flex-start"><div style="font-size:28px; text-align:left; font-weight:700;">向く場面</div></div><div class="td hl" style="width:480px; justify-content:center"><div style="font-size:28px; text-align:center; font-weight:700;">報告・提案・数字</div></div><div class="td" style="width:480px; justify-content:center"><div style="font-size:28px; text-align:center;">印象を残したいとき</div></div><div class="td" style="width:480px; justify-content:center"><div style="font-size:28px; text-align:center;">画面で見せる説明</div></div></div></div>
+      <div class="take" style="left:440px; top:864px; width:1040px; height:88px;" data-step="1" data-fx="fade" data-delay="500" data-name="締めの帯"><svg width="40" height="40" viewBox="0 -960 960 960"><path d="M453-280h60v-240h-60v240Zm50.5-323.2q9.5-9.2 9.5-22.8 0-14.45-9.48-24.22-9.48-9.78-23.5-9.78t-23.52 9.78Q447-640.45 447-626q0 13.6 9.48 22.8 9.48 9.2 23.5 9.2t23.52-9.2ZM480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm.23-60Q622-140 721-239.5t99-241Q820-622 721.19-721T480-820q-141 0-240.5 98.81T140-480q0 141 99.5 240.5t241 99.5Zm-.5-340Z" style="fill:var(--primary-text)"/></svg><div class="take-t" style="font-size:32px">モードは作るときに決め、あとから切り替えられません</div></div>
+      <aside class="notes">［クリック］</aside>
+    </section>
+    <section data-slide data-type="closing" data-transition="fade">
+      <div class="band" data-keep="band" data-name="上の帯"></div>
+      <div class="head" style="width:1680px; top:80px"><h1 class="headline" style="font-size:80px; line-height:1.4" data-step="0" data-fx="rise" data-name="見出し">この資料は見本です。消しても戻せます</h1></div>
+      <div class="list" style="left:120px; top:232px; width:1680px; height:720px;"><div class="li" style="" data-step="0" data-fx="rise" data-delay="300" data-name="項目1"><div class="li-no">1</div><div class="li-text"><div class="li-title" style="font-size:57px">自由に消せる</div><div class="li-body" style="font-size:45px">設定 › 見本 からいつでも戻せる</div></div></div><div class="li" style="margin-top:64px;" data-step="0" data-fx="rise" data-delay="450" data-name="項目2"><div class="li-no">2</div><div class="li-text"><div class="li-title" style="font-size:57px">会話で頼む</div><div class="li-body" style="font-size:45px">「〇〇をプレゼンにまとめて」</div></div></div><div class="li" style="margin-top:64px;" data-step="0" data-fx="rise" data-delay="600" data-name="項目3"><div class="li-no">3</div><div class="li-text"><div class="li-title" style="font-size:57px">入力欄で頼む</div><div class="li-body" style="font-size:45px">ホームの入力欄に書くだけ</div></div></div></div>
+      <aside class="notes"></aside>
+    </section>
+  </body>
+</html>

@@ -307,6 +307,7 @@
     if (p === "/settings/brands") { return { name: "settings", section: "brands" }; }
     if (p === "/settings/styles") { return { name: "settings", section: "styles" }; }
     if (p === "/settings/server") { return { name: "settings", section: "server" }; }
+    if (p === "/settings/samples") { return { name: "settings", section: "samples" }; }
     var b = /^\/settings\/brands\/([0-9a-f-]{36})$/.exec(p);
     if (b) { return { name: "settings", section: "brand", brandId: b[1] }; }
     return { name: "home" };

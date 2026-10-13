@@ -162,6 +162,18 @@ class FreshMachineTests(unittest.TestCase):
         run_dir = self.qs / "decks" / deck / "runs" / pptx["run_id"]
         info = json.loads((run_dir / "deck-info.json").read_text(encoding="utf-8"))
         self.report["presentation"]["cache"] = info.get("cache")
+        # 3b. 見本（docs/adr/0006-bundled-samples.md）: 最初の起動で 3 冊入っている。プレゼンの見本の PPTX は同梱して
+        # いないので、書き出すときにこの機械で描いて作る。モーションの見本の HTML 1枚はそのまま配る
+        status, body, raw, _ = self.api("GET", "/api/samples")
+        self.assertEqual(status, 200, raw[:300])
+        samples = {i["mode"]: i for i in body["items"]}
+        self.assertEqual(sorted(samples), ["motion", "pitch", "presentation"])
+        self.assertEqual({i["state"] for i in samples.values()}, {"present"})
+        sample_pptx = self.export(samples["presentation"]["decks"][0]["id"], "pptx")
+        self.assertEqual(sample_pptx["head"], b"PK\x03\x04")
+        sample_html = self.export(samples["motion"]["decks"][0]["id"], "html")
+        self.report["samples"] = {"presentation_pptx": {k: sample_pptx[k] for k in ("bytes", "seconds")},
+                                  "motion_html": {k: sample_html[k] for k in ("bytes", "seconds")}}
         # 4. ピッチを 1 冊（絵は偽物の codex）→ 書き出す
         rc, out, text, took = self.run_py(self.start_py, "--manuscript-file", str(manuscript), "--title", "会議を半分にする（絵）",
                                           "--mode", "pitch", "--wait", "--wait-timeout", "900", "--no-open", "--new-deck", "--runtime", "claude_code",
