@@ -180,15 +180,19 @@ def from_video(project: str | Path, script_path: str | Path, build_path: str | P
     """project（index.html のあるフォルダか index.html）＋台本＋build.json → 部品 JSON（out_json があれば書く）。"""
     import render
     parts = render.extract(project, mode="hyperframes")
-    script = json.loads(Path(script_path).read_text())
-    build = json.loads(Path(build_path).read_text()) if build_path else None
+    script = json.loads(Path(script_path).read_text(encoding="utf-8"))
+    build = json.loads(Path(build_path).read_text(encoding="utf-8")) if build_path else None
     convert(parts, script, build)
     if out_json:
-        Path(out_json).write_text(json.dumps(parts, ensure_ascii=False))
+        Path(out_json).write_text(json.dumps(parts, ensure_ascii=False), encoding="utf-8")
     return parts
 
 
 if __name__ == "__main__":
+    import sys
+
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8")
     import sys
     if len(sys.argv) != 5:
         sys.exit("使い方: python3 from_video.py <project> <script.json> <build.json> <out.parts.json>")

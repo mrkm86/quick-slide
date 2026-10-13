@@ -486,8 +486,8 @@ class PresentationEditTests(EditBase):
         self.assertEqual(len(self.gen_files()), gens * 2, "複製の区画に同じ絵が張られた（描いてはいない）")
         with self.fx.server.store_lock:
             ra, rb = self.fx.store.shown_run(deck), self.fx.store.shown_run(new)
-        ca = json.loads((self.fx.root.run_dir(deck, ra["id"]) / "deck-info.json").read_text())["cache"]
-        cb = json.loads((self.fx.root.run_dir(new, rb["id"]) / "deck-info.json").read_text())["cache"]
+        ca = json.loads((self.fx.root.run_dir(deck, ra["id"]) / "deck-info.json").read_text(encoding="utf-8"))["cache"]
+        cb = json.loads((self.fx.root.run_dir(new, rb["id"]) / "deck-info.json").read_text(encoding="utf-8"))["cache"]
         self.assertNotEqual(ca, cb, "複製の回の記録は複製の区画を指す")
         a_files = {p.name: (p.stat().st_ino, p.read_bytes()) for p in Path(ca).glob("gen-*")}
         a_pics = {p.name: p.read_bytes() for p in (self.fx.root.run_dir(deck, ra["id"]) / "pictures").glob("*")}

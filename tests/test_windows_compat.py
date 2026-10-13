@@ -142,10 +142,10 @@ class OsCompatTests(unittest.TestCase):
             proc = OS.popen_group([sys.executable, "-c", code])
             try:
                 deadline = time.monotonic() + 10
-                while not pid_file.exists() or not pid_file.read_text():
+                while not pid_file.exists() or not pid_file.read_text(encoding="utf-8"):
                     self.assertLess(time.monotonic(), deadline, "孫が起きない")
                     time.sleep(0.05)
-                grandchild = int(pid_file.read_text())
+                grandchild = int(pid_file.read_text(encoding="utf-8"))
                 self.assertTrue(OS.pid_alive(grandchild))
                 OS.kill_group(proc, grace=5.0)
                 self.assertIsNotNone(proc.poll(), "子が止まらない")
@@ -252,3 +252,59 @@ class LineEndingTests(unittest.TestCase):
             if b"\r\n" in data:
                 crlf.append(name)
         self.assertEqual(crlf, [], "CRLF で取り出されている（.gitattributes を入れる前の clone なら、取り出し直す）")
+
+
+# 文字の読み書きで encoding を書かないもの（Windows の既定は cp932。B4・W2）
+CODE_AND_TESTS = [ROOT / "src", *sorted((ROOT / "skills").glob("*/scripts")), ROOT / "tests",
+                  *sorted((ROOT / "skills").glob("*/tests"))]
+
+
+def _kw(call: ast.Call, name: str) -> bool:
+    return any(k.arg == name for k in call.keywords)
+
+
+def _text_mode(call: ast.Call, pos: int) -> bool:
+    mode = call.args[pos] if len(call.args) > pos else next((k.value for k in call.keywords if k.arg == "mode"), None)
+    return mode is None or (isinstance(mode, ast.Constant) and isinstance(mode.value, str) and "b" not in mode.value)
+
+
+def text_io_without_encoding(tree: ast.AST) -> list[int]:
+    lines = []
+    for n in ast.walk(tree):
+        if not isinstance(n, ast.Call) or _kw(n, "encoding"):
+            continue
+        f = n.func
+        name = f.attr if isinstance(f, ast.Attribute) else f.id if isinstance(f, ast.Name) else None
+        receiver_is_self = isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id == "self"
+        if (name == "read_text" and isinstance(f, ast.Attribute) and not n.args
+                or name == "write_text" and isinstance(f, ast.Attribute) and len(n.args) == 1
+                or name == "open" and isinstance(f, ast.Name) and _text_mode(n, 1)
+                or name == "open" and isinstance(f, ast.Attribute) and not receiver_is_self and not n.args
+                or name in ("run", "Popen", "check_output") and (_kw(n, "text") or _kw(n, "universal_newlines"))
+                or name == "fdopen" and len(n.args) >= 2 and _text_mode(n, 1)):
+            lines.append(n.lineno)
+    return lines
+
+
+class EncodingTests(unittest.TestCase):
+    def test_text_io_names_its_encoding(self) -> None:
+        """文字の読み書き・text=True の子プロセスは encoding を書く。書かないと Windows では cp932 で読み書きする。"""
+        found = [f"{p.relative_to(ROOT).as_posix()}:{n}" for base in CODE_AND_TESTS for p in sorted(base.rglob("*.py"))
+                 if "__pycache__" not in p.parts and "vendor" not in p.parts
+                 for n in text_io_without_encoding(ast.parse(p.read_text(encoding="utf-8")))]
+        self.assertEqual(found, [], "encoding=\"utf-8\" を書く")
+
+    def test_the_check_catches_missing_encodings(self) -> None:
+        source = ("p.read_text()\np.write_text(s)\nopen(p)\nopen(p, 'rb')\nq.open()\nself.open()\n"
+                  "subprocess.run(c, text=True)\nsubprocess.run(c, text=True, encoding='utf-8')\np.read_bytes()\n")
+        self.assertEqual(text_io_without_encoding(ast.parse(source)), [1, 2, 3, 5, 7])
+
+    def test_entry_scripts_write_utf8(self) -> None:
+        """スクリプトの入口は stdout・stderr を UTF-8 にする（読むのはエージェントとサーバ。Windows の既定は cp932）。"""
+        entries = [p for base in [*sorted((ROOT / "skills").glob("*/scripts"))] for p in sorted(base.glob("*.py"))
+                   if "dads" not in p.parts and 'if __name__ == "__main__":' in p.read_text(encoding="utf-8")]
+        entries.append(ROOT / "src" / "quick_slide" / "server" / "__main__.py")
+        missing = [p.relative_to(ROOT).as_posix() for p in entries
+                   if '.reconfigure(encoding="utf-8")' not in p.read_text(encoding="utf-8")]
+        self.assertGreater(len(entries), 10)
+        self.assertEqual(missing, [])

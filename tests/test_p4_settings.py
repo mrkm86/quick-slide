@@ -205,7 +205,7 @@ class ThemeMappingTests(unittest.TestCase):
                 r = subprocess.run([sys.executable, str(SKILLS_DIR / skill / "scripts" / entry), "check", "--script",
                                     str(tmp / "deck.json"), "--theme", str(tmp / "theme.yaml")],
                                    capture_output=True, text=True, timeout=120,
-                                   env={**__import__("os").environ, "PYTHONDONTWRITEBYTECODE": "1"})
+                                   env={**__import__("os").environ, "PYTHONDONTWRITEBYTECODE": "1"}, encoding="utf-8")
                 self.assertEqual(r.returncode, 0, f"{skill}: {r.stderr[-800:]}")
 
 

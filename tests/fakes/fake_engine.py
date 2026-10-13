@@ -49,7 +49,7 @@ def write_html(out: pathlib.Path, slides: list, skip: set) -> None:
     if "html" not in skip:
         (out / "deck.html").write_text(f'<!doctype html><html><head><meta charset="UTF-8"><style>{face}</style></head>'
                                        f'<body>{"".join(sections)}</body></html>', encoding="utf-8")
-    (out / "build.json").write_text(json.dumps({"slides": rows}))
+    (out / "build.json").write_text(json.dumps({"slides": rows}), encoding="utf-8")
 
 
 def motion_scenes_html(scenes: list) -> str:
@@ -128,7 +128,7 @@ def main_motion(argv: list) -> int:
              "clicks": int(s.get("beats") or 1) - 1, "page": f"slides/slide-{i:02d}.png"} for i, s in enumerate(scenes, 1)]
     record = {"engine": "motion-slide", "scenes": len(scenes), "slides": rows}
     for name in ("build.json", "deck-info.json"):
-        (out / name).write_text(json.dumps(record, ensure_ascii=False))
+        (out / name).write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
     Image.new("RGB", (192, 108), (5, 5, 5)).save(out / "thumbs.png")
     print(f"index: {out / 'index.html'}（{len(index) // 1024}KB）")
     print(f"png: {out / 'slides'}（{len(scenes)}枚）")
@@ -146,7 +146,7 @@ def main(kind: str) -> int:
     log = os.environ.get("FAKE_ENGINE_LOG")
     if log:
         pathlib.Path(log).mkdir(parents=True, exist_ok=True)
-        (pathlib.Path(log) / f"{time.time():.6f}-{cmd}.json").write_text(json.dumps({"kind": kind, "argv": argv}))
+        (pathlib.Path(log) / f"{time.time():.6f}-{cmd}.json").write_text(json.dumps({"kind": kind, "argv": argv}), encoding="utf-8")
     if cmd == "auth":
         rc = int(os.environ.get("FAKE_ENGINE_AUTH_RC", "0"))
         print("OK: ログイン済み" if rc == 0 else "NG: Codex にログインしていない", file=sys.stderr)
@@ -193,7 +193,7 @@ def main(kind: str) -> int:
         Image.new("RGB", (192, 108), (20 * i % 255, 80, 160)).save(out / "slides" / f"slide-{i:02d}.png")
     rows = [{"no": i, "type": s.get("type"), "status": "generated" if i in pages else "failed"}
             for i, s in enumerate(slides, 1)]
-    (out / ("build.json" if kind == "image" else "deck-info.json")).write_text(json.dumps({"slides": rows}))
+    (out / ("build.json" if kind == "image" else "deck-info.json")).write_text(json.dumps({"slides": rows}), encoding="utf-8")
     skip = set(filter(None, os.environ.get("FAKE_ENGINE_SKIP", "").split(",")))
     if kind != "image":
         write_html(out, slides, skip)

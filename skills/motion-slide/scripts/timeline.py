@@ -7,7 +7,10 @@ data-dur が無い拍は、ms-config の dur（既定 4200ms）で数える（�
 """
 import json, re, sys, pathlib
 
-src = pathlib.Path(sys.argv[1]).read_text()
+for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
+    _out.reconfigure(encoding="utf-8")
+
+src = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 m = re.search(r'<script type="application/json" id="ms-config">(.*?)</script>', src, re.S)
 default = json.loads(m.group(1)).get("dur", 4200) if m else 4200
 t, out = 0.0, {}

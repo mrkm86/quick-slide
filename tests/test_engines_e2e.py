@@ -27,7 +27,7 @@ def html_slide_ready() -> str | None:
     import sys
 
     r = subprocess.run([sys.executable, str(SKILLS_DIR / "html-slide" / "scripts" / "browser.py")], capture_output=True,
-                       text=True, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, timeout=60)
+                       text=True, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, timeout=60, encoding="utf-8")
     try:
         found = json.loads(r.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):

@@ -48,7 +48,7 @@ class SetupBase(unittest.TestCase):
         self.home = self.tmp / "home"
         self.home.mkdir()
         self.chromium = self.tmp / "chromium-bin"
-        self.chromium.write_text("")
+        self.chromium.write_text("", encoding="utf-8")
         self.qs = self.home / ".quick-slide"
         self.fakebin = self.tmp / "bin"
         self.fakebin.mkdir()
@@ -69,7 +69,7 @@ class SetupBase(unittest.TestCase):
 
     def run_tool(self, *args: str, script: Path = SETUP, **extra: str) -> tuple[int, str, dict]:
         r = subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, env=self.env(**extra),
-                           timeout=120, stdin=subprocess.DEVNULL)
+                           timeout=120, stdin=subprocess.DEVNULL, encoding="utf-8")
         last = json.loads(r.stdout.strip().splitlines()[-1])
         return r.returncode, r.stdout, last
 
@@ -102,7 +102,7 @@ class DoctorTests(SetupBase):
         nm = self.tmp / "nm" / "node_modules"
         (nm / "puppeteer-core").mkdir(parents=True)
         chrome = self.tmp / "chrome-bin"
-        chrome.write_text("")
+        chrome.write_text("", encoding="utf-8")
         rc, text, out = self.run_tool("--doctor", HTML_SLIDE_NODE_MODULES=str(nm), HTML_SLIDE_CHROME=str(chrome))
         c = self.checks(out)
         self.assertEqual((c["puppeteer-core"]["level"], c["puppeteer-core"]["source"]), ("ok", "env"))

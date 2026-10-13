@@ -118,7 +118,7 @@ def main():
                     track[i:i + len(s)] += s[:len(track) - i]
             track /= max(1.0, float(np.abs(track).max()) / 0.89)
             write_wav(td / "sfx.wav", track); inputs += ["-i", str(td / "sfx.wav")]
-        m = None if a.no_bgm else re.search(r'<audio id="bgm"[^>]*src="data:audio/([\w.+-]+);base64,([^"]+)"', html.read_text())
+        m = None if a.no_bgm else re.search(r'<audio id="bgm"[^>]*src="data:audio/([\w.+-]+);base64,([^"]+)"', html.read_text(encoding="utf-8"))
         if m:
             ext = {"mp4": "m4a", "mpeg": "mp3", "ogg": "ogg"}.get(m.group(1), "m4a")
             (td / f"bgm.{ext}").write_bytes(base64.b64decode(m.group(2)))
@@ -140,4 +140,6 @@ def main():
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8")
     main()

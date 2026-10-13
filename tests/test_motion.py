@@ -182,13 +182,13 @@ class DuplicateSceneTests(unittest.TestCase):
             src = Path(tmp) / "deck.json"
             r = subprocess.run([sys.executable, "-I", str(SKILLS_DIR / "motion-slide" / "scripts" / "split.py"),
                                 str(SKILLS_DIR / "motion-slide" / "templates" / "deck.html"), "--out", str(src)],
-                               capture_output=True, text=True)
+                               capture_output=True, text=True, encoding="utf-8")
             self.assertEqual(r.returncode, 0, r.stderr)
             data = json.loads(src.read_text(encoding="utf-8"))
             scene = next(s for s in data["scenes"] if motion.element_ids(s.get("html")))
             taken = motion.element_ids(data.get("stage"), *(s.get("html") for s in data["scenes"]))
             check = lambda d: subprocess.run([sys.executable, "-I", str(SKILLS_DIR / "motion-slide" / "scripts" / "motion_slide.py"),
-                                              "check", "--script", str(src), "--quick"], capture_output=True, text=True)
+                                              "check", "--script", str(src), "--quick"], capture_output=True, text=True, encoding="utf-8")
 
             def run(scenes):
                 src.write_text(json.dumps({**data, "scenes": scenes}, ensure_ascii=False), encoding="utf-8")
@@ -592,7 +592,7 @@ class PresentTests(MotionBase):
         if node is None:
             self.skipTest("node が無い")
         for name in ("present-motion-frame.js", "present.js"):
-            r = subprocess.run([node, "--check", str(REPO / "web" / "app" / name)], capture_output=True, text=True)
+            r = subprocess.run([node, "--check", str(REPO / "web" / "app" / name)], capture_output=True, text=True, encoding="utf-8")
             self.assertEqual(r.returncode, 0, r.stderr)
 
 

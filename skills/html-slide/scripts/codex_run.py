@@ -137,7 +137,7 @@ def freshness(raw: bytes, now: datetime | None = None) -> dict:
 def _run_auth_cmd(cmd: list, timeout: int, what: str) -> subprocess.CompletedProcess:
     """認証の確認で走らせる codex。起動できない・時間切れも CodexError（rc=4）にする。"""
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, env=_env(), timeout=timeout, stdin=subprocess.DEVNULL)
+        return subprocess.run(cmd, capture_output=True, text=True, env=_env(), timeout=timeout, stdin=subprocess.DEVNULL, encoding="utf-8")
     except subprocess.TimeoutExpired:
         raise CodexError("auth", f"{what}が {timeout} 秒で終わらなかった")
     except OSError as e:
@@ -317,7 +317,7 @@ def generate(cli: str, snapshot: bytes, text: str, refs: list[pathlib.Path], des
             cmd += ["-i", str(r)]
         cmd.append("-")   # -i は値を複数取るので、指示は stdin で渡す（位置引数だと画像のパスとして読まれる）
         timed_out = False
-        with open(prompt_file, "rb") as inp, open(priv_out, "w") as out, open(priv_err, "w") as err:
+        with open(prompt_file, "rb") as inp, open(priv_out, "w", encoding="utf-8") as out, open(priv_err, "w", encoding="utf-8") as err:
             p = OS.popen_group(cmd, stdin=inp, stdout=out, stderr=err, env=_env(home), cwd=work)
             try:
                 while p.poll() is None:
@@ -331,7 +331,7 @@ def generate(cli: str, snapshot: bytes, text: str, refs: list[pathlib.Path], des
                 if p.poll() is None:
                     OS.kill_group(p)
                 OS.end_group(p)
-        stdout, stderr = (redact(x.read_text(errors="replace"), secrets) for x in (priv_out, priv_err))
+        stdout, stderr = (redact(x.read_text(errors="replace", encoding="utf-8"), secrets) for x in (priv_out, priv_err))
         failures = failure_lines(stdout, stderr)
         # 失効は絵の有無より先に見る（絵が1枚返っていても、失効が出たら残りを止める）
         if AUTH_DEAD.search(failures):
@@ -368,7 +368,7 @@ def _publish_logs(home: pathlib.Path, out_log: pathlib.Path, err_log: pathlib.Pa
         out_log.parent.mkdir(parents=True, exist_ok=True)
         for src, dst in ((home / "codex.jsonl", out_log), (home / "codex.stderr.txt", err_log)):
             if src.is_file():
-                dst.write_text(redact(src.read_text(errors="replace"), secrets))
+                dst.write_text(redact(src.read_text(errors="replace", encoding="utf-8"), secrets), encoding="utf-8")
     except OSError:
         pass   # ログが書けなくても、隔離ホームの後始末（秘密の削除）は続ける
 

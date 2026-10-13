@@ -55,7 +55,7 @@ class FreshMachineTests(unittest.TestCase):
         self.qs = self.home / ".quick-slide"
         (self.qs / "config").mkdir(parents=True)
         (self.qs / "config" / "settings.json").write_text(json.dumps({"server": {"port": 0},
-                                                                      "browser": {"mode": "manual"}}))
+                                                                      "browser": {"mode": "manual"}}), encoding="utf-8")
         dirs: list[str] = []
         for name in ("python3", "node", "npm"):
             p = shutil.which(name)
@@ -88,7 +88,7 @@ class FreshMachineTests(unittest.TestCase):
     def run_py(self, script: Path, *args: str, timeout: float = 1800) -> tuple[int, dict, str, float]:
         t0 = time.monotonic()
         r = subprocess.run(["python3", str(script), *args], env=self.env, capture_output=True, text=True,
-                           timeout=timeout, cwd=str(self.tmp), stdin=subprocess.DEVNULL)
+                           timeout=timeout, cwd=str(self.tmp), stdin=subprocess.DEVNULL, encoding="utf-8")
         took = time.monotonic() - t0
         lines = r.stdout.strip().splitlines()
         return r.returncode, json.loads(lines[-1]) if lines else {}, r.stdout + r.stderr, took

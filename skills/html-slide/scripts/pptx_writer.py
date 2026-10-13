@@ -568,11 +568,15 @@ def write(parts: dict, out_path, *, line_breaks: bool = False) -> dict:
 
 
 if __name__ == "__main__":
+    import sys
+
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8")
     import json
     import sys
     if len(sys.argv) != 3:
         sys.exit("使い方: python3 pptx_writer.py <parts.json> <out.pptx>")
-    rep = write(json.loads(Path(sys.argv[1]).read_text()), sys.argv[2])
+    rep = write(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")), sys.argv[2])
     for s in rep["slides"]:
         print(f"slide{s['no']:>2} {s['id']:<8} steps={s['steps']} effects={s['effects']:>2} notes={s['notes_clicks']} "
               f"{s['transition']:<5} {'OK' if s['ok'] else 'NG'}")

@@ -60,7 +60,7 @@ def main(argv):
         return 0
     asm = "--assemble" in argv
     path, name = argv[0], [a for a in argv[1:] if not a.startswith("--")][0]
-    d = json.load(open(path))
+    d = json.load(open(path, encoding="utf-8"))
     PREP(d)
     CASES[name][0](d)
     if asm:

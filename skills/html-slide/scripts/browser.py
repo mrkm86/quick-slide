@@ -166,4 +166,6 @@ def child_env(cfg: dict | None = None, base: dict | None = None) -> dict:
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8")
     print(json.dumps(report(), ensure_ascii=False, sort_keys=True))

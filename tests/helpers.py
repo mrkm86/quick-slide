@@ -318,7 +318,7 @@ def fake_codex_home(base: Path) -> Path:
     (home / "auth.json").write_text(json.dumps({
         "auth_mode": "chatgpt", "OPENAI_API_KEY": None, "last_refresh": last,
         "tokens": {"id_token": "x", "access_token": fake_jwt(time.time() + 5 * 86400), "refresh_token": "r",
-                   "account_id": "a"}}))
+                   "account_id": "a"}}), encoding="utf-8")
     return home
 
 

@@ -62,7 +62,7 @@ def lacking():
 
 
 def run(cmd):
-    return subprocess.run(cmd, capture_output=True, text=True, env=os.environ.copy())
+    return subprocess.run(cmd, capture_output=True, text=True, env=os.environ.copy(), encoding="utf-8")
 
 
 def translate(report, scenes):
@@ -314,4 +314,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8")
     sys.exit(main())

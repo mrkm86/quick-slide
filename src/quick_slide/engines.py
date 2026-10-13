@@ -213,11 +213,11 @@ def engine_marker(skills_dir: Path, engine: Engine) -> dict[str, Any]:
         files += 1
     head = dirty = None
     try:
-        r = subprocess.run(["git", "-C", str(base), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5)
+        r = subprocess.run(["git", "-C", str(base), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5, encoding="utf-8")
         if r.returncode == 0:
             head = r.stdout.strip()
             d = subprocess.run(["git", "-C", str(base), "status", "--porcelain", "--", "."], capture_output=True,
-                               text=True, timeout=5)
+                               text=True, timeout=5, encoding="utf-8")
             dirty = bool(d.stdout.strip()) if d.returncode == 0 else None
     except (OSError, subprocess.SubprocessError):
         pass
