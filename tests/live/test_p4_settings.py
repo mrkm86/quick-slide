@@ -164,7 +164,11 @@ class SettingsScreensTest(unittest.TestCase):
                   " var w = document.querySelectorAll('.brand-format input[type=text]')[1]; w.value = '配布禁止';"
                   " w.dispatchEvent(new Event('input', {bubbles: true}));"
                   " Array.from(document.querySelectorAll('.corner-choice')).find(b => b.textContent.indexOf('左下') >= 0).click(); })()")
-        page.until("!!document.querySelector('.sample .sample__pageno') && !!document.querySelector('.sample .sample__watermark')"
+        # 表紙・章扉にはフッタとページ番号が入らない（エンジンの決まり）。中身のページ（箇条書き）の見本で確かめる
+        page.until("!!document.querySelector('.sample--cover .sample__watermark') && !document.querySelector('.sample--cover .sample__footer')",
+                   what="表紙の見本は透かしだけ")
+        page.eval("document.querySelectorAll('.carousel__dot')[2].click()")
+        page.until("!!document.querySelector('.sample--bullets .sample__pageno') && !!document.querySelector('.sample .sample__watermark')"
                    " && !!document.querySelector('.sample .sample__footer')", what="見本に下の部品が出ること")
         page.until("Array.from(document.querySelectorAll('.settings-actions button')).some(b => b.textContent === '保存する' && !b.disabled)",
                    what="保存できること")
@@ -181,10 +185,9 @@ class SettingsScreensTest(unittest.TestCase):
         self.assertEqual(saved["config"]["footer"]["text"], "試験の資料")
         self.assertEqual(saved["config"]["logo"], {"variant": "transparent", "placement": {"corner": "bottom-left"}})
         self.assertEqual(sorted(a["role"] for a in saved["assets"]), ["logo_transparent", "optional"], "差し絵は消えない")
-        # 一覧: 書式の登録は押せず、理由はブランドの編集画面を指す
-        page = self.open("/settings", "document.querySelectorAll('.setting-row').length >= 2", "ブランドの一覧")
-        self.assertTrue(page.eval("Array.from(document.querySelectorAll('button')).find(b => b.textContent === '書式を登録').disabled"))
-        self.assertIn("ブランドの編集画面", page.eval("document.querySelector('#view').textContent"))
+        # 一覧: 書式はブランドの編集画面で設定するので、「書式を登録」は置かない
+        page = self.open("/settings/brands", "document.querySelectorAll('.setting-row').length >= 2", "ブランドの一覧")
+        self.assertFalse(page.eval("Array.from(document.querySelectorAll('button')).some(b => b.textContent === '書式を登録')"))
         self.assertEqual(page.errors, [])
 
     def test_style_types_engine_style_and_image_look(self) -> None:

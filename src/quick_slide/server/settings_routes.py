@@ -1,13 +1,14 @@
 """設定の API（ブランド・スタイル・この機械）。ファイルの配信は `static.AssetFiles` を通す。
 
 ブランドとスタイルは v1 と同じ形で保存・見本表示し、描く回のたびにエンジンの引数へ写す（P4。`render/look.py`）。
-書式（ページ番号・透かし）はブランドの中の `format` に持ち、ブランドの編集画面で直す（「書式を登録」は押せないまま）。
+書式（ページ番号・ウォーターマーク）はブランドの中の `format` に持ち、ブランドの編集画面で直す（一覧の「書式を登録」はやめた）。
 使うパターンの目録はエンジンの型の一覧（`contenttypes.engine_types`。先頭に「おまかせ」）。
 """
 from __future__ import annotations
 
 import copy
 import hashlib
+import urllib.parse
 import io
 import logging
 import os
@@ -17,9 +18,11 @@ from functools import wraps
 
 from PIL import Image, UnidentifiedImageError
 
+from .. import brand_package
 from .. import contenttypes
 from .. import logo as logo_rules
 from .. import palette
+from .. import slide_palette
 from ..errors import NotFoundError, StateError, ValidationError
 from ..engines import ENGINES
 from ..ids import PRESET_STYLE_STANDARD_ID, is_uuid
@@ -51,8 +54,6 @@ IMAGE_LOOK_LABELS = {"photo": "写真風", "illustration": "イラスト", "hand
 ENGINE_STYLE_LABELS = {"standard": "standard（説明・報告）", "visual": "visual（ビジュアル）",
                        "infographic": "infographic（1枚のポスター）"}
 CAPABILITIES = {
-    "format": {"available": False, "label": "書式を登録",
-               "reason": "書式（フッタ・ページ番号・透かし）は、ブランドの編集画面の「書式」で設定します。"},
     # 「元の文書」は**入力に渡す文書**で、我々の成果物（画面では「スライド」）ではない。
     # ここを「スライド」にすると意味が逆になるので、成果物と混ざらない言い方にする。
     "infer": {"available": False, "label": "元の文書から色・字体を読み取る", "reason": "元の文書からの読み取りはまだ使えません。色と字体を下の欄で指定してください。"},
@@ -78,8 +79,10 @@ def boundary(fn):
             #  (b) それ以外（schema_version・未知のキー・fonts・margins・canvas・style.id/revision/name/origin など、
             #      画面からは正常な操作では起こらないはずの形） — 呼び出し側（画面）の不具合であり、利用者の入力の
             #      問題ではない。入力を疑わせる文言にせず、詳細はサーバのログにだけ残す。
-            if any(k in msg for k in ("colors.primary_light", "colors.primary_dark", "colors.border", "colors.surface", "colors.base")):
-                hint = "詳しく指定する色（拡張設定）は # と6桁の色番号で入力してください。"
+            if any(k in msg for k in ("colors.surface", "colors.base", "colors.ink", "colors.muted")):
+                hint = "「他の要素の色」で変えた色は # と6桁の色番号で選び直してください。"
+            elif any(k in msg for k in ("colors.primary_light", "colors.primary_dark", "colors.border")):
+                hint = "ブランドの色の指定が正しくありません。基本色と強調色を選び直してください。"
             elif "colors.primary" in msg:
                 hint = "基本色は # と6桁の色番号で入力してください。"
             elif "colors.accent" in msg:
@@ -194,7 +197,11 @@ def public_image(row):
 
 @boundary
 def upload(app, req):
-    data = req.body
+    return Response.json(201, public_image(store_image(app, req.body)))
+
+
+def store_image(app, data):
+    """画像のバイト列を検査して置き場に登録し、登録した行を返す（設定画面の画像と、インポートしたブランドのロゴ）。"""
     kind, size = decode_image(data)
     aid = app.store.new_id()
     ext, media = IMAGE_TYPES[kind]
@@ -219,7 +226,7 @@ def upload(app, req):
             app.store.register_asset(relative_path=str(destination.relative_to(root)), media_type=media,
                                      sha256=hashlib.sha256(data).hexdigest(), bytes_=len(data),
                                      width=size[0], height=size[1], asset_id=aid)
-        return Response.json(201, public_image(image_row(app, aid)))
+        return image_row(app, aid)
     except Exception:
         if temp and os.path.exists(temp):
             os.unlink(temp)
@@ -233,7 +240,7 @@ def upload(app, req):
 
 
 def brand_preview(app, b):
-    """見本に要る値: 配色（`palette`）・ロゴの位置（`logo_xywh`）・フッタ文字。
+    """見本に要る値: 配色（`palette`）・スライドが塗る色の役（`slide`）・ロゴの位置（`logo_xywh`）・フッタ文字。
 
     v1 の画面が読む形（`canvas` / `clean_area` / `logo_xywh` / `image_url` / `warnings` / `copyright` / `palette`）を保つ。
     **`clean_area` はいつも null**（v2 ではロゴの予約枠を持たない。置き場所はエンジンが描くときに決める）。
@@ -269,8 +276,11 @@ def brand_preview(app, b):
     result["copyright"] = {"text": footer_text, "status": "not_checked",
                            "message": "フッタは中身のページの左下に入ります（表紙・章扉・写真の全面のページには入りません）。"
                                       "ロゴが入らない角は、描くときにエンジンが別の角へ逃がします。"}
-    result["theme"] = palette.engine_theme(palette.snapshot_colors(config["colors"]))
+    slide = slide_palette.slide_colors(config["colors"])
+    result["theme"] = slide["theme"]
     result["palette"] = colors
+    # プレゼン（html-slide）が実際に塗る色の役（DADS のキーカラーの作り方）。見本はこれで塗る
+    result["slide"] = {key: slide[key] for key in ("roles", "adjusted", "problems", "error", "overrides")}
     return result
 
 
@@ -343,9 +353,10 @@ def merge_brand_config(previous, submitted):
 
     - 上の段: 送られたキーはそのまま使う（`logo`・`footer` は中身ごと置き換え。中のキーはどれも画面が扱う）。
       送られなかったキーは前の改訂の値を写す。画面から消せないキーは、画面から消せないままにする
-    - `colors` の中: 画面が扱う色（基本色・強調色・情報色・詳しく指定する 5 色）は**送られたものだけ**
-      （送らない＝「算出に戻す」なので持ち越さない）。画面が扱わない役割色（`semantic` の success / warning / error、
-      `gray`）は、前の改訂で**人が決めた値だけ**を持ち越す（`palette.custom_roles`。算出値は基本色に合わせて算出し直す）。
+    - `colors` の中: 画面が扱う色（基本色・強調色と、「他の要素の色」で変えられる地の色・面の色・本文・補足）は
+      **送られたものだけ**（送らない＝「自動に戻す」なので持ち越さない）。画面が扱わない役割色（`semantic` の
+      success / warning / error、`gray`、画面から外した情報色・主役色（淡・濃）・区切り線）は、前の改訂で
+      **人が決めた値だけ**を持ち越す（`palette.custom_roles`。算出値は基本色に合わせて算出し直す）。
       送られた側に同じ役割があれば送られた側が勝つ
     - 形が違う（オブジェクトでない）ときは何もせずに返し、検査に断らせる
     """
@@ -359,6 +370,9 @@ def merge_brand_config(previous, submitted):
         return merged
     if "gray" in kept and "gray" not in colors:
         colors["gray"] = kept["gray"]
+    for key in palette.LEGACY_OVERRIDES:
+        if key in kept and key not in colors:
+            colors[key] = kept[key]
     custom = kept.get("semantic") or {}
     sent = colors.get("semantic") if isinstance(colors.get("semantic"), dict) else {}
     if custom and set(custom) - set(sent):
@@ -395,6 +409,112 @@ def save_brand(app, req):
             bid = app.store.create_brand(name, config, assets=assets)["id"]
         out = public_setting(app, app.store.brand(bid), "brands")
     return Response.json(200 if req.params else 201, {"item": out, "preview": preview, "verified": True})
+
+
+# ---- ブランドのエクスポート・インポート（ZIP の形は brand_package.py）----
+# エクスポート: GET /api/settings/brands/<id>/export → ZIP（設定とロゴの画像）。付属のブランドはエクスポートしない
+# インポート: POST /api/settings/brands/import/check（ZIP を送ると、中身と「同じ ID のブランド」があるかを返す。何も保存しない）
+#           POST /api/settings/brands/import?mode=replace|add[&expected_revision_id=…]（ZIP を送り直して保存する）
+#   - 同じ ID のブランドが無い: そのまま同じ ID で作る（次に同じ ZIP の新しい版を読んだとき、上書きを選べる）
+#   - 同じ ID の自分のブランドがある: replace＝新しい改訂として上書き（前の改訂は残る）／add＝新しい ID で別に作る
+#   - 同じ ID が付属のブランド・削除済み: add だけ（新しい ID で作る）
+IMPORT_SUFFIX = "（インポート）"
+
+
+@boundary
+def export_brand(app, req):
+    row = app.store.brand(req.params["setting_id"])
+    if row["deleted_at"]:
+        raise ApiError(404, "setting_not_found", "削除されたブランドはエクスポートできません。一覧を読み直してください。")
+    if row["kind"] == "preset":
+        raise ApiError(409, "preset_not_exportable", "付属のブランドはエクスポートできません。複製してからエクスポートしてください。")
+    rev = row["current_revision"]
+    assets = []
+    for a in rev["assets"]:
+        if a["role"] not in LOGO_ROLES:
+            continue
+        image = image_row(app, a["asset_id"])
+        assets.append({"role": a["role"], "label": a.get("label", ""), "media_type": image["media_type"],
+                       "data": app.assets.resolve(image).read()})
+    blob = brand_package.build(brand_id=row["id"], name=row["name"], config=rev["config"], assets=assets,
+                               exported_at=app.store.now())
+    filename = urllib.parse.quote(row["name"] + ".zip", safe="")
+    return Response(200, blob, content_type="application/zip",
+                    headers=(("Content-Disposition", f"attachment; filename=\"brand.zip\"; filename*=UTF-8''{filename}"),
+                             ("Cache-Control", "no-store")))
+
+
+def _read_package(req):
+    if not req.body:
+        raise ApiError(400, "package_required", "ブランドの ZIP ファイルを選んでください。")
+    try:
+        return brand_package.read(req.body)
+    except brand_package.PackageError as exc:
+        raise ApiError(400, "package_invalid", str(exc)) from None
+
+
+def _import_target(app, pkg):
+    """同じ ID のブランドの状況 → (画面に見せる既存のブランド or None, 選べる道)。"""
+    try:
+        row = app.store.brand(pkg["id"])
+    except NotFoundError:
+        return None, ["create"]
+    if row["deleted_at"]:
+        return None, ["add"]
+    existing = {"id": row["id"], "name": row["name"], "kind": row["kind"], "current_revision_id": row["current_revision_id"]}
+    return existing, (["add"] if row["kind"] == "preset" else ["replace", "add"])
+
+
+def _check_package_config(pkg):
+    """設定の中身を保存と同じ決まりで確かめる（画像はまだ登録しないので、役割だけを並べて見る）。"""
+    config = copy.deepcopy(pkg["config"])
+    config["colors"] = palette.snapshot_colors(config["colors"])
+    validate_brand_config(config, [{"asset_id": "", "role": a["role"]} for a in pkg["assets"]])
+    return config
+
+
+@boundary
+def check_import(app, req):
+    pkg = _read_package(req)
+    config = _check_package_config(pkg)
+    existing, choices = _import_target(app, pkg)
+    fmt = config.get("format") or {}
+    return Response.json(200, {
+        "package": {"id": pkg["id"], "name": pkg["name"], "exported_at": pkg["exported_at"],
+                    "colors": {"primary": config["colors"]["primary"], "accent": config["colors"]["accent"]},
+                    "logos": [a["role"] for a in pkg["assets"]],
+                    "footer": (config.get("footer") or {}).get("text", ""), "watermark": fmt.get("watermark", "")},
+        "existing": existing, "choices": choices})
+
+
+@boundary
+def import_brand(app, req):
+    query = urllib.parse.parse_qs(req.query or "")
+    mode = (query.get("mode") or [""])[0]
+    pkg = _read_package(req)
+    config = _check_package_config(pkg)
+    existing, choices = _import_target(app, pkg)
+    if mode not in ("replace", "add") or (mode == "replace" and "replace" not in choices):
+        raise ApiError(409, "import_choice_changed", "インポート先の状況が変わりました。もう一度 ZIP を選んでください。")
+    if mode == "replace" and (query.get("expected_revision_id") or [""])[0] != existing["current_revision_id"]:
+        raise ApiError(409, "setting_changed", "上書きするブランドが別の画面で更新されています。もう一度 ZIP を選んでください。")
+    # 画像は取り引きの外で先に登録する（あとで断られても、置き場の記録とファイルは食い違わない。使われない画像が残るだけ）
+    stored = [{"asset_id": store_image(app, a["data"])["id"], "role": a["role"], "label": a["label"]} for a in pkg["assets"]]
+    with app.store.transaction():
+        if mode == "replace":
+            row = app.store.brand(existing["id"])
+            assets = merge_brand_assets(row["current_revision"]["assets"], stored)
+            brand_preview(app, {"config": pkg["config"], "assets": assets})
+            app.store.rename_brand(row["id"], pkg["name"])
+            app.store.add_brand_revision(row["id"], config, assets=assets)
+            bid = row["id"]
+        else:
+            brand_preview(app, {"config": pkg["config"], "assets": stored})
+            same_id = choices == ["create"]
+            name = pkg["name"] if same_id or existing is None else (pkg["name"] + IMPORT_SUFFIX)[:200]
+            bid = app.store.create_brand(name, config, assets=stored, brand_id=pkg["id"] if same_id else None)["id"]
+        out = public_setting(app, app.store.brand(bid), "brands")
+    return Response.json(200, {"item": out, "mode": mode, "verified": True})
 
 
 def style_config(app, b, *, copying=False):
@@ -486,14 +606,14 @@ def save_server(app, req):
     b = payload(req, ("host", "host_names", "port"))
     host = b.get("host")
     if not isinstance(host, str) or not host.strip():
-        raise ApiError(400, "bad_bind_address", "この機械のどのアドレスで待つかを書いてください。")
+        raise ApiError(400, "bad_bind_address", "公開する IP アドレスを入力してください。")
     names_raw = b.get("host_names") or []
     if isinstance(names_raw, str) or not isinstance(names_raw, list):
-        raise ApiError(400, "bad_host_names", "名前は一行に一つずつ書いてください。")
+        raise ApiError(400, "bad_host_names", "ホスト名は 1 行に 1 つずつ書いてください。")
     names = [n.strip() for n in names_raw if isinstance(n, str) and n.strip()]
     port = b.get("port")
     if port is not None and (isinstance(port, bool) or not isinstance(port, int) or not (1024 <= port <= 65535)):
-        raise ApiError(400, "bad_port", "ポートは 1024〜65535 の数で書いてください。")
+        raise ApiError(400, "bad_port", "ポート番号は 1024〜65535 の数字で入力してください。")
     try:
         save_server_section(app.root.settings_path, host=host.strip(), host_names=names, port=port)
     except ValidationError as exc:

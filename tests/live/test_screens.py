@@ -76,9 +76,14 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
             self.assertIn("まだページがありません", page.eval("document.querySelector('.screen-reasons').textContent"))
 
     def test_settings_screens(self) -> None:
-        page = self.open("/settings", "document.querySelectorAll('.setting-row').length >= 1", "ブランドの一覧")
+        # 設定のトップは各設定へのリンクの一覧（タブは無い）
+        page = self.open("/settings", "document.querySelectorAll('.settings-index__link').length === 3", "設定のトップ")
+        self.assertEqual(page.eval("Array.from(document.querySelectorAll('.settings-index__link')).map(a => a.getAttribute('href')).join(' ')"),
+                         "/settings/brands /settings/styles /settings/server")
+        page = self.open("/settings/brands", "document.querySelectorAll('.setting-row').length >= 1", "ブランドの一覧")
+        self.assertEqual(page.eval("document.querySelector('.breadcrumb [aria-current]').textContent"), "ブランド")
         page = self.open(f"/settings/brands/{PRESET_BRAND_ID}",
-                         "document.querySelector('.brand-editor__preview .reason') !== null"
+                         "document.querySelector('.brand-editor__preview .help-tip') !== null"
                          " && !!document.querySelector('.carousel .sample')", "ブランドの編集と見本")
         self.assertEqual(page.eval("document.querySelectorAll('.corner-choice').length"), 3)
         page = self.open("/settings/styles", "document.querySelectorAll('.pattern-choice').length >= 1",
@@ -132,7 +137,7 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
 
     def test_settings_can_be_saved_from_the_screen(self) -> None:
         """ブランドを作って色と角を変えて保存する・スタイルを複写して作る。画面から最後まで通ること。"""
-        page = self.open("/settings", "document.querySelectorAll('.setting-row').length >= 1", "ブランドの一覧")
+        page = self.open("/settings/brands", "document.querySelectorAll('.setting-row').length >= 1", "ブランドの一覧")
         page.eval("Array.from(document.querySelectorAll('.settings-toolbar button')).find(b => b.textContent === '新しいブランド').click()")
         page.until("!!document.querySelector('.modal input')", what="名前のモーダル")
         page.eval("(function(){ var i = document.querySelector('.modal input'); i.value = '画面で作ったブランド';"

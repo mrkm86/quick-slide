@@ -70,7 +70,7 @@ class TheMachineDoorScreenTests(unittest.TestCase):
         r = self.save("0.0.0.0")
         self.assertEqual(r.status, 400)
         self.assertEqual(r.json()["error"]["code"], "bad_bind_address")
-        self.assertIn("ぜんぶの口", r.json()["error"]["message"])
+        self.assertIn("すべてのネットワーク", r.json()["error"]["message"])
         after = self.settings_path.read_text(encoding="utf-8") if self.settings_path.exists() else None
         self.assertEqual(before, after)
 

@@ -11,14 +11,7 @@
   var nextInput = 0;
   SS.settingsLeave = null;
 
-  var EXAMPLE_NOTE = "あくまで一例です。実際の生成画像ではありません。";
-
-  // 図表の系列色。順序の正本はこの配列 1 か所だけ: 基本色 → 強調色 → 主役色（濃）。
-  var CHART_SERIES = [
-    { label: "基本色", height: "48%", color: function (palette) { return palette.input.primary; } },
-    { label: "強調色", height: "70%", color: function (palette) { return palette.input.accent; } },
-    { label: "主役色（濃）", height: "92%", color: function (palette) { return palette.derived.primary_dark; } }
-  ];
+  var EXAMPLE_NOTE = "これはイメージです。実際に描いたスライドではありません。";
 
   function text(tag, value, cls) { return h(tag, { text: value, class: cls }); }
   function button(label, fn, cls) { return h("button", { type: "button", class: "btn " + (cls || ""), text: label, onclick: fn }); }
@@ -55,17 +48,9 @@
     return { node: h("div", { class: "setting-field color-field" }, enabled ? h("label", { for: enabled.id }, enabled, " " + label) : text("span", label), h("div", { class: "color-field__controls" }, picker, code)), value: function () { return normalizeHex(code.value); }, enabled: enabled, setEnabled: setEnabled };
   }
 
-  SS.applyBrandTheme = function (node, config) {
-    var colors = config.colors || {}, semantic = colors.semantic || {};
-    ["primary", "accent"].forEach(function (key) { if (colors[key]) { node.style.setProperty("--color-" + key, colors[key]); } });
-    Object.keys(semantic).forEach(function (key) { node.style.setProperty("--color-" + key, semantic[key]); });
-    if (Array.isArray(colors.gray) && colors.gray.length) {
-      node.style.setProperty("--color-text", colors.gray[0]); node.style.setProperty("--color-text-muted", colors.gray[Math.min(2, colors.gray.length - 1)]);
-      node.style.setProperty("--color-border", colors.border || colors.gray[Math.max(0, colors.gray.length - 2)]); node.style.setProperty("--color-surface", colors.surface || colors.gray[colors.gray.length - 1]);
-    }
-  };
-
-  // ---- 見本（カルーセルの 4 枚）----
+  // ---- 見本（カルーセル）----
+  // プレゼン（html-slide）の型の縮図。色は preview 応答の slide.roles（エンジンの deck_palette が作る役）をそのまま塗り、
+  // 字の大きさ・余白・角はエンジンの雛形（DADS のスライド用ローカルデザインシステム）の数字を 1920×1080 の比で写す（CSS 側）。
   // 座標は preview 応答の値を見本の幅・高さで割るだけ。ここで幾何を作らない。
   function pct(ratio) { return (ratio * 100) + "%"; }
   // 予約枠 [x0, y0, x1, y1] と ロゴ [x, y, w, h] を、見本の幅・高さに対する比へ直すだけ。
@@ -74,36 +59,25 @@
   function rectRatio(rect, canvas) { return [rect[0] / canvas[0], rect[1] / canvas[1], rect[2] / canvas[0], rect[3] / canvas[1]]; }
   function place(node, ratios) { node.style.left = pct(ratios[0]); node.style.top = pct(ratios[1]); node.style.width = pct(ratios[2]); node.style.height = pct(ratios[3]); }
 
-  function paintPalette(node, palette) {
-    var d = palette.derived;
-    node.style.setProperty("--color-primary", palette.input.primary);
-    node.style.setProperty("--color-accent", palette.input.accent);
-    node.style.setProperty("--color-border", d.border);
-    node.style.setProperty("--color-surface", d.surface);
-    node.style.setProperty("--color-text", d.gray[0]);
-    node.style.setProperty("--color-text-muted", d.gray[Math.min(2, d.gray.length - 1)]);
-    node.style.setProperty("--color-success", d.semantic.success);
-    node.style.setProperty("--color-warning", d.semantic.warning);
-    node.style.setProperty("--color-error", d.semantic.error);
-    node.style.setProperty("--color-info", d.semantic.info);
-    node.style.setProperty("--sample-base", d.base);
-    node.style.setProperty("--sample-primary-dark", d.primary_dark);
-    node.style.setProperty("--sample-primary-light", d.primary_light);
+  // 役の名前（エンジンの CSS 変数と同じ）→ 見本の custom property（--s-<役>）
+  function paintRoles(node, roles) {
+    Object.keys(roles).forEach(function (role) { node.style.setProperty("--s-" + role, roles[role]); });
   }
 
-  function sample(kind, label) { return h("div", { class: "sample sample--" + kind, "aria-label": label }); }
+  function sample(kind, label) { return h("div", { class: "sample sample--" + kind, role: "img", "aria-label": label }); }
 
   // 下の部品（フッタ・ページ番号・透かし）。位置は preview 応答の chrome（エンジンの既定の寸法の写し）を canvas で割るだけ。
-  // フッタは中身のページの左下（ロゴが左下ならロゴの右）、ページ番号は中央下、透かしは中央下の端。
-  function footerLine(p) {
+  // フッタとページ番号は中身のページだけ（表紙・章扉には入らない。エンジンの決まり）。透かしは全ページ。
+  // ページ番号は見本の並びの番号（表紙が 1 枚目）。表紙・章扉には出ないので、中身のページは 3 から
+  function footerLine(p, content, pageNo) {
     if (!p.canvas || !p.chrome) { return null; }
     var parts = [];
-    if (p.chrome.footer && p.copyright && p.copyright.text) {
+    if (content && p.chrome.footer && p.copyright && p.copyright.text) {
       var foot = text("p", p.copyright.text, "sample__footer sample__chrome");
       place(foot, rectRatio(p.chrome.footer, p.canvas)); parts.push(foot);
     }
-    if (p.chrome.page_number) {
-      var no = text("p", "3", "sample__pageno sample__chrome");
+    if (content && p.chrome.page_number) {
+      var no = text("p", String(pageNo), "sample__pageno sample__chrome");
       place(no, rectRatio(p.chrome.page_number, p.canvas)); parts.push(no);
     }
     if (p.chrome.watermark && p.format && p.format.watermark) {
@@ -114,100 +88,99 @@
   }
 
   // ロゴは選んだ角に入る（ふさがっていれば描くときにエンジンが別の角へ逃がす。見本は選んだ角の姿）。
-  // 座標は preview 応答の logo_xywh を canvas で割った値だけを使う（v2 では予約枠 clean_area はいつも null）。
-  function logoOverlay(p, withFrame) {
-    if (!p.canvas) { return null; }
-    var parts = [];
-    if (p.clean_area && withFrame) {
-      var reserved = h("div", { class: "sample__reserved", "aria-hidden": "true" });
-      place(reserved, boxRatio(p.clean_area, p.canvas));
-      parts.push(reserved);
-    }
-    if (p.image_url && p.logo_xywh) {
-      var img = h("img", { class: "sample__logo", src: p.image_url, alt: "登録したロゴ" });
-      place(img, rectRatio(p.logo_xywh, p.canvas));
-      var lost = text("p", "ロゴ画像を読み込めません。画像を選び直してください。", "sample__lost");
-      lost.hidden = true;
-      img.onerror = function () { img.hidden = true; lost.hidden = false; };
-      parts.push(img, lost);
-    }
-    return parts.length ? parts : null;
+  // 座標は preview 応答の logo_xywh を canvas で割った値だけを使う。
+  function logoOverlay(p) {
+    if (!p.canvas || !p.image_url || !p.logo_xywh) { return null; }
+    var img = h("img", { class: "sample__logo", src: p.image_url, alt: "登録したロゴ" });
+    place(img, rectRatio(p.logo_xywh, p.canvas));
+    var lost = text("p", "ロゴ画像を読み込めません。画像を選び直してください。", "sample__lost");
+    lost.hidden = true;
+    img.onerror = function () { img.hidden = true; lost.hidden = false; };
+    return [img, lost];
   }
 
-  function coverSample(p) {
-    var node = sample("cover", "表紙の見本（16対9）");
-    node.appendChild(h("div", { class: "sample__band" },
-      text("p", "事業計画", "sample__eyebrow"),
-      text("h3", "次の成長に向けた3つの取り組み", "sample__title")));
-    node.appendChild(text("p", "2026年度 経営会議 ／ 事業推進部", "sample__lede"));
+  // 中身の型の左上の見出し（キッカー 28B・見出し 64B）と上の帯
+  function slideHead(kicker, headline) {
+    return [h("div", { class: "s-band", "aria-hidden": "true" }),
+      h("div", { class: "s-head" }, text("p", kicker, "s-kicker"), text("p", headline, "s-headline"))];
+  }
+
+  function coverSample() {
+    var node = sample("cover", "表紙の見本");
+    node.appendChild(h("div", { class: "s-cover" },
+      text("p", "事業計画", "s-cover__label"),
+      text("p", "次の成長に向けた3つの取り組み", "s-cover__title"),
+      h("div", { class: "s-cover__rule", "aria-hidden": "true" }),
+      text("p", "2026年度 経営会議", "s-cover__subtitle")));
+    node.appendChild(h("div", { class: "s-cover__meta" }, text("p", "2026年10月"), text("p", "事業推進部")));
     return node;
   }
 
-  function bulletsSample(p) {
-    var node = sample("bullets", "箇条書きの見本（16対9）");
-    node.appendChild(text("p", "現状と打ち手", "sample__eyebrow"));
-    node.appendChild(text("h3", "重点施策とその根拠", "sample__heading"));
-    node.appendChild(text("p", "国内市場は横ばい、海外は二桁成長。投資先を絞り込む。", "sample__body"));
-    node.appendChild(h("hr", { class: "sample__rule" }));
-    node.appendChild(h("ul", { class: "sample__list" },
-      text("li", "重点施策を先に置き、理由を後に書く"),
-      text("li", "数字は本文と同じ大きさで、太さだけ変える"),
-      text("li", "区切り線は情報の切れ目にだけ使う")));
+  function sectionSample() {
+    var node = sample("section", "章扉の見本");
+    node.appendChild(h("div", { class: "s-sec__panel", "aria-hidden": "true" }));
+    node.appendChild(h("div", { class: "s-sec__side" }, text("p", "第1章", "s-sec__label"), text("p", "01", "s-sec__no")));
+    node.appendChild(h("div", { class: "s-sec__text" }, text("p", "いまの立ち位置", "s-sec__title"),
+      text("p", "市場の動きと、私たちの強み", "s-sec__subtitle")));
     return node;
   }
 
-  function chartSample(p) {
-    var palette = p.palette;
-    var node = sample("chart", "図表の見本（16対9）");
-    node.appendChild(text("h3", "四半期ごとの推移", "sample__heading"));
-    var chart = h("div", { class: "sample__chart" });
-    var legend = h("div", { class: "sample__legend" });
-    CHART_SERIES.forEach(function (series) {
-      var color = series.color(palette);
-      var bar = h("span", { class: "sample__bar" });
-      bar.style.height = series.height;
-      bar.style.background = color;
-      chart.appendChild(bar);
-      var key = h("span", { class: "sample__key" });
-      var swatch = h("span", { class: "sample__swatch", "aria-hidden": "true" });
-      swatch.style.background = color;
-      key.appendChild(swatch);
-      key.appendChild(text("span", series.label));
-      legend.appendChild(key);
+  function bulletsSample() {
+    var node = sample("bullets", "箇条書きの見本");
+    SS.append(node, slideHead("現状と打ち手", "重点施策は3つに絞る"));
+    var list = h("div", { class: "s-list" });
+    [["国内は既存顧客の深耕", "解約率を下げ、単価を上げる"], ["海外は2拠点に集中", "伸びている地域から先に投資する"], ["開発は共通基盤へ", "重複している機能をまとめる"]].forEach(function (item, index) {
+      list.appendChild(h("div", { class: "s-li" }, text("span", String(index + 1), "s-li__no"),
+        h("div", { class: "s-li__text" }, text("p", item[0], "s-li__title"), text("p", item[1], "s-li__body"))));
+    });
+    node.appendChild(list);
+    return node;
+  }
+
+  function chartSample() {
+    var node = sample("chart", "棒グラフの見本");
+    SS.append(node, slideHead("実績", "第3四半期に前年比118%まで回復"));
+    var chart = h("div", { class: "s-chart" });
+    [["第1四半期", "92", 46], ["第2四半期", "104", 52], ["第3四半期", "118", 59, true], ["第4四半期", "110", 55]].forEach(function (bar) {
+      var group = h("div", { class: "s-chart__group" + (bar[3] ? " s-chart__group--hl" : "") },
+        text("span", bar[1], "s-chart__value"), h("span", { class: "s-chart__bar" }), text("span", bar[0], "s-chart__label"));
+      group.querySelector(".s-chart__bar").style.height = bar[2] + "%";
+      chart.appendChild(group);
     });
     node.appendChild(chart);
-    node.appendChild(legend);
-    node.appendChild(h("div", { class: "sample__focus" },
-      text("p", "ここに注目", "sample__focus-title"),
-      text("p", "第3四半期に前年同期比 118% まで回復。", "sample__focus-body")));
+    node.appendChild(h("div", { class: "s-callout" }, text("p", "118%", "s-callout__value"),
+      text("p", "前年同期比。新しい顧客層の受注が伸びた。", "s-callout__text")));
     return node;
   }
 
-  function statusSample(p) {
-    var node = sample("status", "状態表示の見本（16対9）");
-    node.appendChild(text("h3", "移行作業の進みぐあい", "sample__heading"));
-    var grid = h("div", { class: "sample__states" });
-    grid.appendChild(h("div", { class: "sample__state sample__state--success" },
-      text("p", "成功", "sample__state-name"),
-      h("p", { class: "sample__bubble" }, text("span", "保存しました"))));
-    grid.appendChild(h("div", { class: "sample__state sample__state--warning" },
-      text("p", "注意", "sample__state-name"),
-      h("p", { class: "sample__note" }, text("span", "※ この数値は速報値です"))));
-    grid.appendChild(h("div", { class: "sample__state sample__state--error" },
-      text("p", "エラー", "sample__state-name"),
-      h("p", { class: "sample__banner" }, text("span", "送信できませんでした"))));
-    grid.appendChild(h("div", { class: "sample__state sample__state--info" },
-      text("p", "情報", "sample__state-name"),
-      h("div", { class: "sample__info" }, text("span", "補足: 出典は年次報告です"))));
-    node.appendChild(grid);
+  // お知らせの枠（DADS の注釈ブロック）。種類は色だけでなく、アイコンと語でも示す（エンジンの NOTICE_KINDS と同じ組）
+  var NOTICE_KINDS = [
+    { kind: "info", label: "お知らせ", icon: "info", title: "出典は2025年度の年次報告です" },
+    { kind: "success", label: "完了", icon: "check", title: "新しい手順への移行が完了しました" },
+    { kind: "warning", label: "注意", icon: "alert", title: "この数値は速報値です" },
+    { kind: "error", label: "重要", icon: "error", title: "旧システムは3月末で停止します" }
+  ];
+  function noticeSample() {
+    var node = sample("notice", "お知らせの枠の見本");
+    SS.append(node, slideHead("お知らせ", "移行作業の進みぐあい"));
+    var stack = h("div", { class: "s-notices" });
+    NOTICE_KINDS.forEach(function (n) {
+      stack.appendChild(h("div", { class: "s-notice s-notice--" + n.kind },
+        h("div", { class: "s-notice__band", "aria-hidden": "true" }),
+        h("div", { class: "s-notice__main" },
+          h("p", { class: "s-notice__label" }, SS.icon(n.icon, "s-notice__icon"), text("span", n.label)),
+          text("p", n.title, "s-notice__title"))));
+    });
+    node.appendChild(stack);
     return node;
   }
 
   var SAMPLE_SLIDES = [
-    { caption: "この見本は、主役色を大きな面で使ったときの印象と、ロゴ・フッタ・ページ番号・透かしの位置を確かめるためのものです。", build: coverSample },
-    { caption: "この見本は、見出しと本文と箇条書きの読みやすさ、区切り線の濃さを確かめるためのものです。", build: bulletsSample },
-    { caption: "この見本は、図表の系列色の見分けやすさと、強調色の目立ち方を確かめるためのものです。", build: chartSample },
-    { caption: "この見本は、成功・注意・エラー・情報が状態として伝わるかを確かめるためのものです。状態の色は飾りには使いません。", build: statusSample }
+    { caption: "表紙。ラベルと題の下線に主役の色が入ります。", build: coverSample, content: false },
+    { caption: "章扉。主役の色を大きな面で使い、白い文字を載せます。", build: sectionSample, content: false },
+    { caption: "箇条書き。番号の丸は主役の色、補足は灰色の文字です。", build: bulletsSample, content: true },
+    { caption: "棒グラフ。強める棒と囲みに強調色を使い、ほかの棒は灰色です。", build: chartSample, content: true },
+    { caption: "お知らせの枠。成功・注意・エラーは DADS の決まった色で、アイコンと語を必ず添えます。", build: noticeSample, content: true }
   ];
 
   // 手動送りのみ。自動送りは実装しない。送りで preview を取り直さない（見比べているものが飛ばないため）。
@@ -215,7 +188,8 @@
   function sampleCarousel() {
     var index = 0, latest = null;
     var stage = h("div", { class: "carousel__stage" });
-    var caption = text("p", "", "carousel__caption reason");
+    var caption = text("p", "", "carousel__caption small");
+    var note = text("p", EXAMPLE_NOTE, "carousel__note small muted");
     var dots = h("div", { class: "carousel__dots" });
     var counter = text("span", "", "carousel__counter small muted");
     var back = button("", function () { move(-1); }, "btn--icon btn--ghost");
@@ -224,8 +198,8 @@
     forward.appendChild(SS.icon("arrow_forward"));
     back.setAttribute("aria-label", "前の見本");
     forward.setAttribute("aria-label", "次の見本");
-    var root = h("section", { class: "carousel", tabindex: "0", "aria-label": "配色の見本" },
-      stage, caption, h("div", { class: "carousel__controls" }, back, dots, counter, forward));
+    var root = h("section", { class: "carousel", tabindex: "0", "aria-label": "配色の見本（左右の矢印キー・スワイプ・クリックで送る）" },
+      note, stage, h("div", { class: "carousel__controls" }, back, dots, counter, forward), caption);
 
     function move(delta) { var list = SAMPLE_SLIDES; index = (index + delta + list.length) % list.length; draw(); }
     function draw() {
@@ -242,20 +216,170 @@
       caption.textContent = list[index].caption;
       SS.clear(stage);
       if (!latest) { stage.appendChild(text("p", "見本はまだ作れていません。基本色と強調色を入力してください。", "reason")); return; }
-      paintPalette(stage, latest.palette);
+      if (!latest.slide || !latest.slide.roles) {
+        stage.appendChild(text("p", "この配色ではプレゼンの色を作れないため、見本を出せません。", "notice notice--error")); return;
+      }
+      paintRoles(stage, latest.slide.roles);
       var slide = list[index].build(latest);
-      SS.append(slide, footerLine(latest));
-      // `reserved` は「この枚はロゴの固定枠を約束するか」を枚ごとに言う旗。いまは 4 枚すべてが
-      // 約束するので実質いつも true だが、旗はカルーセル自身の持ち物なので残す。
-      SS.append(slide, logoOverlay(latest, list[index].reserved !== false));
+      SS.append(slide, footerLine(latest, list[index].content, index + 1));
+      SS.append(slide, logoOverlay(latest));
       stage.appendChild(slide);
     }
     root.addEventListener("keydown", function (event) {
+      if (event.target !== root) { return; }
       if (event.key === "ArrowRight") { move(1); } else if (event.key === "ArrowLeft") { move(-1); } else { return; }
       event.preventDefault();
     });
+    // 見本の上でも送れる: 左右のスワイプ（指・ペン・マウスのドラッグ）と、クリック（左の 3 分の 1 は前・ほかは次）。
+    // 縦のスクロールは止めない（CSS の touch-action: pan-y）。スワイプした直後のクリックは送りに数えない
+    var SWIPE_PX = 40, startX = null, startY = 0, swiped = false;
+    stage.addEventListener("pointerdown", function (event) {
+      if (!event.isPrimary || event.button > 0) { return; }
+      startX = event.clientX; startY = event.clientY; swiped = false;
+    });
+    stage.addEventListener("pointerup", function (event) {
+      if (startX === null) { return; }
+      var dx = event.clientX - startX, dy = event.clientY - startY;
+      startX = null;
+      if (Math.abs(dx) >= SWIPE_PX && Math.abs(dx) > Math.abs(dy)) { swiped = true; move(dx < 0 ? 1 : -1); }
+    });
+    stage.addEventListener("pointercancel", function () { startX = null; });
+    stage.addEventListener("click", function (event) {
+      if (swiped) { swiped = false; return; }
+      if (!latest || !stage.querySelector(".sample")) { return; }
+      var box = stage.getBoundingClientRect();
+      move(event.clientX - box.left < box.width / 3 ? -1 : 1);
+    });
     draw();
-    return { node: root, update: function (p) { latest = p; draw(); } };
+    return { node: root, update: function (p) { latest = p; draw(); }, show: function (position) { index = position; draw(); } };
+  }
+
+  // 「他の要素の色」の行。色は preview 応答の slide.roles（エンジンが塗る値）だけ。
+  // edit があれば、その色は人が変えられる（ブランドの colors のキー。サーバの slide_palette.EDITABLE と同じ 4 つ）
+  var ROLE_ROWS = [
+    { role: "primary", label: "主役の色（文字・面）" }, { role: "primary-mark", label: "主役の色（図形・線）" }, { role: "primary-soft", label: "主役の色（淡い地）" },
+    { role: "accent", label: "強調色（文字・面）" }, { role: "accent-mark", label: "強調色（図形・線）" }, { role: "accent-soft", label: "強調色（淡い地）" },
+    { role: "bg", label: "背景", edit: "base" }, { role: "surface", label: "カード・表の背景", edit: "surface" },
+    { role: "ink", label: "本文", edit: "ink" }, { role: "muted", label: "補足", edit: "muted" }, { role: "rule", label: "罫線・枠" }
+  ];
+  var EDIT_KEYS = ROLE_ROWS.filter(function (row) { return row.edit; }).map(function (row) { return row.edit; });
+  var INPUT_LABELS = { primary: "基本色", accent: "強調色" };
+
+  // 「他の要素の色」: 基本色・強調色からエンジンが計算した色（はじめは畳む）。変えられる 4 色は色見本を押して選ぶ。
+  // 変えた行には「変更済み」と、その行だけを戻すボタンを付ける。部品は一度だけ作り、見本を更新するたびに値だけを差し替える
+  // （作り直すと、色を選んでいる最中に選ぶ窓が閉じるため）。overrides は画面の持ち物（{colors のキー: "#RRGGBB"}）
+  function otherColorsPanel(overrides, onChange) {
+    var problems = h("div", { class: "slide-colors__problems", role: "alert" });
+    var lead = text("p", "", "small slide-colors__lead");
+    var resetAll = h("button", { type: "button", class: "btn btn--ghost btn--small slide-colors__reset-all", hidden: true },
+      SS.icon("replay"), text("span", "すべて自動に戻す"));
+    var editTitle = h("p", { class: "slide-colors__group", tabindex: "-1", text: "変えられる色" });
+    resetAll.addEventListener("click", function () { EDIT_KEYS.forEach(function (key) { delete overrides[key]; }); onChange(); editTitle.focus({ preventScroll: true }); });
+    // 変えられる色（4 つ）と、自動で決まる色を別の一覧にする（押せる行が 1 か所にまとまる）
+    var editList = h("ul", { class: "slide-colors__list" }), autoList = h("ul", { class: "slide-colors__list" });
+    var rows = ROLE_ROWS.map(function (row) {
+      var entry = { row: row, hex: text("code", "", "slide-colors__hex") };
+      var nameText = text("span", row.label, "slide-colors__name");
+      if (row.edit) {
+        var id = "other-color-" + row.edit + "-" + (++nextInput);
+        entry.picker = h("input", { type: "color", id: id, class: "slide-colors__picker", "aria-describedby": id + "-state" });
+        entry.picker.addEventListener("input", function () { overrides[row.edit] = entry.picker.value.toUpperCase(); });   // 見本の更新は fieldset が拾う
+        entry.state = h("span", { id: id + "-state", class: "slide-colors__state" });
+        entry.note = text("span", "", "slide-colors__warn");
+        entry.undo = h("button", { type: "button", class: "btn btn--icon btn--ghost slide-colors__undo", "aria-label": row.label + "を自動に戻す",
+          title: row.label + "を自動に戻す", hidden: true }, SS.icon("replay"));
+        // 戻したあとのフォーカスは行へ移す（色見本へ移すと、環境によっては色を選ぶ窓が開く。押したボタンは隠れる）
+        entry.undo.addEventListener("click", function () { delete overrides[row.edit]; onChange(); entry.item.focus({ preventScroll: true }); });
+        entry.item = h("li", { class: "slide-colors__item slide-colors__item--edit", tabindex: "-1" }, entry.picker,
+          h("label", { class: "slide-colors__text", for: id }, nameText, entry.hex, entry.state, entry.note), entry.undo);
+      } else {
+        entry.chip = h("span", { class: "slide-colors__chip", "aria-hidden": "true" });
+        entry.item = h("li", { class: "slide-colors__item" }, entry.chip, h("span", { class: "slide-colors__text" }, nameText, entry.hex));
+      }
+      (row.edit ? editList : autoList).appendChild(entry.item);
+      return entry;
+    });
+    var adjustBox = h("div", { class: "adjust-rows", hidden: true });
+    var autoNote = text("p", "", "small muted slide-colors__lead");
+    var details = h("details", { class: "slide-colors" },
+      h("summary", { class: "slide-colors__summary" }, "他の要素の色"),
+      h("div", { class: "slide-colors__head" }, titleRow(editTitle, "変えられる色", [
+        "背景: スライドの地の色です。",
+        "カード・表の背景: カード・比較の箱・指標の箱・表の見出しの行など、背景の上に置く箱の色です。",
+        "本文: 見出しと本文の文字の色です。",
+        "補足: 副題・説明・注記・出典・フッター・ページ番号など、控えめに見せる文字の色です。",
+        "読めない組み合わせ（文字と背景の差が足りない）になると、保存できません。"]), resetAll), lead, editList,
+      text("p", "自動で決まる色", "slide-colors__group"), autoNote, autoList, adjustBox);
+
+    function swatch(value) {
+      var c = h("span", { class: "slide-colors__chip", "aria-hidden": "true" }); c.style.background = value;
+      return h("span", { class: "adjust-row__color" }, c, text("code", value.toUpperCase(), "slide-colors__hex"));
+    }
+    function update(slide) {
+      SS.clear(problems);
+      if (!slide || slide.error) {
+        problems.appendChild(text("p", "この配色ではプレゼンを描けません。" + (slide && slide.error ? "（" + slide.error + "）" : ""), "notice notice--error small"));
+      } else if (slide.problems && slide.problems.length) {
+        problems.appendChild(text("p", "読みにくい色の組み合わせがあるため、このままでは保存できません。変えた色を見直すか、自動に戻してください。", "notice notice--error small"));
+      }
+      var roles = (slide && slide.roles) || {}, applied = (slide && slide.overrides) || {};
+      var adjusted = (slide && slide.adjusted) || [];
+      lead.textContent = "色見本を押すと変えられます。変えなければ自動の色を使います。";
+      autoNote.textContent = "基本色と強調色から決めます。" + (adjusted.length ? "薄い色は、読みやすいように同じ色味の少し濃い色に置き換えます。" : "");
+      var any = false;
+      rows.forEach(function (entry) {
+        var value = roles[entry.row.role] || "";
+        entry.hex.textContent = value.toUpperCase();
+        if (!entry.row.edit) { entry.chip.style.background = value; return; }
+        var changed = overrides[entry.row.edit] != null, info = applied[entry.row.edit];
+        any = any || changed;
+        // 人が決めた色は、選んだ値のまま（選んでいる最中に書き戻さない。カード・表の背景が使われないときも、選んだ色を見せたまま理由を出す）。
+        // 自動の色（決めていない・戻した）は、いつも使う色を書き戻す
+        if (value && !changed) { entry.picker.value = value.toLowerCase(); }
+        entry.item.classList.toggle("slide-colors__item--changed", changed);
+        entry.state.textContent = changed ? "変更済み" : "自動";
+        entry.undo.hidden = !changed;
+        entry.note.textContent = changed && info && !info.applied ? info.reason : "";
+      });
+      resetAll.hidden = !any;
+      SS.clear(adjustBox);
+      adjustBox.hidden = !adjusted.length;
+      if (adjusted.length) {
+        adjustBox.appendChild(text("p", "自動で濃くした色", "adjust-rows__title"));
+        adjusted.forEach(function (a) {
+          adjustBox.appendChild(h("div", { class: "adjust-row", title: "背景との明るさの差 " + a.contrast + ":1 → 4.5:1 以上（DADS の文字の決まり）" },
+            text("span", INPUT_LABELS[a.role], "adjust-row__name"), swatch(a.input), text("span", "→", "adjust-row__arrow"), swatch(a.used)));
+        });
+      }
+    }
+    return { node: h("div", { class: "slide-colors-wrap" }, problems, details), update: update, details: details };
+  }
+
+  // ---- ヘルプ（見出しの横の「？」）----
+  // 説明は押したときだけ出す。<details> なので、キーボードでも開け、読み取り専用の fieldset の中でも押せる（ボタンは無効になる）。
+  // 外を押すか Esc で閉じる。中身は見出しの行の下に、行の幅で重ねて出す
+  function helpTip(topic, paragraphs) {
+    var summary = h("summary", { class: "help-tip__button", "aria-label": topic + "の説明", title: topic + "の説明" }, SS.icon("help"));
+    var panel = h("div", { class: "help-tip__panel" }, paragraphs.map(function (line) { return text("p", line); }));
+    var tip = h("details", { class: "help-tip" }, summary, panel);
+    // 幅は見出しの行の長さに引きずられない: 最大 32rem で、画面の左右 16px の内側に収まる幅と位置に置く（行が短いと細長くなるため）
+    function fit() {
+      var row = (tip.parentNode || tip).getBoundingClientRect(), view = document.documentElement.clientWidth, gutter = 16;
+      var width = Math.min(512, view - gutter * 2);
+      var left = Math.max(gutter - row.left, Math.min(0, view - gutter - (row.left + width)));
+      panel.style.width = width + "px"; panel.style.left = left + "px";
+    }
+    function off() { document.removeEventListener("click", onClick, true); document.removeEventListener("keydown", onKey, true); }
+    function onClick(event) { if (!tip.isConnected) { off(); return; } if (!tip.contains(event.target)) { tip.open = false; } }
+    function onKey(event) { if (!tip.isConnected) { off(); return; } if (event.key === "Escape") { tip.open = false; summary.focus(); } }
+    tip.addEventListener("toggle", function () {
+      if (tip.open) { fit(); document.addEventListener("click", onClick, true); document.addEventListener("keydown", onKey, true); } else { off(); }
+    });
+    return tip;
+  }
+  // 見出し（や項目名）と、その横の「？」を 1 行に並べる。helps が無ければ見出しだけ
+  function titleRow(heading, topic, helps) {
+    return helps && helps.length ? h("div", { class: "title-row" }, heading, helpTip(topic, helps)) : heading;
   }
 
   // ---- ロゴ ----
@@ -266,10 +390,15 @@
     var asset = data.assets.filter(function (item) { return item.role === role; })[0] || null;
     var enabled = h("input", { type: "checkbox", id: "logo-use-" + (++nextInput) }); enabled.checked = opts.initiallyOn !== undefined ? opts.initiallyOn && !!asset : !!asset;
     var file = h("input", { type: "file", accept: "image/png,image/jpeg", disabled: readonly || !enabled.checked, "aria-label": opts.label + "の画像" });
-    var info = text("p", asset ? "登録画像" : "なし", "small"), img = h("img", { class: "logo-original", alt: opts.label + "のプレビュー", hidden: !asset });
+    // 登録した画像は、右に取り除くアイコンを添えて見せる（無ければ行ごと隠す）。読み込み中・登録の結果だけを文で知らせる
+    var info = h("p", { class: "small logo-slot__info", "aria-live": "polite" }), img = h("img", { class: "logo-original", alt: opts.label + "のプレビュー" });
+    var removeButton = h("button", { type: "button", class: "btn btn--icon btn--ghost logo-slot__remove", "aria-label": opts.label + "の画像を取り除く",
+      title: opts.label + "の画像を取り除く", disabled: readonly }, SS.icon("delete"));
+    var current = h("div", { class: "logo-slot__current", hidden: !asset }, img, removeButton);
     if (asset) { img.src = "/api/assets/" + asset.asset_id + "/file"; }
     var busy = false;
-    function remove() { data.assets = data.assets.filter(function (item) { return item.role !== role; }); img.hidden = true; img.removeAttribute("src"); info.textContent = "なし"; changed(); }
+    function remove() { data.assets = data.assets.filter(function (item) { return item.role !== role; }); current.hidden = true; img.removeAttribute("src"); info.textContent = ""; changed(); }
+    removeButton.addEventListener("click", function () { enabled.checked = false; file.disabled = true; remove(); enabled.focus(); });
     enabled.addEventListener("change", function () { file.disabled = readonly || !enabled.checked; if (!enabled.checked && opts.removeWhenOff) { remove(); } else { changed(); } });
     file.addEventListener("change", function () {
       var upload = file.files[0]; if (!upload || busy) { return; }
@@ -278,20 +407,19 @@
       busy = true; info.textContent = "画像を確認しています…";
       SS.uploadImage(upload).then(function (result) {
         data.assets = data.assets.filter(function (item) { return item.role !== role; }); data.assets.push({ asset_id: result.asset_id, role: role, label: opts.label });
-        img.src = "/api/assets/" + result.asset_id + "/file"; img.hidden = false; info.textContent = result.width + "×" + result.height + " px の画像を登録しました。"; changed();
+        img.src = "/api/assets/" + result.asset_id + "/file"; current.hidden = false; info.textContent = result.width + "×" + result.height + " px の画像を登録しました。"; changed();
       }).catch(fail).finally(function () { busy = false; });
     });
     return { enabled: enabled, has: function () { return data.assets.some(function (item) { return item.role === role; }); },
-      node: h("section", { class: "logo-slot" }, h("label", { for: enabled.id }, enabled, " " + opts.checkLabel), text("p", opts.help, "small"), file, img, info,
-        button("画像を取り除く", function () { enabled.checked = false; file.disabled = true; remove(); }, "btn--small")) };
+      node: h("section", { class: "logo-slot" }, titleRow(h("label", { for: enabled.id }, enabled, " " + opts.checkLabel), opts.label, opts.help), file, current, info) };
   }
 
-  // 四隅は 2x2 のボタンで選ぶ。並びと表示名、そして隅ごとの予約枠はすべてサーバのカタログの値を使い、
-  // 隅の名前から位置を導出する計算は画面に持たない（応答の数値を canvas で割るだけ）。
+  // 角は 3 つのボタンで選ぶ。並びと表示名、そして角ごとの印の位置（mark）はすべてサーバのカタログの値を使い、
+  // 角の名前から位置を導出する計算は画面に持たない（応答の数値を canvas で割るだけ）。
   function cornerPicker(control, initial, changed) {
     var value = initial, known = {};
     control.corners.forEach(function (option) {
-      if (option.clean_area) { known[option.value] = boxRatio(option.clean_area, control.canvas); }
+      if (option.mark) { known[option.value] = rectRatio(option.mark, control.canvas); }
     });
     var grid = h("div", { class: "corner-grid", role: "radiogroup", "aria-label": "ロゴの位置" });
     var entries = control.corners.map(function (option) {
@@ -320,25 +448,45 @@
       node: grid,
       value: function () { return value; },
       set: function (next) { value = next; sync(); },
-      // 選んでいる隅は、実際に焼き込む枠（preview 応答）で描き直す。比率が既定と違うブランドでも合う。
-      learn: function (p) { if (p.clean_area && p.canvas) { known[value] = boxRatio(p.clean_area, p.canvas); sync(); } }
+      // 選んでいる角は、実際のロゴの寸法で置いた位置（preview 応答）で描き直す。
+      learn: function (p) { if (p.logo_xywh && p.canvas) { known[value] = rectRatio(p.logo_xywh, p.canvas); sync(); } }
     };
   }
 
   // ---- 編集画面（/settings/brands/<id>）。サイドバーは置かない ----
+  // 上の帯（名前・状態・保存）は画面の上に貼り付く。左に設定の欄（色 → ロゴ → フッター → ウォーターマーク → 詳細 → 削除）、右にプレビュー（貼り付く）。
+  // 狭い画面ではプレビューを隠し、帯の「プレビュー」から全画面の板で開く。
+  function editorSection(title, helps) {
+    return h("section", { class: "editor-section" }, titleRow(text("h2", title, "editor-section__title"), title, helps));
+  }
   function brandEditor(root, catalog, item) {
     var data = clone(item), readonly = item.kind === "preset", revisionId = item.current_revision_id;
     var timer = null, dirty = false, serial = 0, verifiedSerial = -1;
-    var errors = h("div", { role: "alert" }), notes = h("div", { class: "sample-notes" }), logoWarnings = h("div");
-    var status = text("p", "色や位置を変えると、見本も自動で更新されます。", "reason");
+    var errors = h("div", { role: "alert", class: "brand-editor__errors" }), logoWarnings = h("div");
+    var status = h("span", { class: "brand-editor__status small", "aria-live": "polite" });
     var saveState = text("span", "", "title-save-state small muted");
-    var form = h("fieldset", { disabled: readonly });
+    var form = h("fieldset", { class: "brand-editor__form", disabled: readonly });
     var save = button("保存する", saveNow, "btn--primary");
     var carousel = sampleCarousel();
+    // 「他の要素の色」で変えた色（{colors のキー: "#RRGGBB"}）。本文・補足は保存済みの値から、背景・カード・表の背景は最初の見本で見分ける
+    var overrides = {}, overridesChecked = false, slideOk = true;
+    ["ink", "muted"].forEach(function (key) { if (typeof (data.config.colors || {})[key] === "string") { overrides[key] = data.config.colors[key]; } });
+    var otherColors = otherColorsPanel(overrides, function () { invalidate(); });
     var name = h("input", { class: "title-input", type: "text", maxlength: 200, "aria-label": "ブランドの名前", readonly: readonly });
     name.value = data.name;
+    // 状態の文。狭い画面では短い言い方（short）に替える（帯にプレビューと保存のボタンを並べるため）。色だけでなく文字で伝える
+    function setStatus(message, tone, short) {
+      SS.clear(status);
+      if (message) { status.appendChild(text("span", message, "status-long")); status.appendChild(text("span", short || message, "status-short")); }
+      status.className = "brand-editor__status small" + (tone ? " brand-editor__status--" + tone : "");
+    }
     function fail(error) { SS.clear(errors).appendChild(text("p", safeError(error), "notice notice--error")); }
-    function invalidate() { serial++; verifiedSerial = -1; dirty = true; save.disabled = true; SS.settingsLeave = { dirty: function () { return dirty; } }; clearTimeout(timer); timer = setTimeout(preview, 300); }
+    function invalidate() {
+      serial++; verifiedSerial = -1; dirty = true; save.disabled = true; saveState.textContent = "";
+      setStatus("見本を更新しています…", "", "更新中…");
+      SS.settingsLeave = { dirty: function () { return dirty; } };
+      clearTimeout(timer); timer = setTimeout(preview, 300);
+    }
     form.addEventListener("input", invalidate);
     form.addEventListener("change", invalidate);
     var changed = invalidate;
@@ -346,44 +494,62 @@
     name.addEventListener("input", invalidate);
     name.addEventListener("keydown", function (event) { if (event.key === "Enter") { event.preventDefault(); name.blur(); } });
 
-    var colors = data.config.colors || {}, semantic = colors.semantic || {}, colorGrid = h("div", { class: "setting-grid" });
-    var primary = colorField("基本色", colors.primary, changed), accent = colorField("強調色", colors.accent, changed), info = colorField("情報色（任意）", colors.info || semantic.info || "", changed, true);
-    colorGrid.appendChild(primary.node); colorGrid.appendChild(accent.node); colorGrid.appendChild(info.node);
-    form.appendChild(h("h2", { text: "色" })); form.appendChild(colorGrid);
-    // 使うロゴの役割: いまの variant のもの（無ければ背景透過）。白いロゴはピッチで、ロゴが沈む場所に使う
+    // 色
+    var colors = data.config.colors || {}, semantic = colors.semantic || {};
+    var primary = colorField("基本色", colors.primary, changed), accent = colorField("強調色", colors.accent, changed);
+    // 色は設定の欄の先頭（基本色・強調色 → 他の要素の色（畳む））。ほかの欄とは別の fieldset で、変更の拾い方は同じ
+    var colorFieldset = h("fieldset", { class: "brand-editor__colors", disabled: readonly },
+      titleRow(text("h2", "色", "editor-section__title"), "色", ["基本色は、見出しの印・番号・章扉に使います。",
+        "強調色は、強める語・棒・囲みに使います。", "ほかの色は、この 2 色から自動で決めます（「他の要素の色」で見られます）。"]),
+      h("div", { class: "color-pair" }, primary.node, accent.node),
+      otherColors.node);
+    colorFieldset.addEventListener("input", invalidate);
+    colorFieldset.addEventListener("change", invalidate);
+
+    // ロゴ: 使うロゴの役割は、いまの variant のもの（無ければ背景透過）
     var variant = (data.config.logo || {}).variant || "none";
     var mainVariant = variant !== "none" && variant !== "white" ? variant : "transparent";
-    var logo = logoSlot(data, { role: LOGO_ROLE[mainVariant], label: "ロゴ", checkLabel: "ロゴを使う", initiallyOn: variant !== "none",
-      help: "PNG・JPEG、10 MiB以下。画像は加工しません（色も縦横比もそのまま）。" }, readonly, changed, fail);
-    var whiteLogo = logoSlot(data, { role: "logo_white", label: "白いロゴ", checkLabel: "白いロゴも登録する（任意）", removeWhenOff: true,
-      help: "ピッチの資料で、写真や絵の上でロゴが沈む場所に使います。ロゴと同じ縦横比の公式の白版だけを登録してください。" }, readonly, changed, fail);
-    form.appendChild(h("h2", { text: "ロゴ" })); form.appendChild(logo.node); form.appendChild(whiteLogo.node);
+    var logo = logoSlot(data, { role: LOGO_ROLE[mainVariant], label: "ロゴ", checkLabel: "ロゴを使う", initiallyOn: variant !== "none" },
+      readonly, changed, fail);
+    // 白いロゴはピッチ（画像で描く資料）だけが使う。無ければ、ロゴの後ろに地を敷いて読めるようにする
+    var whiteLogo = logoSlot(data, { role: "logo_white", label: "白いロゴ", checkLabel: "白いロゴを登録する", removeWhenOff: true,
+      help: ["ピッチ（画像で描く資料）で、写真や絵の上でロゴが沈むときに使います。", "登録しなければ、ロゴの後ろに地を敷いて読めるようにします。",
+        "ロゴと同じ縦横比の、公式の白版だけを登録してください。"] }, readonly, changed, fail);
     var control = catalog.logo_control, currentPosition = Object.assign({}, control.default, (data.config.logo || {}).placement || {});
     var corner = cornerPicker(control, currentPosition[control.key], changed);
-    form.appendChild(text("p", "ロゴの位置", "setting-field")); form.appendChild(corner.node);
-    form.appendChild(text("p", "選んだ角にロゴが入ります。写真や文字で角がふさがったページは、描くときに別の角（右下 ⇄ 左下・右上 → 右下）へ逃がし、どこもふさがっていれば置きません。", "small"));
-    form.appendChild(button("既定に戻す", function () { currentPosition = clone(control.default); corner.set(currentPosition[control.key]); changed(); }, "btn--small"));
-    form.appendChild(logoWarnings);
-    // 書式（フッタ・ページ番号・透かし）はブランドの中に持つ（P4。「書式を登録」は押せないまま）
+    var logoSection = editorSection("ロゴ", ["おすすめは、背景が透明な PNG です。どの背景の上にも馴染みます。",
+      "JPEG も使えます（背景の色ごと入ります）。10 MiB 以下。", "画像は加工しません（色も縦横比もそのまま）。"]);
+    logoSection.appendChild(logo.node);
+    logoSection.appendChild(titleRow(text("p", "位置", "setting-label"), "ロゴの位置", ["選んだ角にロゴが入ります。",
+      "写真や文字で角がふさがったページは、描くときに別の角（右下 ⇄ 左下・右上 → 右下）へ逃がします。"]));
+    logoSection.appendChild(corner.node);
+    logoSection.appendChild(logoWarnings);
+    var whiteDetails = h("details", { class: "editor-details", open: whiteLogo.has() }, text("summary", "白いロゴ（任意・ピッチ用）"), whiteLogo.node);
+    logoSection.appendChild(whiteDetails);
+    form.appendChild(logoSection);
+
+    // 書式（フッター・ページ番号・ウォーターマーク）はブランドの中に持つ
     var fmt = data.config.format || {}, limits = catalog.limits || {};
-    var footer = field("フッタの文字", (data.config.footer || {}).text || "", { maxlength: limits.footer || 120, placeholder: "例: 社外秘・会社名・資料名" });
+    // フッターとウォーターマークは入るページが違うので節を分ける（フッターは中身のページだけ・ウォーターマークは全ページ）。
+    // 欄の名前に置く場所を書く。例は欄の中に置かず（DADS: プレースホルダーを使わない）、「？」で示す
+    var footer = field("表示文字（左下に固定）", (data.config.footer || {}).text || "", { maxlength: limits.footer || 120 });
     footer.el.addEventListener("input", changed);
     var pageNumbers = h("input", { type: "checkbox", id: "brand-page-numbers-" + (++nextInput) }); pageNumbers.checked = !!fmt.page_numbers;
-    var watermark = field("透かしの文字", fmt.watermark || "", { maxlength: limits.watermark || 60, placeholder: "例: 社外秘・配布禁止" });
+    var footerSection = editorSection("フッター", ["中身のページに入ります（表紙・章扉・全面の写真のページには入りません）。",
+      "表示文字には、会社名や資料名を入れます（例: © 2026 会社名）。空にすれば入りません。"]);
+    footerSection.appendChild(h("div", { class: "brand-format" }, footer.node,
+      h("label", { class: "setting-field setting-check", for: pageNumbers.id }, pageNumbers, " ページ番号を出す（中央に固定）")));
+    form.appendChild(footerSection);
+    var watermark = field("表示文字", fmt.watermark || "", { maxlength: limits.watermark || 60 });
     watermark.el.addEventListener("input", changed);
-    form.appendChild(h("h2", { text: "書式", class: "brand-format-title" }));
-    form.appendChild(h("section", { class: "brand-format" }, footer.node,
-      text("p", "中身のページの左下に毎ページ入ります（表紙・章扉・全面の写真には入りません）。空にすれば入りません。", "small"),
-      h("label", { class: "setting-field setting-check", for: pageNumbers.id }, pageNumbers, " ページ番号を中央下に出す"),
-      watermark.node,
-      text("p", "全ページの中央下の端に薄いグレーで入ります。空にすれば入りません。", "small")));
-    var advanced = h("details", {}, text("summary", "拡張設定 — 色"), text("p", "通常は空欄のままで、基本色から算出します。指定した色だけを上書きします。", "small")), advancedGrid = h("div", { class: "setting-grid" }); form.appendChild(advanced);
-    advanced.appendChild(advancedGrid);
-    var overrideFields = {}, initialOverrideCheck = true;
-    [["primary_light", "主役色（淡）"], ["primary_dark", "主役色（濃）"], ["border", "区切り線"], ["surface", "面の色"], ["base", "地の色"]].forEach(function (definition) { overrideFields[definition[0]] = colorField(definition[1], colors[definition[0]] || "", changed, true, false); advancedGrid.appendChild(overrideFields[definition[0]].node); });
-    // 押せない理由は「まだ何も変えていない」か「見本の読み直しが済んでいない」のどちらか。
+    var watermarkSection = editorSection("ウォーターマーク", ["全ページに入ります（表紙・章扉も含みます）。",
+      "いちばん下の端の中央に、小さく薄いグレーで入ります。扱いの注意を入れます（例: 社外秘・配布禁止）。空にすれば入りません。"]);
+    watermarkSection.appendChild(h("div", { class: "brand-format" }, watermark.node));
+    form.appendChild(watermarkSection);
+
+    // 押せない理由は「まだ何も変えていない」「見本の読み直しが済んでいない」「読めない色の組み合わせ」のどれか。
     function refreshSave() {
-      save.disabled = readonly || !dirty || verifiedSerial !== serial;
+      save.disabled = readonly || !dirty || verifiedSerial !== serial || !slideOk;
     }
     function config() {
       var primaryValue = primary.value(), accentValue = accent.value(); if (!primaryValue || !accentValue) { throw new SS.ApiError("基本色と強調色は #RRGGBB の6桁で入力してください。", "color_required"); }
@@ -393,8 +559,8 @@
         footer: { text: footer.el.value.trim(), style: { position: "footer_left" } },
         format: { page_numbers: !!pageNumbers.checked, watermark: watermark.el.value.trim() } };
       c.logo.placement[control.key] = corner.value();
-      if (info.enabled.checked) { var infoValue = info.value(); if (!infoValue) { throw new SS.ApiError("情報色は #RRGGBB の6桁で入力してください。", "info_invalid"); } c.colors.info = infoValue; }
-      Object.keys(overrideFields).forEach(function (key) { if (overrideFields[key].enabled.checked) { var value = overrideFields[key].value(); if (!value) { throw new SS.ApiError("詳しく指定する色は #RRGGBB の6桁で入力してください。", "override_invalid"); } c.colors[key] = value; } });
+      // 「他の要素の色」で変えた色だけを送る（送らない色は自動。画面から外した上書きはサーバが持ち越す）
+      EDIT_KEYS.forEach(function (key) { if (overrides[key]) { c.colors[key] = overrides[key]; } });
       if (logo.enabled.checked) { c.logo.variant = mainVariant; }
       return c;
     }
@@ -402,98 +568,159 @@
     // 画像は data.assets を全部送る（使っていない役割の画像も消さない）。サーバもロゴ以外の役割は持ち越す
     function requestBody() { var c = config(); return { name: name.value.trim(), config: c, assets: clone(data.assets) }; }
     function preview() {
-      var body; try { body = requestBody(); } catch (error) { fail(error); return Promise.resolve(); }
+      var body; try { body = requestBody(); } catch (error) { fail(error); setStatus("入力を確かめてください", "error", "入力を確認"); return Promise.resolve(); }
       var own = serial;
-      status.textContent = "配色を算出しています…";
       return SS.api("/api/settings/brands/preview", { method: "POST", body: { config: body.config, assets: body.assets } }).then(function (p) {
         if (own !== serial) { return; }
-        if (initialOverrideCheck) {
-          initialOverrideCheck = false;
+        if (!overridesChecked) {
+          // 保存の形は算出値も持つので、背景・カード・表の背景は「算出し直した値と違う＝人が決めた」とみなす
+          overridesChecked = true;
           var restored = false;
-          Object.keys(overrideFields).forEach(function (key) {
-            if (colors[key] && colors[key] !== p.palette.derived[key]) { overrideFields[key].setEnabled(true); restored = true; }
+          ["base", "surface"].forEach(function (key) {
+            if (colors[key] && colors[key].toUpperCase() !== String(p.palette.derived[key]).toUpperCase()) { overrides[key] = colors[key]; restored = true; }
           });
+          if (Object.keys(overrides).length) { otherColors.details.open = true; }
           if (restored) { serial++; verifiedSerial = -1; return preview(); }
         }
         SS.clear(errors);
         carousel.update(p);
         corner.learn(p);
-        SS.clear(notes);
-        notes.appendChild(text("p", p.palette.overridden.length ? "上書き中: " + p.palette.overridden.join("、") : "色は基本色・強調色から算出しています。", "small"));
-        notes.appendChild(text("p", p.palette.note, "reason"));
-        if (p.copyright && p.copyright.message) { notes.appendChild(text("p", p.copyright.message, "reason")); }
+        otherColors.update(p.slide);
+        slideOk = !!(p.slide && p.slide.roles && !(p.slide.problems || []).length);
         SS.clear(logoWarnings);
         (p.warnings || []).forEach(function (warning) { logoWarnings.appendChild(text("p", warning.message, "notice notice--info small")); });
-        status.textContent = "見本を更新しました。"; verifiedSerial = own; refreshSave();
-      }).catch(function (error) { save.disabled = true; status.textContent = "見本を更新できませんでした。"; fail(error); });
+        verifiedSerial = own; refreshSave();
+        if (readonly) { setStatus(""); } else if (!slideOk) { setStatus("読みにくい色の組み合わせがあります", "error", "色を確認"); }
+        else if (dirty) { setStatus("保存していない変更があります", "dirty", "未保存"); } else { setStatus(""); }
+      }).catch(function (error) { save.disabled = true; setStatus("見本を更新できませんでした", "error", "更新できません"); fail(error); });
     }
     async function saveNow() {
-      if (verifiedSerial !== serial) { return; }
+      if (readonly || !dirty || verifiedSerial !== serial) { return; }
       var body; try { body = requestBody(); } catch (error) { fail(error); return; }
       if (!body.name) { fail(new SS.ApiError("名前を入力してください。", "name_required")); return; }
       if (body.config.logo.variant !== "none" && !logo.has()) { fail(new SS.ApiError("ロゴの画像を選んでください。使わない場合はチェックを外してください。", "logo_required")); return; }
+      save.disabled = true; setStatus("保存しています…", "", "保存中…");
       try {
         var result = await SS.api("/api/settings/brands/" + item.id, { method: "POST", body: Object.assign(body, { expected_revision_id: revisionId }) });
         if (result.verified !== true) { throw new SS.ApiError("保存結果を確認できませんでした。一覧を読み直してください。", "save_unverified"); }
         revisionId = result.item.current_revision_id;
         data.name = result.item.name; name.value = result.item.name;
-        dirty = false; SS.settingsLeave = null; save.disabled = true;
+        crumbs.querySelector("[aria-current]").textContent = result.item.name;
+        dirty = false; SS.settingsLeave = null;
         data.assets = clone(result.item.assets || data.assets);
+        SS.clear(errors); setStatus("");
         saveState.textContent = "保存済み";
-        setTimeout(function () { saveState.textContent = ""; }, 1200);
         SS.toast("「" + result.item.name + "」を保存しました。このブランドのスライドを次に描くときから効きます。");
-        SS.applyBrandTheme(document.documentElement, result.item.config);
-      } catch (error) { fail(error); }
+      } catch (error) { setStatus("保存できませんでした", "error", "保存できません"); fail(error); refreshSave(); }
     }
 
-    var head = h("div", { class: "brand-editor__head" },
-      h("a", { class: "brand-editor__back", href: "/settings", "data-nav": true, text: "← 一覧" }),
-      h("div", { class: "title-editor" }, name, saveState),
-      readonly ? h("span", { class: "chip", text: "付属" }) : null);
+    // パンくず（設定 › ブランド › 名前）は帯の上。名前の欄がこの画面の見出し（H1）で、帯と一緒に上に貼り付く
+    var crumbs = breadcrumb([{ label: "設定", href: "/settings" }, { label: "ブランド", href: "/settings/brands" }, { label: data.name }]);
+    // プレビューのボタン（狭い画面だけ出す。PC はプレビューを右に常に出す）。押すと全画面の板で見本を開く
+    var previewButton = h("button", { type: "button", class: "btn brand-editor__preview-button", "aria-haspopup": "dialog" },
+      SS.icon("eye"), text("span", "プレビュー", "brand-editor__preview-label"));
+    var bar = h("div", { class: "brand-editor__bar" },
+      h("h1", { class: "title-editor" }, name), readonly ? h("span", { class: "chip", text: "付属" }) : null,
+      h("div", { class: "settings-actions brand-editor__actions" }, status, saveState, previewButton, readonly ? null : save));
+    // 左（狭い画面では全部）: 設定の欄。色 → ロゴ → フッター → ウォーターマーク → 詳細設定 → 削除
     var rail = h("div", { class: "brand-editor__rail" }, errors);
     if (readonly) { rail.appendChild(text("p", item.capabilities.edit.reason, "notice")); }
+    rail.appendChild(colorFieldset);
     rail.appendChild(form);
-    form.appendChild(h("div", { class: "settings-actions" }, save, status));
     save.disabled = true;
     if (!readonly) {
-      var danger = h("section", { class: "danger-zone" }, text("h2", "危険な操作"), text("p", "このブランドを削除すると、設定一覧から取り除かれます。作成済みのスライドは変わりません。", "small"));
+      var danger = h("section", { class: "editor-section danger-zone" }, text("h2", "ブランドの削除", "editor-section__title"));
       danger.appendChild(button("このブランドを削除", function () {
         if (!SS.confirm("「" + data.name + "」を削除します。作成済みのスライドは残ります。よろしいですか？")) { return; }
         SS.api("/api/settings/brands/" + item.id + "/delete", { method: "POST", body: { expected_revision_id: revisionId } }).then(function (result) {
           if (!result.deleted) { throw new SS.ApiError("削除を確認できませんでした。", "delete_unverified"); }
-          dirty = false; SS.settingsLeave = null; SS.toast("ブランドを削除しました。", { sticky: true }); SS.navigate("/settings");
+          dirty = false; SS.settingsLeave = null; SS.toast("ブランドを削除しました。", { sticky: true }); SS.navigate("/settings/brands");
         }).catch(fail);
-      }, "btn--danger"));
+      }, "btn--danger btn--small"));
       rail.appendChild(danger);
     }
+    // 右（PC）: プレビュー。色だけでなく、ロゴ・フッタ・ページ番号・透かしも入る。狭い画面では隠し、帯のボタンで開く
+    var previewHelp = ["このブランドでプレゼンを描いたときの見本です。色・ロゴ・フッタ・ページ番号・透かしが入ります。",
+      "色はデジタル庁デザインシステム（DADS）の決まりで、読める濃さにそろえます。",
+      "見本は、左右にスワイプするか、押して送れます（左側を押すと前、右側を押すと次）。",
+      "ピッチ（画像で描く資料）では、この色を絵の指示として渡します。絵の中で同じ色になるとは限りません。"];
+    var carouselHome = h("div", { class: "brand-editor__carousel" }, carousel.node);
     var previewColumn = h("div", { class: "brand-editor__preview" },
-      text("h2", "配色シミュレータ", "brand-editor__preview-title"), carousel.node, text("p", EXAMPLE_NOTE, "small"), notes);
-    SS.clear(root).appendChild(h("div", { class: "settings-page settings-page--wide" }, head,
-      h("div", { class: "brand-editor__body" }, previewColumn, rail)));
+      h("div", { class: "brand-editor__preview-head" }, titleRow(text("h2", "プレビュー", "brand-editor__preview-title"), "プレビュー", previewHelp)),
+      carouselHome);
+    // 全画面の板（狭い画面）。見本（カルーセル）はこの板へ移し、閉じたら元の場所へ戻す（見本は 1 つだけ持つ）
+    function openPreview() {
+      // 開いたら閉じるボタンに焦点を置く（先頭の「？」に置くと、説明を開くつもりの無い人にも枠が出る）
+      var close = h("button", { class: "btn btn--icon btn--ghost", type: "button", "aria-label": "閉じる", autofocus: true }, SS.icon("close"));
+      var dlg = h("dialog", { class: "preview-sheet", "aria-labelledby": "preview-sheet-title" },
+        h("div", { class: "preview-sheet__head" }, titleRow(h("h2", { id: "preview-sheet-title", text: "プレビュー" }), "プレビュー", previewHelp), close));
+      dlg.appendChild(carousel.node);
+      function done() { if (dlg.open) { dlg.close(); } }
+      function onPop() { done(); }
+      close.addEventListener("click", done);
+      window.addEventListener("popstate", onPop);
+      dlg.addEventListener("close", function () {
+        window.removeEventListener("popstate", onPop);
+        carouselHome.appendChild(carousel.node);
+        dlg.remove();
+        if (previewButton.isConnected) { previewButton.focus(); }
+      });
+      document.body.appendChild(dlg);
+      dlg.showModal();
+    }
+    previewButton.addEventListener("click", openPreview);
+    var page = h("div", { class: "settings-page settings-page--wide brand-editor" }, crumbs, bar,
+      h("div", { class: "brand-editor__body" }, rail, previewColumn));
+    // ⌘S / Ctrl+S で保存する（この画面にいる間だけ）
+    function onKey(event) {
+      if (!page.isConnected) { document.removeEventListener("keydown", onKey); return; }
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && (event.key === "s" || event.key === "S")) { event.preventDefault(); saveNow(); }
+    }
+    document.addEventListener("keydown", onKey);
+    SS.clear(root).appendChild(page);
     preview();
   }
 
-  // ---- 一覧画面（/settings）----
-  var SETTINGS_TABS = [
-    { section: "brands", href: "/settings", label: "ブランド", title: "ブランド",
+  // ---- 設定のトップ（/settings）と、各設定の画面の見出し ----
+  // 設定の中の行き先。トップはこの並びでリンクの一覧を出す（タブはやめた: 狭い画面で崩れるため）
+  var SETTINGS_SECTIONS = [
+    { section: "brands", href: "/settings/brands", label: "ブランド", title: "ブランド",
       lead: "ロゴと配色を、スライドスタイルとは別に管理します。" },
     { section: "styles", href: "/settings/styles", label: "スライドスタイル", title: "スライドスタイル",
       lead: "スライドの型を登録します。ブランドの見た目とは別に管理します。" },
-    { section: "server", href: "/settings/server", label: "この機械", title: "この機械",
-      lead: "このスライド置き場を、どこから開けるようにするかを決めます。" }
+    { section: "server", href: "/settings/server", label: "アクセス", title: "アクセス",
+      lead: "Quick Slide を、このパソコンだけで使うか、ほかのパソコンやスマートフォンからも開けるようにするかを決めます。" }
   ];
 
+  // 各設定の画面の見出し: パンくず（設定 › いまの画面）→ H1（いまの画面の名前）と説明
   function settingsHead(section) {
-    var current = SETTINGS_TABS.filter(function (t) { return t.section === section; })[0] || SETTINGS_TABS[0];
+    var current = SETTINGS_SECTIONS.filter(function (t) { return t.section === section; })[0] || SETTINGS_SECTIONS[0];
     return [
-      text("h1", current.title),
-      text("p", current.lead, "muted"),
-      h("nav", { class: "settings-tabs", "aria-label": "設定の画面" },
-        SETTINGS_TABS.map(function (t) {
-          return h("a", { href: t.href, "data-nav": true,
-            "aria-current": t.section === current.section ? "page" : null, text: t.label });
-        }))
+      breadcrumb([{ label: "設定", href: "/settings" }, { label: current.label }]),
+      h("div", { class: "settings-section-head" }, text("h1", current.title), text("p", current.lead, "muted"))
     ];
+  }
+
+  // 設定のトップ: H1「設定」と、各設定へのリンクの一覧（行全体がリンク。名前と説明と「›」）
+  function settingsIndex(root) {
+    var list = h("ul", { class: "settings-index" });
+    SETTINGS_SECTIONS.forEach(function (t) {
+      list.appendChild(h("li", null, h("a", { class: "settings-index__link", href: t.href, "data-nav": true },
+        h("span", { class: "settings-index__text" }, text("span", t.label, "settings-index__name"), text("span", t.lead, "settings-index__lead")),
+        SS.icon("chevron_right", "settings-index__chevron"))));
+    });
+    SS.clear(root).appendChild(h("div", { class: "settings-page" }, text("h1", "設定"), list));
+  }
+
+  // パンくず（DADS: ヘッダーとページ見出しの間に現在地を階層で示す）。最後の段（いまのページ）はリンクにしない
+  function breadcrumb(items) {
+    var list = h("ol", { class: "breadcrumb__list" });
+    items.forEach(function (item, index) {
+      var last = index === items.length - 1;
+      list.appendChild(h("li", { class: "breadcrumb__item" },
+        last ? h("span", { "aria-current": "page", text: item.label }) : h("a", { href: item.href, "data-nav": true, text: item.label })));
+    });
+    return h("nav", { class: "breadcrumb", "aria-label": "現在地" }, list);
   }
 
   function brandRow(entry, reload) {
@@ -517,10 +744,12 @@
     menuButton.addEventListener("click", function () {
       var edit = entry.capabilities.edit, remove = entry.capabilities.delete;
       SS.menu(menuButton, [
-        { label: "改名", disabled: !edit.available, reason: edit.reason, onSelect: function () {
+        { label: "名前を変更", disabled: !edit.available, reason: edit.reason, onSelect: function () {
           SS.textModal({ title: "ブランドの名前を変更", label: "名前", value: entry.name, submitLabel: "変更する",
             onSubmit: function (value) { return saveAs(value, true).then(function (saved) { SS.toast("「" + saved.name + "」に変更しました。"); reload(); }); } });
         } },
+        { label: "エクスポート", disabled: entry.kind === "preset", reason: "付属のブランドはエクスポートできません。複製してからエクスポートしてください。",
+          onSelect: function () { exportBrand(entry); } },
         { label: "複製", onSelect: function () {
           SS.textModal({ title: "ブランドを複製", label: "新しい名前", value: entry.name + " のコピー", submitLabel: "複製する",
             onSubmit: function (value) { return saveAs(value, false).then(function (saved) { SS.toast("「" + saved.name + "」を作りました。"); SS.navigate("/settings/brands/" + saved.id); }); } });
@@ -542,8 +771,85 @@
       menuButton);
   }
 
+  // ---- ブランドのエクスポート・インポート（ZIP。形はサーバの brand_package.py）----
+  // エクスポート: サーバが作った ZIP を受け取り、ブランドの名前のファイルとして保存させる
+  function exportBrand(entry) {
+    fetch("/api/settings/brands/" + entry.id + "/export").then(function (r) {
+      if (!r.ok) { return r.json().then(function (j) { throw new SS.ApiError((j && j.error && j.error.message) || "エクスポートできませんでした。", "export_failed", r.status); }, function () { throw new SS.ApiError("エクスポートできませんでした。", "export_failed", r.status); }); }
+      return r.blob();
+    }).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var a = h("a", { href: url, download: entry.name.replace(/[\\/:*?"<>|]/g, "_") + ".zip" });
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+      SS.toast("「" + entry.name + "」をエクスポートしました。ZIP をそのまま渡せば、相手の Quick Slide でインポートできます。");
+    }).catch(SS.toastError);
+  }
+
+  // エクスポートした日時（サーバは UTC で持つ）を、この機械の時刻で「2026/10/12 19:13」の形にする。読めなければ出さない
+  function exportedAt(value) {
+    var d = value ? new Date(value) : null;
+    if (!d || isNaN(d.getTime())) { return ""; }
+    return d.toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  }
+
+  // インポート: まず中身を確かめ（何も保存しない）、同じ ID のブランドがあれば「上書き／別のブランドとして追加／やめる」を選ばせる
+  function importBrand(file, opener) {
+    SS.postFile("/api/settings/brands/import/check", file, "ZIP を送信できませんでした。接続を確認してやり直してください。").then(function (check) {
+      var pkg = check.package, existing = check.existing, choices = check.choices || [];
+      var error = h("p", { class: "notice notice--error small", role: "alert", hidden: true });
+      var swatches = h("span", { class: "setting-row__swatches", "aria-hidden": "true" });
+      [pkg.colors.primary, pkg.colors.accent].forEach(function (c) { var chip = h("span", { class: "setting-row__swatch" }); chip.style.background = c; swatches.appendChild(chip); });
+      var facts = h("ul", { class: "import-dialog__facts small" },
+        text("li", "ロゴ: " + (pkg.logos.length ? "あり（" + pkg.logos.length + " 枚）" : "なし")),
+        text("li", "フッター: " + (pkg.footer || "なし")),
+        text("li", "ウォーターマーク: " + (pkg.watermark || "なし")),
+        exportedAt(pkg.exported_at) ? text("li", "エクスポートした日時: " + exportedAt(pkg.exported_at)) : null);
+      var lead;
+      if (existing && choices.indexOf("replace") >= 0) {
+        lead = h("div", { class: "notice import-dialog__same" }, text("p", "同じブランド「" + existing.name + "」がすでにあります（ID が同じです）。"),
+          text("p", "上書きすると、このブランドの新しい版になります。前の版も履歴に残ります。", "small"));
+      } else if (existing) {
+        lead = text("p", "付属のブランドと ID が同じなので、別のブランドとして追加します。", "notice small");
+      } else {
+        lead = null;
+      }
+      var close = h("button", { class: "btn btn--icon btn--ghost", type: "button", "aria-label": "閉じる" }, SS.icon("close"));
+      var actions = h("div", { class: "modal-actions import-dialog__actions" });
+      var dlg = h("dialog", { class: "kind-help import-dialog", "aria-labelledby": "import-dialog-title" },
+        h("div", { class: "kind-help__head" }, h("h2", { id: "import-dialog-title", text: "ブランドをインポート" }), close),
+        h("div", { class: "import-dialog__brand" }, swatches, text("p", pkg.name, "import-dialog__name")), facts, lead, error, actions);
+      var busy = false;
+      function done() { if (dlg.open) { dlg.close(); } }
+      function run(mode, label) {
+        if (busy) { return; }
+        busy = true; error.hidden = true;
+        var url = "/api/settings/brands/import?mode=" + mode + (mode === "replace" ? "&expected_revision_id=" + encodeURIComponent(existing.current_revision_id) : "");
+        SS.postFile(url, file, "ZIP を送信できませんでした。接続を確認してやり直してください。").then(function (result) {
+          if (result.verified !== true) { throw new SS.ApiError("インポートした結果を確認できませんでした。一覧を読み直してください。", "import_unverified"); }
+          done();
+          SS.toast("「" + result.item.name + "」を" + label + "。");
+          SS.navigate("/settings/brands/" + result.item.id);
+        }).catch(function (e) { busy = false; error.textContent = e && e.message ? e.message : "インポートできませんでした。"; error.hidden = false; });
+      }
+      function choice(label, cls, mode, toastLabel) { actions.appendChild(button(label, function () { run(mode, toastLabel); }, cls)); }
+      if (choices.indexOf("replace") >= 0) {
+        choice("上書きする", "btn--primary", "replace", "上書きしました");
+        choice("別のブランドとして追加", "", "add", "別のブランドとして追加しました");
+      } else {
+        choice(existing ? "追加する" : "インポート", "btn--primary", "add", existing ? "追加しました" : "インポートしました");
+      }
+      actions.appendChild(button("やめる", done, "btn--ghost"));
+      close.addEventListener("click", done);
+      dlg.addEventListener("click", function (e) { if (e.target === dlg) { done(); } });
+      dlg.addEventListener("close", function () { dlg.remove(); if (opener && opener.isConnected) { opener.focus(); } });
+      document.body.appendChild(dlg);
+      dlg.showModal();
+    }).catch(SS.toastError);
+  }
+
   function brandsScreen(root, catalog) {
-    function reload() { SS.navigate("/settings", true); }
+    function reload() { SS.navigate("/settings/brands", true); }
     var rows = h("div", { class: "setting-rows" });
     catalog.brands.forEach(function (entry) { rows.appendChild(brandRow(entry, reload)); });
     if (!catalog.brands.length) { rows.appendChild(text("p", "登録されたブランドがありません。", "reason")); }
@@ -556,12 +862,14 @@
           });
         } });
     }, "btn--primary");
-    var cap = catalog.capabilities.format;
+    var picker = h("input", { type: "file", accept: ".zip,application/zip", hidden: true });
+    picker.addEventListener("change", function () { var file = picker.files[0]; picker.value = ""; if (file) { importBrand(file, importButton); } });
+    var importButton = button("", function () { picker.click(); });
+    importButton.appendChild(SS.icon("upload")); importButton.appendChild(text("span", "インポート"));
+    // 書式（フッター・ページ番号・ウォーターマーク）はブランドの編集画面で設定する。一覧に「書式を登録」は置かない
     SS.clear(root).appendChild(h("div", { class: "settings-page" }, settingsHead("brands"),
-      h("div", { class: "settings-toolbar" }, create),
-      rows,
-      h("fieldset", { disabled: !cap.available }, SS.disabledButton(catalog.capabilities, "format")),
-      text("p", cap.reason, "reason")));
+      h("div", { class: "settings-toolbar" }, create, importButton, picker),
+      rows));
   }
 
   // ---- スライドスタイル ----
@@ -694,7 +1002,7 @@
   }
 
 
-  // ---- この機械の口（/settings/server。ADR 0049）----
+  // ---- アクセス（どこから開けるか。/settings/server。ADR 0049）----
   function serverScreen(root, catalog) {
     var state = catalog.server;
     var shut = state.bind_scope === "loopback";   // ループバックかはサーバがアドレスの意味で決めた値を使う
@@ -702,23 +1010,23 @@
     var dirty = false;
 
     var choice = h("div", { class: "setting-field" },
-      text("span", "どこから開けるか"),
+      text("span", "開ける範囲"),
       h("div", { class: "setting-choices" },
-        radio("here", "この機械の中だけ", "いちばん安全です。ほかの機械のブラウザからは開けません。", shut),
-        radio("out", "ほかの機械からも開ける", "書いたアドレスの網から開けるようになります。", !shut)));
+        radio("here", "このパソコンだけ（おすすめ）", "このパソコンのブラウザからだけ開けます。いちばん安全です。", shut),
+        radio("out", "ほかの端末からも開けるようにする", "指定したネットワーク（社内 LAN や VPN など）につながっているパソコンやスマートフォンから開けます。", !shut)));
 
-    var addr = field("待つアドレス", shut ? "" : state.host,
+    var addr = field("公開する IP アドレス", shut ? "" : state.host,
       { placeholder: "100.100.1.23", spellcheck: "false", autocapitalize: "off" });
-    var names = field("この名前でも開けるようにする", state.host_names.join("\n"),
+    var names = field("ホスト名（任意）", state.host_names.join("\n"),
       { multiline: true, rows: "3", placeholder: "my-mac\nmy-mac.example.net", spellcheck: "false", autocapitalize: "off" });
-    var port = field("ポート", String(state.port || ""), { inputmode: "numeric", maxlength: 5, spellcheck: "false" });
+    var port = field("ポート番号", String(state.port || ""), { inputmode: "numeric", maxlength: 5, spellcheck: "false" });
     port.el.addEventListener("input", function () { dirty = true; SS.settingsLeave = { dirty: function () { return dirty; } }; });
     var away = h("div", { class: "setting-away" }, addr.node,
-      text("p", "この機械に生えているアドレスを1つ書きます。「ぜんぶ」を意味する 0.0.0.0 は書けません。どの網に出すのかを選んでください。", "small muted"),
+      text("p", "このパソコンに割り当てられている IP アドレスを 1 つ入力します。どのネットワークに公開されるかは、このアドレスで決まります。すべてのネットワークを意味する 0.0.0.0 は使えません。", "small muted"),
       names.node,
-      text("p", "名前は一行に一つ。書いた名前でだけ開けます。書かないとアドレスでしか開けません。", "small muted"),
+      text("p", "IP アドレスの代わりに名前で開きたいときに書きます。1 行に 1 つずつ。空欄なら IP アドレスで開きます。", "small muted"),
       h("div", { class: "notice notice--warn" },
-        text("p", "Quick Slide には合言葉がありません。ここで開けた網から届く端末は、誰でもスライドを読めて、消せて、画像の枠を使えます。自分の端末しかいない網にだけ開いてください。")));
+        text("p", "Quick Slide にはパスワードがありません。公開したネットワークにつながっている人は誰でも、スライドの閲覧・削除や、画像生成の利用枠の消費ができてしまいます。自分の端末だけがつながっているネットワークにだけ公開してください。")));
 
     function radio(value, label, note, checked) {
       var input = h("input", { type: "radio", name: "server-openness", value: value });
@@ -745,15 +1053,15 @@
       };
       var portText = port.el.value.trim();
       if (portText && String(state.port) !== portText) {
-        if (!/^[0-9]{1,5}$/.test(portText)) { SS.clear(errors).appendChild(text("p", "ポートは数で書いてください。", "notice notice--error")); return; }
+        if (!/^[0-9]{1,5}$/.test(portText)) { SS.clear(errors).appendChild(text("p", "ポート番号は数字で入力してください。", "notice notice--error")); return; }
         body.port = parseInt(portText, 10);
       }
       SS.clear(errors);
       save.disabled = true;
       SS.api("/api/settings/server", { method: "POST", body: body }).then(function (result) {
-        if (result.verified !== true) { throw new SS.ApiError("保存できたか確かめられませんでした。画面を読み直してください。", "save_unverified"); }
+        if (result.verified !== true) { throw new SS.ApiError("保存できたか確認できませんでした。画面を読み込み直してください。", "save_unverified"); }
         dirty = false; SS.settingsLeave = null;
-        SS.toast("保存しました。「再起動」を押すと効きます。");
+        SS.toast("保存しました。「再起動」を押すと反映されます。");
         SS.navigate("/settings/server", true);
       }).catch(function (error) {
         save.disabled = false;
@@ -762,28 +1070,28 @@
     }, "btn--primary");
 
     var now = shut
-      ? "いまは、この機械の中だけに開いています。"
-      : "いまは " + state.host + " に開いています。ほかの機械から届きます。";
+      ? "現在は、このパソコンからだけ開けます。"
+      : "現在は " + state.host + " で公開しています。ほかの端末からも開けます。";
     var live = state.restart_required || state.settings_error ? restartBanner(state) : null;
 
     away.hidden = shut;
     SS.clear(root).appendChild(h("div", { class: "settings-page" }, settingsHead("server"),
       h("div", { class: "setting-panel" },
         text("p", now, "muted"), live, choice, away, port.node,
-        text("p", "ふつうは 7801 のままにします。変えたら、開く URL のポートも変わります。", "small muted"), errors,
+        text("p", "通常は 7801 のままで構いません。変えると、開くときの URL の番号も変わります。", "small muted"), errors,
         h("div", { class: "setting-actions" }, save))));
   }
 
-  // 「再起動が必要」の帯（この機械の画面）。走っている仕事があれば「終わるのを待って」と「今すぐ」を出す。
+  // 「再起動が必要」の帯（アクセスの画面）。処理中の作業があれば「終わるのを待って」と「今すぐ」を出す。
   // 押したあとの進み・つなぎ直し・新しい URL への移動は core.js の SS.restartServer
   function restartBanner(state) {
     var box = h("div", { class: "notice notice--warn restart-banner", role: "status" });
     if (state.settings_error) {
-      box.appendChild(text("p", "設定のファイルを読めません（" + state.settings_error + "）。直すまで再起動はできません。"));
+      box.appendChild(text("p", "設定ファイルを読み込めません（" + state.settings_error + "）。ファイルを直すまで再起動できません。"));
       return box;
     }
-    box.appendChild(text("p", "保存した待ち受けはまだ効いていません。動いているサーバは " + state.running_url
-      + " で待っています。再起動すると " + state.expected_url + " で開き直します。"));
+    box.appendChild(text("p", "保存した設定はまだ反映されていません。現在は " + state.running_url
+      + " で動いています。再起動すると " + state.expected_url + " で開けるようになります。"));
     var progress = text("p", "", "small restart-banner__progress");
     var buttons = h("div", { class: "setting-actions restart-banner__actions" });
     function go(mode) {
@@ -795,13 +1103,13 @@
       });
     }
     if (!state.restartable) {
-      box.appendChild(text("p", "このサーバは画面から再起動できません。コマンド（start）で起動し直してください。", "small"));
+      box.appendChild(text("p", "この画面からは再起動できません。コマンド（start）で起動し直してください。", "small"));
       return box;
     }
     if (state.running_jobs > 0) {
-      buttons.appendChild(button("終わるのを待って再起動（" + state.running_jobs + " 件）", function () { go("wait"); }, "btn--primary restart-wait"));
+      buttons.appendChild(button("処理中の " + state.running_jobs + " 件が終わってから再起動", function () { go("wait"); }, "btn--primary restart-wait"));
       buttons.appendChild(button("今すぐ再起動", function () {
-        if (!SS.confirm("走っている仕事を止めて再起動します。描いている途中のものは再起動のあと続きから描き、台本を書いている途中のものは失敗になります。よろしいですか？")) { return; }
+        if (!SS.confirm("処理中の作業を止めて再起動します。画像を描いている途中のものは、再起動のあとに続きから描きます。台本を書いている途中のものは失敗になります。よろしいですか？")) { return; }
         go("now");
       }, "restart-now"));
     } else {
@@ -815,6 +1123,7 @@
 
   SS.views.settings = function (root, route, guard) {
     SS.clear(root).appendChild(text("p", "設定を読み込んでいます…"));
+    if (route.section === "index") { settingsIndex(root); return Promise.resolve(); }
     return SS.api("/api/settings").then(function (catalog) {
       if (!guard()) { return; }
       if (route.section === "styles") { return stylesScreen(root, catalog); }
@@ -824,7 +1133,7 @@
         if (!item) {
           SS.clear(root).appendChild(h("div", { class: "settings-page" },
             h("div", { class: "notice notice--error", role: "alert" }, text("p", "このブランドは見つかりません。一覧から選び直してください。")),
-            h("p", null, h("a", { href: "/settings", "data-nav": true, text: "← 一覧" }))));
+            h("p", null, h("a", { href: "/settings/brands", "data-nav": true, text: "← ブランドの一覧" }))));
           return;
         }
         return brandEditor(root, catalog, item);

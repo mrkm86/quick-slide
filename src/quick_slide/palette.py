@@ -14,6 +14,10 @@ _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 _GRAY_LIGHTNESS = (0.10, 0.25, 0.40, 0.55, 0.70, 0.84, 0.93, 0.97)
 _FLAT_OVERRIDES = ("primary_light", "primary_dark", "border", "surface", "base", "gray")
 _SEMANTIC_KEYS = ("success", "warning", "error", "info")
+# 算出しない・人が決めたときだけ持つ文字の色（エンジンのテーマの ink・muted にそのまま渡す）
+TEXT_OVERRIDES = ("ink", "muted")
+# 編集画面が扱わなくなった上書き（スライドに効かない）。人が決めた値は保存のたびに持ち越す（custom_roles）
+LEGACY_OVERRIDES = ("info", "primary_light", "primary_dark", "border")
 
 
 def _hex_to_hls(value: str) -> tuple[float, float, float]:
@@ -171,33 +175,44 @@ def derive_from_colors(colors: dict[str, Any]) -> dict[str, Any]:
 
 
 def snapshot_colors(colors: dict[str, Any]) -> dict[str, Any]:
-    """入力色と算出一式を、将来の算出規則変更から独立した保存形にする。"""
+    """入力色と算出一式を、将来の算出規則変更から独立した保存形にする。
+
+    本文・補足の文字の色（``ink``・``muted``）は算出しないので、人が決めたときだけそのまま持つ。"""
     palette = derive_from_colors(colors)
+    text = {key: _require_color(colors[key], key) for key in TEXT_OVERRIDES if colors.get(key) is not None}
     return {
         "primary": colors["primary"],
         "accent": colors["accent"],
         **palette["derived"],
+        **text,
     }
 
 
 def custom_roles(colors: dict[str, Any]) -> dict[str, Any]:
     """保存済みの ``colors``（スナップショット）のうち、算出では出ない＝人が決めた役割色だけを返す。
 
-    対象はブランドの編集画面が扱わない役割（``semantic`` の success / warning / error と ``gray``）。
-    スナップショットは算出値と上書き値を区別せずに持つので、同じ入力（基本色・強調色・情報色・平らな上書き）から
+    対象はブランドの編集画面が扱わない役割（``semantic`` の success / warning / error と ``gray``、
+    画面から外した上書き ``LEGACY_OVERRIDES``＝情報色・主役色（淡・濃）・区切り線）。
+    スナップショットは算出値と上書き値を区別せずに持つので、同じ入力（基本色・強調色・地の色・面の色）から
     算出し直して、違うものだけを「人が決めた値」とみなす。算出値と同じものは返さない（基本色を変えたら算出し直す）。
-    戻り値は ``{"semantic": {...}, "gray": [...]}`` の部分集合。読めない形なら空。
+    戻り値は ``{"semantic": {...}, "gray": [...], "info": ..., "primary_light": ..., ...}`` の部分集合。読めない形なら空。
     """
     if not isinstance(colors, dict):
         return {}
     semantic = colors.get("semantic") if isinstance(colors.get("semantic"), dict) else {}
-    info = colors.get("info") if "info" in colors else semantic.get("info")
-    flat = {key: colors[key] for key in _FLAT_OVERRIDES if key in colors and key != "gray"}
+    flat = {key: colors[key] for key in ("base", "surface") if key in colors}
     try:
-        baseline = derive(colors.get("primary"), colors.get("accent"), info=info, overrides=flat)["derived"]
+        baseline = derive(colors.get("primary"), colors.get("accent"), overrides=flat)["derived"]
     except ValueError:
         return {}
     kept: dict[str, Any] = {}
+    info = colors.get("info") if "info" in colors else semantic.get("info")
+    if isinstance(info, str) and _HEX.fullmatch(info) and info.lower() != baseline["semantic"]["info"].lower():
+        kept["info"] = info
+    for key in ("primary_light", "primary_dark", "border"):
+        value = colors.get(key)
+        if isinstance(value, str) and _HEX.fullmatch(value) and value.lower() != baseline[key].lower():
+            kept[key] = value
     custom_semantic = {
         key: semantic[key] for key in ("success", "warning", "error")
         if isinstance(semantic.get(key), str) and semantic[key].lower() != baseline["semantic"][key].lower()
@@ -226,7 +241,8 @@ def engine_theme(colors: dict[str, Any]) -> dict[str, str]:
     | ブランド | テーマ |
     |---|---|
     | 地の色（base。既定は白） | background |
-    | gray の 2 段目（読めなければ gray・黒・白で一番読める色） | ink |
+    | 本文の文字（ink。人が決めたときはそのまま。無ければ gray の 2 段目・読めなければ gray・黒・白で一番読める色） | ink |
+    | 補足の文字（muted。人が決めたときだけ。無ければエンジンが DADS の Gray-600 を使う） | muted |
     | 基本色（primary） | primary |
     | 強調色（accent。基本色と同じなら書かない＝エンジンが primary を使う） | accent |
     | 面の色（surface。人が上書きしたときだけ・文字が読めるときだけ） | surface |
@@ -238,12 +254,19 @@ def engine_theme(colors: dict[str, Any]) -> dict[str, str]:
     base = colors.get("base") if isinstance(colors.get("base"), str) and _HEX.fullmatch(colors["base"]) else "#FFFFFF"
     base = base.upper()
     gray = [g for g in (colors.get("gray") or []) if isinstance(g, str) and _HEX.fullmatch(g)]
-    ink = gray[INK_STEP].upper() if len(gray) > INK_STEP else "#404040"
-    if _contrast_ratio(ink, base) < INK_MIN_CONTRAST:
-        ink = max([g.upper() for g in gray] + ["#000000", "#FFFFFF"], key=lambda c: _contrast_ratio(c, base))
+    chosen = {key: colors[key].upper() for key in TEXT_OVERRIDES if isinstance(colors.get(key), str) and _HEX.fullmatch(colors[key])}
+    if "ink" in chosen:
+        # 人が決めた本文の色はそのまま渡す。読めるかどうかはエンジンが測る（足りなければ描かずに止まる。画面は保存させない）
+        ink = chosen["ink"]
+    else:
+        ink = gray[INK_STEP].upper() if len(gray) > INK_STEP else "#404040"
+        if _contrast_ratio(ink, base) < INK_MIN_CONTRAST:
+            ink = max([g.upper() for g in gray] + ["#000000", "#FFFFFF"], key=lambda c: _contrast_ratio(c, base))
     theme = {"background": base, "ink": ink, "primary": primary}
     if accent != primary:
         theme["accent"] = accent
+    if "muted" in chosen:
+        theme["muted"] = chosen["muted"]
     surface = colors.get("surface")
     if isinstance(surface, str) and _HEX.fullmatch(surface):
         semantic = colors.get("semantic") if isinstance(colors.get("semantic"), dict) else {}

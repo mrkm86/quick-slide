@@ -11,9 +11,10 @@
     script.onerror = function () { reject(new SS.ApiError("設定画面を読み込めませんでした。再読み込みしてください。", "settings_load")); };
     document.head.appendChild(script);
   });
-  var settingsLink = SS.h("a", { class: "settings-link", href: "/settings", "data-nav": true,
-    "data-route": "settings", "aria-label": "設定", title: "設定" });
+  // 設定への入口。DADS の決まり（アイコンは文字のラベルと組む）に沿って「設定」と書く。現在地の印はホーム・スライドと同じ（太字と下の線）
+  var settingsLink = SS.h("a", { class: "settings-link", href: "/settings", "data-nav": true, "data-route": "settings" });
   settingsLink.appendChild(document.getElementById("settings-icon").content.cloneNode(true));
+  settingsLink.appendChild(SS.h("span", { class: "settings-link__label", text: "設定" }));
   document.querySelector(".topbar__right").appendChild(settingsLink);
 
   function describeClient() {
@@ -56,10 +57,10 @@
       if (last.fallback && last.message) { SS.toast(last.message, { kind: "error", sticky: true }); }
       else { SS.toast("再起動しました。"); }
     }
-    // 待ち受けの設定が動いているサーバと食い違う（画面で保存した・手で直した）→ どの画面からも「この機械」へ行ける
+    // 待ち受けの設定が動いているサーバと食い違う（画面で保存した・手で直した）→ どの画面からも「アクセス」の設定へ行ける
     if (j && j.settings && j.settings.restart_required && location.pathname !== "/settings/server") {
       var link = SS.h("a", { class: "restart-link", href: "/settings/server", "data-nav": true,
-        text: "設定を効かせるには再起動が必要です" });
+        text: "設定を反映するには再起動が必要です" });
       el.parentNode.insertBefore(link, el.nextSibling);
     }
   }).catch(function () { var el = document.getElementById("server-state"); el.textContent = "サーバに接続できません"; el.hidden = false; });

@@ -302,8 +302,8 @@ class QuickSlideServer:
             except OSError as exc:
                 if exc.errno == errno.EADDRNOTAVAIL:
                     raise StartupError(
-                        f"アドレス {self.host} はこの機械に無いので、そこでは待てません。"
-                        "この機械のアドレスを書いてください") from exc
+                        f"IP アドレス {self.host} はこのパソコンに割り当てられていないため、使えません。"
+                        "このパソコンの IP アドレスを書いてください") from exc
                 raise StartupError(
                     f"ポート {self.port} に bind できません（{exc.__class__.__name__}）。"
                     "別のアプリがこのポートを使っている可能性があります。そのアプリを止めるか、設定 server.port を変えてください。"
@@ -870,6 +870,9 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"POST"}), _exact("/api/settings/images"), _settings_routes.upload),
     (frozenset({"POST"}), _exact("/api/settings/server"), _settings_routes.save_server),
     (frozenset({"POST"}), _exact("/api/settings/brands/preview"), _settings_routes.preview_brand),
+    (frozenset({"POST"}), _exact("/api/settings/brands/import/check"), _settings_routes.check_import),
+    (frozenset({"POST"}), _exact("/api/settings/brands/import"), _settings_routes.import_brand),
+    (frozenset({"GET"}), _uuid_route("/api/settings/brands/", "setting_id", "/export"), _settings_routes.export_brand),
     (frozenset({"POST"}), _exact("/api/settings/brands"), _settings_routes.save_brand),
     (frozenset({"POST"}), _uuid_route("/api/settings/brands/", "setting_id"), _settings_routes.save_brand),
     (frozenset({"POST"}), _uuid_route("/api/settings/brands/", "setting_id", "/delete"), _settings_routes.delete_setting),
@@ -878,6 +881,7 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"POST"}), _uuid_route("/api/settings/styles/", "setting_id"), _settings_routes.save_style),
     (frozenset({"POST"}), _uuid_route("/api/settings/styles/", "setting_id", "/delete"), _settings_routes.delete_setting),
     (frozenset({"GET"}), _exact("/settings"), QuickSlideServer._route_index),
+    (frozenset({"GET"}), _exact("/settings/brands"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _exact("/settings/styles"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _exact("/settings/server"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _uuid_route("/settings/brands/", "setting_id"), QuickSlideServer._route_index),

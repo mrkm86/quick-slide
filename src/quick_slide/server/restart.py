@@ -93,13 +93,13 @@ def begin(app: Any, mode: Any) -> dict[str, Any]:
         raise ApiError(400, "bad_restart_mode", "再起動のしかたは「終わるのを待つ」か「今すぐ」から選んでください。")
     if not app.restartable:
         raise ApiError(409, "restart_unavailable",
-                       "このサーバは画面から再起動できません（コマンドで起動し直してください）。")
+                       "この画面からは再起動できません（コマンドで起動し直してください）。")
     if app.restarting is not None:
         raise ApiError(409, "restart_in_progress", "もう再起動しています。少し待ってから画面を読み直してください。")
     try:
         disk = S.Settings.load(app.root.settings_path)
     except ValidationError as exc:
-        raise ApiError(400, "settings_unreadable", f"設定のファイルを読めないので、再起動しません（{exc}）。"
+        raise ApiError(400, "settings_unreadable", f"設定ファイルを読み込めないため、再起動しません（{exc}）。"
                        "ファイルを直してから、もう一度押してください。") from None
     refusal = S.bind_refusal(disk.server.host)
     if refusal is not None:
