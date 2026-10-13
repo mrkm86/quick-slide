@@ -1,6 +1,6 @@
 """P1 の確かめ: **本物のブラウザ**で v2 のサーバの画面を開き、JavaScript の例外が 1 つも出ないこと。
 
-開く画面: ホーム・一覧・ごみ箱・スライドの画面（両モード）・設定（ブランド一覧・ブランドの編集・スタイル・この機械）。
+開く画面: ホーム・一覧・ごみ箱・スライドの画面（両モード）・設定（ブランド一覧・ブランドの編集・この機械）。
 それぞれ「画面が描き終わった」印を待ち、そのあと少し待って遅れて投げられる例外も拾う。
 画面がエラーの器（`SS.errorBlock`）を出していないことも見る（API が画面の読む形を返していない兆し）。
 
@@ -77,17 +77,17 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
 
     def test_settings_screens(self) -> None:
         # 設定のトップは各設定へのリンクの一覧（タブは無い）
-        page = self.open("/settings", "document.querySelectorAll('.settings-index__link').length === 4", "設定のトップ")
+        page = self.open("/settings", "document.querySelectorAll('.settings-index__link').length === 3", "設定のトップ")
         self.assertEqual(page.eval("Array.from(document.querySelectorAll('.settings-index__link')).map(a => a.getAttribute('href')).join(' ')"),
-                         "/settings/brands /settings/styles /settings/server /settings/samples")
+                         "/settings/brands /settings/server /settings/samples")
+        # スライドスタイルの画面はやめた（docs/adr/0009）。前の URL は設定のトップを開く
+        self.open("/settings/styles", "document.querySelectorAll('.settings-index__link').length === 3", "前の URL は設定のトップ")
         page = self.open("/settings/brands", "document.querySelectorAll('.setting-row').length >= 1", "ブランドの一覧")
         self.assertEqual(page.eval("document.querySelector('.breadcrumb [aria-current]').textContent"), "ブランド")
         page = self.open(f"/settings/brands/{PRESET_BRAND_ID}",
                          "document.querySelector('.brand-editor__preview .help-tip') !== null"
                          " && !!document.querySelector('.carousel .sample')", "ブランドの編集と見本")
         self.assertEqual(page.eval("document.querySelectorAll('.corner-choice').length"), 3)
-        page = self.open("/settings/styles", "document.querySelectorAll('.pattern-choice').length >= 1",
-                         "スライドスタイルの編集")
         page = self.open("/settings/server", "document.querySelectorAll('.setting-choice').length === 2", "この機械")
         # 見本を入れないサーバ（試験の既定）でも開ける。理由を出し、「見本を入れ直す」は出さない
         page = self.open("/settings/samples", "!!document.querySelector('.setting-panel .reason')", "見本")
@@ -177,7 +177,7 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
             self.assertEqual(len(self.fx.store.trashed_decks()), 1)
 
     def test_settings_can_be_saved_from_the_screen(self) -> None:
-        """ブランドを作って色と角を変えて保存する・スタイルを複写して作る。画面から最後まで通ること。"""
+        """ブランドを作って色と角を変えて保存する。画面から最後まで通ること。"""
         page = self.open("/settings/brands", "document.querySelectorAll('.setting-row').length >= 1", "ブランドの一覧")
         page.eval("Array.from(document.querySelectorAll('.settings-toolbar button')).find(b => b.textContent === '新しいブランド').click()")
         page.until("!!document.querySelector('.modal input')", what="名前のモーダル")
@@ -198,14 +198,6 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
         self.assertEqual(saved["config"]["colors"]["primary"], "#2255AA")
         self.assertEqual(saved["config"]["logo"]["placement"], {"corner": "bottom-left"})
 
-        page = self.open("/settings/styles", "document.querySelectorAll('.pattern-choice').length >= 1", "スタイルの画面")
-        page.eval("Array.from(document.querySelectorAll('.settings-list button')).find(b => b.textContent.indexOf('新しい') >= 0).click()")
-        page.until("document.querySelector('.settings-editor h2').textContent.indexOf('複写') >= 0", what="複写の欄")
-        page.eval("(function(){ var i = document.querySelector('.settings-editor input[type=text]'); i.value = '画面で作った型';"
-                  " i.dispatchEvent(new Event('input')); Array.from(document.querySelectorAll('.settings-editor button'))"
-                  ".find(b => b.textContent === '保存する').click(); })()")
-        page.until("Array.from(document.querySelectorAll('.settings-list button')).some(b => b.textContent === '画面で作った型')",
-                   what="作った型が一覧に出ること")
         page.raise_if_broken()
         self.assertEqual(page.errors, [])
 

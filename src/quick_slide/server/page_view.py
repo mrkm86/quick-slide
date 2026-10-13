@@ -209,7 +209,7 @@ def pages_view(store: Any, deck_id: str, *, shown: dict[str, Any] | None, latest
         if not has_image and versions:   # 非表示・まだ描いていないページは、前に描いた絵を出す
             image_url = next((v["image_url"] for v in versions if v["image_url"]), None)
         if pid in targets:
-            display = page_display("generating" if targets[pid] == "running" else "queued_slot")
+            display = page_display("editing" if targets[pid] == "running" else "edit_queued")
         elif pin is not None:
             display = page_display("ready")
         elif row is not None and same:

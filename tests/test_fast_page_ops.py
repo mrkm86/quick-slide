@@ -35,7 +35,8 @@ class FastPageOpsTests(EditBase):
         self.assertTrue(next(s for s in data["slides"] if s["id"] == target["key"]).get("_hidden"))
         view = self.view(deck)
         self.assertTrue(next(p for p in view["pages"] if p["slide_id"] == target["slide_id"])["hidden"])
-        self.assertFalse(any(p["display"]["key"] == "generating" for p in view["pages"]), "描かない直しで「生成中」を出さない")
+        self.assertFalse(any(p["display"]["key"] in ("generating", "editing") for p in view["pages"]),
+                         "描かない直しで「生成中」「編集中」を出さない")
         if view["live"]["working"]:
             self.assertFalse(view["planning"]["active"], "裏の組み直しの間は帯を出さない")
         present = self.fx.get(f"/api/decks/{deck}/present").json()

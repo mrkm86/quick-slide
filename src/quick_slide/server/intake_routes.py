@@ -64,9 +64,14 @@ def route_intake(server: "QuickSlideServer", req: "Request") -> "Response":
             mode = server.store.intake_mode(payload)
         except NotReadyError as exc:
             raise ApiError(400, NOT_READY_CODE, str(exc)) from None
-    refusal = server.kind_refusals().get(mode)
+    refusals = server.kind_refusals()
+    refusal = refusals.get(mode)
     if refusal:
         raise ApiError(409, "engine_unavailable", refusal, details={"mode": mode})
+    # この機械に絵を生成する Codex が無いなら、プレゼンは生成の画像の枠を置かずに作る（置くと描く段で止まる。
+    # 確かめ方はピッチと同じ。docs/adr/0010-images-follow-the-machine.md）。図・形・アイコンと、渡された画像で組む
+    if mode == "presentation" and "pitch" in refusals and isinstance(payload.get("deck_attributes"), dict):
+        payload["deck_attributes"]["images"] = False
     with server.store_lock:
         assert server.store is not None
         try:

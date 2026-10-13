@@ -1,6 +1,6 @@
 """P5 の確かめ: **本物のブラウザ**で、描き終えた 1 冊（偽物の台本係・本物の image-slide・絵は偽物の codex）の画面の
 書き出し（PDF・PPTX のボタンが押せ、押すと「ダウンロードしました」）と、スライドのメニューの「設定を替えて組み直す」
-（ブランドとスタイルを選ぶ器が開き、送ると新しい回ができる）。JavaScript の例外が 1 つも出ないこと。
+（ブランドと見せ方を選ぶ器が開き、送ると新しい回ができる）。JavaScript の例外が 1 つも出ないこと。
 
 Chrome が無い環境では skip する。
 """
@@ -61,9 +61,11 @@ class DeckMenuExportAndRebuildTest(unittest.TestCase):
                    what="メニューの項目")
         page.eval("Array.from(document.querySelectorAll('.menu button')).find(b => b.textContent === '設定を替えて組み直す').click()")
         page.until("!!document.querySelector('.modal #rebuild-brand') && !!document.querySelector('.modal #rebuild-style')",
-                   what="ブランドとスタイルを選ぶ器")
+                   what="ブランドと見せ方を選ぶ器")
         self.assertIn("ピッチ", page.eval("document.querySelector('.modal p.muted').textContent"))
-        self.assertGreaterEqual(page.eval("document.querySelectorAll('#rebuild-style option').length"), 3)
+        # 見せ方は付属の 2 つだけ（docs/adr/0009）
+        self.assertEqual(page.eval("Array.from(document.querySelectorAll('#rebuild-style option')).map(o => o.textContent).join('|')"),
+                         "説明・報告（文字と図で説明する）|ビジュアル（絵で印象を残す）")
         page.eval("Array.from(document.querySelectorAll('.modal .btn--primary')).find(b => b.textContent === '組み直す').click()")
         page.until("!document.querySelector('.modal')", what="器が閉じる")
         time.sleep(0.5)

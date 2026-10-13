@@ -4,7 +4,6 @@
   （ポートを変えたなら新しい URL へ移る・この機械に無いアドレスなら前の設定に戻った理由が出る）。サーバは本物のプロセス
 - ブランドの編集: ロゴの角・フッタ・ページ番号・透かし（書式）を変えて保存する。見本に下の部品が出る。ロゴ以外の役割の
   画像は消えない
-- スタイル: 「おまかせ」と型のチェック・エンジンの見せ方・画風を選んで保存する
 - どの画面でも JavaScript の例外が出ない
 
 Chrome が無い環境では skip する。
@@ -28,7 +27,6 @@ if str(HERE.parent) not in sys.path:
 from helpers import FAKES, REPO, png_bytes, runnable, start_server, temp_dir  # noqa: E402
 from test_p4_restart import free_port  # noqa: E402
 
-from quick_slide.ids import PRESET_STYLE_STANDARD_ID  # noqa: E402
 
 from . import browser  # noqa: E402
 
@@ -206,40 +204,6 @@ class SettingsScreensTest(unittest.TestCase):
         page.eval("Array.from(document.querySelectorAll('.menu button')).find(b => b.textContent === 'エクスポート').click()")
         page.until("window.__saved.length === 1", what="エクスポートの保存")
         self.assertEqual(page.eval("window.__saved[0]"), "qs-ブランド-配る_ブランド.zip")
-        page.raise_if_broken()
-        self.assertEqual(page.errors, [])
-
-    def test_style_types_engine_style_and_image_look(self) -> None:
-        page = self.open("/settings/styles", "document.querySelectorAll('.pattern-choice').length === 30", "型の一覧が出ること")
-        page.eval("Array.from(document.querySelectorAll('.settings-list button')).find(b => b.textContent.indexOf('新しい') >= 0).click()")
-        page.until("document.querySelector('.settings-editor h2').textContent.indexOf('複写') >= 0", what="複写の欄")
-        self.assertTrue(page.eval("document.querySelector('.pattern-choice input[value=auto]').checked"), "新しく作るときはおまかせ")
-        # 型を選ぶと「おまかせ」が外れる
-        page.eval("(function(){ ['cover','statement','bullets','closing'].forEach(function(v){"
-                  " document.querySelector('.pattern-choice input[value=\"' + v + '\"]').click(); }); })()")
-        self.assertFalse(page.eval("document.querySelector('.pattern-choice input[value=auto]').checked"))
-        self.assertIn("4種類", page.eval("document.querySelector('.pattern-picker__status').textContent"))
-        page.eval("(function(){ var i = document.querySelector('.settings-editor input[type=text]'); i.value = '4 つの型';"
-                  " i.dispatchEvent(new Event('input'));"
-                  " var sel = Array.from(document.querySelectorAll('.settings-editor select'));"
-                  " var pitch = sel.find(s => Array.from(s.options).some(o => o.value === 'infographic')); pitch.value = 'infographic';"
-                  " var look = sel.find(s => Array.from(s.options).some(o => o.value === 'handdrawn')); look.value = 'handdrawn';"
-                  " Array.from(document.querySelectorAll('.settings-editor button')).find(b => b.textContent === '保存する').click(); })()")
-        page.until("Array.from(document.querySelectorAll('.settings-list button')).some(b => b.textContent === '4 つの型')",
-                   what="作ったスタイルが一覧に出ること")
-        page.raise_if_broken()
-        saved = next(s for s in self.fx.get("/api/settings").json()["styles"] if s["name"] == "4 つの型")
-        self.assertEqual(saved["config"]["allowed_layouts"], ["cover", "statement", "bullets", "closing"])
-        self.assertEqual(saved["config"]["engine_style"], {"presentation": "standard", "pitch": "infographic"})
-        self.assertEqual(saved["config"]["image_look"], "handdrawn")
-        self.assertEqual(saved["origin"]["id"], PRESET_STYLE_STANDARD_ID)
-        # 「おまかせに戻す」
-        page.eval("Array.from(document.querySelectorAll('.settings-list button')).find(b => b.textContent === '4 つの型').click()")
-        page.until("document.querySelector('.settings-editor h2').textContent.indexOf('編集') >= 0", what="編集の欄")
-        page.eval("Array.from(document.querySelectorAll('.pattern-picker button')).find(b => b.textContent === 'おまかせに戻す').click()")
-        self.assertTrue(page.eval("document.querySelector('.pattern-choice input[value=auto]').checked"))
-        self.assertEqual(page.eval("document.querySelectorAll('.pattern-choice input:checked').length"), 1)
-        time.sleep(SETTLE_SECONDS)
         page.raise_if_broken()
         self.assertEqual(page.errors, [])
 

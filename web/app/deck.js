@@ -27,7 +27,7 @@
   // 書き出し（P9-b）の確認文・進行中・完了の語も同じ（正本は EXPORT_WORDS / EXPORT_FORMAT_LABELS）
   function exportWords() { return (SS.vocab && SS.vocab.export) || {}; }
 
-  // 「設定を替えて組み直す」の器（P5）。ブランドとスタイルを選んで送る。選べるもの・いまの値・注意の 1 文は
+  // 「設定を替えて組み直す」の器（P5）。ブランドと見せ方を選んで送る。選べるもの・いまの値・注意の 1 文は
   // サーバ（`GET /api/decks/<id>/look`）から読む。送ると直しと同じ仕事になり、画面は実況で替わる
   function openRebuild(deckId, onDone) {
     SS.api("/api/decks/" + deckId + "/look").then(function (look) {
@@ -39,14 +39,15 @@
           sel.appendChild(o);
         });
         if (!items.some(function (it) { return it.id === current.id; })) {
-          var gone = h("option", { value: "", text: current.name + "（削除済み・いまのまま）" });
+          var gone = h("option", { value: "", text: current.name + (current.deleted ? "（削除済み・いまのまま）" : "（いまのまま）") });
           gone.selected = true;
           sel.insertBefore(gone, sel.firstChild);
         }
         return sel;
       }
       var brandSel = select("rebuild-brand", look.brands, look.brand);
-      var styleSel = select("rebuild-style", look.styles, look.style);
+      // 見せ方は付属の 2 つだけ（docs/adr/0009）。モーションは見せ方を持たないので出さない（サーバが空で返す）
+      var styleSel = look.styles.length ? select("rebuild-style", look.styles, look.style) : null;
       var errors = h("p", { class: "reason", role: "alert" });
       var submit = h("button", { class: "btn btn--primary", type: "button", text: "組み直す" });
       var cancel = h("button", { class: "btn", type: "button", text: "やめる" });
@@ -54,7 +55,7 @@
         h("h3", { text: "設定を替えて組み直す" }),
         h("p", { class: "muted small", text: look.notice }),
         h("label", { class: "setting-field", for: "rebuild-brand" }, h("span", { text: "ブランド" }), brandSel),
-        h("label", { class: "setting-field", for: "rebuild-style" }, h("span", { text: "スタイル" }), styleSel),
+        styleSel ? h("label", { class: "setting-field", for: "rebuild-style" }, h("span", { text: "見せ方" }), styleSel) : null,
         errors,
         h("div", { class: "modal-actions" }, cancel, submit));
       var backdrop = h("div", { class: "modal-backdrop" }, box);
@@ -63,7 +64,7 @@
       submit.addEventListener("click", function () {
         var body = {};
         if (brandSel.value) { body.brand_id = brandSel.value; }
-        if (styleSel.value) { body.style_id = styleSel.value; }
+        if (styleSel && styleSel.value) { body.style_id = styleSel.value; }
         submit.disabled = true;
         SS.api("/api/decks/" + deckId + "/rebuild", { method: "POST", body: body }).then(function (r) {
           close();
@@ -121,7 +122,7 @@
   }
 
   function mark(display) {
-    var glyph = { ready: "■", failed: "✕", unknown: "?", cancelled: "—", generating: "◌", adjusting: "◌" }[display.key] || "○";
+    var glyph = { ready: "■", failed: "✕", unknown: "?", cancelled: "—", generating: "◌", adjusting: "◌", editing: "◌" }[display.key] || "○";
     return h("span", { class: "mark mark--" + display.key, title: display.label, "aria-label": display.label, text: glyph });
   }
 
@@ -230,7 +231,7 @@
   // 画面は `capabilities` と `pages[].can_minor` の真偽値と、サーバの文をそのまま出す。
   // 数えるものまでサーバの断りに任せると、押してから初めて「4000文字を超えています」と言われる。
   var nextFieldId = 0;
-  var TEXT_ROWS_MIN = 2, TEXT_ROWS_MAX = 6;   // 欄の高さ（行）。1〜2 行で始まり、書くと 6 行まで
+  var TEXT_ROWS_MIN = 1, TEXT_ROWS_MAX = 6;   // 欄の高さ（行）。1 行（「＋」・送信と同じ 48px）で始まり、書くと 6 行まで
 
   function attachChips(box) {
     return box.querySelectorAll(".attach");
@@ -254,10 +255,12 @@
     // 貼り付けとドラッグ&ドロップの案内は**書いている間だけ見せる**（CSS の :focus-within）。
     // 常に出していると、10 ページのスライドで同じ 1 文が 11 回並ぶ（実ブラウザで撮って分かった）
     var note = h("p", { class: "editbox__note small", text: opts.hint || words.attach_hint });
+    // URL を貼り付けて画像を取り込んだ・取り込めなかったの知らせ（小さく 1 行）
+    var urlNote = h("p", { class: "editbox__url-note small", role: "status" });
     var box = null;
     var changed = opts.onChange || function () {};
     var locked = opts.locked || function () { return false; };
-    var area = { chips: chips, file: file, pick: pick, note: note, over: false };
+    var area = { chips: chips, file: file, pick: pick, note: note, urlNote: urlNote, over: false, role: "" };
 
     // 上限に数えるのは「送れる添付」と「いま送っている添付」。送れなかった 1 枚は数えない
     area.counted = function () {
@@ -278,11 +281,7 @@
       changed();
       // 添付は**すぐ送る**（利用者にファイル保存を挟ませない）。検査の境界は既にある画像の口
       SS.uploadImage(file_).then(function (r) {
-        chip.removeAttribute("aria-busy");
-        chip.dataset.asset = r.asset_id;
-        SS.clear(chip).appendChild(h("img", { class: "attach__pic", src: r.url, alt: "" }));
-        chip.appendChild(drop);
-        changed();
+        fill(chip, drop, r);
       }, function (e) {
         // 送れなかったのは**その 1 枚だけ**。ほかの添付と書いた文はそのまま生きる
         chip.removeAttribute("aria-busy");
@@ -292,6 +291,48 @@
         changed();
       });
     }
+
+    function fill(chip, drop, r) {
+      chip.removeAttribute("aria-busy");
+      chip.dataset.asset = r.asset_id;
+      SS.clear(chip).appendChild(h("img", { class: "attach__pic", src: r.url, alt: "" }));
+      // 渡した画像の役割（入れる・参考）。決めるのは欄の上で選んだ札（`area.paintRoles`）
+      chip.appendChild(h("span", { class: "attach__role small", text: area.role }));
+      chip.appendChild(drop);
+      changed();
+    }
+    area.paintRoles = function (role) {
+      area.role = role || "";
+      chips.querySelectorAll(".attach__role").forEach(function (el) { el.textContent = area.role; el.hidden = !area.role; });
+    };
+    // 画像の URL を欄に貼り付けたら、画像として取り込んでみる（サーバが取りに行く。docs/adr/0008-edit-kinds.md）。
+    // 取り込めたら URL の文字を欄から消して札にする。取り込めなければ、文字のまま残して理由を小さく出す
+    function fetchUrl(url) {
+      urlNote.textContent = "URL の画像を取り込んでいます…";
+      SS.api("/api/images/fetch", { method: "POST", body: { url: url } }).then(function (r) {
+        if (!area.addAsset(r, "url")) { urlNote.textContent = words.too_many_attachments_reason || ""; return; }
+        var ta = box && box.querySelector("textarea");
+        if (ta && ta.value.indexOf(url) >= 0) {
+          ta.value = ta.value.replace(url, "").replace(/^\s+|\s+$/g, "");
+          ta.dispatchEvent(new Event("input"));
+        }
+        urlNote.textContent = "";
+      }, function (e) {
+        urlNote.textContent = "URL を画像として取り込めませんでした（" + (e && e.message ? e.message : "") + "）。文字のまま送ります。";
+      });
+    }
+    // 置き場に登録済みの画像（URL から取り込んだ画像。`POST /api/images/fetch` の答え）を札にする
+    area.addAsset = function (r, method) {
+      if (area.counted() >= limit) { area.over = true; changed(); return false; }
+      area.over = false;
+      var chip = h("span", { class: "attach", dataset: { method: method } });
+      var drop = h("button", { class: "btn btn--small btn--ghost attach__remove", type: "button",
+        text: words.attachment_remove, "aria-label": words.attachment_remove });
+      drop.addEventListener("click", function () { chip.remove(); area.over = false; changed(); });
+      chips.appendChild(chip);
+      fill(chip, drop, r);
+      return true;
+    };
 
     function addFiles(list, method) {
       var files = Array.prototype.filter.call(list || [], function (f) { return f && f.type.indexOf("image/") === 0; });
@@ -318,7 +359,11 @@
           var f = items[i].getAsFile();
           if (f) { files.push(f); }
         }
-        if (!files.length) { return; }
+        if (!files.length) {
+          var pasted = ((e.clipboardData && e.clipboardData.getData("text/plain")) || "").trim();
+          if (/^https?:\/\/\S+$/.test(pasted) && pasted.length <= 2048) { setTimeout(function () { fetchUrl(pasted); }, 0); }
+          return;   // 文字はそのまま欄へ入る
+        }
         e.preventDefault();
         addFiles(files, "paste");
       });
@@ -352,6 +397,81 @@
     return out;
   }
 
+  // ---- 「何を直しますか？」（docs/adr/0008-edit-kinds.md）----
+  // 出す種類と選択肢は**サーバが決める**（デッキの答えの `edit_kinds`。モードと機械でできるものだけ）。
+  // 画面は渡されたものだけを並べ、できない種類は出さない。選ばなければ、これまでどおり書いた指示だけで送る。
+  // 文字以外は書かなくても送れる（選んだ方針がそのまま指示になる）
+  function kindPicker(kinds, onChange) {
+    var state = { kind: null, options: [] };
+    var picker = { node: null, entry: function () { return null; }, read: function () { return { kind: null, options: [] }; },
+                   reset: function () {} };
+    if (!kinds || !kinds.length) { return picker; }
+    var row = h("div", { class: "editkind__kinds" });
+    var lead = h("p", { class: "editkind__lead small" });
+    var options = h("div", { class: "editkind__options", role: "group" });
+    var extra = h("div", { class: "editkind__extra" });
+    // 「？」の説明は、このスライドで出す種類の説明（サーバの文）から組む。出さない種類の話はしない
+    var help = kinds.map(function (k) { return k.label + ": " + k.lead; })
+      .concat(["文字以外は、選ぶだけで送れます。下の欄に補足を書き足すこともできます。",
+               "どれも選ばずに、下の欄に書いて送ることもできます。もう一度押すと選ぶのをやめます。"]);
+    picker.node = h("div", { class: "editkind", role: "group", "aria-label": "何を直しますか？" },
+      h("div", { class: "title-row editkind__head" }, h("p", { class: "editkind__q small", text: "何を直しますか？" }),
+        SS.helpTip("何を直しますか", help)),
+      row, lead, options, extra);
+    var kindButtons = [];
+
+    function entryOf(kind) { return kinds.filter(function (k) { return k.kind === kind; })[0] || null; }
+    picker.entry = function () { return entryOf(state.kind); };
+    function choose(kind) {
+      var e = entryOf(kind);
+      state.kind = kind;
+      // 1 つだけ選ぶ選択肢は先頭（おまかせ・生成するなど）を既定にする。いくつでも選べるもの（文字）は空から
+      state.options = e && !e.many && e.options.length ? [e.options[0].value] : [];
+      paint();
+      onChange();
+    }
+    function paint() {
+      var e = entryOf(state.kind);
+      kindButtons.forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.kind === state.kind)); });
+      lead.textContent = e ? e.lead : "";
+      lead.hidden = !e;
+      SS.clear(options);
+      SS.clear(extra);
+      if (!e) { options.hidden = true; return; }
+      options.hidden = !e.options.length;
+      options.setAttribute("aria-label", e.label + "の選び方");
+      e.options.forEach(function (o) {
+        var b = h("button", { class: "chip editkind__option", type: "button", text: o.label,
+          "aria-pressed": String(state.options.indexOf(o.value) >= 0) });
+        b.addEventListener("click", function () {
+          var i = state.options.indexOf(o.value);
+          if (e.many) { if (i >= 0) { state.options.splice(i, 1); } else { state.options.push(o.value); } }
+          else { state.options = [o.value]; }
+          paint();
+          onChange();
+        });
+        options.appendChild(b);
+      });
+      // 画像を渡す入口は「＋」の 1 つ（貼り付け・ドラッグ・URL の貼り付けも同じ）。ここでは案内を小さく出すだけ
+      if (state.kind === "image" && state.options[0] === "attached") {
+        extra.appendChild(h("p", { class: "editkind__hint small",
+          text: "「＋」から画像を渡してください。貼り付け・ドラッグや、画像の URL の貼り付けでも渡せます。" }));
+      }
+    }
+    kinds.forEach(function (k) {
+      var b = h("button", { class: "chip editkind__kind", type: "button", "aria-pressed": "false", dataset: { kind: k.kind } },
+        SS.icon(k.icon || "image", "editkind__icon"), h("span", { text: k.label }));
+      // もう一度押すと選ぶのをやめる（書いた指示だけで送る、に戻る）
+      b.addEventListener("click", function () { choose(state.kind === k.kind ? null : k.kind); });
+      kindButtons.push(b);
+      row.appendChild(b);
+    });
+    picker.read = function () { return { kind: state.kind, options: state.options.slice() }; };
+    picker.reset = function () { state.kind = null; state.options = []; paint(); };
+    paint();
+    return picker;
+  }
+
   // 修正指示の欄。チャットの入力欄と同じ並び: 上に札（作り直す・添えた画像）、下に「＋」・文の欄・送信。
   // 「画像を添える」と「今の絵を使わずに作り直す」は「＋」のメニューに畳む。画像は貼り付け・
   // ドラッグ&ドロップでも添えられる（`attachArea`。受け皿は欄そのもの）
@@ -375,6 +495,8 @@
       placeholder: opts.placeholder || (opts.deck ? "デッキ全体に効かせたいことを書く" : "直したいことを書く") });
     var att = attachArea({ locked: function () { return noImages || locked(); }, onChange: function () { sync(); } });
     var chips = att.chips, file = att.file, note = att.note;
+    var basePlaceholder = ta.placeholder;
+    var kind = kindPicker(opts.kinds, function () { sync(); });
     // このページの事情（空・長すぎ・枚数の超過）を出す 1 行。スライドの事情は上に 1 か所だけ出る
     var why = h("p", { class: "editbox__why small", role: "status" });
     // 送った答え（サーバの文）と、断られた理由を出す場所。**上の `why` とは別の器**にする:
@@ -384,23 +506,29 @@
     var send = h("button", { class: "btn editbox__send" + (c.available ? " btn--primary" : ""), type: "button", text: "送信",
       "aria-label": c.label });
     // 「作り直す」の値の持ち主は見えない箱 1 つ（読む側・当て直す側・失敗した空枠の入口が同じ箱を見る）。
-    // 見せるのは札と「＋」のメニューの印だけ
+    // 見せるのは「今の絵をもとに直す」の切り替え（オン＝今の絵から直す・オフ＝作り直す）だけ。
+    // 土台にできる絵が無いページでは、切り替えも理由の文も出さない（作り直すしかないので、選ぶものが無い）
     var remake = h("input", { type: "checkbox", class: "editbox__remake-box", id: fieldId + "-remake", hidden: true });
     remake.checked = !minorState.available && !noImages;
     remake.disabled = !minorState.available;
-    var remakeChip = h("button", { class: "chip editbox__remake-chip", type: "button", "aria-label": "作り直すのをやめる",
-      title: "作り直すのをやめる" }, h("span", { text: "作り直す" }), SS.icon("close"));
-    var remakeWhy = h("span", { class: "editbox__forced small" });
-    var plus = h("button", { class: "btn btn--icon editbox__plus", type: "button", "aria-haspopup": "menu",
-      "aria-label": "画像を添える・作り直すなどの操作", title: words.attach_hint || "" }, SS.icon("add"));
+    var keep = h("input", { type: "checkbox", role: "switch", class: "switch__input", id: fieldId + "-keep" });
+    var keepRow = h("label", { class: "switch editbox__keep", for: keep.id }, keep,
+      h("span", { class: "switch__track", "aria-hidden": "true" }), h("span", { class: "switch__label", text: "今の絵をもとに直す" }));
+    // 「＋」は画像を添えるだけ（作り直すは上の切り替えに移した）
+    var plus = h("button", { class: "btn btn--icon editbox__plus", type: "button",
+      "aria-label": words.attach_label || "画像を添える", title: words.attach_hint || "" }, SS.icon("add"));
     // 貼り付け・ドロップの案内はパネルでは出さない。「＋」が読み上げでも案内を指す
     note.id = fieldId + "-hint";
     if (!noImages) { plus.setAttribute("aria-describedby", note.id); }
-    var plusAnchor = h("span", { class: "menu-anchor menu-anchor--up editbox__plus-anchor" }, plus);
+    var plusAnchor = h("span", { class: "editbox__plus-anchor" }, plus);
     var fs = h("fieldset", { disabled: !c.available, "aria-describedby": opts.reasonId || null },
-      h("div", { class: "editbox__chiprow" }, remakeChip, remakeWhy, noImages ? null : chips),
+      kind.node,
+      remake,   // 見えない箱も欄の中に置く（送るとき・空枠の入口が `.editbox__remake-box` で読む）
+      noImages ? null : keepRow,
+      h("div", { class: "editbox__chiprow" }, noImages ? null : chips),
       why, said,
       h("div", { class: "editbox__input" }, noImages ? null : plusAnchor, ta, send),
+      noImages ? null : att.urlNote,
       noImages ? null : file,
       noImages ? null : note);
     // 理由の文はここには出さない（スライドに 1 か所。上の `screenReasons`）。fieldset がその行を指す。
@@ -410,15 +538,9 @@
     function locked() { return fs.disabled; }
     function counted() { return att.counted(); }
     function paintRemake() {
-      var on = remake.checked && !noImages;
-      remakeChip.hidden = !on;
-      remakeChip.disabled = remake.disabled;
-      remakeChip.title = remake.disabled ? (minorState.reason || "") : "作り直すのをやめる";
-      remakeChip.setAttribute("aria-label", remake.disabled ? "作り直す（" + (minorState.reason || "") + "）" : "作り直すのをやめる");
-      var reason = on && remake.disabled ? (minorState.reason || "") : "";
-      if (remakeWhy.textContent !== reason) { remakeWhy.textContent = reason; }
-      remakeWhy.hidden = !reason;
-      box.querySelector(".editbox__chiprow").hidden = !on && !chips.children.length;
+      keepRow.hidden = noImages || remake.disabled;
+      keep.checked = !remake.checked;
+      box.querySelector(".editbox__chiprow").hidden = !chips.children.length;
     }
     // 欄は 2 行で始め、書くと 6 行まで伸びる（`rows` で伸ばす。要素に見た目の値は書かない）
     function grow() {
@@ -429,34 +551,33 @@
       var text = ta.value;
       // 送れない理由は 1 つだけ出す（上から順に、最初に当たったもの）。文はすべてサーバのもの
       var reason = "";
+      var picked = kind.read(), entry = kind.entry();
+      var source = entry && entry.kind === "image" ? entry.options.filter(function (o) { return o.value === picked.options[0]; })[0] : null;
       if (att.over) { reason = words.too_many_attachments_reason; }
       else if (text.length > textLimit) { reason = words.text_too_long_reason; }
-      else if (!text.trim() && !counted()) { reason = words.empty_reason; }
+      // 種類を選んだら、足りないものは種類ごとの文（サーバの文）。文字以外は選ぶだけで送れる
+      else if (entry && entry.empty_reason && !text.trim() && !picked.options.length && !counted()) { reason = entry.empty_reason; }
+      else if (source && source.attachment_reason && !counted()) { reason = source.attachment_reason; }
+      else if (!entry && !text.trim() && !counted()) { reason = words.empty_reason; }
+      ta.placeholder = entry ? "補足（任意）" : basePlaceholder;
+      // 渡した画像の役割は、選んだ札で決まる（画像 → 渡した画像を入れる なら「入れる」、ほかは「参考」）
+      att.paintRoles(source && source.attachment_reason ? "入れる" : "参考");
       if (why.textContent !== reason) { why.textContent = reason; }
       // **何も書いていないだけの行は、書き始めるまで静かにしておく。**押せない理由は
       // 押せないボタン自身（title）といつでも読める場所に残すが、毎回同じ 1 文を出さない
       // （間違えているとき＝長すぎ・枚数超過の行は、焦点が無くても出す）
-      why.classList.toggle("editbox__why--quiet", reason === words.empty_reason);
+      why.classList.toggle("editbox__why--quiet", reason === words.empty_reason || (!!entry && reason === entry.empty_reason)
+        || (!!source && reason === source.attachment_reason));   // 画像の案内は札の下に出している
       send.title = reason || (c.available ? null : c.reason) || "";
       send.disabled = !!reason || box.dataset.sending === "1";
       paintRemake();
     }
 
-    plus.addEventListener("click", function () {
-      var items = [];
-      if (!noImages) {
-        items.push({ label: "画像を添える", disabled: locked(), reason: c.reason, onSelect: function () { file.click(); } },
-          { label: "今の絵を使わずに作り直す", checked: remake.checked, disabled: remake.disabled || locked(),
-            reason: remake.disabled ? minorState.reason : c.reason,
-            onSelect: function () { remake.checked = !remake.checked; remake.dispatchEvent(new Event("change")); ta.focus(); } });
-      }
-      SS.menu(plus, items, { up: true, left: true });
-    });
-    remakeChip.addEventListener("click", function () {
+    plus.addEventListener("click", function () { if (!locked()) { file.click(); } });
+    keep.addEventListener("change", function () {
       if (remake.disabled) { return; }
-      remake.checked = false;
+      remake.checked = !keep.checked;
       remake.dispatchEvent(new Event("change"));
-      ta.focus();
     });
     ta.addEventListener("input", function () { grow(); sync(); });
     remake.addEventListener("change", sync);
@@ -469,6 +590,8 @@
       send.addEventListener("click", function () { opts.onSubmit(box, send); });
     }
     box.__sync = function () { grow(); sync(); };
+    box.__kind = function () { return kind.read(); };
+    box.__resetKind = function () { kind.reset(); };
     // 見出しの対象が変わったとき（並べ替えで番号が動いた・選び方が変わった）の読み上げの名前
     box.__target = function (text) { ta.setAttribute("aria-label", text + " " + words.section_label); };
     // ---- 「今なにができるか」が変わったときの当て直し（**器は作り直さない**）----
@@ -510,7 +633,7 @@
   function deckInstruction(caps, reasonIds, opts) {
     opts = opts || {};
     return editbox(caps, "デッキ全体", { deck: true, reasonId: reasonIds && reasonIds.deck_instruction,
-      canMinor: opts.canMinor, onSubmit: opts.onSubmit });
+      canMinor: opts.canMinor, kinds: opts.kinds, onSubmit: opts.onSubmit });
   }
 
   // ---- 選んだ数ページへの指示（P3）----
@@ -520,7 +643,7 @@
     var words = instructionWords();
     var box = editbox(caps, "", { capKey: "pages_instruction", reasonId: reasonIds && reasonIds.pages_instruction,
       placeholder: "選んだページ全部に効かせたいことを書く", canMinor: { available: true, reason: null, hidden: !!opts.noImages },
-      onSubmit: opts.onSubmit });
+      kinds: opts.kinds, onSubmit: opts.onSubmit });
     box.__set = function (positions) {
       box.__target((words.pages_target || "{pages}").replace("{pages}", positions.join("・")));
     };
@@ -944,7 +1067,7 @@
     var tools = h("div", { class: "page-tools" + (page.hidden ? " page-tools--hidden" : ""), dataset: { slide: page.slide_id } });
     tools.appendChild(editbox(caps, "ページ " + page.position,
       { reasonId: ctx.reasonIds && ctx.reasonIds.page_instruction,
-        canMinor: page.can_minor, currentImage: page.image_url,
+        canMinor: page.can_minor, currentImage: page.image_url, kinds: ctx.editKinds,
         onSubmit: function (box, btn) { ctx.submit(page.slide_id, box, btn); } }));
     article.__tools = tools;
     article.__open = function () { ctx.openTools(page.slide_id, fixBtn); };
@@ -1326,6 +1449,16 @@
   // だから「今なにができるか」の版（`capsGen`）を印に混ぜる（当て直すたびに 1 つ上がる）。
   function emptySig(d, gen) { return d.key + "|" + d.label + "|" + (d.reason || "") + "|" + gen; }
 
+  // 直しているページは、絵の上に札（編集中・編集待ち）を重ねる。ページの枠・サムネ・直す欄の絵で同じ札
+  var EDIT_KEYS = { editing: true, edit_queued: true };
+  function editBadge(box, display) {
+    var badge = box.querySelector(":scope > .edit-badge");
+    if (!EDIT_KEYS[display.key]) { if (badge) { badge.remove(); } return; }
+    if (!badge) { badge = h("span", { class: "edit-badge", "aria-hidden": "true" }); box.appendChild(badge); }
+    badge.className = "edit-badge edit-badge--" + display.key;
+    if (badge.textContent !== display.label) { badge.textContent = display.label; }
+  }
+
   function paintPage(pctx, page, live) {
     var n = pctx.nodes[page.slide_id];
     if (!n) { return; }  // この描画に無いページ（構成が変わった）は触らない。変化は別に知らせる
@@ -1368,6 +1501,8 @@
         n.sig = sig;
       }
     }
+    editBadge(frame, d);
+    n.display = d;
     paintThumb(pctx, page, d, n, pos);
     if (pctx.onPage) { pctx.onPage(page.slide_id); }   // パネルの頭（番号・題・小さな絵）
   }
@@ -1386,6 +1521,7 @@
     } else if (img) {
       img.remove();
     }
+    editBadge(pic, d);
   }
 
   // ---- 実況の取り直し（R6。UI.md §6）----
@@ -1516,7 +1652,7 @@
       var caps = data.capabilities || {};
       var deck = data.deck;
       var reasons = screenReasons(caps);
-      var ctx = { caps: caps, pages: data.pages, reasonIds: reasons.ids };
+      var ctx = { caps: caps, pages: data.pages, reasonIds: reasons.ids, editKinds: data.edit_kinds || [] };
       var reload = function () { if (guard()) { SS.views.deck(root, route, guard); } };
       // 並べ替えが握る 4 つ。答えが返るたびに握り直す（握りっぱなしにすると 2 回目が必ず断られる）
       var order = data.pages.map(function (p) { return p.slide_id; });  // いま画面に出ている並び
@@ -1775,7 +1911,7 @@
       var pagesBox = pagesInstruction(caps, reasons.ids, {
         // 画像の概念が無いモード（モーション）は、選んだ数ページの欄にも画像の添付・作り直しを出さない
         noImages: data.pages.length > 0 && data.pages.every(function (p) { return p.can_minor && p.can_minor.hidden; }),
-        onSubmit: function (box, btn) { ctx.submitPages(box, btn); } });
+        kinds: ctx.editKinds, onSubmit: function (box, btn) { ctx.submitPages(box, btn); } });
       var paintPanel = function () {};   // パネルを作ったあとで本物に替わる
       var panelMode = function () { return null; };
       var closePanel = function () {};
@@ -1811,7 +1947,7 @@
       var body = h("div", { class: "deck-body" });
       var aside = thumbsAside(data.pages, caps, ctx);
       body.appendChild(aside);
-      var deckBox = deckInstruction(caps, reasons.ids, { canMinor: deckCanMinor(data.pages),
+      var deckBox = deckInstruction(caps, reasons.ids, { canMinor: deckCanMinor(data.pages), kinds: ctx.editKinds,
         onSubmit: function (box, btn) { ctx.submitDeck(box, btn); } });
       var pagesEl = h("section", { class: "pages", "aria-label": "ページ" });
       if (!data.pages.length) {
@@ -1864,10 +2000,17 @@
       var pDeck = h("span", { class: "panel__deck small" });
       var pTarget = h("span", { class: "panel__target" });
       var closeBtn = h("button", { class: "btn btn--icon btn--ghost panel__close", type: "button", "aria-label": "パネルを閉じる" }, SS.icon("close"));
+      // 1 ページを直しているときは、欄を開いたまま前後のページへ送れる（‹ ›・Alt+←→・スマホは絵を左右にスワイプ）
+      var prevBtn = h("button", { class: "btn btn--icon btn--ghost panel__step panel__step--prev", type: "button", "aria-label": "前のページを直す",
+        title: "前のページ（Alt+←）" }, SS.icon("chevron_left"));
+      var nextBtn = h("button", { class: "btn btn--icon btn--ghost panel__step panel__step--next", type: "button", "aria-label": "次のページを直す",
+        title: "次のページ（Alt+→）" }, SS.icon("chevron_right"));
       var media = h("div", { class: "panel__media" });
       var slot = h("div", { class: "panel__slot" });
       var panel = h("aside", { class: "panel", id: "deck-panel", "aria-label": "直す" },
-        h("div", { class: "panel__head" }, h("div", { class: "panel__who" }, pLabel, pDeck, pTarget), closeBtn),
+        h("div", { class: "panel__head" }, h("div", { class: "panel__who" }, pLabel, pDeck), closeBtn),
+        // 対象の見出しの行。1 ページのときは左右の端に ‹ ›（絵にはかぶせない。絵はできるだけ大きく見せる）
+        h("div", { class: "panel__nav" }, prevBtn, pTarget, nextBtn),
         media, slot);
       body.appendChild(panel);
       Object.keys(nodes).forEach(function (sid) { store.appendChild(nodes[sid].tools); });
@@ -1887,14 +2030,16 @@
       };
       var shot = function (sid, caption) {
         var src = shotOf(sid), n = nodes[sid];
-        return h("figure", { class: "panel__shot" },
+        var pic = h("div", { class: "panel__shot-pic" },
           src ? h("img", { src: src, alt: "ページ " + ctx.positionOf(sid) + ": " + n.title })
-              : h("span", { class: "panel__shot-empty small", text: "絵はまだありません" }),
-          caption ? h("figcaption", { class: "small", text: caption }) : null);
+              : h("span", { class: "panel__shot-empty small", text: "絵はまだありません" }));
+        if (n.display) { editBadge(pic, n.display); }
+        return h("figure", { class: "panel__shot" }, pic, caption ? h("figcaption", { class: "small", text: caption }) : null);
       };
       // 上の絵。1 ページはそのページの絵、選んだページは並べる（PC・タブレットは縦に、スマホは横にめくる）、デッキ全体は絵なし
       var paintMedia = function (ids) {
-        var sig = mode + "|" + ids.map(function (sid) { return sid + "=" + shotOf(sid) + "=" + nodes[sid].title + "=" + ctx.positionOf(sid); }).join(",");
+        var sig = mode + "|" + ids.map(function (sid) { return sid + "=" + shotOf(sid) + "=" + nodes[sid].title + "=" + ctx.positionOf(sid)
+          + "=" + (nodes[sid].display ? nodes[sid].display.key : ""); }).join(",");
         if (sig === mediaSig) { return; }
         mediaSig = sig;
         SS.clear(media);
@@ -1934,6 +2079,10 @@
         if (pTarget.textContent !== target) { pTarget.textContent = target; }
         panel.setAttribute("aria-label", label + "　" + deck.title + "　" + target);
         panel.dataset.mode = mode || "";
+        var at = mode === "page" ? order.indexOf(activeSlide) : -1;
+        prevBtn.hidden = nextBtn.hidden = mode !== "page";
+        prevBtn.disabled = at <= 0;
+        nextBtn.disabled = at < 0 || at >= order.length - 1;
         paintMedia(ids);
         Object.keys(nodes).forEach(function (sid) {
           nodes[sid].article.classList.toggle("page--editing", mode === "page" && sid === activeSlide);
@@ -1969,12 +2118,15 @@
         return shown(selEdit) ? selEdit : deckMenuBtn;   // 選んでいる間はページごとの「直す」は隠れる
       };
       var shown = function (el) { return !!(el && el.isConnected && el.getClientRects().length); };
-      // スマホのキーボードが出たら、見えている高さに合わせて板を縮める（絵が小さくなり、欄は見えたまま）
+      // スマホのキーボードが出たら、板の高さを見えている高さに合わせる。絵は縮めず、板の中をスクロールできるようにして、
+      // 書いている欄を見える位置へ送る（上へ送れば絵が見える）
       var vv = window.visualViewport;
       var fitViewport = function () {
         if (!vv || !panelSheet.isOpen()) { return; }
         panel.style.setProperty("--vv-h", Math.round(vv.height) + "px");
         panel.style.setProperty("--vv-top", Math.round(vv.offsetTop) + "px");
+        var ae = document.activeElement;
+        if (ae && ae.tagName === "TEXTAREA" && panel.contains(ae)) { ae.scrollIntoView({ block: "nearest" }); }
       };
       if (vv) {
         vv.addEventListener("resize", fitViewport);
@@ -2020,8 +2172,11 @@
         paintPanel();
         if (isSide()) { sideOpen = true; applyLayout(); }
         else if (!panelSheet.isOpen()) { panelSheet.open(lastTrigger); }
+        // PC は開いたらすぐ書けるよう欄へ。板（スマホ・タブレット）は欄へ移さない: 移すとキーボードがすぐ出て、
+        // 見出しとページの絵が上へ押し出される。まず全体を見せ、書くのは欄を押してから（焦点は板の閉じるボタン）
         var ta = slot.querySelector("textarea");
-        if (ta) { ta.focus({ preventScroll: true }); }
+        if (ta && isSide()) { ta.focus({ preventScroll: true }); }
+        if (!isSide()) { panel.scrollTop = 0; }
         // 対象のスライドを見える位置に送る（PC。列が狭まるので、開いたあとで探す）
         if (isSide()) {
           var ids = targetIds();
@@ -2048,6 +2203,37 @@
         }
       });
       ctx.openTools = function (sid, trigger) { openPanel("page", sid, trigger); };
+      // 欄を開いたまま、前後のページへ送る。書きかけの文と選んだ札はページごとの欄に残るので、行き来しても戻る。
+      // 元のスライドもついてくる（PC は真ん中の列で見える位置へ。スマホは閉じたときにそのページにいる）
+      var step = function (delta, focusText) {
+        if (mode !== "page") { return; }
+        var at = order.indexOf(activeSlide), sid = order[at + delta];
+        if (at < 0 || !sid || !nodes[sid]) { return; }
+        activeSlide = sid;
+        mount(nodes[sid].tools);
+        mediaSig = "";
+        paintPanel();
+        nodes[sid].article.scrollIntoView({ block: isSide() ? "center" : "nearest", behavior: "auto" });
+        if (focusText) { var ta = slot.querySelector("textarea"); if (ta) { ta.focus({ preventScroll: true }); } }
+      };
+      prevBtn.addEventListener("click", function () { step(-1, false); });
+      nextBtn.addEventListener("click", function () { step(1, false); });
+      panel.addEventListener("keydown", function (e) {
+        if (!e.altKey || e.metaKey || e.ctrlKey || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) { return; }
+        e.preventDefault();
+        step(e.key === "ArrowLeft" ? -1 : 1, e.target && e.target.tagName === "TEXTAREA");
+      });
+      // スマホ・タブレット: 上の絵を左右にスワイプして送る（縦の動きが大きいときはスクロールとみなす）
+      var touch = null;
+      media.addEventListener("touchstart", function (e) {
+        touch = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+      }, { passive: true });
+      media.addEventListener("touchend", function (e) {
+        if (!touch || mode !== "page" || !e.changedTouches.length) { touch = null; return; }
+        var dx = e.changedTouches[0].clientX - touch.x, dy = e.changedTouches[0].clientY - touch.y;
+        touch = null;
+        if (Math.abs(dx) >= 56 && Math.abs(dx) > Math.abs(dy) * 1.5) { step(dx < 0 ? 1 : -1, false); }
+      });
       ctx.openDeck = function (trigger) { openPanel("deck", null, trigger); };
       selEdit.addEventListener("click", function () { openPanel("pages", null, selEdit); });
       var onMq = function () {
@@ -2489,13 +2675,15 @@
         var ta = box.querySelector("textarea");
         var mode = box.querySelector(".editbox__remake-box");
         // 直し方の値は語彙の key（サーバの enums と同じ値）。**表示名は画面に持たない**
+        var picked = box.__kind ? box.__kind() : { kind: null, options: [] };
         return { text: ta ? ta.value : "", edit_mode: mode && mode.checked ? "remake" : "minor",
-                 attachments: readAttachments(box) };
+                 attachments: readAttachments(box), kind: picked.kind, options: picked.options };
       };
       var clearBox = function (box) {
         var ta = box.querySelector("textarea");
         if (ta) { ta.value = ""; }
         box.querySelectorAll(".attach").forEach(function (chip) { chip.remove(); });
+        if (box.__resetKind) { box.__resetKind(); }
         if (box.__sync) { box.__sync(); }
       };
       // 「送信は通ったが画像づくりが始まらなかった」の**唯一の回収口**。スライドに 1 本の帯では拾えない
@@ -2536,12 +2724,15 @@
           clearBox(box);   // 受け付けられた。**ここで初めて**書いた文と添付を消す
           seenRevision(r.revision_id);   // 直しは新しい描いた回になる。自分の操作を「ほかの場所で」と言わない
           if (onDone) { onDone(r); }
-          said.appendChild(h("p", { text: r.message || "" }));
+          // 1 ページの直しは、送れたら文を出さない（ページの絵の上の「編集中」の札が伝える）
+          if (!(r.started && panelMode() === "page")) { said.appendChild(h("p", { text: r.message || "" })); }
           if (r.started) {
-            // 送れたので欄は閉じる（そのページの枠に「生成中」が出て、描き終わると絵が替わる）。
-            // 答えの文は閉じる欄の中には残せないので、知らせで出す
-            closePanel();
-            if (r.message) { SS.toast(r.message); }
+            // 1 ページの直しは、送っても欄を閉じない（続けて頼む・‹ › で次のページへ送れる）。答えは欄の中の 1 行。
+            // 選んだページ・デッキ全体は閉じる（対象が終わったので）。答えの文は閉じる欄の中には残せないので、知らせで出す
+            if (panelMode() !== "page") {
+              closePanel();
+              if (r.message) { SS.toast(r.message); }
+            }
             // 候補版の進みは実況が持ってくる。読み直しは 1 回だけ（以降は 2 秒ごとの取り直しに任せる）
             refresh().catch(function () {});
             watchCfg.active = true;
@@ -2564,7 +2755,7 @@
         // 土台にする版は「いま映している版」。採用で動くので、送る瞬間の値を照合に渡す
         // （画面が映していた版とサーバが土台にする版が違っていたら、サーバが断る）
         postInstruction(box, btn, { scope: "page", slide_id: slideId, edit_mode: read.edit_mode,
-          text: read.text, attachments: read.attachments, lock_version: lockVersion,
+          text: read.text, attachments: read.attachments, kind: read.kind, options: read.options, lock_version: lockVersion,
           expected_base_version_id: n ? n.article.dataset.version : null });
       };
       ctx.submitPages = function (box, btn) {
@@ -2572,14 +2763,15 @@
         var ids = order.filter(function (sid) { return selected.indexOf(sid) >= 0; });
         if (!ids.length) { return; }
         postInstruction(box, btn, { scope: "pages", slide_ids: ids, edit_mode: read.edit_mode, text: read.text,
-          attachments: read.attachments, lock_version: lockVersion }, function () { ctx.clearSelection(); });
+          attachments: read.attachments, kind: read.kind, options: read.options, lock_version: lockVersion },
+          function () { ctx.clearSelection(); });
       };
       ctx.submitDeck = function (box, btn) {
         var read = readBox(box);
         var words = instructionWords();
         var shown = order.length;   // **画面が見せている枚数**。確認にもこの数を出す
         var body = { scope: "deck", edit_mode: read.edit_mode, text: read.text,
-                     attachments: read.attachments, lock_version: lockVersion };
+                     attachments: read.attachments, kind: read.kind, options: read.options, lock_version: lockVersion };
         if (shown >= 2) {
           var t = read.edit_mode === "remake" ? words.remake_confirm : words.minor_confirm;
           if (!SS.confirm(String(t || "").replace("{n}", String(shown)))) { return; }

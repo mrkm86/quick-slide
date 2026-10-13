@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .. import motion
+from .. import edit_kinds, motion
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, engine_for
 from ..pins import PinRefused, pin_source
@@ -154,7 +154,7 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
     elif dumps(result.data) != dumps(data):
         script = ctx.call(store.save_script, deck_id, result.data, written_by=result.written_by,
                           writer_backend=result.backend, intake_id=None, run_id=run_id,
-                          instruction=(req.get("text") or None))
+                          instruction=_instruction_note(req))
         ctx.call(store.set_script_check, script["id"], 0, [])
     else:
         script = head
@@ -172,6 +172,19 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
 
 
 # --- 小さな道具 ---------------------------------------------------------------------------------------------
+
+def _edit_args(args: dict[str, Any], req: dict[str, Any]) -> dict[str, Any]:
+    """直しの台本係に渡す描き方。生成の画像を使えるかは、デッキを作ったときの指定ではなく、頼んだときの機械で決める
+    （Codex があれば使える。docs/adr/0010-images-follow-the-machine.md）。前の形の頼み（`can_generate` 無し）はそのまま"""
+    if "can_generate" not in req or not engine_for(args.get("mode") or "presentation").has_images:
+        return args
+    return {**args, "images": bool(req["can_generate"])}
+
+
+def _instruction_note(req: dict[str, Any]) -> str | None:
+    """台本の版に控える指示（書いた文。書かずに「何を直しますか？」だけで頼んだら、選んだ方針の名前）。"""
+    return req.get("text") or edit_kinds.summary(req.get("kind"), req.get("options") or []) or None
+
 
 def _positions(data: dict[str, Any]) -> dict[str, int]:
     """ページの id → 画面での番号（非表示も数える。画面の並びと同じ）。"""
@@ -308,7 +321,7 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
             return result   # 台本は変わらない（絵だけを直す・変えなくてよかった）
         candidate = ctx.call(store.save_script, deck_id, result.data, written_by="writer", writer_backend=backend,
                              intake_id=None, run_id=run_id, round_no=round_no,
-                             instruction=(req.get("text") or None))
+                             instruction=_instruction_note(req))
         ctx.call(store.set_run_state, run_id, "checking", progress=_writer_progress(round_no, rounds, backend, "checking"))
         before = {str(x.get("id")): dumps(x) for x in slides_of(data)}
         changed = {str(x.get("id")) for x in slides_of(result.data) if before.get(str(x.get("id"))) != dumps(x)}
@@ -346,7 +359,7 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
 def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[str, Any], data: dict[str, Any]):
     deck_id = run["deck_id"]
     engine = engine_for(run["mode"])
-    args = run["args"]
+    args = _edit_args(run["args"], req)
     positions = _positions(data)
     keys: list[str] = []
     if one_page(args):
@@ -365,11 +378,13 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
                for k in keys]
     instruction = req.get("text") or ""
     remake = req.get("edit_mode") == "remake"
+    # 「何を直しますか？」で選んだ方針（docs/adr/0008-edit-kinds.md）。選ばなければ空
+    direction = edit_kinds.direction(engine.mode, req.get("kind"), req.get("options") or [], scope=req.get("scope") or "page")
 
     def build(previous, problems):
         return build_revision_prompt(engine, args, script=data, targets=targets, instruction=instruction,
                                      attachments=rels, skills_dir=ctx.tools.skills_dir, scope=req.get("scope") or "pages",
-                                     previous=previous, problems=problems)
+                                     direction=direction, previous=previous, problems=problems)
 
     def parse_and_apply(answer):
         patch = parse_revision(answer, script=data, targets=keys, pictures=pictures, attachments=rels, mode=engine.mode)
@@ -381,7 +396,8 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
         plan = RenderPlan(deck=bool(patch.script_changes) or not patch.image_changes)
         for pp in patch.image_changes:
             plan.revise.append({"key": pp.key, "slot": (pp.image or {}).get("slot"),
-                                "note": (pp.image or {}).get("note") or instruction or "添えた画像に合わせて直す",
+                                "note": (pp.image or {}).get("note") or instruction or "。".join(direction)
+                                or "添えた画像に合わせて直す",
                                 "remake": remake, "attach": paths})
         if one_page(args) and plan.revise:
             plan.revise = [{**plan.revise[0], "key": "infographic"}]
@@ -395,7 +411,7 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
 def _insert(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[str, Any], data: dict[str, Any]):
     deck_id = run["deck_id"]
     engine = engine_for(run["mode"])
-    args = run["args"]
+    args = _edit_args(run["args"], req)
     anchor = None
     after = None
     if req.get("after"):

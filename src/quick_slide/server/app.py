@@ -911,6 +911,7 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"GET"}), _exact("/api/styles"), _settings_routes.list_styles),
     (frozenset({"GET"}), _exact("/api/settings"), _settings_routes.catalog),
     (frozenset({"POST"}), _exact("/api/settings/images"), _settings_routes.upload),
+    (frozenset({"POST"}), _exact("/api/images/fetch"), _settings_routes.fetch_image),
     (frozenset({"POST"}), _exact("/api/settings/server"), _settings_routes.save_server),
     (frozenset({"POST"}), _exact("/api/settings/brands/preview"), _settings_routes.preview_brand),
     (frozenset({"POST"}), _exact("/api/settings/brands/import/check"), _settings_routes.check_import),
