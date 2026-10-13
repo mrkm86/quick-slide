@@ -12,6 +12,7 @@
 | 子を孫ごと止める | 組に SIGTERM → 待つ → SIGKILL | 起こした直後に入れた Job Object を止める（入れられなければ `taskkill /T /F`） |
 | 終わった子の後始末 | 何もしない | Job Object を閉じる（`end_group`） |
 | 待ち受けの口を自分だけにする | `SO_REUSEADDR`（TIME_WAIT の口を使い直すだけ） | `SO_REUSEADDR` を使わず `SO_EXCLUSIVEADDRUSE` |
+| 日本語の字体ファイル | 游ゴシックは PowerPoint for Mac 同梱、ほかはヒラギノ | `%WINDIR%\\Fonts` の游ゴシック・メイリオ・BIZ UDゴシック |
 
 Windows で孫ごと止めるのに Job Object を使うのは、`codex.cmd` のような包みが cmd.exe → node → codex.exe と
 段を重ねるため。`taskkill /T` は親子の記録をたどるので、cmd.exe が先に終わると下の段にたどり着けない。
@@ -23,6 +24,7 @@ import os
 import signal
 import socket
 import subprocess
+from pathlib import Path
 from typing import Any
 
 WINDOWS = os.name == "nt"
@@ -90,6 +92,32 @@ def unlock(fd: int) -> None:
         msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
     else:
         fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+# --- 日本語の字体ファイル ------------------------------------------------------------------------
+
+_MAC_YU_GOTHIC = Path("/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts")
+_MAC_FONTS = Path("/System/Library/Fonts")
+
+
+def _windows_fonts() -> Path:
+    return Path(os.environ.get("WINDIR") or r"C:\Windows") / "Fonts"
+
+
+def yu_gothic_files() -> dict[str, str]:
+    """游ゴシックの regular・bold（プレゼンが文字の幅を測る字体）。mac は PowerPoint for Mac 同梱、Windows は OS の字体。"""
+    base = _windows_fonts() if WINDOWS else _MAC_YU_GOTHIC
+    return {"regular": str(base / "YuGothR.ttc"), "bold": str(base / "YuGothB.ttc")}
+
+
+def japanese_fonts(weight: str) -> tuple[str, ...]:
+    """日本語を描ける字体ファイルの候補。先頭から、あるものを使う。`weight` は "bold" か "regular"。"""
+    first = yu_gothic_files()[weight]
+    if WINDOWS:
+        names = ("meiryob.ttc", "BIZ-UDGothicB.ttc") if weight == "bold" else ("meiryo.ttc", "BIZ-UDGothicR.ttc")
+        return (first, *(str(_windows_fonts() / n) for n in names))
+    names = ("ヒラギノ角ゴシック W6.ttc", "Hiragino Sans GB.ttc") if weight == "bold" else ("ヒラギノ角ゴシック W3.ttc",)
+    return (first, *(str(_MAC_FONTS / n) for n in names))
 
 
 # --- 待ち受けの口 ------------------------------------------------------------------------------

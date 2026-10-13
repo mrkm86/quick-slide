@@ -49,7 +49,9 @@ DEFAULT_PORT = 7801
 PYTHON_MIN = (3, 10)
 NODE_MIN = 18
 PACKAGES = (("python-pptx", "pptx"), ("lxml", "lxml"), ("Pillow", "PIL"), ("PyYAML", "yaml"))
-YU_GOTHIC = Path("/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts")
+# 游ゴシックの在りか。mac は PowerPoint for Mac 同梱、Windows は OS の字体（エンジンの oscompat.yu_gothic_files と同じ決め方）
+YU_GOTHIC = (Path(os.environ.get("WINDIR") or r"C:\Windows") / "Fonts" if os.name == "nt"
+             else Path("/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts"))
 YU_FILES = ("YuGothR.ttc", "YuGothB.ttc")
 CHROME_SPEC = "chrome-headless-shell@stable"
 
@@ -222,12 +224,14 @@ def check_fonts(rep: Report, home: Path) -> None:
         return
     files = [YU_GOTHIC / n for n in YU_FILES]
     if all(f.is_file() for f in files):
-        rep.add("font", "字体（游ゴシック）", "ok", f"PowerPoint for Mac 同梱（{YU_GOTHIC}）", needed_for=("presentation",))
+        where = "Windows の字体" if os.name == "nt" else "PowerPoint for Mac 同梱"
+        rep.add("font", "字体（游ゴシック）", "ok", f"{where}（{YU_GOTHIC}）", needed_for=("presentation",))
         return
     config_path = home / "engines" / "html-slide" / "config.yaml"
     rep.add("font", "字体（游ゴシック）", "ng",
             "PowerPoint for Mac 同梱の游ゴシックが見つかりません" if sys.platform == "darwin" else
-            "この OS では PowerPoint for Mac 同梱の字体の場所を探しません",
+            f"Windows の字体のフォルダ（{YU_GOTHIC}）に游ゴシックが見つかりません" if os.name == "nt" else
+            "この OS では游ゴシックの場所を探しません",
             fix=(f"PowerPoint for Mac を入れるか、游ゴシックの字体ファイル（regular と bold）の在りかを {config_path} の "
                  "`fonts:` に書いてください（雛形は skills/html-slide/config.example.yaml）。プレゼンは文字の幅をこの字体で測ります"),
             needed_for=("presentation",))

@@ -114,7 +114,7 @@ class SkillStartTests(unittest.TestCase):
         self.assertTrue(out["payload"]["deck_attributes"]["outline_fixed"])
         self.assertIn("3 ページで作りました", out["message"])
         self.assertIn(f"/slides/{out['deck_id']}", out["url"])
-        calls = [json.loads(p.read_text()) for p in sorted((self.tmp / "writer-calls").glob("*.json"))]
+        calls = [json.loads(p.read_text(encoding="utf-8")) for p in sorted((self.tmp / "writer-calls").glob("*.json"))]
         self.assertTrue(calls[0]["outline"], "台本係に「構成を守る」を言った")
 
     def test_request_instead_of_a_manuscript_researches_then_draws(self) -> None:
@@ -130,7 +130,7 @@ class SkillStartTests(unittest.TestCase):
         self.assertEqual((out["payload"]["request_chars"], out["payload"]["manuscript_chars"]), (len(request), None))
         self.assertNotIn("この行は外に出さない", stdout + stderr, "依頼の文を出さない（仮の題にした 1 行目だけ）")
         self.assertEqual(out["deck_title"], "会議の進め方の今（架空）", "待ったときは下調べ係が付けた題を返す")
-        calls = [json.loads(p.read_text()) for p in sorted((self.tmp / "writer-calls").glob("*.json"))]
+        calls = [json.loads(p.read_text(encoding="utf-8")) for p in sorted((self.tmp / "writer-calls").glob("*.json"))]
         research = [c for c in calls if c.get("what") == "research"]
         writes = [c for c in calls if c.get("what") == "make"]
         self.assertEqual(len(research), 1)

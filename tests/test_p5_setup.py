@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import site
 import subprocess
 import sys
 import textwrap
@@ -58,8 +59,11 @@ class SetupBase(unittest.TestCase):
                "LANG": "ja_JP.UTF-8", "PYTHONDONTWRITEBYTECODE": "1", "TMPDIR": str(self.tmp),
                "IMAGE_SLIDE_CODEX": runnable(FAKE_CODEX), "FAKE_CODEX_LOG": str(self.tmp / "codex-log"),
                "QUICK_SLIDE_CLAUDE": runnable(FAKES / "fake_claude.py"),
-               # 偽物の Playwright（モーションに要る。本物の Chromium を探さない・入れない）。既定は入っている
-               "PYTHONPATH": str(FAKES / "playwright_stub"), "FAKE_PLAYWRIGHT_CHROMIUM": str(self.chromium)}
+               # 偽物の Playwright（モーションに要る。本物の Chromium を探さない・入れない）。既定は入っている。
+               # 本物の pip も呼ばせない（no_pip）。HOME・USERPROFILE を差し替えても、この Python の利用者の場所の
+               # パッケージは見えるようにする（PYTHONUSERBASE。見えないと診断が「無い」と言い、pip で入れに行く。N19）
+               "PYTHONPATH": os.pathsep.join([str(FAKES / "playwright_stub"), str(FAKES / "no_pip")]),
+               "PYTHONUSERBASE": site.getuserbase(), "FAKE_PLAYWRIGHT_CHROMIUM": str(self.chromium)}
         env.update(extra)
         return env
 
@@ -192,7 +196,7 @@ class SetupTests(SetupBase):
         self.fake_npm()
         log = self.tmp / "npm-log"
         rc, text, out = self.run_tool("--setup", "--yes", FAKE_NPM_LOG=str(log))
-        calls = [json.loads(line) for line in log.read_text().splitlines()]
+        calls = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
         engine = self.qs / "engines" / "html-slide"
         self.assertEqual(calls[0][:4], ["npm", "install", "--prefix", str(engine / "node")])
         self.assertEqual(calls[1][:3], ["browsers", "install", "chrome-headless-shell@stable"])
@@ -209,7 +213,7 @@ class SetupTests(SetupBase):
         # 2 回目は入れるものが無い
         rc2, text2, out2 = self.run_tool("--setup", "--yes", FAKE_NPM_LOG=str(log))
         self.assertEqual(out2["installed"], [])
-        self.assertEqual(len(log.read_text().splitlines()), 2)
+        self.assertEqual(len(log.read_text(encoding="utf-8").splitlines()), 2)
 
     def test_setup_plans_the_motion_chromium_when_it_is_missing(self) -> None:
         self.fake_npm()
@@ -222,7 +226,7 @@ class SetupTests(SetupBase):
                                       FAKE_PLAYWRIGHT_CHROMIUM=str(installed), FAKE_PLAYWRIGHT_INSTALLS=str(installed),
                                       FAKE_PLAYWRIGHT_LOG=str(log))
         # Chromium の確かめは「あるか」だけ。偽物のインストーラがファイルを置いたので、入れ終えたあとは使える
-        self.assertEqual(json.loads(log.read_text().splitlines()[0]), ["install", "chromium"])
+        self.assertEqual(json.loads(log.read_text(encoding="utf-8").splitlines()[0]), ["install", "chromium"])
         self.assertTrue(out["ready"]["motion"], out["checks"])
 
     def test_yes_alone_is_an_input_error(self) -> None:

@@ -135,7 +135,7 @@ class FlowTests(unittest.TestCase):
         self.assertIn("pages", steps)
         dones = [(e["payload"]["progress"]["done"]) for e in evs if (e["payload"].get("progress") or {}).get("step") == "pages"]
         self.assertEqual(dones, sorted(dones))
-        deck_call = [json.loads(p.read_text()) for p in sorted((log / "engine").glob("*-deck.json"))][0]
+        deck_call = [json.loads(p.read_text(encoding="utf-8")) for p in sorted((log / "engine").glob("*-deck.json"))][0]
         argv = deck_call["argv"]
         self.assertEqual(deck_call["kind"], "image")
         self.assertEqual(argv[argv.index("--style") + 1], "standard")
@@ -316,7 +316,7 @@ class FlowTests(unittest.TestCase):
         env = child_env(home=Path("/tmp/h"), extra=KEYS, base={**KEYS, "PATH": "/usr/bin", "CLAUDECODE": "1"})
         self.assertFalse(set(API_KEY_VARS) & set(env))
         self.assertNotIn("CLAUDECODE", env)
-        self.assertEqual((env["QUICK_SLIDE_HOME"], env["PATH"]), ("/tmp/h", "/usr/bin"))
+        self.assertEqual((env["QUICK_SLIDE_HOME"], env["PATH"]), (str(Path("/tmp/h")), "/usr/bin"))
 
     def test_backend_choice(self) -> None:
         both = {"claude": "/x/claude", "codex": "/x/codex"}

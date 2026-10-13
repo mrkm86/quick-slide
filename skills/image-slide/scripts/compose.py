@@ -11,17 +11,12 @@ from __future__ import annotations
 import pathlib
 
 import layout as L
+import oscompat as OS
 
-FALLBACK_FONTS = (
-    "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc",
-    "/System/Library/Fonts/Hiragino Sans GB.ttc",
-)
-DEFAULT_FONT = "/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts/YuGothB.ttc"
+# 太い字の候補（游ゴシック → OS の日本語の字体）。在りかは OS で違う（oscompat）
+BOLD_FONTS = OS.japanese_fonts("bold")
 # 細い字（透かし）。テーマの regular が無ければこの順
-REGULAR_FONTS = (
-    "/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts/YuGothR.ttc",
-    "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
-)
+REGULAR_FONTS = OS.japanese_fonts("regular")
 
 
 def _rgb(h: str) -> tuple[int, int, int]:
@@ -236,8 +231,8 @@ def text_color(band: dict, theme: dict, plate: bool) -> str:
 def font_path(theme: dict, cfg: dict, weight: str = "bold") -> str | None:
     """字体のファイル。weight="bold"（フッタ・ページ番号）か "regular"（透かし）。"""
     ff = theme.get("font_files") or (cfg.get("fonts") or {}).get(theme["font"]) or {}
-    order = ((ff.get("bold"), ff.get("regular"), DEFAULT_FONT, *FALLBACK_FONTS) if weight == "bold" else
-             (ff.get("regular"), *REGULAR_FONTS, ff.get("bold"), DEFAULT_FONT, *FALLBACK_FONTS))
+    order = ((ff.get("bold"), ff.get("regular"), *BOLD_FONTS) if weight == "bold" else
+             (ff.get("regular"), *REGULAR_FONTS, ff.get("bold"), *BOLD_FONTS))
     for p in order:
         if p and pathlib.Path(p).expanduser().is_file():
             return str(pathlib.Path(p).expanduser())

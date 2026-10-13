@@ -9,16 +9,14 @@ from __future__ import annotations
 
 import pathlib
 
+import oscompat as OS
+
 FORMATS = ("pptx", "pdf", "png", "thumbs")
 COLS, ROWS = 4, 4                 # サムネイル1枚に 4列×4段（16ページまで。超えたら2枚目へ）
 THUMB_W, THUMB_H = 480, 270       # 1ページの縮小（16:9）
 LABEL_H = 64                      # ページ番号と見出しの欄
 GAP, MARGIN, HEAD_H = 24, 40, 80
-FONTS = (
-    "/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts/YuGothB.ttc",
-    "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc",
-    "/System/Library/Fonts/Hiragino Sans GB.ttc",
-)
+FONTS = OS.japanese_fonts("bold")   # 在りかは OS で違う（oscompat）
 
 
 def formats_of(spec: str | None) -> tuple[str, ...]:

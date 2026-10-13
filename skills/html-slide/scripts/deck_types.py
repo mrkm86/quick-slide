@@ -22,6 +22,7 @@ import re
 
 import deck_art as ART
 import deck_icons as ICON
+import oscompat as OS
 
 W, H = 1920, 1080
 X0 = 120                 # 左右の余白
@@ -66,10 +67,7 @@ def col_x(i: int) -> int:
 
 FX = ("rise", "fade", "pop", "wipe-right", "wipe-left", "wipe-up", "wipe-down", "wheel")
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
-DEFAULT_FONTS = {
-    "regular": "/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts/YuGothR.ttc",
-    "bold": "/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts/YuGothB.ttc",
-}
+DEFAULT_FONTS = OS.yu_gothic_files()   # mac は PowerPoint for Mac 同梱、Windows は OS の字体（oscompat）
 FONTS = dict(DEFAULT_FONTS)
 IMAGE_KEYS = {"path", "prompt", "focus", "alt"}
 FOCUS_WORDS = {"center": "50% 50%", "left": "0% 50%", "right": "100% 50%", "top": "50% 0%", "bottom": "50% 100%"}
