@@ -132,6 +132,11 @@ class IntakesMixin(StoreBase):
                 "job_id": job["id"], "run_id": run["id"], "resolution": "new", "appended": False,
                 "resolution_reason": None}
 
+    def intake_mode(self, payload: dict[str, Any]) -> str:
+        """payload を `create_intake` と同じに検査し（何も書かない）、作るデッキのモードを返す。
+        呼ぶ側が「その形式をこの機械で描けるか」を見る前に、入力の誤りを先に言うため（`server/intake_routes.py`）。"""
+        return self._validate_intake(payload)["deck_attributes"]["mode"]
+
     def _resent_intake(self, conv_hash: str, request_sha: str, now: str) -> dict[str, Any] | None:
         from ..clock import add_seconds
 

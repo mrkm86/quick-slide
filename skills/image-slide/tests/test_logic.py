@@ -772,6 +772,26 @@ def t_not_logged_in():
     check(rc == 4 and "auth.json" in se, f"auth.json が無いのに通った: {se}")
 
 
+def t_quick_auth_looks_without_calling_codex():
+    # ログインの記録があれば通る。codex は呼ばない（古いトークンでも更新しに行かない）
+    root = tmpdir()
+    rc, so, se, calls = run(["auth", "--quick"], root, home=fake_home(root, age_days=9, left_days=0.05))
+    check(rc == 0 and so.startswith("OK:") and calls == [], f"rc={rc} {so} {se} {calls}")
+    # 記録が無い・API キーのログイン・codex が見つからない、はどれも 4
+    root2 = tmpdir()
+    empty = root2 / "empty-home"
+    empty.mkdir()
+    rc, so, se, calls = run(["auth", "--quick"], root2, home=empty)
+    check(rc == 4 and "auth.json" in se and calls == [], f"記録が無いのに通った: {se}")
+    apikey = root2 / "apikey-home"
+    apikey.mkdir()
+    (apikey / "auth.json").write_text(json.dumps({"OPENAI_API_KEY": "sk-x", "tokens": None}))
+    rc, so, se, calls = run(["auth", "--quick"], root2, home=apikey)
+    check(rc == 4 and "API キー" in se, f"API キーのログインで通った: {se}")
+    rc, so, se, calls = run(["auth", "--quick"], root2, extra_env={"IMAGE_SLIDE_CODEX": str(root2 / "no-such-codex")})
+    check(rc == 4 and "codex が見つからない" in se, f"codex が無いのに通った: {se}")
+
+
 def t_stale_token_refreshes_once():
     root = tmpdir()
     home = fake_home(root, age_days=9, left_days=0.05)          # 期限まで1.2時間

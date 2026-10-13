@@ -73,6 +73,7 @@ run "置き場: 根っこは QUICK_SLIDE_HOME（既定 ~/.quick-slide）・設�
 run "認証の失効で残りを止めて rc=4・PPTX を書かない" auth_dead_stops
 run "並列で走っている最中の失効でも、ほかのワーカーを止めて隔離ホームを消す" auth_stops_running_workers
 run "ログインしていない・auth.json が無いと rc=4" not_logged_in
+run "auth --quick: codex を呼ばずに、本体とログインの記録だけを見る" quick_auth_looks_without_calling_codex
 run "期限間近のトークンは実ホームで1回だけ更新する・日数だけでは更新しない（codex と同じ）・API キーのログインを見分ける" stale_token_refreshes_once
 run "失敗は1回描き直す・描けなければ rc=1 で PPTX を書かない" retry_on_failure
 run "枠切れ（429）は待って続ける" rate_limit_waits

@@ -176,6 +176,26 @@ def check_prerequisites(engine: Engine, *, tools: Tools, home: Path, cwd: Path,
     return Prerequisites(False, r.rc, "エンジンを起動できませんでした。導入の手順を確かめてください。", "engine")
 
 
+# 形式の札に出す「いま使えない理由」（`engine_unavailable`）。描く前の確かめより軽く、画面を開くたびに聞ける
+QUICK_CHECK_TIMEOUT_SECONDS = 10.0
+CODEX_MISSING_REASON = "画像を描く Codex が見つかりません。Codex を入れて `codex login`（ChatGPT でログイン）をすると使えます。"
+CODEX_LOGGED_OUT_REASON = "画像を描く Codex にログインしていません。ターミナルで `codex login`（ChatGPT でログイン）をすると使えます。"
+
+
+def engine_unavailable(engine: Engine, *, tools: Tools, home: Path) -> str | None:
+    """その形式でいま作り始められない理由（使えるなら None）。ピッチだけが見る: 全ページを Codex で描くので、
+    `image_slide.py auth --quick`（codex が見つかるか・ChatGPT のログインの記録があるか。子プロセスは起こさない）。
+    codex の探し方（`IMAGE_SLIDE_CODEX`・設定の `codex_bin`・PATH）の正本はエンジンにあるので、ここでは探さない。
+    聞けなかったとき（起動できない・時間切れ）は使える扱いにする（描く前の `check_prerequisites` が拾う）。"""
+    if not engine.needs_codex_auth:
+        return None
+    cmd = [tools.python, str(engine.entry_path(tools.skills_dir)), "auth", "--quick"]
+    r = run_process(cmd, cwd=home, env=child_env(home=home, extra=tools.extra_env), timeout=QUICK_CHECK_TIMEOUT_SECONDS)
+    if r.launch_error or r.timed_out or r.stopped or r.rc != RC_DEPENDENCY:
+        return None
+    return CODEX_MISSING_REASON if "見つからない" in "\n".join(r.stderr_tail) else CODEX_LOGGED_OUT_REASON
+
+
 class RenderProgress:
     """標準エラーの行から進みを数える。変わったときだけ `on_change(snapshot, page_marks)` を呼ぶ。"""
 

@@ -90,7 +90,17 @@
     // 形式の札（プレゼン・ピッチ・モーション）。名前と色は語彙から（`SS.kindTag`）
     var tag = SS.kindTag(card.mode, card.mode_label);
     var body = h("div", { class: "card__body" }, tag ? h("div", { class: "card__kind" }, tag) : null, title, foot, opts.extra || null);
-    var el = h("article", { class: "card" + (opts.row ? " card--row" : "") + (opts.noLink ? "" : " card--link"), "aria-label": card.title }, thumb, body);
+    // まとめて操作するための選び（一覧の行だけ。`opts.select = {checked, onChange}`）。
+    // 行の左端に置き、リンクの覆いより手前に出すので、押してもスライドの画面へは移らない
+    var pick = null;
+    if (opts.select) {
+      var box = h("input", { type: "checkbox", class: "card__select-box", "aria-label": "「" + card.title + "」を選ぶ", dataset: { deck: card.id } });
+      box.checked = !!opts.select.checked;
+      box.addEventListener("change", function () { opts.select.onChange(box.checked); });
+      pick = h("label", { class: "card__select" }, box);
+    }
+    var el = h("article", { class: "card" + (opts.row ? " card--row" : "") + (opts.noLink ? "" : " card--link") + (pick ? " card--selectable" : ""),
+      "aria-label": card.title }, pick, thumb, body);
     return el;
   };
 
@@ -149,16 +159,20 @@
     // 見出し・例・ボタンの語・理由の文はサーバの語彙（`create`）から。無ければ最小限の語で出す
     var words = (SS.vocab && SS.vocab.create) || {};
     var maxChars = ((SS.vocab && SS.vocab.create_limits) || {}).request || 0;
-    var chosen = kinds.length ? kinds[0].mode : "";
+    // いまこの機械で作れない形式（ピッチなのに Codex が無いなど）は、札を残したまま押せなくする。理由はサーバの語
+    // （`deck_kinds[].available`・`reason`）。前に選んだ形式が使えなくなっていたら、使える最初の形式にする
+    function usable(k) { return k.available !== false; }
+    var firstUsable = kinds.filter(usable)[0];
+    var chosen = firstUsable ? firstUsable.mode : "";
     var saved = rememberedKind();
-    kinds.forEach(function (k) { if (k.mode === saved) { chosen = saved; } });
+    kinds.forEach(function (k) { if (k.mode === saved && usable(k)) { chosen = saved; } });
 
     var ta = h("textarea", { id: "create-request", class: "create__text", rows: "3", placeholder: words.placeholder || "" });
     var counter = h("p", { class: "create__count small muted", "aria-live": "off" });
     var err = h("p", { class: "create__error", role: "alert" });
     var go = h("button", { class: "btn btn--primary create__go", type: "button", text: words.submit || "作成" });
 
-    var group = null, kindsHead = null;
+    var group = null, kindsHead = null, kindNotes = [];
     if (kinds.length) {
       // スマホでは 3 つを横 1 列の小さな札にして説明を畳む。違いは「？」の板で見る（PC はカードに説明が出ているので出さない）
       var help = h("button", { class: "btn btn--icon btn--ghost create__help", type: "button",
@@ -167,15 +181,25 @@
       kindsHead = h("div", { class: "create__kinds-head" }, h("span", { id: "create-kinds-label", class: "create__kinds-label", text: "形式" }), help);
       group = h("div", { class: "create__kinds", role: "radiogroup", "aria-labelledby": "create-kinds-label" });
       kinds.forEach(function (k) {
-        var input = h("input", { type: "radio", name: "create-kind", value: k.mode, class: "create__radio", checked: k.mode === chosen });
+        var off = !usable(k);
+        var offId = off ? "create-kind-off-" + k.mode : null;
+        var input = h("input", { type: "radio", name: "create-kind", value: k.mode, class: "create__radio", checked: k.mode === chosen,
+          disabled: off, "aria-describedby": offId });
         input.addEventListener("change", function () { chosen = k.mode; rememberKind(k.mode); });
         // 書き出せる形式の名前はサーバが決める（`outputs[].label`）。文字列の並びで来ても読む
         var outs = (k.outputs || []).map(function (o) { return o && o.label ? o.label : o; }).join("・");
-        group.appendChild(h("label", { class: "kind-card", "data-tone": k.tone || "neutral" }, input,
+        group.appendChild(h("label", { class: "kind-card" + (off ? " kind-card--off" : ""), "data-tone": k.tone || "neutral",
+          title: off ? (k.reason || "") : null }, input,
           h("span", { class: "kind-card__head" }, SS.icon(k.icon || "image"), h("span", { class: "kind-card__name", text: k.label }),
             h("span", { class: "kind-card__mark", "aria-hidden": "true" })),
           k.description ? h("span", { class: "kind-card__desc", text: k.description }) : null,
-          outs ? h("span", { class: "kind-card__out small", text: "書き出し: " + outs }) : null));
+          outs ? h("span", { class: "kind-card__out small", text: "書き出し: " + outs }) : null,
+          off ? h("span", { class: "kind-card__off small", text: "使えません" }) : null));
+      });
+      // 使えない理由は札の下に言葉で出す（スマホは札が小さく説明を畳むので、札の中には入れない）
+      kinds.filter(function (k) { return !usable(k); }).forEach(function (k) {
+        kindNotes.push(h("p", { id: "create-kind-off-" + k.mode, class: "create__kind-off small" },
+          h("strong", { text: k.label + ": " }), k.reason || "この機械ではいま使えません。"));
       });
     }
 
@@ -230,7 +254,7 @@
     return h("section", { class: "create", "aria-labelledby": "create-h" },
       h("h2", { id: "create-h" }, h("label", { for: "create-request", text: words.heading || "" })),
       ta, h("div", { class: "create__meta" }, err, counter),
-      kindsHead, group, brandRow,
+      kindsHead, group, kindNotes, brandRow,
       h("div", { class: "create__actions" }, go));
   }
 
@@ -336,7 +360,96 @@
     var countEl = h("p", { class: "muted small", "aria-live": "polite" });
     var listEl = h("div", { class: "list" });
     var pager = h("div", { class: "pager" });
-    root.appendChild(countEl); root.appendChild(listEl); root.appendChild(pager);
+
+    // ---- 選んだスライド（まとめての操作）。編集画面の「選んだページ」と同じ作り: 行の左のチェックで選ぶと、
+    // 上に帯が出て、帯のボタンで選んだもの全部に同じ操作をする。選びは画面だけが持ち、読み込み直すと外れる
+    // （ページ送り・絞り込みで見えなくなったものを、知らないうちに操作しないため）。ごみ箱の画面では出さない
+    var shown = [];       // いま並んでいるカード（API の値）
+    var selected = [];    // 選んだスライドの id
+    var busy = false;
+    var selText = h("span", { class: "selection-bar__text", "aria-live": "polite" });
+    var selAll = h("button", { class: "btn btn--small", type: "button", text: "すべて選ぶ", title: "このページに並んでいるスライドをすべて選ぶ" });
+    var selPin = h("button", { class: "btn btn--small", type: "button", text: "ピン留め" });
+    var selUnpin = h("button", { class: "btn btn--small", type: "button", text: "ピン留めを解除" });
+    var selTrash = h("button", { class: "btn btn--small btn--danger", type: "button", text: "ごみ箱へ移動" });
+    var selClear = h("button", { class: "btn btn--small", type: "button", text: "選ぶのをやめる" });
+    var selBar = h("div", { class: "selection-bar selection-bar--list", hidden: true, role: "region", "aria-label": "選んだスライド" },
+      selText, selAll, selPin, selUnpin, selTrash, selClear);
+    function chosenCards() { return shown.filter(function (c) { return selected.indexOf(c.id) >= 0; }); }
+    function paintSelection() {
+      var cards = chosenCards();
+      selBar.hidden = cards.length === 0;
+      selText.textContent = cards.length + " 件を選んでいます";
+      listEl.querySelectorAll(".card__select-box").forEach(function (b) {
+        b.checked = selected.indexOf(b.dataset.deck) >= 0;
+        b.disabled = busy;
+        var art = b.closest(".card");
+        if (art) { art.classList.toggle("card--selected", b.checked); }
+      });
+      // 押しても何も変わらないボタンは押せなくする（全部ピン留め済みなら「ピン留め」は要らない）
+      selAll.disabled = busy || cards.length === shown.length;
+      selPin.disabled = busy || !cards.some(function (c) { return !c.pinned; });
+      selUnpin.disabled = busy || !cards.some(function (c) { return c.pinned; });
+      selTrash.disabled = busy || cards.length === 0;
+      selClear.disabled = busy;
+    }
+    function toggleSelect(id, on) {
+      var i = selected.indexOf(id);
+      if (on && i < 0) { selected.push(id); }
+      if (!on && i >= 0) { selected.splice(i, 1); }
+      paintSelection();
+    }
+    // 1 件ずつ順に送る（まとめての口は無い）。途中で断られても残りは続け、終わってから数を言う
+    function eachDeck(cards, send) {
+      var done = [], failed = [];
+      return cards.reduce(function (p, c) {
+        return p.then(function () {
+          return send(c).then(function () { done.push(c); }, function (e) { failed.push({ card: c, error: e }); });
+        });
+      }, Promise.resolve()).then(function () { return { done: done, failed: failed }; });
+    }
+    function runBulk(cards, send, doneWords, after) {
+      busy = true; paintSelection();
+      return eachDeck(cards, send).then(function (r) {
+        busy = false;
+        if (r.done.length) { after(r.done); }
+        if (r.failed.length) {
+          var e = r.failed[0].error;
+          SS.toast(r.failed.length + " 件は" + doneWords + "できませんでした（「" + r.failed[0].card.title + "」: " + (e && e.message ? e.message : "処理できませんでした。") + "）",
+            { kind: "error", sticky: true });
+        }
+        selected = [];
+        load();
+      });
+    }
+    selAll.addEventListener("click", function () { selected = shown.map(function (c) { return c.id; }); paintSelection(); });
+    selClear.addEventListener("click", function () { selected = []; paintSelection(); });
+    function bulkPin(pinned) {
+      var cards = chosenCards().filter(function (c) { return !!c.pinned !== pinned; });
+      runBulk(cards, function (c) {
+        return SS.api("/api/decks/" + c.id + "/pin", { method: "POST", body: { pinned: pinned, lock_version: c.lock_version } });
+      }, pinned ? "ピン留め" : "ピン留めを解除", function (done) {
+        SS.toast(done.length + " 件を" + (pinned ? "ピン留めしました。" : "ピン留めから外しました。"));
+      });
+    }
+    selPin.addEventListener("click", function () { bulkPin(true); });
+    selUnpin.addEventListener("click", function () { bulkPin(false); });
+    selTrash.addEventListener("click", function () {
+      var cards = chosenCards();
+      if (!cards.length) { return; }
+      if (!SS.confirm(cards.length + " 件のスライドをごみ箱へ移動します。画像は退避され、ごみ箱から元に戻せます。よろしいですか？")) { return; }
+      runBulk(cards, function (c) { return SS.api("/api/decks/" + c.id + "/delete", { method: "POST", body: {} }); }, "ごみ箱へ移動", function (done) {
+        SS.toast(done.length + " 件をごみ箱へ移動しました。", { actionLabel: "元に戻す", onAction: function () {
+          eachDeck(done, function (c) { return SS.api("/api/decks/" + c.id + "/restore", { method: "POST", body: {} }); }).then(function (r) {
+            if (r.done.length) { SS.toast(r.done.length + " 件を元に戻しました。"); }
+            if (r.failed.length) { SS.toastError(r.failed[0].error); }
+            if (guard()) { load(); }
+          });
+        } });
+      });
+    });
+
+    root.appendChild(countEl); root.appendChild(selBar); root.appendChild(listEl); root.appendChild(pager);
 
     var timer = null;
     function reload() { state.offset = 0; sync(); load(); }
@@ -349,6 +462,7 @@
     function load() {
       countEl.textContent = "読み込んでいます…";
       SS.clear(listEl); SS.clear(pager);
+      shown = []; selected = []; paintSelection();
       var p;
       if (state.trash) {
         p = SS.api("/api/trash").then(function (data) { return Object.assign({}, data, { total: data.items.length, trash: true }); });
@@ -419,7 +533,12 @@
         var to = Math.min(data.offset + data.items.length, data.total);
         countEl.textContent = data.total + " 件" + (data.total ? "（" + from + "–" + to + " 件目）" : "");
         if (!data.items.length) { listEl.appendChild(h("div", { class: "empty", text: "条件に合うスライドはありません。" })); }
-        data.items.forEach(function (c) { listEl.appendChild(SS.deckCard(c, caps, { row: true, onChanged: load })); });
+        shown = data.items.slice();
+        data.items.forEach(function (c) {
+          listEl.appendChild(SS.deckCard(c, caps, { row: true, onChanged: load,
+            select: { checked: false, onChange: function (on) { toggleSelect(c.id, on); } } }));
+        });
+        paintSelection();
         if (data.total > state.limit) {
           var prev = h("button", { class: "btn btn--small", type: "button", text: "← 前へ", disabled: data.offset === 0, onclick: function () { state.offset = Math.max(0, state.offset - state.limit); sync(); load(); } });
           var next = h("button", { class: "btn btn--small", type: "button", text: "次へ →", disabled: to >= data.total, onclick: function () { state.offset = state.offset + state.limit; sync(); load(); } });

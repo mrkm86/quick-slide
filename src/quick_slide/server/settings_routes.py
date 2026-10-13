@@ -438,9 +438,9 @@ def export_brand(app, req):
                        "data": app.assets.resolve(image).read()})
     blob = brand_package.build(brand_id=row["id"], name=row["name"], config=rev["config"], assets=assets,
                                exported_at=app.store.now())
-    filename = urllib.parse.quote(row["name"] + ".zip", safe="")
+    filename = urllib.parse.quote(brand_package.filename(row["name"]), safe="")
     return Response(200, blob, content_type="application/zip",
-                    headers=(("Content-Disposition", f"attachment; filename=\"brand.zip\"; filename*=UTF-8''{filename}"),
+                    headers=(("Content-Disposition", f"attachment; filename=\"qs-brand.zip\"; filename*=UTF-8''{filename}"),
                              ("Cache-Control", "no-store")))
 
 

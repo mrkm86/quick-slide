@@ -135,6 +135,44 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
             self.assertEqual(self.fx.store.trashed_decks(), [])
         self.assertIn("名前を変えたプレゼン", [c["title"] for c in self.fx.get("/api/decks?limit=50").json()["items"]])
 
+    def test_list_selection_acts_on_several_decks(self) -> None:
+        """一覧の行のチェックで選ぶと帯が出て、ピン留め・ごみ箱へ・元に戻すがまとめて効く。"""
+        page = self.open("/slides", "document.querySelectorAll('.list .card__select-box').length === 2", "一覧に選ぶチェックが 2 つ")
+        self.assertTrue(page.eval("document.querySelector('.selection-bar--list').hidden"), "選ぶまで帯は出ない")
+        bar_button = "Array.from(document.querySelectorAll('.selection-bar--list button')).find(b => b.textContent === {!r})"
+        # チェックを押してもスライドの画面へは移らない（リンクの覆いより手前にある）
+        page.eval("document.querySelector('.list .card__select-box').click()")
+        page.until("!document.querySelector('.selection-bar--list').hidden", what="帯が出ること")
+        self.assertEqual(page.eval("location.pathname"), "/slides")
+        self.assertEqual(page.eval("document.querySelector('.selection-bar__text').textContent"), "1 件を選んでいます")
+        self.assertEqual(page.eval("document.querySelectorAll('.list .card--selected').length"), 1)
+        # すべて選ぶ → ピン留め（ピン留めしていないものだけに送る）
+        page.eval(bar_button.format("すべて選ぶ") + ".click()")
+        page.until("document.querySelector('.selection-bar__text').textContent === '2 件を選んでいます'", what="2 件を選ぶ")
+        self.assertFalse(page.eval(bar_button.format("ピン留め") + ".disabled"))
+        self.assertFalse(page.eval(bar_button.format("ピン留めを解除") + ".disabled"))
+        page.eval(bar_button.format("ピン留め") + ".click()")
+        page.until("Array.from(document.querySelectorAll('.toast')).some(t => t.textContent.indexOf('1 件をピン留めしました') >= 0)",
+                   what="ピン留めの知らせ")
+        page.until("document.querySelector('.selection-bar--list').hidden && document.querySelectorAll('.list .card__select-box').length === 2",
+                   what="読み込み直して選びが外れること")
+        items = self.fx.get("/api/decks?limit=50").json()["items"]
+        self.assertTrue(all(c["pinned"] for c in items), items)
+        # すべて選ぶ → ごみ箱へ（確認は通す）→ 知らせの「元に戻す」で 2 件とも戻る
+        page.eval("window.confirm = function () { return true; }")
+        page.eval(bar_button.format("すべて選ぶ") + ".click()")
+        page.eval(bar_button.format("ごみ箱へ移動") + ".click()")
+        page.until("!!document.querySelector('.list .empty')", what="一覧が空になること")
+        with self.fx.server.store_lock:
+            self.assertEqual(len(self.fx.store.trashed_decks()), 3)
+        page.eval("Array.from(document.querySelectorAll('.toast')).find(t => t.textContent.indexOf('2 件をごみ箱へ移動しました') >= 0)"
+                  ".querySelector('button').click()")
+        page.until("document.querySelectorAll('.list .card__select-box').length === 2", what="2 件とも元に戻ること")
+        page.raise_if_broken()
+        self.assertEqual(page.errors, [])
+        with self.fx.server.store_lock:
+            self.assertEqual(len(self.fx.store.trashed_decks()), 1)
+
     def test_settings_can_be_saved_from_the_screen(self) -> None:
         """ブランドを作って色と角を変えて保存する・スタイルを複写して作る。画面から最後まで通ること。"""
         page = self.open("/settings/brands", "document.querySelectorAll('.setting-row').length >= 1", "ブランドの一覧")

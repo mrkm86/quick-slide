@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ..enums import DECK_MODES, DECK_STATUSES, EXPORT_FORMATS
@@ -304,14 +305,18 @@ def deck_mode_label(mode: str) -> str:
     return DECK_MODE_LABELS.get(mode, "状態を取得できません")
 
 
-def deck_kinds() -> list[dict[str, Any]]:
-    """スライドの形式の一覧（`DECK_KINDS` の順）。`outputs` はそのモードで書き出せる形式（`export_routes.format_refusal`）。"""
+def deck_kinds(refusals: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
+    """スライドの形式の一覧（`DECK_KINDS` の順）。`outputs` はそのモードで書き出せる形式（`export_routes.format_refusal`）。
+    `available`・`reason` は「いまこの機械で作り始められるか」とその理由（`refusals` は `QuickSlideServer.kind_refusals`。
+    ピッチは Codex が要る）。画面は使えない札を押せなくし、理由をそのまま出す"""
     from .export_routes import format_refusal  # 遅延 import（循環回避）
 
     assert set(OUTPUT_LABELS) == set(EXPORT_FORMATS), "書き出しの形式が増えたら OUTPUT_LABELS にも足す"
     assert sorted(k["mode"] for k in DECK_KINDS) == sorted(DECK_MODES), "モードが増えたら DECK_KINDS にも足す"
+    refusals = refusals or {}
     return [{**kind, "outputs": [{"format": f, "label": label} for f, label in OUTPUT_LABELS.items()
-                                 if format_refusal(kind["mode"], f) is None]}
+                                 if format_refusal(kind["mode"], f) is None],
+             "available": kind["mode"] not in refusals, "reason": refusals.get(kind["mode"], "")}
             for kind in DECK_KINDS]
 
 
@@ -341,14 +346,14 @@ def card_limits() -> dict[str, int]:
     return {"title": TITLE_MAX_LENGTH}
 
 
-def vocabulary() -> dict[str, Any]:
-    """`GET /api/vocabulary`。画面が絞り込みの選択肢などに使う。"""
+def vocabulary(kind_refusals: Mapping[str, str] | None = None) -> dict[str, Any]:
+    """`GET /api/vocabulary`。画面が絞り込みの選択肢などに使う。`kind_refusals` は形式ごとの使えない理由（`deck_kinds`）。"""
     return {
         "page_states": {k: {"label": v[0], "motion": v[1], "group": PAGE_STATE_GROUPS[k]} for k, v in PAGE_STATE_LABELS.items()},
         "groups": GROUP_LABELS,
         "deck_statuses": {s: DECK_STATUS_LABELS[s] for s in DECK_STATUSES},
         "deck_modes": {m: DECK_MODE_LABELS[m] for m in DECK_MODES},
-        "deck_kinds": deck_kinds(),
+        "deck_kinds": deck_kinds(kind_refusals),
         "create": dict(CREATE_WORDS),
         "create_limits": create_limits(),
         "edit_modes": EDIT_MODE_LABELS,
