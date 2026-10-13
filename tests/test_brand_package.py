@@ -10,6 +10,7 @@ import io
 import json
 import unittest
 import zipfile
+from urllib.parse import unquote
 
 from PIL import Image
 
@@ -86,6 +87,13 @@ class PackageFormatTests(unittest.TestCase):
             with self.subTest(label), self.assertRaises(P.PackageError):
                 P.read(blob)
 
+    def test_the_file_name_says_it_is_a_quick_slide_brand_and_is_not_checked_on_read(self):
+        self.assertEqual(P.filename("見本ブランド"), "qs-ブランド-見本ブランド.zip")
+        self.assertEqual(P.filename('A/B:C*?"<>|\\D\n'), "qs-ブランド-A_B_C_______D_.zip")
+        self.assertEqual(P.filename("  "), "qs-ブランド-名称未設定.zip")
+        # 受け渡しで改名されても読める（種類を見分けるのは中の brand.json）。read はファイル名を受け取らない
+        self.assertEqual(P.read(package())["name"], "見本ブランド")
+
     def test_a_zip_that_swells_when_opened_is_refused(self):
         bomb = io.BytesIO()
         with zipfile.ZipFile(bomb, "w", compression=zipfile.ZIP_DEFLATED) as z:
@@ -117,6 +125,8 @@ class ExportImportApiTests(unittest.TestCase):
         r = self.fx.get(f"/api/settings/brands/{item['id']}/export")
         self.assertEqual(r.status, 200, r.body)
         self.assertEqual(r.headers.get("content-type") or r.headers.get("Content-Type"), "application/zip")
+        cd = r.headers.get("content-disposition") or r.headers.get("Content-Disposition")
+        self.assertEqual(unquote(cd.split("filename*=UTF-8''")[1]), "qs-ブランド-見本ブランド.zip")
         blob = r.body
         got = P.read(blob)
         self.assertEqual(got["id"], item["id"])

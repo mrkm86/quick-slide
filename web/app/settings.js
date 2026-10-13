@@ -772,14 +772,17 @@
   }
 
   // ---- ブランドのエクスポート・インポート（ZIP。形はサーバの brand_package.py）----
-  // エクスポート: サーバが作った ZIP を受け取り、ブランドの名前のファイルとして保存させる
+  // エクスポート: サーバが作った ZIP を受け取り、サーバが決めたファイル名（qs-ブランド-<名前>.zip）で保存させる
   function exportBrand(entry) {
+    var filename = "qs-brand.zip";
     fetch("/api/settings/brands/" + entry.id + "/export").then(function (r) {
       if (!r.ok) { return r.json().then(function (j) { throw new SS.ApiError((j && j.error && j.error.message) || "エクスポートできませんでした。", "export_failed", r.status); }, function () { throw new SS.ApiError("エクスポートできませんでした。", "export_failed", r.status); }); }
+      var m = /filename\*=UTF-8''([^;]+)/.exec(r.headers.get("Content-Disposition") || "");
+      if (m) { try { filename = decodeURIComponent(m[1]); } catch (e) { /* 読めなければ既定の名前 */ } }
       return r.blob();
     }).then(function (blob) {
       var url = URL.createObjectURL(blob);
-      var a = h("a", { href: url, download: entry.name.replace(/[\\/:*?"<>|]/g, "_") + ".zip" });
+      var a = h("a", { href: url, download: filename });
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
       SS.toast("「" + entry.name + "」をエクスポートしました。ZIP をそのまま渡せば、相手の Quick Slide でインポートできます。");

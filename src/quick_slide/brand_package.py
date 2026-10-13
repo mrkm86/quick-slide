@@ -11,6 +11,8 @@
 - 読むときは、他人から受け取った ZIP として扱う。ディスクへ展開せず、決まった名前のファイルだけを読む。
   個数・展開後の大きさ・圧縮率・名前の形・ハッシュ値を確かめ、どれかが外れたら PackageError（中身を推測で直さない）
 - 設定の中身の検査（色の形・ロゴの指定）と画像の中身の検査は、呼ぶ側が保存と同じ道で行う（settings_routes）
+- 書き出すファイル名は「qs-ブランド-<名前>.zip」（filename）。人が見分けるための名前で、読むときは見ない
+  （受け渡しで改名されても読める。種類を見分けるのは brand.json の format）
 """
 from __future__ import annotations
 
@@ -35,10 +37,17 @@ MEDIA_EXT = {"image/png": ".png", "image/jpeg": ".jpg"}
 _ASSET_NAME = re.compile(r"^assets/(%s)\.(png|jpg)$" % "|".join(LOGO_ROLES))
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _CONFIG_KEYS = {"schema_version", "colors", "fonts", "logo", "footer", "format"}
+FILE_PREFIX = "qs-ブランド-"
+_UNSAFE_FILENAME = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
 
 
 class PackageError(ValueError):
     """ZIP がブランドのエクスポートの形ではない・壊れている・大きすぎる。message は画面に出してよい文。"""
+
+
+def filename(name: str) -> str:
+    """書き出す ZIP のファイル名。OS がファイル名に使えない文字は「_」にする。"""
+    return FILE_PREFIX + (_UNSAFE_FILENAME.sub("_", name).strip() or "名称未設定") + ".zip"
 
 
 def build(*, brand_id: str, name: str, config: dict[str, Any], assets: list[dict[str, Any]], exported_at: str) -> bytes:
