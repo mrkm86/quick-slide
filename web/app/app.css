@@ -1573,7 +1573,14 @@ body[data-route="deck"] .topbar { padding: 0 var(--deck-pad); }
 .kind-card--off:hover { border-color: var(--color-neutral-solid-gray-300); }
 .kind-card__off { font-weight: var(--font-weight-700); color: var(--color-neutral-solid-gray-700); }
 .create__kind-off { margin: calc(-1 * var(--space-1)) 0 0; color: var(--ink); line-height: var(--line-height-150); }
-.create__actions { display: flex; justify-content: flex-end; }
+.create__actions { display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
+/* 既存の PPTX の取り込み（プレゼンを選んでいるときだけ出る）。ドロップの間は欄を点線で囲み、案内の語を出す */
+.create__import { margin-right: auto; }
+.create__import[hidden] { display: none; }
+.create { position: relative; }
+.create--drop { outline: 3px dashed var(--color-key-600, #0b5cad); outline-offset: -6px; }
+.create--drop::after { content: attr(data-drop); position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.86); font-weight: 700; color: var(--color-key-800, #003b7a); border-radius: inherit; pointer-events: none; }
 .create__go { min-width: 160px; }
 .create__kinds-head { display: none; }   /* PC はカードに説明が出ているので、見出しと「？」は出さない */
 @media (max-width: 767px) {

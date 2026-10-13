@@ -407,7 +407,7 @@ class DeckKindsTests(unittest.TestCase):
         kinds = v["deck_kinds"]
         self.assertEqual([k["mode"] for k in kinds], ["presentation", "pitch", "motion"])
         for k in kinds:
-            self.assertEqual(set(k), {"mode", "label", "description", "icon", "tone", "outputs", "available", "reason"})
+            self.assertEqual(set(k), {"mode", "label", "description", "icon", "tone", "outputs", "available", "reason", "importable"})
             got = {o["format"] for o in k["outputs"]}
             self.assertEqual(got, {f for f in EXPORT_FORMATS if format_refusal(k["mode"], f) is None},
                              "書き出せる形式は書き出しの可否から作る")
@@ -417,7 +417,8 @@ class DeckKindsTests(unittest.TestCase):
         self.assertEqual([(k["icon"], k["tone"]) for k in kinds],
                          [("slideshow", "blue"), ("photo_library", "orange"), ("animation", "green")])
         self.assertEqual(v["deck_modes"], {k["mode"]: k["label"] for k in DECK_KINDS})
-        self.assertEqual(v["create_limits"], {"request": MAX_REQUEST_CHARS})
+        from quick_slide.importing import MAX_PPTX_BYTES
+        self.assertEqual(v["create_limits"], {"request": MAX_REQUEST_CHARS, "import_bytes": MAX_PPTX_BYTES})
         self.assertEqual(set(v["create"]), {"heading", "placeholder", "submit", "working", "empty_reason", "too_long_reason"})
 
 

@@ -79,6 +79,19 @@ CREATE_WORDS: dict[str, str] = {
     "too_long_reason": REQUEST_TOO_LONG_REASON,
 }
 
+# 既存の PPTX の取り込み（ホームで形式「プレゼン」を選んでいるときだけ出す・docs/adr/0011-import-pptx.md）
+IMPORT_WORDS: dict[str, str] = {
+    "button": "PPTX を取り込む",
+    "working": "取り込んでいます…",
+    "hint": "既存の PPTX を、画像・色・配置をそのまま写したスライドにします（ドロップでも取り込めます）",
+    "drop": "ここに PPTX をドロップして取り込む",
+    "accept": ".pptx,.pptm,.ppsx,.potx",
+    "wrong_type": "PowerPoint のファイル（.pptx）を選んでください。",
+    "too_large": "ファイルが大きすぎます。",
+}
+# 取り込みのできる形式（取り込んだページは html-slide の型 html になる）
+IMPORTABLE_MODES = ("presentation",)
+
 EDIT_MODE_LABELS: dict[str, str] = {"minor": "微修正", "remake": "作り直し"}
 
 # 版（描いた回のページ）の出どころ
@@ -260,6 +273,7 @@ def run_page_display(page_state: str | None, run_state: str, *, has_image: bool)
 PLANNING_MESSAGES: dict[str, str] = {
     "queued": "順番を待っています。前の仕事が終わったら始めます。",
     "researching": "下調べをしています。",
+    "importing": "PPTX を取り込んでいます（図形・文字・画像を写しています）。",
     "writing": "台本を書いています。",
     "rewriting": "台本を直しています（{round}回目）。",
     "checking": "台本を確かめています。",
@@ -275,8 +289,8 @@ PLANNING_MESSAGES: dict[str, str] = {
 def planning_message(run_state: str, progress: dict[str, Any]) -> str | None:
     if run_state == "queued":
         return PLANNING_MESSAGES["queued"]
-    if run_state == "writing" and progress.get("phase") == "researching":
-        return PLANNING_MESSAGES["researching"]
+    if run_state == "writing" and progress.get("phase") in ("researching", "importing"):
+        return PLANNING_MESSAGES[progress["phase"]]
     if run_state == "writing":
         rnd = int(progress.get("round") or 1)
         return PLANNING_MESSAGES["writing"] if rnd <= 1 else PLANNING_MESSAGES["rewriting"].format(round=rnd)
@@ -321,13 +335,16 @@ def deck_kinds(refusals: Mapping[str, str] | None = None) -> list[dict[str, Any]
     refusals = refusals or {}
     return [{**kind, "outputs": [{"format": f, "label": label} for f, label in OUTPUT_LABELS.items()
                                  if format_refusal(kind["mode"], f) is None],
-             "available": kind["mode"] not in refusals, "reason": refusals.get(kind["mode"], "")}
+             "available": kind["mode"] not in refusals, "reason": refusals.get(kind["mode"], ""),
+             "importable": kind["mode"] in IMPORTABLE_MODES}
             for kind in DECK_KINDS]
 
 
 def create_limits() -> dict[str, int]:
     """入力欄が送る前に自分で数える上限（すべて整数）。"""
-    return {"request": MAX_REQUEST_CHARS}
+    from ..importing import MAX_PPTX_BYTES
+
+    return {"request": MAX_REQUEST_CHARS, "import_bytes": MAX_PPTX_BYTES}
 
 
 def instruction_words() -> dict[str, str]:
@@ -361,6 +378,7 @@ def vocabulary(kind_refusals: Mapping[str, str] | None = None) -> dict[str, Any]
         "deck_kinds": deck_kinds(kind_refusals),
         "create": dict(CREATE_WORDS),
         "create_limits": create_limits(),
+        "import": dict(IMPORT_WORDS),
         "edit_modes": EDIT_MODE_LABELS,
         "source_kinds": SOURCE_KIND_LABELS,
         "reorder": REORDER_MESSAGES,

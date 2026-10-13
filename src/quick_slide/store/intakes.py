@@ -132,6 +132,49 @@ class IntakesMixin(StoreBase):
                 "job_id": job["id"], "run_id": run["id"], "resolution": "new", "appended": False,
                 "resolution_reason": None}
 
+    def create_import(self, *, filename: str, info: dict[str, Any], runtime: str, deck_id: str | None = None,
+                      launch_requested_via: str | None = "start") -> dict[str, Any]:
+        """既存の PPTX の取り込み（docs/adr/0011-import-pptx.md）: プレゼンのデッキ・取り込み（出所は file・原稿は空）・
+        起動・描いた回（`imported: true`）・仕事を作る。PPTX は呼ぶ側が先に `importing.keep_source` でデッキの置き場へ
+        移しておく（`deck_id` を先に決めて渡す。仕事が拾われたときに、もう置いてあるように）。
+
+        戻り値は `create_intake` と同じ形（`launch_token` は平文で、戻り値以外に残らない）。"""
+        from .. import importing
+
+        require(runtime, ORIGIN_RUNTIMES, "origin.runtime")
+        attrs = {"mode": "presentation", "style": "standard", "images": False}
+        title = importing.title_of(filename)
+        payload = {"schema_version": 1, "origin": {"kind": "file", "runtime": runtime},
+                   "import": {k: info[k] for k in ("name", "bytes", "sha256")}}
+        request_sha = hashlib.sha256(json.dumps(["import", info["sha256"]], sort_keys=True).encode()).hexdigest()
+        with self.transaction():
+            now = self.now()
+            deck = self.create_deck(title, mode="presentation", brand_revision_id=self._intake_brand_revision(None),
+                                    style_revision_id=self._intake_style_revision(attrs), deck_id=deck_id)
+            deck_id = deck["id"]
+            launch_id = launch_token = None
+            if launch_requested_via is not None:
+                launch = self.create_launch(requested_via=launch_requested_via, deck_id=deck_id)
+                launch_id, launch_token = launch["id"], launch["token"]
+            intake_id = self.new_id()
+            self._exec(
+                "INSERT INTO intakes(id,deck_id,origin_kind,origin_runtime,conversation_hash,request_sha256,title_hint,"
+                " manuscript,request,payload_json,launch_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (intake_id, deck_id, "file", runtime, None, request_sha, title, "", None, dump_json(payload),
+                 launch_id, now))
+            args = {**self.run_args_from_attributes(attrs, origin_runtime=runtime), "imported": True}
+            run = self.create_run(deck_id, args=args)
+            job = self.create_job(deck_id, run_id=run["id"], intake_id=intake_id)
+            self.append_event("intake_created", {
+                "intake_id": intake_id, "origin_kind": "file", "origin_runtime": runtime, "launch_id": launch_id,
+                "job_id": job["id"], "run_id": run["id"], "mode": "presentation", "style": "standard",
+                "import_bytes": info["bytes"], "manuscript_chars": 0, "request_chars": None, "has_conversation_key": False,
+            }, deck_id=deck_id)
+        log.info("import %s -> deck %s (%d bytes)", intake_id, deck_id, info["bytes"])
+        return {"intake_id": intake_id, "deck_id": deck_id, "deck_title": title, "mode": "presentation",
+                "style": "standard", "launch_id": launch_id, "launch_token": launch_token, "job_id": job["id"],
+                "run_id": run["id"], "resolution": "new", "appended": False, "resolution_reason": None}
+
     def intake_mode(self, payload: dict[str, Any]) -> str:
         """payload を `create_intake` と同じに検査し（何も書かない）、作るデッキのモードを返す。
         呼ぶ側が「その形式をこの機械で描けるか」を見る前に、入力の誤りを先に言うため（`server/intake_routes.py`）。"""

@@ -22,6 +22,9 @@ P3:
 送り（`origin.kind=request`）、サーバの下調べ係が Web で調べて原稿を起こしてから台本係に渡す。画面の入力欄と同じ口・同じ形で、
 違いは `origin.runtime` だけ。既定はいままでどおり原稿（会話で材料を整えてから送る）。
 
+既存の PPTX の取り込み: `--import <file.pptx> [--wait]` は原稿も依頼も要らず、PPTX を `POST /api/imports` に流して
+プレゼンのスライドにする（画像・色・配置をそのまま写す。docs/adr/0011-import-pptx.md）。画面のホームの「PPTX を取り込む」と同じ口。
+
 P5: `--doctor`（導入の確かめ）・`--setup [--yes]`（足りないものを入れる）は `quick_slide_setup.py` に任せる。
 
 **実体（サーバのコード）の探し方**: `--repo` → 環境変数 `QUICK_SLIDE_REPO` → このスキルを載せたプラグインの根
@@ -221,11 +224,18 @@ def read_record(home: Path) -> dict[str, Any]:
 # --- 2. HTTP -------------------------------------------------------------
 
 def request(record: dict[str, Any], method: str, path: str, body: dict[str, Any] | None = None,
-            *, session: bool = False, timeout: float = 60.0, raw_body: bytes | None = None) -> tuple[int, Any]:
+            *, session: bool = False, timeout: float = 60.0, raw_body: bytes | None = None,
+            body_file: Path | None = None, extra_headers: dict[str, str] | None = None) -> tuple[int, Any]:
     host, port = str(record["host"]), int(record["port"])
     headers = {"Host": f"[{host}]:{port}" if ":" in host else f"{host}:{port}", "Accept": "application/json"}
-    raw = b""
-    if raw_body is not None:
+    headers.update(extra_headers or {})
+    raw: Any = b""
+    if body_file is not None:
+        # 大きな本文（取り込む PPTX）はファイルから流す（メモリに読み込まない）
+        raw = body_file.open("rb")
+        headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        headers["Content-Length"] = str(body_file.stat().st_size)
+    elif raw_body is not None:
         raw = raw_body
         headers["Content-Type"] = "application/octet-stream"
         headers["Content-Length"] = str(len(raw))
@@ -245,6 +255,8 @@ def request(record: dict[str, Any], method: str, path: str, body: dict[str, Any]
         raise Failure("server_unreachable", "Quick Slide のサーバに接続できませんでした。もう一度お試しください。", EXIT_STARTUP) from None
     finally:
         conn.close()
+        if body_file is not None:
+            raw.close()
     try:
         parsed = json.loads(payload.decode("utf-8"))
     except ValueError:
@@ -555,6 +567,50 @@ def cmd_setup(args: argparse.Namespace) -> int:
     return int(tool["main"](argv))
 
 
+def cmd_import(repo: Path, home: Path, args: argparse.Namespace) -> int:
+    """既存の PPTX を取り込む（`POST /api/imports`。docs/adr/0011-import-pptx.md）。プレゼンのデッキになる。"""
+    from urllib.parse import quote
+
+    src = Path(args.import_file).expanduser()
+    if not src.is_file():
+        raise Failure("file_unreadable", f"取り込むファイルが見つかりません: {src.name}", EXIT_INPUT)
+    if src.suffix.lower() not in (".pptx", ".pptm", ".ppsx", ".potx"):
+        raise Failure("validation_error", "PowerPoint のファイル（.pptx）を渡してください。", EXIT_INPUT)
+    runtime = args.runtime or detect_conversation()[0]
+    started = ensure_server(repo, home, args.server_timeout)
+    record = read_record(home)
+    server = {"url": record.get("url"), "pid": started.get("pid"), "already_running": bool(started.get("already_running"))}
+    if args.dry_run:
+        emit({"status": "dry_run", "server": server, "import": {"name": src.name, "bytes": src.stat().st_size}})
+        return EXIT_OK
+    status, body = request(record, "POST", f"/api/imports?runtime={quote(runtime)}", session=True, timeout=600.0,
+                           body_file=src, extra_headers={"X-Quick-Slide-Filename": quote(src.name)})
+    if status != 201 or not isinstance(body, dict):
+        raise api_failure(status, body)
+    mode = browser_mode(record)
+    should_open = False if (args.no_open or mode == "manual") else (args.open_browser or mode == "external")
+    opened = bool(webbrowser.open(body["url"])) if should_open else False
+    out = {
+        "status": "ready", "url": body["url"], "deck_id": body.get("deck_id"), "deck_title": body.get("deck_title"),
+        "mode": body.get("mode"), "intake_id": body.get("intake_id"), "launch_id": body.get("launch_id"),
+        "job_id": body.get("job_id"), "opened": opened, "browser_mode": mode, "server": server,
+        "message": f"「{body.get('deck_title')}」を取り込んでいます。画面の URL を開くと、できたページから見られます。",
+        "deck_url": deck_url(record, body["deck_id"]), "import": body.get("import"),
+    }
+    if args.wait and body.get("job_id"):
+        done = wait_job(record, body["deck_id"], body["job_id"], args.wait_timeout)
+        out.update(finished_fields(done))
+        if done.get("ok"):
+            out["message"] = f"「{out['deck_title']}」を {len([p for p in out['pages'] if not p.get('hidden')])} ページで取り込みました。"
+        else:
+            out["status"] = "failed"
+            out["message"] = (done.get("run") or {}).get("message") or "取り込めませんでした。"
+            emit(out)
+            return EXIT_FAILED
+    emit(out)
+    return EXIT_OK
+
+
 def run(args: argparse.Namespace) -> int:
     home = data_root(args.home)
     if args.where:
@@ -567,6 +623,8 @@ def run(args: argparse.Namespace) -> int:
         if flag:
             raise Failure("not_ready_in_v2", NOT_YET_MESSAGE.format(what=what), EXIT_INPUT)
     repo = repo_root(args.repo)
+    if args.import_file:
+        return cmd_import(repo, home, args)
     if args.revise:
         return cmd_revise(repo, home, args)
     if args.ensure_launch:
@@ -614,6 +672,8 @@ def run(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="quick_slide_start.py",
                                 description="会話から整えた原稿を Quick Slide に投入し、スライドの画面の URL を返す")
+    p.add_argument("--import", dest="import_file", metavar="PPTX",
+                   help="既存の PPTX を取り込んでプレゼンのスライドにする（画像・色・配置をそのまま写す。原稿・依頼は要らない）")
     p.add_argument("--manuscript-file", help="原稿（Markdown, UTF-8）のファイル")
     p.add_argument("--request", help="原稿の代わりに依頼の文（サーバが Web で下調べして原稿を起こす。--manuscript-file とどちらか）")
     p.add_argument("--request-file", help="依頼の文をファイルで渡す（UTF-8）")

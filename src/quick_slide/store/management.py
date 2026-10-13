@@ -184,6 +184,8 @@ class DeckManagementMixin(StoreBase):
         _link_file(self.script_path(script), self.root.root / rel)
         if (src_scripts / "attachments").is_dir():
             _link_tree(src_scripts / "attachments", dst_scripts / "attachments")
+        if (src_scripts / "imported").is_dir():   # 取り込んだページの画像（台本の html が相対 imported/media/… で指す）
+            _link_tree(src_scripts / "imported", dst_scripts / "imported")
         sid = self.new_id()
         self._exec(
             "INSERT INTO scripts(id,deck_id,version,path,sha256,written_by,writer_backend,intake_id,instruction,round,"
