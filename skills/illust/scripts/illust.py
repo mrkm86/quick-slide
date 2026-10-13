@@ -78,7 +78,7 @@ def to_png(svg: str, width: float, height: float, out: Path, *, long: int, chrom
                "--default-background-color=00000000",
                f"--user-data-dir={Path(tmp) / 'profile'}", f"--window-size={w},{h}", f"--screenshot={shot}", src.as_uri()]
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=CHROME_TIMEOUT)
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=CHROME_TIMEOUT, encoding="utf-8")
         except (OSError, subprocess.TimeoutExpired) as exc:
             return f"Chrome で描けなかった（{exc}）"
         if r.returncode != 0 or not shot.is_file() or shot.stat().st_size == 0:
@@ -170,4 +170,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8")
     sys.exit(main())

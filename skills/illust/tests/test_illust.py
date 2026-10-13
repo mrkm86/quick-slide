@@ -62,13 +62,13 @@ class PaletteTests(unittest.TestCase):
         self.assertEqual(p["primary"], "#006f83")
         self.assertEqual(p["accent"], "#006f83", "差し色が無ければ主役の色")
         self.assertNotEqual(p["primary_light"], p["primary"])
-        r = subprocess.run([sys.executable, str(SCRIPTS / "illust.py"), "palette", "--primary", "nazo"], capture_output=True, text=True)
+        r = subprocess.run([sys.executable, str(SCRIPTS / "illust.py"), "palette", "--primary", "nazo"], capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(r.returncode, 2)
 
 
 class CliTests(unittest.TestCase):
     def run_cli(self, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
-        return subprocess.run([sys.executable, str(SCRIPTS / "illust.py"), *args], input=stdin, capture_output=True, text=True)
+        return subprocess.run([sys.executable, str(SCRIPTS / "illust.py"), *args], input=stdin, capture_output=True, text=True, encoding="utf-8")
 
     def test_check_and_clean(self) -> None:
         self.assertEqual(self.run_cli("check", "--svg", "-", stdin=GOOD).returncode, 0)
