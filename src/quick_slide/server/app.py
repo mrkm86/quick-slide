@@ -240,6 +240,7 @@ class QuickSlideServer:
         clock: Clock | None = None,
         tools: Tools | None = None,
         start_workers: bool = True,
+        samples_dir: Path | str | None = None,
     ) -> None:
         self.root = root if isinstance(root, DataRoot) else DataRoot.resolve(root)
         # 起動したときに読んだ設定の印。仕事のたびに見比べ、変わっていれば読み直す（待ち受けの段は起動時のまま）
@@ -277,6 +278,11 @@ class QuickSlideServer:
         self._stopping = threading.Event()
         self.tools = tools or Tools()
         self.start_workers = start_workers   # 試験で取り込みの形だけを見るときは起こさない
+        # 同梱の見本の置き場（docs/adr/0007-bundled-samples.md）。常駐の serve・start は `paths.SAMPLES_DIR` を渡す。
+        # None なら起動のときに見本を入れない（試験の既定。空のデータの置き場から始めたい）。設定 › 見本 の一覧と
+        # 「入れ直す」はこの置き場を読む
+        self.samples_dir = Path(samples_dir) if samples_dir is not None else None
+        self.samples_summary: dict[str, Any] | None = None
         self.workers: WorkerPool | None = None
         self._kind_refusals: tuple[float, dict[str, str]] | None = None
         self._kind_refusals_lock = threading.Lock()
@@ -328,6 +334,15 @@ class QuickSlideServer:
                 raise StartupError(f"bind 結果がループバックではありません（{bound_ip}）。起動を中止します")
             self.store = Store.open(self.root, settings=self.settings, clock=self.clock, startup_sweep=False)
             self.sweep_summary = run_startup_sweep(self.store)
+            # 同梱の見本を入れる（一度も入れていない見本・触っていない古い版）。ワーカーを起こす前に。見本のせいで起動を止めない
+            if self.samples_dir is not None:
+                try:
+                    from .. import samples as _samples
+
+                    self.samples_summary = _samples.sync(self.store, self.root, directory=self.samples_dir,
+                                                         extra_env=self.tools.extra_env)
+                except Exception:  # noqa: BLE001
+                    log.exception("見本を入れられませんでした（起動は続けます）")
             # 起動時掃除のあとでワーカーを起こす（前のセッションの「走っている」仕事は掃除が失敗にしてある）
             if self.start_workers:
                 self.workers = WorkerPool(self, self.root, self.settings, self.tools)
@@ -886,6 +901,7 @@ from . import export_routes as _export_routes  # noqa: E402
 from . import intake_routes as _intake_routes  # noqa: E402
 from . import later as _later  # noqa: E402
 from . import present_routes as _present_routes  # noqa: E402
+from . import samples_routes as _samples_routes  # noqa: E402
 from . import settings_routes as _settings_routes  # noqa: E402
 
 _not_ready = _later.not_ready
@@ -911,6 +927,9 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"GET"}), _exact("/settings/brands"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _exact("/settings/styles"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _exact("/settings/server"), QuickSlideServer._route_index),
+    (frozenset({"GET"}), _exact("/settings/samples"), QuickSlideServer._route_index),
+    (frozenset({"GET"}), _exact("/api/samples"), _samples_routes.route_list),
+    (frozenset({"POST"}), _exact("/api/samples/restore"), _samples_routes.route_restore),
     (frozenset({"GET"}), _uuid_route("/settings/brands/", "setting_id"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _exact("/api/health"), QuickSlideServer._route_health),
     (frozenset({"GET"}), _exact("/api/session"), QuickSlideServer._route_session),

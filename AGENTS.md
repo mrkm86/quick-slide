@@ -19,6 +19,7 @@
 | `skills/html-slide/` | エンジン: 編集できて動く PPTX |
 | `skills/image-slide/` | エンジン: 画像生成で1枚ずつ描く資料 |
 | `skills/quick-slide/` | 会話の入口（原稿を整えて投入し、スライドの画面の URL を返す） |
+| `samples/` | 同梱の見本（モードごとに 1 冊。最初の起動で入る）。台本の正本は `samples/<見本>/script.json`、`built/` は `samples/build.py` が書く（手で直さない。`docs/adr/0007-bundled-samples.md`） |
 | `src/quick_slide/`・`web/app/` | 常駐サーバ（台本係・描き係のワーカーを含む）と画面（段の進め方は `docs/DESIGN.md` §7、控えは `docs/P1-NOTES.md`〜`docs/P5-NOTES.md`） |
 
 エンジンは状態を持たず、ほかのスキルを呼ばない（素材はファイルで受ける）。

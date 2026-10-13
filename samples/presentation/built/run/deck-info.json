@@ -1,0 +1,88 @@
+{
+ "title": "プレゼンの見本",
+ "mode": "talk",
+ "theme": "{{RUN_DIR}}/settings/theme.yaml",
+ "html": "{{DECK_DIR}}/work/deck.html",
+ "style": "standard",
+ "style_description": "説明・報告・社内資料向け。文字と図を整理して並べる（表紙は右に写真、写真は全面）",
+ "image_look": "illustration",
+ "warnings": [],
+ "font": "Noto Sans JP",
+ "font_note": null,
+ "images": [],
+ "cache": "{{CACHE}}/scripts-f55e0eb34fc6",
+ "logo": null,
+ "slides": [
+  {
+   "no": 1,
+   "type": "cover",
+   "styled": {},
+   "clicks": 0,
+   "transition": "fade"
+  },
+  {
+   "no": 2,
+   "type": "equation",
+   "styled": {},
+   "clicks": 4,
+   "transition": "fade"
+  },
+  {
+   "no": 3,
+   "type": "big-number",
+   "styled": {},
+   "clicks": 2,
+   "transition": "fade"
+  },
+  {
+   "no": 4,
+   "type": "flow",
+   "styled": {},
+   "clicks": 5,
+   "transition": "fade"
+  },
+  {
+   "no": 5,
+   "type": "cards",
+   "styled": {},
+   "clicks": 4,
+   "transition": "fade"
+  },
+  {
+   "no": 6,
+   "type": "table",
+   "styled": {},
+   "clicks": 1,
+   "transition": "fade"
+  },
+  {
+   "no": 7,
+   "type": "closing",
+   "styled": {},
+   "clicks": 0,
+   "transition": "fade"
+  }
+ ],
+ "outputs": {
+  "format": [
+   "pptx",
+   "pdf",
+   "png",
+   "thumbs"
+  ],
+  "png": [
+   "{{DECK_DIR}}/work/slides/slide-01.png",
+   "{{DECK_DIR}}/work/slides/slide-02.png",
+   "{{DECK_DIR}}/work/slides/slide-03.png",
+   "{{DECK_DIR}}/work/slides/slide-04.png",
+   "{{DECK_DIR}}/work/slides/slide-05.png",
+   "{{DECK_DIR}}/work/slides/slide-06.png",
+   "{{DECK_DIR}}/work/slides/slide-07.png"
+  ],
+  "thumbs": [
+   "{{DECK_DIR}}/work/thumbs.png"
+  ],
+  "pdf": "{{DECK_DIR}}/work/deck.pdf",
+  "pptx": "{{DECK_DIR}}/work/deck.pptx"
+ }
+}

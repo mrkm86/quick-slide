@@ -1,0 +1,34 @@
+{
+ "mode": "presentation",
+ "cache": "{{CACHE}}/scripts-f55e0eb34fc6",
+ "pages": {
+  "cover": {
+   "no": 1,
+   "slots": []
+  },
+  "p-pptx": {
+   "no": 2,
+   "slots": []
+  },
+  "p-types": {
+   "no": 3,
+   "slots": []
+  },
+  "p-flow": {
+   "no": 4,
+   "slots": []
+  },
+  "p-uses": {
+   "no": 5,
+   "slots": []
+  },
+  "p-modes": {
+   "no": 6,
+   "slots": []
+  },
+  "closing": {
+   "no": 7,
+   "slots": []
+  }
+ }
+}

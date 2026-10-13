@@ -124,14 +124,14 @@ class HttpResult:
 class ServerFixture:
     def __init__(self, tmp: Path, *, settings: Settings | None = None, static_root: Path | None = None,
                  clock: Clock | None = None, host: str = "127.0.0.1", tools: Tools | None = None,
-                 start_workers: bool = True) -> None:
+                 start_workers: bool = True, samples_dir: Path | None = None) -> None:
         self.tmp = tmp
         self.root = DataRoot(tmp / "home")
         self.clock = clock or FixedClock(T0)
         self.server = QuickSlideServer(self.root, settings=settings or Settings(), host=host, port=0,
                                        static_root=static_root or WEB_APP_DIR, clock=self.clock,
                                        tools=tools or Tools(claude=runnable(FAKES / "refuse.py"), codex=runnable(FAKES / "refuse.py")),
-                                       start_workers=start_workers)
+                                       start_workers=start_workers, samples_dir=samples_dir)
         self.thread = self.server.start_in_thread()
         self.port = self.server.bound_port
         self.host = host

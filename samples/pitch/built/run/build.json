@@ -1,0 +1,121 @@
+{
+ "title": "ピッチの見本",
+ "script": "{{DECK_DIR}}/scripts/engine.json",
+ "theme": "theme",
+ "style": "visual",
+ "auth": {
+  "checked": 1,
+  "refreshed_here": false,
+  "age_days": 3.86,
+  "hours_left": 147.4,
+  "worker_refreshed": 0
+ },
+ "cache": "{{CACHE}}/work-5160a1a75b97",
+ "parallel": 8,
+ "slides": [
+  {
+   "no": 1,
+   "type": "cover",
+   "layout": null,
+   "key": "5913b73e54d73dd7",
+   "attempts": 1,
+   "seconds": 66.2,
+   "band_ok": null,
+   "worker_refreshed": false,
+   "extra_images": 0,
+   "status": "generated",
+   "normalize": {
+    "source_size": [
+     1672,
+     941
+    ],
+    "op": "resize"
+   },
+   "band": null,
+   "plate": false
+  },
+  {
+   "no": 2,
+   "type": "cards",
+   "layout": null,
+   "key": "8db9807e0a499a19",
+   "attempts": 1,
+   "seconds": 82.4,
+   "band_ok": null,
+   "worker_refreshed": false,
+   "extra_images": 0,
+   "status": "generated",
+   "normalize": {
+    "source_size": [
+     1672,
+     941
+    ],
+    "op": "resize"
+   },
+   "band": null,
+   "plate": false
+  },
+  {
+   "no": 3,
+   "type": "flow",
+   "layout": null,
+   "key": "835f7b44755e8dd2",
+   "attempts": 1,
+   "seconds": 82.7,
+   "band_ok": null,
+   "worker_refreshed": false,
+   "extra_images": 0,
+   "status": "generated",
+   "normalize": {
+    "source_size": [
+     1672,
+     941
+    ],
+    "op": "resize"
+   },
+   "band": null,
+   "plate": false
+  },
+  {
+   "no": 4,
+   "type": "closing",
+   "layout": null,
+   "key": "5ec08b0c38b3d97d",
+   "attempts": 1,
+   "seconds": 63.9,
+   "band_ok": null,
+   "worker_refreshed": false,
+   "extra_images": 0,
+   "status": "generated",
+   "normalize": {
+    "source_size": [
+     1672,
+     941
+    ],
+    "op": "resize"
+   },
+   "band": null,
+   "plate": false
+  }
+ ],
+ "outputs": {
+  "format": [
+   "pptx",
+   "pdf",
+   "png",
+   "thumbs"
+  ],
+  "png": [
+   "{{DECK_DIR}}/work/slides/slide-01.png",
+   "{{DECK_DIR}}/work/slides/slide-02.png",
+   "{{DECK_DIR}}/work/slides/slide-03.png",
+   "{{DECK_DIR}}/work/slides/slide-04.png"
+  ],
+  "pptx": "{{DECK_DIR}}/work/deck.pptx",
+  "pdf": "{{DECK_DIR}}/work/deck.pdf",
+  "thumbs": [
+   "{{DECK_DIR}}/work/thumbs.png"
+  ]
+ },
+ "elapsed": 85.4
+}

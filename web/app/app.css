@@ -895,6 +895,11 @@ details > summary:hover { color: var(--color-primitive-blue-900); text-decoratio
 .setting-row__name { flex: 1 1 auto; min-width: 0; font-weight: var(--font-weight-700); overflow-wrap: anywhere; }
 .setting-row__swatches { display: inline-flex; gap: var(--space-1); }
 .setting-row__swatch { width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--color-border); }
+.sample-row { flex-wrap: wrap; }
+.sample-row .setting-row__name { flex: 0 1 18rem; }
+.sample-row__mode { margin-left: var(--space-2); font-weight: var(--font-weight-400); color: var(--color-text-muted); }
+.sample-row__state { display: grid; gap: var(--space-1); flex: 1 1 16rem; min-width: 0; }
+.sample-row__decks { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); overflow-wrap: anywhere; }
 
 /* ---- ブランドの編集画面 ----
    上の帯（戻る・名前・状態・保存）は上部バーの下に貼り付く。保存は右上に置き、⌘S / Ctrl+S でも押せる。

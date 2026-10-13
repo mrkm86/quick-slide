@@ -1,0 +1,73 @@
+{
+ "engine": "motion-slide",
+ "title": "モーションの見本",
+ "scenes": 5,
+ "beats": 17,
+ "pictures": {
+  "taken": true,
+  "shot": 5,
+  "reused": 0
+ },
+ "check": {
+  "ng": 0,
+  "warnings": 0
+ },
+ "slides": [
+  {
+   "no": 1,
+   "id": "cover",
+   "title": "表紙",
+   "beats": 3,
+   "clicks": 2,
+   "page": "slides/slide-01.png"
+  },
+  {
+   "no": 2,
+   "id": "beats",
+   "title": "拍で1つずつ出す",
+   "beats": 4,
+   "clicks": 3,
+   "page": "slides/slide-02.png"
+  },
+  {
+   "no": 3,
+   "id": "fly",
+   "title": "値が表へ飛ぶ",
+   "beats": 4,
+   "clicks": 3,
+   "page": "slides/slide-03.png"
+  },
+  {
+   "no": 4,
+   "id": "flow",
+   "title": "線でつなぎ丸で囲む",
+   "beats": 3,
+   "clicks": 2,
+   "page": "slides/slide-04.png"
+  },
+  {
+   "no": 5,
+   "id": "sample",
+   "title": "これは見本です",
+   "beats": 3,
+   "clicks": 2,
+   "page": "slides/slide-05.png"
+  }
+ ],
+ "outputs": {
+  "index": "{{DECK_DIR}}/work/index.html",
+  "deck": "{{DECK_DIR}}/work/deck.html",
+  "png": [
+   "{{DECK_DIR}}/work/slides/slide-01.png",
+   "{{DECK_DIR}}/work/slides/slide-02.png",
+   "{{DECK_DIR}}/work/slides/slide-03.png",
+   "{{DECK_DIR}}/work/slides/slide-04.png",
+   "{{DECK_DIR}}/work/slides/slide-05.png"
+  ],
+  "thumbs": [
+   "{{DECK_DIR}}/work/thumbs.png"
+  ],
+  "inspect": "{{DECK_DIR}}/work/inspect.md",
+  "check": "{{DECK_DIR}}/work/check"
+ }
+}

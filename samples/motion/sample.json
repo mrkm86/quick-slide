@@ -1,0 +1,11 @@
+{
+ "id": "motion",
+ "order": 3,
+ "mode": "motion",
+ "title": "モーションの見本",
+ "subtitle": "クリックで動きながら進む説明",
+ "purpose": "モーションで何ができるかを、見本の資料そのもので見せる",
+ "audience": "Quick Slide を使い始めた人",
+ "style": "standard",
+ "overrides": {}
+}

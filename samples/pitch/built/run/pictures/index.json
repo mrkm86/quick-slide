@@ -1,0 +1,22 @@
+{
+ "mode": "pitch",
+ "cache": "{{CACHE}}/work-5160a1a75b97",
+ "pages": {
+  "cover": {
+   "no": 1,
+   "picture": "cover.png"
+  },
+  "p-whole-picture": {
+   "no": 2,
+   "picture": "p-whole-picture.png"
+  },
+  "p-fix-one-page": {
+   "no": 3,
+   "picture": "p-fix-one-page.png"
+  },
+  "p-sample-note": {
+   "no": 4,
+   "picture": "p-sample-note.png"
+  }
+ }
+}

@@ -689,7 +689,9 @@
     { section: "styles", href: "/settings/styles", label: "スライドスタイル", title: "スライドスタイル",
       lead: "スライドの型を登録します。ブランドの見た目とは別に管理します。" },
     { section: "server", href: "/settings/server", label: "アクセス", title: "アクセス",
-      lead: "Quick Slide を、このパソコンだけで使うか、ほかのパソコンやスマートフォンからも開けるようにするかを決めます。" }
+      lead: "Quick Slide を、このパソコンだけで使うか、ほかのパソコンやスマートフォンからも開けるようにするかを決めます。" },
+    { section: "samples", href: "/settings/samples", label: "見本", title: "見本",
+      lead: "プレゼン・ピッチ・モーションの見本のスライドです。消したあとでも、ここから入れ直せます。" }
   ];
 
   // 各設定の画面の見出し: パンくず（設定 › いまの画面）→ H1（いまの画面の名前）と説明
@@ -1085,6 +1087,51 @@
         h("div", { class: "setting-actions" }, save))));
   }
 
+  // ---- 見本（同梱の見本のスライド。最初の起動で入る。消したあとでもここから入れ直せる。docs/adr/0007-bundled-samples.md） ----
+  var SAMPLE_MODES = { presentation: "プレゼン", pitch: "ピッチ", motion: "モーション" };
+  var SAMPLE_STATES = {
+    present: "入っています",
+    outdated: "古い版が入っています。「見本を入れ直す」で新しい版にできます。",
+    missing: "入っていません（消したか、ごみ箱にあります）。"
+  };
+  function sampleRow(item) {
+    var links = h("span", { class: "sample-row__decks" });
+    item.decks.forEach(function (deck) {
+      var label = deck.title === item.title ? "開く" : "開く（" + deck.title + "）";
+      links.appendChild(h("a", { href: "/slides/" + deck.id, "data-nav": true, text: label + (deck.archived ? "（アーカイブ中）" : "") }));
+    });
+    return h("div", { class: "setting-row sample-row", "data-sample": item.id },
+      h("span", { class: "setting-row__name" }, text("span", item.title),
+        text("span", SAMPLE_MODES[item.mode] || item.mode, "sample-row__mode")),
+      h("span", { class: "sample-row__state" }, text("span", SAMPLE_STATES[item.state] || "", "small muted sample-row__state-text"), links));
+  }
+  function samplesScreen(root, guard) {
+    return SS.api("/api/samples").then(function (view) {
+      if (!guard()) { return; }
+      var rows = h("div", { class: "setting-rows" });
+      view.items.forEach(function (item) { rows.appendChild(sampleRow(item)); });
+      var errors = h("div", { role: "alert" });
+      var restore = button("見本を入れ直す", function () {
+        restore.disabled = true;
+        SS.clear(errors);
+        SS.api("/api/samples/restore", { method: "POST", body: {} }).then(function (result) {
+          SS.toast(result.message);
+          SS.navigate("/settings/samples", true);
+        }).catch(function (error) {
+          restore.disabled = false;
+          SS.clear(errors).appendChild(text("p", safeError(error), "notice notice--error"));
+        });
+      }, "btn--primary sample-restore");
+      restore.disabled = !view.available;
+      var body = view.available ? [rows,
+        text("p", "入れ直すと、消した見本を新しいスライドとして入れます。入っている見本はそのまま残ります。", "small muted"),
+        errors, h("div", { class: "setting-actions" }, restore)]
+        : [text("p", view.reason, "reason")];
+      SS.clear(root).appendChild(h("div", { class: "settings-page" }, settingsHead("samples"),
+        h("div", { class: "setting-panel" }, body)));
+    });
+  }
+
   // 「再起動が必要」の帯（アクセスの画面）。処理中の作業があれば「終わるのを待って」と「今すぐ」を出す。
   // 押したあとの進み・つなぎ直し・新しい URL への移動は core.js の SS.restartServer
   function restartBanner(state) {
@@ -1127,6 +1174,7 @@
   SS.views.settings = function (root, route, guard) {
     SS.clear(root).appendChild(text("p", "設定を読み込んでいます…"));
     if (route.section === "index") { settingsIndex(root); return Promise.resolve(); }
+    if (route.section === "samples") { return samplesScreen(root, guard); }
     return SS.api("/api/settings").then(function (catalog) {
       if (!guard()) { return; }
       if (route.section === "styles") { return stylesScreen(root, catalog); }

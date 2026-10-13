@@ -1,0 +1,92 @@
+{
+ "args": {
+  "audience": "Quick Slide を使い始めた人",
+  "images": false,
+  "look": {
+   "allowed_types": null,
+   "brand_revision_id": "{{BRAND_REVISION_ID}}",
+   "emphasis": "報告・提案を読む人に向け、結論と数値を先に示す。比較は同じ観点で並べ、単位と前年比を添える。",
+   "footer": "",
+   "logo": null,
+   "logo_position": "bottom-right",
+   "logo_white": null,
+   "page_numbers": false,
+   "style_revision_id": "{{STYLE_REVISION_ID}}",
+   "theme": "{{RUN_DIR}}/settings/theme.yaml",
+   "tone": "standard",
+   "watermark": ""
+  },
+  "mode": "presentation",
+  "overrides": {},
+  "page_count": 7,
+  "purpose": "プレゼンで何ができるかを、見本の資料そのもので見せる",
+  "style": "standard",
+  "style_note": ""
+ },
+ "engine": "html-slide",
+ "files": {
+  "build.json": "0ae27efd295754afd10e1356e624de139ffa129a2ee841856b88d4b943cd848f",
+  "deck-info.json": "0a5219058a59d50d44786405a84acea749aac663bdd18e6d681f971ea075a18e",
+  "pictures/index.json": "c723e339a01bf02aed590339a1777e8105cded01dc07672e1839e6a301dfbb9d",
+  "present/deck.html": "088a76ec5e86b554815e858a55cca6c7cd8d2501e96d371e3b916e43faaaaacd",
+  "settings/theme.yaml": "6a90509a82d7b287c2fade753a959ec6cbb9ceaa3722d7489ffddc27ee5ecab5",
+  "slides/slide-01.png": "3771c4919aefd100f2f0d9387336b6bfa5fab1d7e235e059a1a0fc105e43f00a",
+  "slides/slide-02.png": "79794fd107c6b2356af6793c4a2ebf689481f63bb37d201bfa3c03505a4b7138",
+  "slides/slide-03.png": "eef6a662f609bbac9ca45a1516d237aa52dcbd82efb96cfd1d2471075e988c67",
+  "slides/slide-04.png": "02b59a6bfe9ee730b0bb7ac81ce81b8efedfee5a03bbadc3f77900ad031e699e",
+  "slides/slide-05.png": "93ab957a27e478c07a47b2f2b7a808102e50b16e273d73a9e5c4d52ab501e2a7",
+  "slides/slide-06.png": "3ac72f71f3fede3ae5d792f84c5f122cdec7ef37c261100a7e0e88972d232c13",
+  "slides/slide-07.png": "e352348071ed491312754d24daad9c4cd1c7d486256d958645e15b9d37a757fc"
+ },
+ "format": "quick-slide-sample",
+ "format_version": 1,
+ "id": "presentation",
+ "links": {},
+ "mode": "presentation",
+ "pages": [
+  {
+   "key": "cover",
+   "no": 1,
+   "picture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "warnings": []
+  },
+  {
+   "key": "p-pptx",
+   "no": 2,
+   "picture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "warnings": []
+  },
+  {
+   "key": "p-types",
+   "no": 3,
+   "picture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "warnings": []
+  },
+  {
+   "key": "p-flow",
+   "no": 4,
+   "picture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "warnings": []
+  },
+  {
+   "key": "p-uses",
+   "no": 5,
+   "picture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "warnings": []
+  },
+  {
+   "key": "p-modes",
+   "no": 6,
+   "picture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "warnings": []
+  },
+  {
+   "key": "closing",
+   "no": 7,
+   "picture_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "warnings": []
+  }
+ ],
+ "script_sha256": "4640536b3ef93c3e4c79a1398f0a4d3c615621af24dc1ef17436d452a3a4c429",
+ "version": "f82ac0592a9001e57f1fe94bb0932885bbda315a1cd8b9e4301f02c5995d6654"
+}

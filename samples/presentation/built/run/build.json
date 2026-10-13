@@ -1,0 +1,121 @@
+{
+ "renderer": "html-slide",
+ "pptx": "{{DECK_DIR}}/work/deck.pptx",
+ "source": "{{DECK_DIR}}/work/deck.html",
+ "mode": "contract",
+ "slides": [
+  {
+   "no": 1,
+   "id": "s1",
+   "transition": "fade",
+   "steps": 0,
+   "effects": 8,
+   "auto": 8,
+   "notes_clicks": 0,
+   "fx": {
+    "fade": 2,
+    "rise": 2,
+    "pop": 3,
+    "wipe-right": 1
+   },
+   "shapes": 8,
+   "ok": true
+  },
+  {
+   "no": 2,
+   "id": "s2",
+   "transition": "fade",
+   "steps": 4,
+   "effects": 8,
+   "auto": 1,
+   "notes_clicks": 4,
+   "fx": {
+    "rise": 4,
+    "pop": 4
+   },
+   "shapes": 10,
+   "ok": true
+  },
+  {
+   "no": 3,
+   "id": "s3",
+   "transition": "fade",
+   "steps": 2,
+   "effects": 3,
+   "auto": 1,
+   "notes_clicks": 2,
+   "fx": {
+    "rise": 2,
+    "pop": 1
+   },
+   "shapes": 5,
+   "ok": true
+  },
+  {
+   "no": 4,
+   "id": "s4",
+   "transition": "fade",
+   "steps": 5,
+   "effects": 6,
+   "auto": 1,
+   "notes_clicks": 5,
+   "fx": {
+    "rise": 6
+   },
+   "shapes": 8,
+   "ok": true
+  },
+  {
+   "no": 5,
+   "id": "s5",
+   "transition": "fade",
+   "steps": 4,
+   "effects": 5,
+   "auto": 1,
+   "notes_clicks": 4,
+   "fx": {
+    "rise": 5
+   },
+   "shapes": 7,
+   "ok": true
+  },
+  {
+   "no": 6,
+   "id": "s6",
+   "transition": "fade",
+   "steps": 1,
+   "effects": 3,
+   "auto": 1,
+   "notes_clicks": 1,
+   "fx": {
+    "rise": 1,
+    "fade": 2
+   },
+   "shapes": 5,
+   "ok": true
+  },
+  {
+   "no": 7,
+   "id": "s7",
+   "transition": "fade",
+   "steps": 0,
+   "effects": 4,
+   "auto": 4,
+   "notes_clicks": 0,
+   "fx": {
+    "rise": 4
+   },
+   "shapes": 5,
+   "ok": true
+  }
+ ],
+ "totals": {
+  "slides": 7,
+  "steps": 16,
+  "effects": 37,
+  "notes_clicks": 16
+ },
+ "mismatch": [],
+ "violations": [],
+ "report_path": "{{DECK_DIR}}/work/build.json"
+}
