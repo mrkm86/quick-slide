@@ -44,9 +44,11 @@ from urllib.parse import urlsplit
 
 from .. import __version__
 from ..clock import Clock, elapsed_clock, utcnow
+from ..engines import ENGINES
 from ..errors import NotFoundError, QuickSlideError, StartupError, StateError
 from ..ids import is_uuid, new_id
 from ..paths import WEB_APP_DIR, DataRoot
+from ..render.runner import engine_unavailable
 from ..security.tokens import hash_token
 from ..settings import Settings, bind_refusal, bind_scope, file_fingerprint, is_loopback_host, listen_of
 from ..store import Store
@@ -65,6 +67,8 @@ SESSION_HEADER = "X-Quick-Slide-Session"
 MAX_BODY_BYTES = 16 * 1024 * 1024
 MAX_CLIENT_JSON_BYTES = 8 * 1024
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+# 形式ごとの「いま使えるか」を覚えておく秒数（`kind_refusals`）
+KIND_CHECK_SECONDS = 10.0
 SECURITY_HEADERS = (
     ("Cache-Control", "no-store"),
     ("X-Content-Type-Options", "nosniff"),
@@ -269,6 +273,8 @@ class QuickSlideServer:
         self.tools = tools or Tools()
         self.start_workers = start_workers   # 試験で取り込みの形だけを見るときは起こさない
         self.workers: WorkerPool | None = None
+        self._kind_refusals: tuple[float, dict[str, str]] | None = None
+        self._kind_refusals_lock = threading.Lock()
 
     # --- ライフサイクル ---
     @property
@@ -653,6 +659,22 @@ class QuickSlideServer:
         """**仕事を作った直後に**ワーカーを起こす。取りこぼしても、ワーカーは数秒ごとに見に来る。"""
         if self.workers is not None:
             self.workers.wake()
+
+    def kind_refusals(self) -> dict[str, str]:
+        """形式（モード）→ いまその形式で作り始められない理由（使える形式は入らない）。ピッチは Codex が要る。
+        画面を開くたび（`/api/vocabulary`）と作成の依頼のたびに聞くので、答えは少しの間だけ覚える
+        （Codex を入れた・ログインしたら、サーバを起こし直さなくても画面を読み直せば使える）。"""
+        with self._kind_refusals_lock:
+            now = time.time()
+            if self._kind_refusals is not None and 0 <= now - self._kind_refusals[0] < KIND_CHECK_SECONDS:
+                return dict(self._kind_refusals[1])
+            refusals = {}
+            for mode, engine in ENGINES.items():
+                reason = engine_unavailable(engine, tools=self.tools, home=self.root.root)
+                if reason:
+                    refusals[mode] = reason
+            self._kind_refusals = (now, refusals)
+            return dict(refusals)
 
     def launch_url(self, deck_id: str, launch_id: str | None, token: str | None) -> str:
         base = f"{self.url}/slides/{deck_id}"

@@ -405,7 +405,7 @@ class DeckKindsTests(unittest.TestCase):
         kinds = v["deck_kinds"]
         self.assertEqual([k["mode"] for k in kinds], ["presentation", "pitch", "motion"])
         for k in kinds:
-            self.assertEqual(set(k), {"mode", "label", "description", "icon", "tone", "outputs"})
+            self.assertEqual(set(k), {"mode", "label", "description", "icon", "tone", "outputs", "available", "reason"})
             got = {o["format"] for o in k["outputs"]}
             self.assertEqual(got, {f for f in EXPORT_FORMATS if format_refusal(k["mode"], f) is None},
                              "書き出せる形式は書き出しの可否から作る")
@@ -417,6 +417,44 @@ class DeckKindsTests(unittest.TestCase):
         self.assertEqual(v["deck_modes"], {k["mode"]: k["label"] for k in DECK_KINDS})
         self.assertEqual(v["create_limits"], {"request": MAX_REQUEST_CHARS})
         self.assertEqual(set(v["create"]), {"heading", "placeholder", "submit", "working", "empty_reason", "too_long_reason"})
+
+
+    def test_pitch_is_off_until_codex_is_there_and_the_intake_says_why(self) -> None:
+        """ピッチは Codex が要る。無ければ札は押せない（`available: false` と理由）、作成の依頼も 409 でデッキを作らない。
+        入れたら（答えを覚える間を過ぎれば）サーバを起こし直さなくても使える。"""
+        tools, _ = fake_tools(self, skills_dir=fake_skills_dir(self), extra={"FAKE_ENGINE_QUICK_RC": "4"})
+        fx = start_server(self, tools=tools, settings=settings())
+        kinds = {k["mode"]: k for k in fx.get("/api/vocabulary").json()["deck_kinds"]}
+        self.assertEqual((kinds["presentation"]["available"], kinds["presentation"]["reason"]), (True, ""))
+        self.assertEqual((kinds["motion"]["available"], kinds["motion"]["reason"]), (True, ""))
+        self.assertFalse(kinds["pitch"]["available"])
+        self.assertIn("Codex が見つかりません", kinds["pitch"]["reason"])
+        r = fx.post("/api/intakes", request_payload(mode="pitch"))
+        self.assertEqual((r.status, r.error_code), (409, "engine_unavailable"), r.body)
+        self.assertIn("codex login", r.json()["error"]["message"])
+        self.assertEqual(fx.get("/api/decks").json()["total"], 0, "断ったときはデッキを作らない")
+        too_long = fx.post("/api/intakes", request_payload("あ" * (MAX_REQUEST_CHARS + 1), "pitch"))
+        self.assertEqual((too_long.status, too_long.error_code), (400, "validation_error"), "入力の誤りは機械の事情より先に言う")
+        # Codex を入れた: 覚えている間を過ぎれば使える
+        tools.extra_env["FAKE_ENGINE_QUICK_RC"] = "0"
+        fx.server._kind_refusals = None
+        kinds = {k["mode"]: k for k in fx.get("/api/vocabulary").json()["deck_kinds"]}
+        self.assertEqual((kinds["pitch"]["available"], kinds["pitch"]["reason"]), (True, ""))
+        self.assertEqual(fx.post("/api/intakes", request_payload(mode="pitch")).status, 201)
+
+    def test_the_real_engine_answers_whether_pitch_can_draw(self) -> None:
+        """本物の image-slide の `auth --quick` で聞く（偽物の codex・ログインの記録）。記録が無ければログインを促す。"""
+        tools, tmp = fake_tools(self)
+        fx = start_server(self, tools=tools, settings=settings())
+        kinds = {k["mode"]: k for k in fx.get("/api/vocabulary").json()["deck_kinds"]}
+        self.assertTrue(kinds["pitch"]["available"], kinds["pitch"])
+        empty = tmp / "empty-codex-home"
+        empty.mkdir()
+        tools.extra_env["CODEX_HOME"] = str(empty)
+        fx.server._kind_refusals = None
+        kinds = {k["mode"]: k for k in fx.get("/api/vocabulary").json()["deck_kinds"]}
+        self.assertFalse(kinds["pitch"]["available"])
+        self.assertIn("ログインしていません", kinds["pitch"]["reason"])
 
 
 class ModeFilterTests(unittest.TestCase):

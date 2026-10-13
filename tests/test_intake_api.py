@@ -9,14 +9,16 @@ import json
 import unittest
 from urllib.parse import parse_qs, urlsplit
 
-from helpers import capture_logs, intake_payload, start_server
+from helpers import capture_logs, fake_tools, intake_payload, start_server
 
 from quick_slide.ids import PRESET_STYLE_INFOGRAPHIC_ID, PRESET_STYLE_STANDARD_ID
 
 
 class IntakeApiTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.fx = start_server(self, start_workers=False)
+        # ピッチを送るので、Codex がある機械にしておく（偽物の codex とログインの記録。無い機械は test_create_from_screen が見る）
+        tools, _ = fake_tools(self)
+        self.fx = start_server(self, start_workers=False, tools=tools)
         self.logs = capture_logs(self)
 
     def post(self, payload):

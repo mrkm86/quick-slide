@@ -9,6 +9,8 @@
     FAKE_ENGINE_SLEEP   1 ページごとに待つ秒（既定 0.05）
     FAKE_ENGINE_LOG     呼ばれた引数を書くフォルダ（任意）
     FAKE_ENGINE_AUTH_RC auth（ピッチの描く前の確かめ）の終了コード（既定 0）
+    FAKE_ENGINE_QUICK_RC auth --quick（形式の札に出す軽い確かめ）の終了コード（既定 0。4 なら「codex が見つからない」と言う）。
+                        画面を開くたびに呼ばれるので、FAKE_ENGINE_LOG には書かない
     FAKE_ENGINE_FONT    プレゼンの deck.html が file:// で読む字体ファイル（任意。発表の画面の字体の配信の試験が使う）
     FAKE_ENGINE_SKIP    作らない出力（例 "pdf"。既定は deck.pptx・deck.pdf も書く。書き出しの試験が使う）
 
@@ -137,6 +139,10 @@ def main_motion(argv: list) -> int:
 def main(kind: str) -> int:
     argv = sys.argv[1:]
     cmd = argv[0]
+    if cmd == "auth" and "--quick" in argv:
+        rc = int(os.environ.get("FAKE_ENGINE_QUICK_RC", "0"))
+        print("OK: codex がある" if rc == 0 else "NG: codex が見つからない", file=sys.stderr)
+        return rc
     log = os.environ.get("FAKE_ENGINE_LOG")
     if log:
         pathlib.Path(log).mkdir(parents=True, exist_ok=True)

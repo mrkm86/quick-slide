@@ -424,6 +424,15 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .card--row .card__menu { position: absolute; top: 50%; right: var(--space-3); transform: translateY(-50%); margin-left: 0; }
 .card--row .card__title { -webkit-line-clamp: 1; font-size: var(--font-size-18); }
 .list { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4); }
+/* まとめて操作するための選び（一覧の行の左端）。リンクの覆いより手前に置くので、押してもスライドの画面へ移らない */
+.card__select { position: relative; z-index: 2; flex: none; display: flex; align-items: center; justify-content: center; width: var(--tap); cursor: pointer; }
+.card__select-box { width: 24px; height: 24px; margin: 0; cursor: pointer; }
+.card__select-box:disabled { cursor: progress; }
+/* 左にチェックが入るので、画像はカードの角ではなくなる（角の丸めは外す） */
+.card--row.card--selectable .card__thumb { border-radius: 0; }
+.card--selected { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); background: var(--brand-soft); }
+/* 一覧の帯は上の見出しの帯の下に留まる（編集画面の帯はデッキの帯の下） */
+.selection-bar.selection-bar--list { top: var(--topbar-h); margin: var(--space-2) 0 0; }
 .toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: center; margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-surface-muted); border: 1px solid var(--line); border-radius: var(--radius-3); }
 .toolbar input[type="search"] { min-width: 260px; flex: 1; }
 .toolbar label { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--tap); font-size: var(--font-size-16); color: var(--ink); cursor: pointer; }
@@ -788,6 +797,14 @@ details > summary:hover { color: var(--color-primitive-blue-900); text-decoratio
   .card--row .card__thumb { flex: none;
     border-radius: calc(var(--border-radius-16) - 1px) calc(var(--border-radius-16) - 1px) 0 0; }
   .card--row .card__body { padding-right: 72px; }
+  /* 縦に積む行でも、選ぶチェックは画像の上に重ねず、題の行の左に置く */
+  .card--row.card--selectable { display: grid; grid-template-columns: auto minmax(0, 1fr); }
+  .card--row.card--selectable .card__thumb { grid-column: 1 / -1; grid-row: 1;
+    border-radius: calc(var(--border-radius-16) - 1px) calc(var(--border-radius-16) - 1px) 0 0; }
+  .card--row.card--selectable .card__select { grid-column: 1; grid-row: 2; padding-left: var(--space-2); }
+  .card--row.card--selectable .card__body { grid-column: 2; grid-row: 2; padding-left: var(--space-2); }
+  /* 縦に積むと、カードの高さの真ん中は画像の上になる。⋮ は題の行の高さ（下端寄り）に置く */
+  .card--row .card__menu { top: auto; bottom: var(--space-2); transform: none; }
   .toolbar input[type="search"] { flex-basis: 100%; }
 }
 
@@ -1495,6 +1512,24 @@ body[data-route="deck"] .topbar { padding: 0 var(--deck-pad); }
 .kind-card:has(input:checked) .kind-card__mark { background: radial-gradient(circle, var(--tone-fg) 0 40%, var(--color-neutral-white) 45%); }
 .kind-card__desc { line-height: var(--line-height-150); }
 .kind-card__out { color: var(--color-text-muted); }
+/* 選んでいない札は薄いグレーに沈め、選んだ 1 枚を際立たせる（2026-10-13 利用者「選択されている感をもう少し」）。
+   字は灰色でも読める濃さ（#666 / #f2f2f2 で 4.5:1 以上）。指したときだけ白に戻して押せることを見せる */
+.create__kinds:has(input:checked) .kind-card:not(:has(input:checked)) {
+  border-color: var(--color-neutral-solid-gray-100); background: var(--color-neutral-solid-gray-50); color: var(--color-neutral-solid-gray-600);
+}
+.create__kinds:has(input:checked) .kind-card:not(:has(input:checked)) .kind-card__head { color: var(--color-neutral-solid-gray-600); }
+.create__kinds:has(input:checked) .kind-card:not(:has(input:checked)) .kind-card__mark { border-color: var(--color-neutral-solid-gray-420); }
+.create__kinds:has(input:checked) .kind-card:not(:has(input:checked)):not(.kind-card--off):hover { border-color: var(--tone-border); background: var(--color-surface); }
+/* いまこの機械で作れない形式（ピッチなのに Codex が無いなど）。札は残すが押せない。理由は札の下の文（`.create__kind-off`） */
+/* 選んでいないだけの札（灰色の字）より一段薄くし、点線の枠で「押せない」を見せる。字の薄さは押せない部品の例外
+   （WCAG 1.4.3）。押せない理由と使えるようにする手順は、札の下に読める濃さで出す */
+.kind-card.kind-card--off { border-style: dashed; border-color: var(--color-neutral-solid-gray-300); background: var(--color-neutral-solid-gray-50); color: var(--color-neutral-solid-gray-420); cursor: not-allowed; }
+.kind-card--off .kind-card__head, .kind-card--off .kind-card__out { color: var(--color-neutral-solid-gray-420); }
+.kind-card--off .kind-card__mark { border-color: var(--color-neutral-solid-gray-300); background: var(--color-neutral-solid-gray-50); }
+.kind-card--off .create__radio { cursor: not-allowed; }
+.kind-card--off:hover { border-color: var(--color-neutral-solid-gray-300); }
+.kind-card__off { font-weight: var(--font-weight-700); color: var(--color-neutral-solid-gray-700); }
+.create__kind-off { margin: calc(-1 * var(--space-1)) 0 0; color: var(--ink); line-height: var(--line-height-150); }
 .create__actions { display: flex; justify-content: flex-end; }
 .create__go { min-width: 160px; }
 .create__kinds-head { display: none; }   /* PC はカードに説明が出ているので、見出しと「？」は出さない */
