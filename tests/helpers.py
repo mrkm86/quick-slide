@@ -36,6 +36,15 @@ T0 = "2026-09-07T00:00:00.000000Z"
 logging.getLogger("quick_slide").addHandler(logging.NullHandler())
 
 
+# 環境を一から作る試験でも引き継ぐ、Windows が子を起こすのに要る変数（無い機械では何も足さない）。
+# SYSTEMROOT が無いと socket も codex の名前解決も失敗する（B6）。COMSPEC・PATHEXT は .cmd の包みを起こすのに要る
+WINDOWS_BASE_VARS = ("SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT")
+
+
+def windows_base_env() -> dict[str, str]:
+    return {name: os.environ[name] for name in WINDOWS_BASE_VARS if name in os.environ} if os.name == "nt" else {}
+
+
 def runnable(script: Path) -> str:
     """偽物（`.py`）を、コマンドとして起こせる形で返す。
 

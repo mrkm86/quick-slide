@@ -1,4 +1,4 @@
-"""同梱の見本（docs/adr/0006-bundled-samples.md）。モードごとに 1 冊、最初の起動で普通のデッキとして入れる。
+"""同梱の見本（docs/adr/0007-bundled-samples.md）。モードごとに 1 冊、最初の起動で普通のデッキとして入れる。
 
 見本の置き場は `samples/<見本>/`（`paths.SAMPLES_DIR`）:
 
@@ -50,7 +50,7 @@ SAMPLE_KEYS = {"id", "order", "mode", "title", "subtitle", "purpose", "audience"
 OVERRIDE_KEYS = {"image_look", "style_note"}
 
 # 描いた回の控えのうち、見本に入れるもの（画面・発表・書き出し・直しに要るもの）。PPTX・PDF・サムネイル一覧・検査の画像・
-# ログ・検品の文・書き出しの部品・字体のファイルは入れない（ADR 0006）
+# ログ・検品の文・書き出しの部品・字体のファイルは入れない（ADR 0007）
 RUN_PATTERNS = ("slides/slide-*.png", "pictures/*", "deck-info.json", "build.json", "settings/theme.yaml",
                 "present/deck.html", "present/assets/*", "present/index.html", "index.html")
 TEXT_SUFFIXES = {".json", ".html", ".yaml", ".yml", ".md", ".txt", ".css", ".js", ".svg"}

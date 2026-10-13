@@ -31,7 +31,7 @@ P2_TABLES = {"intakes", "scripts", "script_pages", "page_ids", "runs", "run_page
 P3_TABLES = {"deck_heads"}
 # P5（0004）: 書き出しの記録
 P5_TABLES = {"exports"}
-# 0008: 同梱の見本（docs/adr/0006-bundled-samples.md）
+# 0008: 同梱の見本（docs/adr/0007-bundled-samples.md）
 SAMPLE_TABLES = {"samples_seen", "sample_decks"}
 
 

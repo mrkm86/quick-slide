@@ -47,6 +47,7 @@ from ..clock import Clock, elapsed_clock, utcnow
 from ..engines import ENGINES
 from ..errors import NotFoundError, QuickSlideError, StartupError, StateError
 from ..ids import is_uuid, new_id
+from ..oscompat import REUSE_ADDRESS, bind_exclusively
 from ..paths import WEB_APP_DIR, DataRoot
 from ..render.runner import engine_unavailable
 from ..security.tokens import hash_token
@@ -146,7 +147,7 @@ Handler = Callable[["QuickSlideServer", Request], Response]
 
 class _HTTPServer(http.server.ThreadingHTTPServer):
     daemon_threads = True
-    allow_reuse_address = True
+    allow_reuse_address = REUSE_ADDRESS   # Windows では使わない（待ち受け中の口を横取りできる。ADR 0006）
     request_queue_size = 32
 
     def __init__(self, address: tuple[str, int], handler: type, app: "QuickSlideServer") -> None:
@@ -154,6 +155,10 @@ class _HTTPServer(http.server.ThreadingHTTPServer):
             self.address_family = socket.AF_INET6
         self.app = app
         super().__init__(address, handler)
+
+    def server_bind(self) -> None:
+        bind_exclusively(self.socket)
+        super().server_bind()
 
     def handle_error(self, request, client_address) -> None:  # noqa: ANN001 - 標準の署名
         # 既定はトレースバックを stderr に印字する。ログにだけ残す
@@ -273,7 +278,7 @@ class QuickSlideServer:
         self._stopping = threading.Event()
         self.tools = tools or Tools()
         self.start_workers = start_workers   # 試験で取り込みの形だけを見るときは起こさない
-        # 同梱の見本の置き場（docs/adr/0006-bundled-samples.md）。常駐の serve・start は `paths.SAMPLES_DIR` を渡す。
+        # 同梱の見本の置き場（docs/adr/0007-bundled-samples.md）。常駐の serve・start は `paths.SAMPLES_DIR` を渡す。
         # None なら起動のときに見本を入れない（試験の既定。空のデータの置き場から始めたい）。設定 › 見本 の一覧と
         # 「入れ直す」はこの置き場を読む
         self.samples_dir = Path(samples_dir) if samples_dir is not None else None

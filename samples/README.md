@@ -1,7 +1,7 @@
 # 同梱の見本
 
 プレゼン・ピッチ・モーションの見本（それぞれのモードの紹介）を 1 冊ずつ置く。サーバを最初に起こしたときに、普通のスライドとして入る
-（タグ「見本」）。決めたことと理由は [`docs/adr/0006-bundled-samples.md`](../docs/adr/0006-bundled-samples.md)。
+（タグ「見本」）。決めたことと理由は [`docs/adr/0007-bundled-samples.md`](../docs/adr/0007-bundled-samples.md)。
 
 | フォルダ | モード | エンジン |
 |---|---|---|

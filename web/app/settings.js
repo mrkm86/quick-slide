@@ -1087,7 +1087,7 @@
         h("div", { class: "setting-actions" }, save))));
   }
 
-  // ---- 見本（同梱の見本のスライド。最初の起動で入る。消したあとでもここから入れ直せる。docs/adr/0006-bundled-samples.md） ----
+  // ---- 見本（同梱の見本のスライド。最初の起動で入る。消したあとでもここから入れ直せる。docs/adr/0007-bundled-samples.md） ----
   var SAMPLE_MODES = { presentation: "プレゼン", pitch: "ピッチ", motion: "モーション" };
   var SAMPLE_STATES = {
     present: "入っています",

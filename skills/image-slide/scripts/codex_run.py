@@ -32,13 +32,14 @@ import os
 import pathlib
 import re
 import shutil
-import signal
 import subprocess
 import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+
+import oscompat as OS
 
 REFRESH_DAYS = 7          # 期限が読めないトークンだけの予備。codex はそのとき最後の更新から8日で更新しに行く（manager.rs の TOKEN_REFRESH_INTERVAL）
 MIN_LEFT_HOURS = 3        # 期限までこれより短ければ、先に更新する（ワーカーの中で期限が来ると、並列で同じ refresh token を奪い合う）
@@ -317,8 +318,7 @@ def generate(cli: str, snapshot: bytes, text: str, refs: list[pathlib.Path], des
         cmd.append("-")   # -i は値を複数取るので、指示は stdin で渡す（位置引数だと画像のパスとして読まれる）
         timed_out = False
         with open(prompt_file, "rb") as inp, open(priv_out, "w") as out, open(priv_err, "w") as err:
-            p = subprocess.Popen(cmd, stdin=inp, stdout=out, stderr=err, env=_env(home), cwd=work,
-                                 start_new_session=True)
+            p = OS.popen_group(cmd, stdin=inp, stdout=out, stderr=err, env=_env(home), cwd=work)
             try:
                 while p.poll() is None:
                     if should_stop():
@@ -329,7 +329,8 @@ def generate(cli: str, snapshot: bytes, text: str, refs: list[pathlib.Path], des
                     time.sleep(0.5)
             finally:
                 if p.poll() is None:
-                    _kill(p)
+                    OS.kill_group(p)
+                OS.end_group(p)
         stdout, stderr = (redact(x.read_text(errors="replace"), secrets) for x in (priv_out, priv_err))
         failures = failure_lines(stdout, stderr)
         # 失効は絵の有無より先に見る（絵が1枚返っていても、失効が出たら残りを止める）
@@ -380,18 +381,6 @@ def _verify_image(path: pathlib.Path) -> None:
     except Exception as e:
         path.unlink(missing_ok=True)
         raise CodexError("gen", f"返った絵が壊れている: {e}")
-
-
-def _kill(p) -> None:
-    try:
-        os.killpg(p.pid, signal.SIGTERM)
-        p.wait(timeout=5)
-    except (ProcessLookupError, subprocess.TimeoutExpired):
-        try:
-            os.killpg(p.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        p.wait()
 
 
 # --- 並列 ------------------------------------------------------------------------------

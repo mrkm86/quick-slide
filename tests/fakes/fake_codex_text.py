@@ -43,7 +43,7 @@ def main() -> int:
         return 2
     out = pathlib.Path(rest[rest.index("-o") + 1])
     head = argv[:argv.index("exec")]
-    prompt = sys.stdin.read()
+    prompt = sys.stdin.buffer.read().decode("utf-8")   # 本物と同じく UTF-8 で読む（Windows の既定は cp932）
     if "--search" in head:
         if 'web_search="live"' not in head or "features.shell_tool=false" not in head or not R.is_research(prompt):
             print("fake codex: Web 検索は下調べ係にだけ、シェルを切って渡す", file=sys.stderr)

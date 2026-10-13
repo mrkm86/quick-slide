@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""同梱の見本を作り直す（docs/adr/0006-bundled-samples.md）。`samples/<見本>/script.json` を直したら、これで `built/` を作る。
+"""同梱の見本を作り直す（docs/adr/0007-bundled-samples.md）。`samples/<見本>/script.json` を直したら、これで `built/` を作る。
 
     python3 samples/build.py                 # 全部の見本
     python3 samples/build.py pitch           # 指定した見本だけ

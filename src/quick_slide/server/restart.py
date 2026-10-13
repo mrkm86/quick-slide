@@ -35,6 +35,7 @@ from typing import Any
 from .. import settings as S
 from ..clock import utcnow
 from ..errors import QuickSlideError, ValidationError
+from ..oscompat import group_kwargs
 from ..paths import DataRoot
 from .errors import ApiError
 
@@ -155,7 +156,7 @@ def spawn_successor(app: Any, restart_id: str) -> subprocess.Popen:
     out_fd = os.open(app.root.server_stdio_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_BINARY", 0), 0o600)
     try:
         child = subprocess.Popen(successor_command(app, restart_id), stdin=subprocess.DEVNULL, stdout=out_fd,
-                                 stderr=out_fd, start_new_session=True, close_fds=True, env=env, cwd=os.getcwd())
+                                 stderr=out_fd, close_fds=True, env=env, cwd=os.getcwd(), **group_kwargs())
     finally:
         os.close(out_fd)
     log.info("後継を起こしました pid=%d", child.pid)

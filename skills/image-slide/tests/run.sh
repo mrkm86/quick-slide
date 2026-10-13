@@ -69,7 +69,7 @@ run "同じ中身は描き直さない（codex も認証も呼ばない）・変
 run "--keep: 置いてある絵は鍵が変わっても描き直さない・鍵は前のまま・--redo が勝つ（ADR 0017）" deck_keep
 run "描いた絵はキャッシュの区画・出力フォルダに raw/・base/ を残さない・前の形の raw/ は移して使い回す（ADR 0015）" cache_area
 run "キャッシュの上限: 古い区画から消す・今の区画・少し前の区画・印の無いフォルダは消さない・0 は消さない・cache.py は html-slide と同じ" cache_trim
-run "置き場: 根っこは QUICK_SLIDE_HOME（既定 ~/.quick-slide）・設定と出力は engines/<スキル>/・キャッシュは ~/Library/Caches/quick-slide/・環境変数と設定が優先・places.py は html-slide と同じ" places
+run "置き場: 根っこは QUICK_SLIDE_HOME（既定 ~/.quick-slide）・設定と出力は engines/<スキル>/・キャッシュは ~/Library/Caches/quick-slide/・環境変数と設定が優先・places.py と oscompat.py は html-slide と同じ" places
 run "認証の失効で残りを止めて rc=4・PPTX を書かない" auth_dead_stops
 run "並列で走っている最中の失効でも、ほかのワーカーを止めて隔離ホームを消す" auth_stops_running_workers
 run "ログインしていない・auth.json が無いと rc=4" not_logged_in

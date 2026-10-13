@@ -1,4 +1,4 @@
-"""同梱の見本の API（設定 › 見本。docs/adr/0006-bundled-samples.md）。
+"""同梱の見本の API（設定 › 見本。docs/adr/0007-bundled-samples.md）。
 
 - `GET /api/samples` → `{"available", "items": [{id, title, subtitle, mode, pages, state, decks: [{id, title, current, archived}]}]}`
   （state: present＝最新の版が入っている・outdated＝古い版だけ・missing＝ごみ箱にしか無いか、無い）

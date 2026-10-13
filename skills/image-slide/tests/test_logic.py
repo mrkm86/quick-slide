@@ -74,7 +74,7 @@ def run(args, root: pathlib.Path, mode="ok", extra_env=None, home=None):
            "IMAGE_SLIDE_CACHE": str(root / "cache"), "QUICK_SLIDE_HOME": str(root / "home"),
            **(extra_env or {})}
     r = subprocess.run([sys.executable, str(ENTRY), *args], capture_output=True, text=True, env=env, timeout=300)
-    calls = [json.loads(p.read_text()) for p in sorted(log.glob("*.json"))] if log.exists() else []
+    calls = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(log.glob("*.json"))] if log.exists() else []
     return r.returncode, r.stdout, r.stderr, calls
 
 
@@ -737,6 +737,8 @@ def t_places():
             os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
     check((SKILL / "scripts" / "places.py").read_bytes() == (HTML_SLIDE / "scripts" / "places.py").read_bytes(),
           "places.py が html-slide とずれた（同じファイルを写す）")
+    check((SKILL / "scripts" / "oscompat.py").read_bytes() == (HTML_SLIDE / "scripts" / "oscompat.py").read_bytes(),
+          "oscompat.py が html-slide とずれた（同じファイルを写す。サーバの src/quick_slide/oscompat.py も同じ）")
 
 
 def t_auth_dead_stops():
