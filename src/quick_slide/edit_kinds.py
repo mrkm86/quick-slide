@@ -11,9 +11,9 @@ from typing import Any
 
 KINDS = ("text", "diagram", "illustration", "image")
 
-# モードで出す種類。プレゼンの挿絵は、画像の枠に HTML で描いた絵を入れる仕組みができてから。モーションは画像を持たない
+# モードで出す種類。プレゼンの挿絵は SVG で書き、サーバが PNG にして画像の枠に置く（docs/adr/0011）。モーションは画像を持たない
 MODE_KINDS: dict[str, tuple[str, ...]] = {
-    "presentation": ("text", "diagram", "image"),
+    "presentation": ("text", "diagram", "illustration", "image"),
     "pitch": ("text", "diagram", "illustration", "image"),
     "motion": ("text", "diagram", "illustration"),
 }
@@ -69,6 +69,8 @@ _DIAGRAM_SHAPE_WORDS = {
     },
 }
 _ILLUSTRATION = {
+    "presentation": "このページに挿絵（中身を表す、動かない絵）を入れる。画像を置ける型・変化形にし、画像の枠に image: {\"svg\": …} で"
+                    "挿絵を書く（書き方は illust/references/authoring.md。言葉の中身は保つ）",
     "pitch": "このページに挿絵（中身を表す、動かない絵）を入れて描き直す。写真ではなく絵にする",
     "motion": "この場面に挿絵を入れる（HTML・SVG の図形で描いた、動かない絵。画像ファイルは使わない。"
               "中身を表す人・物・場面を、単純な形とテーマの色で描く）",

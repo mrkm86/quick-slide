@@ -29,7 +29,7 @@ class OfferedTests(unittest.TestCase):
         return [k["kind"] for k in E.offered(mode, can_generate=can_generate)]
 
     def test_each_mode_offers_only_what_it_can(self) -> None:
-        self.assertEqual(self.kinds("presentation"), ["text", "diagram", "image"], "プレゼンの挿絵はまだ出さない")
+        self.assertEqual(self.kinds("presentation"), ["text", "diagram", "illustration", "image"], "プレゼンの挿絵は SVG（ADR 0011）")
         self.assertEqual(self.kinds("pitch"), ["text", "diagram", "illustration", "image"])
         self.assertEqual(self.kinds("motion"), ["text", "diagram", "illustration"], "モーションは画像を持たない")
 

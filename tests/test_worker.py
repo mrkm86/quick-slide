@@ -39,8 +39,10 @@ def fake_skills_dir(testcase) -> Path:
             f"sys.argv = [{str(fake)!r}, {kind!r}, *sys.argv[1:]]\n"
             f"runpy.run_path({str(fake)!r}, run_name='__main__')\n", encoding="utf-8")
         (root / skill / "references").mkdir()
+    (root / "illust" / "references").mkdir(parents=True)   # 挿絵の書き方（プレゼンの台本の決まりに入る。ADR 0011）
     for rel in ("html-slide/references/deck-format.md", "image-slide/references/intake.md",
-                "motion-slide/references/deck-format.md", "motion-slide/references/authoring.md"):
+                "motion-slide/references/deck-format.md", "motion-slide/references/authoring.md",
+                "illust/references/authoring.md"):
         shutil.copyfile(SKILLS_DIR / rel, root / rel)
     return root
 
@@ -448,7 +450,7 @@ class WriterPartsTests(unittest.TestCase):
         pitch = build_prompt(ENGINES["pitch"], {**args, "mode": "pitch", "images": False}, manuscript="m", title_hint=None,
                              skills_dir=SKILLS_DIR, previous={"slides": []}, problems=["NG: 1枚目: 知らない型"])
         self.assertIn(intake_md.strip()[:500], pitch)
-        self.assertIn("画像の枠を使わない", pitch)
+        self.assertIn("生成の画像の枠（image の prompt）を使わない", pitch)
         self.assertIn("- NG: 1枚目: 知らない型", pitch)
         self.assertIn("# 前の台本は検査で止まりました", pitch)
 
