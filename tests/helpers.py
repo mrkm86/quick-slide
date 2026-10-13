@@ -41,11 +41,12 @@ def runnable(script: Path) -> str:
 
     Windows は `.py` を直接起こせない（`shutil.which` も `PATHEXT` に無いので見つけない）。同じ Python で走らせる
     `.cmd` の包みを一時フォルダに作って返す。cmd.exe は包みを OEM のコードページで読むので、その字で書く。
+    偽物は `-X utf8` で起こす（本物の codex・claude と同じく、stdin・stdout を UTF-8 で読み書きする）。
     """
     if os.name != "nt":
         return str(script)
     cmd = Path(tempfile.mkdtemp(prefix="quick-slide-launch-")) / f"{script.stem}.cmd"
-    cmd.write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="oem", newline="")
+    cmd.write_text(f'@"{sys.executable}" -X utf8 "{script}" %*\r\n', encoding="oem", newline="")
     return str(cmd)
 
 

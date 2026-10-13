@@ -32,11 +32,12 @@ def check(cond, msg):
 
 def runnable(script: pathlib.Path) -> str:
     """偽物（`.py`）を、コマンドとして起こせる形で返す。Windows は `.py` を直接起こせないので、同じ Python で
-    走らせる `.cmd` の包みを一時フォルダに作る（cmd.exe は包みを OEM のコードページで読むので、その字で書く）。"""
+    走らせる `.cmd` の包みを一時フォルダに作る（cmd.exe は包みを OEM のコードページで読むので、その字で書く）。
+    偽物は `-X utf8` で起こす（本物の codex・claude と同じく、stdin・stdout を UTF-8 で読み書きする）。"""
     if os.name != "nt":
         return str(script)
     cmd = pathlib.Path(tempfile.mkdtemp(prefix="html-slide-fill-test-launch-")) / f"{script.stem}.cmd"
-    cmd.write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="oem", newline="")
+    cmd.write_text(f'@"{sys.executable}" -X utf8 "{script}" %*\r\n', encoding="oem", newline="")
     return str(cmd)
 
 
