@@ -444,15 +444,20 @@ def check_candidate(ctx: Context, engine: Engine, run: dict[str, Any], data: dic
         return CheckResult(RC_DEPENDENCY, [f"NG: {exc}"], [])
     if bad:
         return CheckResult(2, bad, [])   # 挿絵を直させる（台本係に返す）
-    path = W.write_engine_script(ctx.root.engine_script_path(run["deck_id"]), view)
-    timeout = motion.check_timeout(data) if motion.is_motion(run["args"]) else CHECK_TIMEOUT_SECONDS
-    if engine.quick_check:
-        quick = check_script(engine, tools=ctx.tools, home=ctx.root.root, script=path, args=run["args"], stop=ctx.stop,
-                             quick=True)
-        if quick.rc != 0:
-            return quick
-    return check_script(engine, tools=ctx.tools, home=ctx.root.root, script=path, args=run["args"], stop=ctx.stop,
-                        timeout=timeout)
+    # 検査は回ごとの台本ファイルで（同じデッキの別のページの直しと同時に走る。docs/adr/0012）。台本と同じフォルダに
+    # 置くので、添えた画像（attachments/）と挿絵（illustrations/）の相対パスはそのまま読める
+    path = W.write_engine_script(ctx.root.scripts_dir(run["deck_id"]) / f"check-{run['id']}.json", view)
+    try:
+        timeout = motion.check_timeout(data) if motion.is_motion(run["args"]) else CHECK_TIMEOUT_SECONDS
+        if engine.quick_check:
+            quick = check_script(engine, tools=ctx.tools, home=ctx.root.root, script=path, args=run["args"], stop=ctx.stop,
+                                 quick=True)
+            if quick.rc != 0:
+                return quick
+        return check_script(engine, tools=ctx.tools, home=ctx.root.root, script=path, args=run["args"], stop=ctx.stop,
+                            timeout=timeout)
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):

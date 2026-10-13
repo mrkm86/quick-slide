@@ -41,13 +41,18 @@ class EditsMixin(StoreBase):
         return out
 
     def create_edit(self, deck_id: str, request: dict[str, Any]) -> dict[str, Any]:
-        """直しの仕事を 1 つ作る（描いた回も 1 つ作る）。戻り値 {job, run, ahead（前に待っている・走っている仕事の数）}。"""
+        """直しの仕事を 1 つ作る（描いた回も 1 つ作る）。戻り値 {job, run, ahead（この仕事の前に終わるのを待つ仕事の数）}。
+
+        別のページを指定した直しどうしは待たずに同時に走るので、`ahead` に数えない（docs/adr/0012-parallel-edits.md）。"""
         require(request.get("op"), EDIT_OPS, "edit.op")
         require(request.get("source"), EDIT_SOURCES, "edit.source")
         with self.transaction():
-            ahead = int(self._scalar("SELECT COUNT(*) FROM jobs WHERE deck_id=? AND state IN ('queued','running')",
-                                     (deck_id,)))
-            args = {**self.deck_run_args(deck_id), "edit": request["op"]}
+            deck_args = self.deck_run_args(deck_id)
+            infographic = deck_args.get("mode") == "pitch" and deck_args.get("style") == "infographic"
+            mine = {"kind": "edit", "request": request}
+            ahead = sum(1 for other in self.open_jobs(deck_id)
+                        if infographic or not self._can_overlap(mine, other))  # type: ignore[attr-defined]
+            args = {**deck_args, "edit": request["op"]}
             if request.get("origin_runtime"):
                 args["origin_runtime"] = request["origin_runtime"]
             run = self.create_run(deck_id, args=args)

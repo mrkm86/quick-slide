@@ -286,13 +286,14 @@ class ServerSettings:
 class WorkerSettings:
     """台本係・描き係（サーバの中のワーカー）。
 
-    - `parallel`: 同時に進めるデッキの数（1 つのデッキの中の並列はエンジンが持つ。image-slide は既定 8 本）
+    - `parallel`: 同時に進める仕事の数（別のデッキ・同じデッキの別のページの直し。既定 4。docs/adr/0012。
+      1 つの仕事の中の並列（ページの絵を同時に描く）はエンジンが持つ。image-slide は既定 8 本）
     - `writer_timeout_seconds`: 台本係の LLM 1 回の上限
     - `render_timeout_seconds`: エンジン 1 回（描いて書き出すまで）の上限
     - `max_check_rounds`: 台本を書いて検査に通すまでの回数の上限（`NG:` を返して直させる）
     """
 
-    parallel: int = 2
+    parallel: int = 4
     writer_timeout_seconds: float = 900.0
     render_timeout_seconds: float = 3600.0
     max_check_rounds: int = 3
