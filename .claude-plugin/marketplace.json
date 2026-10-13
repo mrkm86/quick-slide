@@ -8,7 +8,7 @@
     {
       "name": "quick-slide",
       "source": "./",
-      "description": "会話から16:9の日本語スライド（資料・プレゼン・パワポ）を作って直すQuick Slide（スキル quick-slide・html-slide・image-slide）。"
+      "description": "会話から16:9の日本語スライド（資料・プレゼン・パワポ）を作って直すQuick Slide（スキル quick-slide・html-slide・image-slide・illust）。"
     }
   ]
 }

@@ -167,7 +167,8 @@ ENGINES: dict[str, Engine] = {
     "presentation": Engine(
         mode="presentation", skill="html-slide", entry="scripts/html_slide.py",
         styles=("standard", "visual"), default_style="standard",
-        contract_docs=("html-slide/references/deck-format.md",),
+        # 挿絵（画像の枠の image.svg）の書き方は挿絵のスキルの手引き（サーバが PNG にしてから渡す。docs/adr/0011）
+        contract_docs=("html-slide/references/deck-format.md", "illust/references/authoring.md"),
         deck_extra=("--no-odp",), keeps_parts=True, label="プレゼン（編集できて動く PPTX）"),
     # ピッチ: 同じ台本を 1 枚ずつ画像生成で丸ごと描く
     "pitch": Engine(

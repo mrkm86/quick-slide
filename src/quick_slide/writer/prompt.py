@@ -15,7 +15,10 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +76,47 @@ DIAGRAM_RULE = {
 }
 
 
+# ---- 挿絵（プレゼンの画像の枠の image.svg。docs/adr/0011-svg-illustrations.md）----
+_DEFAULT_PRIMARY = "#006f83"   # html-slide の default テーマの主役の色（テーマが読めないとき）
+
+
+def _theme_colors(args: dict[str, Any]) -> tuple[str, str | None]:
+    """この回のテーマ（設定のブランドから作った YAML）の主役の色と差し色。読めなければ既定の主役の色。"""
+    path = ((args.get("look") or {}).get("theme")) if isinstance(args.get("look"), dict) else None
+    try:
+        text = Path(path).read_text(encoding="utf-8") if isinstance(path, str) else ""
+    except OSError:
+        text = ""
+    found = dict(re.findall(r'^(primary|accent):\s*"?(#[0-9A-Fa-f]{6})"?', text, re.M))
+    return found.get("primary", _DEFAULT_PRIMARY), found.get("accent")
+
+
+def illust_palette(args: dict[str, Any], skills_dir: Path | None = None) -> dict[str, str]:
+    """挿絵の配色（挿絵のスキルの `palette`。テーマの主役の色から作る）。"""
+    from ..worker.tools import SKILLS_DIR
+
+    script = (skills_dir or SKILLS_DIR) / "illust" / "scripts" / "illust.py"
+    primary, accent = _theme_colors(args)
+    spec = importlib.util.spec_from_file_location("quick_slide_illust", script)
+    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    before = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True   # 配る物（skills）の中に __pycache__ を作らない
+    try:
+        spec.loader.exec_module(module)  # type: ignore[union-attr]
+    finally:
+        sys.dont_write_bytecode = before
+    return module.palette(primary, accent)
+
+
+def illust_rule(args: dict[str, Any]) -> str:
+    pal = "・".join(f"{k} {v}" for k, v in illust_palette(args).items())
+    return ("挿絵（中身を表す動かない絵。空気・場面・たとえ・気持ちを伝える）は、画像の枠に image: {\"svg\": \"<svg viewBox=…>…</svg>\"} "
+            "で書ける（Codex は要らない。書き方は illust/references/authoring.md。描き方 A・B は場面で選ぶ）。"
+            "viewBox の比は枠に合わせる: 縦長の枠（photo の left・right、cover・section・closing の右、bullets・quote の脇）は 960×1080、"
+            "横長の枠（photo の full・band、cards・compare・kpi の画像）は 1600×900。"
+            f"色はこの配色だけを使う: {pal}。構造・手順・比較・数字は挿絵にせず図解の型にする")
+
+
 def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
     if engine.mode == "motion":
         return [*motion.writer_rules(args), DIAGRAM_RULE["motion"], *(motion.OUTLINE_RULES if args.get("outline_fixed") else [])]
@@ -95,13 +139,17 @@ def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
         "id は描くことには使わず、ページの同一性に使う。前の台本を直すときは、残すページの id を変えない",
     ]
     rules.append(DIAGRAM_RULE[engine.mode])
+    if engine.mode == "presentation":
+        rules.append(illust_rule(args))
     if args.get("images", True):
-        rules.append("画像の枠は image: {\"prompt\": \"何を描くか\"} の形だけで書く。構造・手順・数字は図解の型にし、"
+        rules.append("生成の画像の枠は image: {\"prompt\": \"何を描くか\"} で書く。構造・手順・数字は図解の型にし、"
                      "空気・場面・気持ちを伝えるページにだけ画像を置く。prompt に画風（写真風・イラスト・手描きなど）を書かない"
                      "（画風は描くときに資料全体で 1 つに揃う）。prompt に文字・ロゴ・実在の人物や会社や商品の名前を描かせない")
     else:
-        rules.append("画像の枠を使わない。image キーをどこにも書かない。写真が必須の型（photo・gallery・figure・annotate）と、"
-                     "quote の layout: full・portrait は使わない")
+        rules.append("生成の画像の枠（image の prompt）を使わない。" + (
+            "image に書いてよいのは挿絵（svg）だけ。写真が必須の型（photo・gallery・figure・annotate）と quote の layout: full・portrait は、"
+            "挿絵を置くときだけ使う" if engine.mode == "presentation" else
+            "image キーをどこにも書かない。写真が必須の型（photo・gallery・figure・annotate）と、quote の layout: full・portrait は使わない"))
     if engine.mode == "presentation":
         rules.append(("表紙（cover）と章扉（section）は" if not args.get("images", True) else "画像を置かない表紙（cover）・章扉（section）は")
                      + " layout: \"graphic\" にする（写真の代わりにテーマの色の図形で飾る。image は書かない）。motif は省いてよい（資料の中でそろう）")
@@ -240,6 +288,8 @@ def _edit_rules(engine: Engine, args: dict[str, Any]) -> list[str]:
         "_characters・_layout・_hidden は書かない。theme・footer・page_numbers は書かない",
         "画像の path は、下の「添えた画像」に書いたパスだけを使ってよい（ほかの path は書かない。いまある path はそのまま残してよい）",
     ]
+    if engine.mode == "presentation":
+        rules.append(illust_rule(args))
     if args.get("images", True):
         rules.append("生成の画像の枠は image: {\"prompt\": \"何を描くか\"} で書く。prompt に画風・文字・ロゴ・実在の人物や会社や商品の名前を書かない。"
                      "指示が画像を求めていないページに、新しく画像の枠を足さない")
