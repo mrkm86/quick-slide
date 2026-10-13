@@ -47,6 +47,7 @@ from ..clock import Clock, elapsed_clock, utcnow
 from ..engines import ENGINES
 from ..errors import NotFoundError, QuickSlideError, StartupError, StateError
 from ..ids import is_uuid, new_id
+from ..oscompat import REUSE_ADDRESS, bind_exclusively
 from ..paths import WEB_APP_DIR, DataRoot
 from ..render.runner import engine_unavailable
 from ..security.tokens import hash_token
@@ -146,7 +147,7 @@ Handler = Callable[["QuickSlideServer", Request], Response]
 
 class _HTTPServer(http.server.ThreadingHTTPServer):
     daemon_threads = True
-    allow_reuse_address = True
+    allow_reuse_address = REUSE_ADDRESS   # Windows では使わない（待ち受け中の口を横取りできる。ADR 0006）
     request_queue_size = 32
 
     def __init__(self, address: tuple[str, int], handler: type, app: "QuickSlideServer") -> None:
@@ -154,6 +155,10 @@ class _HTTPServer(http.server.ThreadingHTTPServer):
             self.address_family = socket.AF_INET6
         self.app = app
         super().__init__(address, handler)
+
+    def server_bind(self) -> None:
+        bind_exclusively(self.socket)
+        super().server_bind()
 
     def handle_error(self, request, client_address) -> None:  # noqa: ANN001 - 標準の署名
         # 既定はトレースバックを stderr に印字する。ログにだけ残す

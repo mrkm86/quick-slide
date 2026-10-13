@@ -27,7 +27,7 @@ import time
 import unittest
 from pathlib import Path
 
-from helpers import MANUSCRIPT, REPO, fake_codex_home, runnable, temp_dir
+from helpers import MANUSCRIPT, REPO, fake_codex_home, runnable, temp_dir, windows_base_env
 
 TEXT_SUFFIXES = {".json", ".md", ".txt", ".yaml", ".yml", ".html", ".log", ".out", ".jsonl", ".db", ".pptx", ".pdf"}
 
@@ -64,6 +64,7 @@ class FreshMachineTests(unittest.TestCase):
                 dirs.append(str(Path(p).parent))
         fakes = self.plugin / "tests" / "fakes"
         self.env = {
+            **windows_base_env(),
             "HOME": str(self.home), "USERPROFILE": str(self.home), "PATH": os.pathsep.join(dirs + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]),
             "LANG": "ja_JP.UTF-8", "TMPDIR": str(self.tmp / "tmp"),
             # 台本係と絵を描く codex は偽物（本物の LLM・Codex は呼ばない）

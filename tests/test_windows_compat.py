@@ -155,3 +155,20 @@ class OsCompatTests(unittest.TestCase):
                 self.assertFalse(OS.pid_alive(grandchild), "孫が残った")
             finally:
                 OS.end_group(proc)
+
+
+class FakeEncodingAndShellTests(unittest.TestCase):
+    def test_fakes_read_stdin_as_utf8(self) -> None:
+        """偽物は本物と同じく stdin を UTF-8 で読む（`sys.stdin.read()` は Windows の既定の cp932 で読む）。"""
+        fakes = sorted((ROOT / "tests" / "fakes").glob("*.py")) + sorted((ROOT / "skills").glob("*/tests/fake_*.py"))
+        found = [f"{p.relative_to(ROOT).as_posix()}:{n}" for p in fakes
+                 for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1) if "sys.stdin.read()" in line]
+        self.assertEqual(found, [], "sys.stdin.buffer.read().decode(\"utf-8\") で読む")
+
+    def test_bash_is_not_called_by_name(self) -> None:
+        """Windows は名前の "bash" を PATH より先に System32 で探し、WSL の bash.exe に当たる。"""
+        bases = [ROOT / "tests", *sorted((ROOT / "skills").glob("*/tests"))]
+        found = [f"{p.relative_to(ROOT).as_posix()}:{n}" for base in bases for p in sorted(base.rglob("*.py"))
+                 if p != Path(__file__).resolve()
+                 for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1) if '["bash",' in line]
+        self.assertEqual(found, [], "shutil.which(\"bash\") で見つけたパスで呼ぶ")
