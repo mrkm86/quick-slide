@@ -38,7 +38,7 @@ class Song:
     def save(self, out):
         out = pathlib.Path(out); out.mkdir(parents=True, exist_ok=True)
         ev = sorted(self.ev, key=lambda e: (e[0], 0 if e[1] in ("pc", "cc", "off") else 1))
-        (out / "events.json").write_text(json.dumps([{"t": e[0], "k": e[1], "c": e[2], "a": e[3], "b": e[4]} for e in ev]))
+        (out / "events.json").write_text(json.dumps([{"t": e[0], "k": e[1], "c": e[2], "a": e[3], "b": e[4]} for e in ev]), encoding="utf-8")
         tpq, trk, last = 480, bytearray(), 0
 
         def vlq(n):

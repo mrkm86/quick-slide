@@ -279,7 +279,7 @@ def build_catalog(out_dir, only: str | None = None, theme: str | None = None) ->
     if not node or B.missing():
         raise RuntimeError(f"{'・'.join(B.missing())}。{B.SETUP_HINT}")
     r = subprocess.run([node, str(SKILL / "scripts" / "snapshot.mjs"), str(html), str(png_dir)], capture_output=True,
-                       text=True, env=B.child_env())
+                       text=True, env=B.child_env(), encoding="utf-8")
     if r.returncode != 0:
         raise RuntimeError(f"snapshot.mjs が失敗した:\n{r.stderr[-2000:]}")
     warn = [ln for ln in r.stdout.splitlines() if ln.startswith("警告")]
@@ -310,4 +310,6 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8")
     sys.exit(main())

@@ -309,7 +309,7 @@ def cmd_deck(a) -> int:
         raw, meta = rawdir / f"slide-{pg['no']:02d}.png", rawdir / f"slide-{pg['no']:02d}.json"
         (out / "prompts" / f"slide-{pg['no']:02d}.txt").write_text(pg["text"] + "\n", encoding="utf-8")
         try:
-            old = json.loads(meta.read_text()) if meta.is_file() else {}
+            old = json.loads(meta.read_text(encoding="utf-8")) if meta.is_file() else {}
         except (OSError, ValueError):
             old = {}                                   # 壊れた鍵は、使い回さずに描き直す
         old = old if isinstance(old, dict) else {}
@@ -369,7 +369,7 @@ def cmd_deck(a) -> int:
                 # 入れ替えの順: 新しい鍵を一時ファイルに書き切る → 古い鍵を消す → 絵を入れ替える → 鍵を入れ替える。
                 # どこで落ちても「新しい絵＋古い鍵」の組は残らない（鍵が無ければ次の実行で描き直すだけ）
                 meta_tmp = pg["meta"].with_suffix(".json.tmp")
-                meta_tmp.write_text(json.dumps(meta, ensure_ascii=False) + "\n")
+                meta_tmp.write_text(json.dumps(meta, ensure_ascii=False) + "\n", encoding="utf-8")
                 pg["meta"].unlink(missing_ok=True)
                 cand.replace(pg["raw"])
                 meta_tmp.replace(pg["meta"])
@@ -400,7 +400,7 @@ def cmd_deck(a) -> int:
                         for pg in pages]}
     if failed:
         build["elapsed"] = round(time.monotonic() - t0, 1)
-        (out / "build.json").write_text(json.dumps(build, ensure_ascii=False, indent=1) + "\n")
+        (out / "build.json").write_text(json.dumps(build, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
         for pg in failed:
             print(f"NG: {pg['no']}枚目が描けなかった（{pg['gen']['error']}）: {pg['gen']['detail']}", file=sys.stderr)
         print("描けたページは覚えている。直してもう一度 deck を流せば、残りだけ描く", file=sys.stderr)
@@ -472,7 +472,7 @@ def finish(a, cfg: dict, pl: dict, out: pathlib.Path, build: dict, fmts, t0: flo
     if watermark:
         build["watermark"] = watermark
     build["elapsed"] = round(time.monotonic() - t0, 1)
-    (out / "build.json").write_text(json.dumps(build, ensure_ascii=False, indent=1) + "\n")
+    (out / "build.json").write_text(json.dumps(build, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     insp = write_inspect(out, pl, build)
     gen = sum(1 for pg in pages if pg["gen"]["status"] == "generated")
     print(f"slides={len(pages)} generated={gen} cached={len(pages) - gen} plates={sum(1 for pg in pages if pg['plate'])} "
@@ -599,4 +599,6 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8")
     sys.exit(main())

@@ -64,7 +64,7 @@ def t_contract_ok():
     check(any(v["rule"] == "retired-transition" and v["level"] == "warn" for v in vs), "morph を書いた HTML に退役の警告が無い")
     check("p159:morph" not in "".join(slide_xml(out, n).xpath("string(/*)") + etree.tostring(slide_xml(out, n)).decode() for n in (1, 2, 3)), "PPTX にモーフが出た")
     check(not rep["mismatch"], f"ずれ: {rep['mismatch']}")
-    saved = json.loads(Path(rep["report_path"]).read_text())
+    saved = json.loads(Path(rep["report_path"]).read_text(encoding="utf-8"))
     check(saved["renderer"] == "html-slide" and saved["totals"]["effects"] == 6, "report が build.json に保存されていない")
     for no in (1, 2, 3):
         names = slide_xml(out, no).xpath("//p:cNvPr/@name", namespaces=NS)
@@ -99,7 +99,7 @@ def t_contract_bad():
     except render.RenderError as e:
         check(e.rc == 2 and e.violations, f"rc={e.rc}")
     check(not out.exists(), "違反があるのに PPTX を書いた")
-    r = subprocess.run([sys.executable, str(SKILL / "scripts" / "render.py"), "check", str(BAD)], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, str(SKILL / "scripts" / "render.py"), "check", str(BAD)], capture_output=True, text=True, encoding="utf-8")
     check(r.returncode == 2 and "NG:" in r.stderr, f"CLI の check が rc=2 にならない: {r.returncode}")
 
 
@@ -158,9 +158,9 @@ def t_verify_mismatch():
     rb = pptx_writer.write(bad, TMP / "v-bad.pptx")
     check(not rg["mismatch"] and rb["mismatch"] == [1], f"report のずれ: {rg['mismatch']} / {rb['mismatch']}")
     cli = [sys.executable, str(SKILL / "scripts" / "verify.py")]
-    r = subprocess.run(cli + [str(TMP / "v-good.pptx")], capture_output=True, text=True)
+    r = subprocess.run(cli + [str(TMP / "v-good.pptx")], capture_output=True, text=True, encoding="utf-8")
     check(r.returncode == 0 and "ALL OK" in r.stdout, f"合っているのに rc={r.returncode}: {r.stdout}")
-    r = subprocess.run(cli + [str(TMP / "v-bad.pptx")], capture_output=True, text=True)
+    r = subprocess.run(cli + [str(TMP / "v-bad.pptx")], capture_output=True, text=True, encoding="utf-8")
     check(r.returncode == 2 and "NG" in r.stdout, f"ずれを拾わない: rc={r.returncode} {r.stdout}")
 
 
@@ -298,7 +298,7 @@ def t_r1_inline_step():
     """⑥文字の中の inline 要素の data-step は rc=2（data-step はブロック要素に付ける）。"""
     vs = [v for v in render.errors(edge()["violations"]) if v["rule"] == "inline-step"]
     check(len(vs) == 1 and vs[0]["slide"] == 2 and "span" in vs[0]["el"], f"inline の data-step: {vs}")
-    check("`data-step` はブロック要素に付ける" in (SKILL / "references" / "contract.md").read_text(), "contract.md に書いていない")
+    check("`data-step` はブロック要素に付ける" in (SKILL / "references" / "contract.md").read_text(encoding="utf-8"), "contract.md に書いていない")
 
 
 def t_r1_hidden_inline():
@@ -337,7 +337,7 @@ def t_r2_zindex_context():
     vs = [v for v in render.errors(edge()["violations"]) if v["rule"] == "z-index-context"]
     els = [v["el"] for v in vs]
     check(len(vs) == 1 and "#z-in-plain" in els[0], f"z-index の文脈の違反: {els}")
-    check("`z-index` は section の直下か" in (SKILL / "references" / "contract.md").read_text(), "contract.md に書いていない")
+    check("`z-index` は section の直下か" in (SKILL / "references" / "contract.md").read_text(encoding="utf-8"), "contract.md に書いていない")
 
 
 def t_r2_transparent_text():

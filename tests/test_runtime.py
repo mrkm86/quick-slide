@@ -179,7 +179,7 @@ class RealProcessLifecycleTests(unittest.TestCase):
 
     def _cli(self, *args: str, timeout: float = 30) -> tuple[int, dict]:
         proc = subprocess.run([sys.executable, "-m", "quick_slide.server", *args], env=self.env, cwd=str(REPO),
-                              capture_output=True, text=True, timeout=timeout)
+                              capture_output=True, text=True, timeout=timeout, encoding="utf-8")
         last = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else "{}"
         return proc.returncode, json.loads(last)
 
@@ -289,7 +289,7 @@ class UptimeCountsTheTimeTheMachineWasAsleepTests(unittest.TestCase):
 
         if sys.platform != "darwin":
             self.skipTest("起動時刻の読み方は macOS だけ")
-        out = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True).stdout
+        out = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True, encoding="utf-8").stdout
         m = re.search(r"sec = (\d+)", out)
         if m is None:
             self.skipTest("起動時刻を読めない")

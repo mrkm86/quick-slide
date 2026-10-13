@@ -140,13 +140,13 @@ async def main(a):
 def finish(out, html, report, ng, warn):
     sheets(out, report)
     inspect_md(out, html, report, ng, warn)
-    (out / "check.json").write_text(json.dumps(report, ensure_ascii=False, indent=1))
+    (out / "check.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def inspect_md(out, html, report, ng, warn):
     """検品役が読む写し。拍ごとに、画面に出ている文字（増えた分）・話す台本・機械の検査の結果"""
     title = ""
-    m = __import__("re").search(r"<title>(.*?)</title>", html.read_text())
+    m = __import__("re").search(r"<title>(.*?)</title>", html.read_text(encoding="utf-8"))
     if m:
         title = m.group(1)
     L = [f"# {title}", "", f"- 本体: `{html}`（HTML 1枚。ブラウザで開き、クリックで拍が進む）",
@@ -164,7 +164,7 @@ def inspect_md(out, html, report, ng, warn):
         for k in ("errors", "outside", "clipped", "overlap", "chrome", "orphan", "pop"):
             for v in r.get(k, []):
                 L.append(f"  - 検査 {k}: {v}")
-    (out / "inspect.md").write_text("\n".join(L) + "\n")
+    (out / "inspect.md").write_text("\n".join(L) + "\n", encoding="utf-8")
 
 
 def sheets(out, report):
@@ -185,6 +185,8 @@ def sheets(out, report):
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
     ap.add_argument("html")
     ap.add_argument("--out")

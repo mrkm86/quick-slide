@@ -22,7 +22,7 @@ def changed(a, b):
 
 
 def main(path):
-    base = json.load(open(path))
+    base = json.load(open(path, encoding="utf-8"))
     n = len(base["scenes"])
     assert n >= 3, "試験の台本は 3 場面以上"
     k0 = keys(base)

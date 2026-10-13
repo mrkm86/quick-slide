@@ -92,7 +92,7 @@ def case_print_html():
 def _pages(pdf: pathlib.Path) -> int | None:
     if not shutil.which("pdfinfo"):
         return None
-    r = subprocess.run(["pdfinfo", str(pdf)], capture_output=True, text=True)
+    r = subprocess.run(["pdfinfo", str(pdf)], capture_output=True, text=True, encoding="utf-8")
     return int(next(ln.split()[-1] for ln in r.stdout.splitlines() if ln.startswith("Pages:")))
 
 
@@ -116,14 +116,14 @@ def case_deck_formats():
     assert sheets == (["thumbs.png"] if n <= 16 else [f"thumbs-{i:02d}.png" for i in range(1, (n + 15) // 16 + 1)]), sheets
     assert (out / "deck.pdf").is_file()
     assert _pages(out / "deck.pdf") in (None, n)
-    info = json.loads((out / "deck-info.json").read_text())
+    info = json.loads((out / "deck-info.json").read_text(encoding="utf-8"))
     assert info["outputs"]["format"] == ["pdf", "png", "thumbs"] and len(info["outputs"]["png"]) == n
     if shutil.which("pdfinfo"):
-        r = subprocess.run(["pdfinfo", str(out / "deck.pdf")], capture_output=True, text=True)
+        r = subprocess.run(["pdfinfo", str(out / "deck.pdf")], capture_output=True, text=True, encoding="utf-8")
         assert "960 x 540 pts" in r.stdout, "PDF のページが PPTX と同じ 13.333×7.5 インチでない"
     rc = H.main(["deck", "--script", str(script), "--out", str(out), "--no-odp", "--no-fill"])
     assert rc == 0 and (out / "deck.pptx").is_file(), rc
-    assert json.loads((out / "deck-info.json").read_text())["outputs"]["format"] == ["pptx", "pdf", "png", "thumbs"]
+    assert json.loads((out / "deck-info.json").read_text(encoding="utf-8"))["outputs"]["format"] == ["pptx", "pdf", "png", "thumbs"]
     assert H.main(["deck", "--script", str(script), "--out", str(out), "--no-fill", "--format", "gif"]) == 2
 
 
@@ -145,14 +145,14 @@ def case_assemble():
         rc = H.main(["deck", "--script", str(script), "--out", str(out), "--no-odp", "--no-fill", "--theme", theme,
                      "--format", "pptx,pdf", "--parts", str(out / "parts.json")])
         assert rc == 0, rc
-        parts = json.loads((out / "parts.json").read_text())
+        parts = json.loads((out / "parts.json").read_text(encoding="utf-8"))
         assert len(parts["slides"]) == 4 and PDF.page_count(out / "deck.pdf") == 4
         outs[theme] = (out, parts)
     (a, pa), (b, pb) = outs["default"], outs["forest"]
     picks = [(a, pa, 1), (b, pb, 2), (a, pa, 3)]
     man = work / "manifest.json"
     man.write_text(json.dumps({"title": "混ぜた資料", "size": pa["size"], "slides": [p["slides"][n - 1] for _, p, n in picks],
-                               "pdf": [[str(d / "deck.pdf"), n] for d, _, n in picks]}, ensure_ascii=False))
+                               "pdf": [[str(d / "deck.pdf"), n] for d, _, n in picks]}, ensure_ascii=False), encoding="utf-8")
     mixed = work / "mixed"
     assert H.main(["assemble", "--manifest", str(man), "--out", str(mixed)]) == 0
     assert PDF.page_count(mixed / "deck.pdf") == 3
@@ -175,9 +175,9 @@ def case_assemble():
         pass
     else:
         raise AssertionError("相互参照のストリームを読んだ")
-    man.write_text(json.dumps({"slides": [], "pdf": [[str(bad), 1]]}))
+    man.write_text(json.dumps({"slides": [], "pdf": [[str(bad), 1]]}), encoding="utf-8")
     assert H.main(["assemble", "--manifest", str(man), "--out", str(work / "bad")]) == 1
-    man.write_text("{")
+    man.write_text("{", encoding="utf-8")
     assert H.main(["assemble", "--manifest", str(man), "--out", str(work / "bad")]) == 2
 
 

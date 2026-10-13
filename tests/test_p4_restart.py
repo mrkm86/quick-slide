@@ -55,11 +55,11 @@ class RestartProcessTests(unittest.TestCase):
 
     def cli(self, *args: str) -> dict:
         r = subprocess.run([sys.executable, "-m", "quick_slide.server", "--home", str(self.home), *args],
-                           env=self.env, capture_output=True, text=True, timeout=60, cwd=str(REPO))
+                           env=self.env, capture_output=True, text=True, timeout=60, cwd=str(REPO), encoding="utf-8")
         return json.loads(r.stdout.strip().splitlines()[-1])
 
     def record(self) -> dict:
-        return json.loads((self.home / "runtime" / "server.json").read_text())
+        return json.loads((self.home / "runtime" / "server.json").read_text(encoding="utf-8"))
 
     def http(self, method: str, path: str, body=None, *, port: int | None = None, token: str | None = None,
              session: bool = True):
@@ -94,7 +94,7 @@ class RestartProcessTests(unittest.TestCase):
                 return got
             time.sleep(0.1)
         out = (self.home / "runtime" / "server.out")
-        self.fail(f"{seconds:.0f} 秒待っても {what}\n" + (out.read_text()[-3000:] if out.exists() else ""))
+        self.fail(f"{seconds:.0f} 秒待っても {what}\n" + (out.read_text(encoding="utf-8")[-3000:] if out.exists() else ""))
 
     def new_instance(self, port: int, old: str, seconds: float = 60.0) -> dict:
         return self.wait("新しいインスタンスが起きない",

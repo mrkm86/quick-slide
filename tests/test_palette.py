@@ -173,7 +173,7 @@ def _engine_palette(theme: dict) -> dict:
     code = ("import json, sys; sys.path.insert(0, sys.argv[1]); import deck; "
             "print(json.dumps(deck.palette(json.loads(sys.argv[2]))))")
     out = subprocess.run([sys.executable, "-B", "-c", code, str(SKILLS_DIR / "html-slide" / "scripts"), json.dumps(theme)],
-                         capture_output=True, text=True, check=True)
+                         capture_output=True, text=True, check=True, encoding="utf-8")
     return json.loads(out.stdout)
 
 

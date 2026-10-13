@@ -26,7 +26,7 @@ class SkillStartTests(unittest.TestCase):
         self.tmp = temp_dir(self, "quick-slide-skill-")
         self.home = self.tmp / "home"
         (self.home / "config").mkdir(parents=True)
-        (self.home / "config" / "settings.json").write_text(json.dumps({"server": {"port": 0}}))
+        (self.home / "config" / "settings.json").write_text(json.dumps({"server": {"port": 0}}), encoding="utf-8")
         self.manuscript = self.tmp / "manuscript.md"
         self.manuscript.write_text(MANUSCRIPT, encoding="utf-8")
         env = {k: v for k, v in os.environ.items() if k not in CONVERSATION_VARS}
@@ -48,7 +48,7 @@ class SkillStartTests(unittest.TestCase):
 
     def start(self, *args: str, env: dict | None = None) -> tuple[int, dict, str, str]:
         r = subprocess.run([sys.executable, str(SCRIPT), *args], env=env or self.env, capture_output=True, text=True,
-                           timeout=120, cwd=str(self.tmp))
+                           timeout=120, cwd=str(self.tmp), encoding="utf-8")
         lines = r.stdout.strip().splitlines()
         return r.returncode, json.loads(lines[-1]) if lines else {}, r.stdout, r.stderr
 
@@ -64,7 +64,7 @@ class SkillStartTests(unittest.TestCase):
         self.assertEqual(out["payload"]["deck_attributes"], {"mode": "pitch", "style": "standard", "image_look": "illustration"})
         self.assertNotIn("11.5", stdout + stderr, "原稿の本文を出さない")
         self.assertFalse(out["server"]["already_running"])
-        record = json.loads((self.home / "runtime" / "server.json").read_text())
+        record = json.loads((self.home / "runtime" / "server.json").read_text(encoding="utf-8"))
         deadline = time.monotonic() + 120
         view = None
         while time.monotonic() < deadline:

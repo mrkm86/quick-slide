@@ -25,27 +25,27 @@ class SeedDuplicateTests(unittest.TestCase):
             run = root.run_dir("d1", "r1")
             (run / "pictures").mkdir(parents=True)
             (run / "pictures" / "gen-k1.png").write_bytes(b"png")
-            (run / "pictures" / "gen-k1.json").write_text("{}")
-            (run / "deck-info.json").write_text(json.dumps({"cache": str(old_area)}))
-            (run / "pictures" / "index.json").write_text(json.dumps({"cache": str(old_area), "pages": {}}))
+            (run / "pictures" / "gen-k1.json").write_text("{}", encoding="utf-8")
+            (run / "deck-info.json").write_text(json.dumps({"cache": str(old_area)}), encoding="utf-8")
+            (run / "pictures" / "index.json").write_text(json.dumps({"cache": str(old_area), "pages": {}}), encoding="utf-8")
             new_root = tmp / "new-root"
             self.assertEqual(caches.seed_duplicate(root, "d1", {"HTML_SLIDE_CACHE": str(new_root)}), 1)
             areas = [d for d in new_root.iterdir() if d.is_dir()]
             self.assertEqual(len(areas), 1, "いまの根っこ（替えた先）に区画を作る")
             area = areas[0]
-            self.assertEqual(json.loads((area / "owner.json").read_text())["owner"], str(root.scripts_dir("d1").resolve()))
+            self.assertEqual(json.loads((area / "owner.json").read_text(encoding="utf-8"))["owner"], str(root.scripts_dir("d1").resolve()))
             self.assertEqual((area / "gen-k1.png").stat().st_ino, (run / "pictures" / "gen-k1.png").stat().st_ino, "絵は張る")
             self.assertNotEqual((area / "gen-k1.json").stat().st_ino, (run / "pictures" / "gen-k1.json").stat().st_ino,
                                 "添えた JSON は写す")
-            self.assertEqual(json.loads((run / "deck-info.json").read_text())["cache"], str(area))
-            self.assertEqual(json.loads((run / "pictures" / "index.json").read_text())["cache"], str(area))
+            self.assertEqual(json.loads((run / "deck-info.json").read_text(encoding="utf-8"))["cache"], str(area))
+            self.assertEqual(json.loads((run / "pictures" / "index.json").read_text(encoding="utf-8"))["cache"], str(area))
             self.assertEqual(list(old_area.iterdir()), [], "元の区画には触らない")
 
     def _run_with_picture(self, root: DataRoot, old_area: Path) -> Path:
         run = root.run_dir("d1", "r1")
         (run / "pictures").mkdir(parents=True)
         (run / "pictures" / "gen-k1.png").write_bytes(b"png")
-        (run / "deck-info.json").write_text(json.dumps({"cache": str(old_area)}))
+        (run / "deck-info.json").write_text(json.dumps({"cache": str(old_area)}), encoding="utf-8")
         return run
 
     def test_relative_root_is_from_the_work_folder_and_config_comes_from_the_child_env(self) -> None:
@@ -57,7 +57,7 @@ class SeedDuplicateTests(unittest.TestCase):
             self.assertTrue(any((root.work_dir("d1") / "rel-cache").glob("scripts-*/gen-k1.png")),
                             "相対の指定はエンジンが動く work/ から")
             cfg = tmp / "cfg.yaml"
-            cfg.write_text(f"cache_dir: {tmp / 'from-config'}\n")
+            cfg.write_text(f"cache_dir: {tmp / 'from-config'}\n", encoding="utf-8")
             root2 = DataRoot.resolve(tmp / "home2").ensure()
             self._run_with_picture(root2, tmp / "old" / "b")
             caches.seed_duplicate(root2, "d1", {"HTML_SLIDE_CONFIG": str(cfg), "HTML_SLIDE_CACHE": ""})
@@ -77,11 +77,11 @@ class SeedDuplicateTests(unittest.TestCase):
                     caches.seed_duplicate(root, "d1", {"HTML_SLIDE_CACHE": str(locked)})
             finally:
                 locked.chmod(0o700)
-            cache = json.loads((run / "deck-info.json").read_text()).get("cache")
+            cache = json.loads((run / "deck-info.json").read_text(encoding="utf-8")).get("cache")
             self.assertNotEqual(cache, str(old_area), "張る前に記録を複製の区画へ書き換える")
-            (run / "deck-info.json").write_text(json.dumps({"cache": str(old_area)}))
+            (run / "deck-info.json").write_text(json.dumps({"cache": str(old_area)}), encoding="utf-8")
             caches.forget_duplicate_cache(root, "d1")
-            self.assertNotIn("cache", json.loads((run / "deck-info.json").read_text()), "元の区画を指す記録は外す")
+            self.assertNotIn("cache", json.loads((run / "deck-info.json").read_text(encoding="utf-8")), "元の区画を指す記録は外す")
 
 
 if __name__ == "__main__":

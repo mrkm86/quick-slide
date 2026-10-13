@@ -278,7 +278,7 @@ def case_theme():
     h0, h1 = deck.KC.to_oklch("#9ec5ff")[2], deck.KC.to_oklch(p["primary-text"])[2]
     assert abs((h0 - h1 + 180) % 360 - 180) < 10, f"色相が動いた: {h0} → {h1}"
     assert all(p[f"accent{r}"] == p[f"primary{r}"] for r in ("", "-text", "-strong", "-soft", "-mark", "-decor")), "差し色を書かないのに primary と違う"
-    h = pathlib.Path(html).read_text()
+    h = pathlib.Path(html).read_text(encoding="utf-8")
     assert "var(--primary-text)" in h and f"--primary-text: {p['primary-text']}" in h and f"--primary-mark: {p['primary-mark']}" in h, "色の役が CSS 変数に入っていない"
     assert deck.contrast_problems(p) == [], deck.contrast_problems(p)
     # 地と文字が近いテーマは今までどおり止める（強調色だけが救われる）
@@ -577,7 +577,7 @@ def case_image_default_path():
     path, info = _build_in(d, sc)
     assert (path.parent / "assets" / "s02-image.png").is_file() and (path.parent / "assets" / "s01-member2.png").is_file()
     slots = {(x["slide"], x["slot"]): x for x in info["images"]}
-    assert slots[(2, "image")]["exists"] and slots[(2, "image")]["path"].endswith("images/s02-image.png")
+    assert slots[(2, "image")]["exists"] and pathlib.PurePath(slots[(2, "image")]["path"]).parts[-2:] == ("images", "s02-image.png")
 
 
 def case_image_missing_placeholder():
@@ -589,11 +589,11 @@ def case_image_missing_placeholder():
         _build_in(d, sc)
         raise AssertionError("無い画像が通った")
     except T.DeckError as e:
-        assert "/gen-" in str(e) and os.environ["HTML_SLIDE_CACHE"] in str(e) and "fill" in str(e), str(e)
+        assert os.sep + "gen-" in str(e) and os.environ["HTML_SLIDE_CACHE"] in str(e) and "fill" in str(e), str(e)
     path, info = _build_in(d, sc, placeholder=True)
     html = path.read_text(encoding="utf-8")
     assert 'class="img-ph"' in html and "ここに画像: 夕方の商店街" in html
-    assert any("仮の枠" in w and "/gen-" in w for w in info["warnings"]), info["warnings"]
+    assert any("仮の枠" in w and os.sep + "gen-" in w for w in info["warnings"]), info["warnings"]
     assert info["images"][0]["exists"] is False and info["images"][0]["origin"] == "generated"
     _build_in(d, sc, placeholder="generated")                       # 生成の枠は描く前でも通る
     brought = one({"type": "photo", "headline": "h", "image": {"path": "images/nai.png", "prompt": "写真"}})
@@ -1330,13 +1330,13 @@ def case_style_look():
         except T.DeckError as e:
             assert want in str(e), e
     html, _ = build(sc, "look-visual", style="visual")
-    h = pathlib.Path(html).read_text()
+    h = pathlib.Path(html).read_text(encoding="utf-8")
     for want in (".card, .cmp, .kpi, .callout { background-color: var(--bg); border: 2px solid var(--rule); }", ".band { left: 0; width: 1920px", 'section[data-type="statement"] { background-color: var(--primary-strong)',
                  ".card.hl, .cmp.hl, .kpi.hl { background-color: var(--accent-strong)", "border-radius: 32px",
                  ".kpi.hl .kpi-value, .kpi.hl .kpi-unit { color: var(--on-accent); }"):
         assert want in h, f"visual の CSS に {want!r} が無い"
     html, _ = build(sc, "look-standard", style="standard")
-    assert "box-shadow" not in pathlib.Path(html).read_text().split("{{LOOK}}")[0].split("/* スタイルの見た目の調子")[1], "standard に look の CSS が入った"
+    assert "box-shadow" not in pathlib.Path(html).read_text(encoding="utf-8").split("{{LOOK}}")[0].split("/* スタイルの見た目の調子")[1], "standard に look の CSS が入った"
     # look.surface: white（白に影）は退役。受け付けるが、line（白に枠線）と同じに描き、影は出さない（ADR 0020）
     assert DS.look_css({"surface": "white"}) == DS.look_css({"surface": "line"}) and "shadow" not in DS.look_css({"surface": "white"}), "white が line と同じでない"
     assert DS.look_css({}) == "", "look が空なら CSS も空"
@@ -1360,7 +1360,7 @@ def case_theme_primary_accent():
     sc = {"title": "t", "slides": [
         {"type": "cards", "headline": "会議を*半分*にする", "items": [{"title": "a"}, {"title": "b", "accent": True}]}]}
     html, _ = build(sc, "theme-two", theme=str(two), style="visual")
-    h = pathlib.Path(html).read_text()
+    h = pathlib.Path(html).read_text(encoding="utf-8")
     for want in (f"--primary: {p['primary']}", f"--accent: {p['accent']}", "em { font-style: normal; color: var(--accent-text); }",
                  "background-color: var(--primary-decor); }", ".card.hl, .cmp.hl, .kpi.hl { background-color: var(--accent-strong)"):
         assert want in h, f"{want!r} が無い"
@@ -1405,7 +1405,7 @@ def case_logo_geometry():
     assert geo["trim"] == [113, 132, 483, 232] and (geo["w"], geo["h"]) == (163, 44), geo
     for bad, word in ((TMP / "nope.png", "無い"), (TMP / "padded.json", "PNG か JPEG")):
         if word != "無い":
-            bad.write_text("{}")
+            bad.write_text("{}", encoding="utf-8")
         try:
             deck.load_logo(bad)
             raise AssertionError(f"{bad.name} が通った")
@@ -1425,7 +1425,7 @@ def case_logo_pages():
     th = deck.DS.look_theme(deck.load_theme(deck.THEMES / "default.yaml"), deck.DS.load("visual")["look"])
     assert pages[24]["plate"] == deck.palette(th)["primary-strong"], f"主張の全面の地の色になっていない: {pages[21]}"
     assert pages[2]["plate"] == th["background"], pages[2]
-    h = pathlib.Path(html).read_text()
+    h = pathlib.Path(html).read_text(encoding="utf-8")
     secs = h.split("<section data-slide")[1:]
     assert 'class="logo"' not in secs[0] and 'class="logo"' in secs[1]
     assert re.search(r'data-name="ページ番号">2<', secs[1]), "ページ番号が中央下（動かさない）でない"
@@ -1451,7 +1451,7 @@ def case_logo_positions():
     assert info["logo"]["position"] == "bottom-left"
     assert pages[2]["corner"] == "bottom-left" and pages[22]["corner"] == "bottom-right" and pages[15].get("off"), \
         f"左下 → 右下 → 置かない になっていない: {pages[2]} {pages[22]} {pages[15]}（22 は左半分が絵）"
-    secs = pathlib.Path(html).read_text().split("<section data-slide")[1:]
+    secs = pathlib.Path(html).read_text(encoding="utf-8").split("<section data-slide")[1:]
     assert 'data-keep="logo-left"' in secs[1] and 'data-keep="logo-plate-left"' in secs[1]
     assert re.search(r'class="footer"[^>]*style="left: 477px; width: 435px;"', secs[1]), "下の文字がロゴの右に寄っていない"
     assert re.search(r'class="pageno"[^>]*>2<', secs[1]) and 'data-name="ページ番号" style=' not in secs[1], "ページ番号が動いた"
@@ -1460,7 +1460,7 @@ def case_logo_positions():
     pages = {pg["no"]: pg for pg in info["logo"]["pages"]}
     assert pages[2]["corner"] == "top-right" and all(pages[n].get("off") for n in (1, 9, 15)), \
         f"右上 → 右下 → 置かない になっていない（表紙・章扉は右半分が絵）: {[pages[n] for n in (1, 2, 9, 15)]}"
-    secs = pathlib.Path(html).read_text().split("<section data-slide")[1:]
+    secs = pathlib.Path(html).read_text(encoding="utf-8").split("<section data-slide")[1:]
     assert 'data-keep="logo-top"' in secs[1] and "top: 24px;" in secs[1], "右上の位置か部品名が違う"
     assert 'data-name="ページ番号" style=' not in secs[1] and 'style="width: 792px;"' in secs[1] and "left: 477px" not in secs[1], \
         "右上なのに下の文字が動いた（中央下の番号の手前まで、のまま）"
@@ -1473,14 +1473,14 @@ def case_logo_positions():
 
 def case_page_numbers_default_off():
     """ページ番号は既定でオフ（page_numbers を書かなければ出さない）・出すときは中央下（2026-10-06）。"""
-    data = json.loads(SAMPLE.read_text())
+    data = json.loads(SAMPLE.read_text(encoding="utf-8"))
     data.pop("page_numbers", None)
     p = TMP / "no-numbers.json"
-    p.write_text(json.dumps(data, ensure_ascii=False))
+    p.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     html, _ = deck.build_html(p, TMP / "no-numbers", placeholder=True)
-    h = pathlib.Path(html).read_text()
+    h = pathlib.Path(html).read_text(encoding="utf-8")
     assert 'class="pageno"' not in h and 'class="footer" data-keep="footer" data-name="下の文字">' in h, "既定でページ番号が出た"
-    css = (deck.TEMPLATE).read_text()
+    css = (deck.TEMPLATE).read_text(encoding="utf-8")
     assert ".pageno { left: 896px; width: 128px; text-align: center; }" in css, "ページ番号が中央下でない"
 
 
@@ -1490,11 +1490,11 @@ def case_watermark():
     import render as R
     from pptx import Presentation
     html, info = deck.build_html(SAMPLE, TMP / "wm", placeholder=True, watermark="example.com")
-    h = pathlib.Path(html).read_text()
+    h = pathlib.Path(html).read_text(encoding="utf-8")
     n = len(h.split("<section data-slide")) - 1
     assert h.count('<div class="watermark" data-keep="watermark" data-name="透かし">example.com</div>') == n, "全ページに透かしが無い"
     assert info["watermark"] == "example.com"
-    css = deck.TEMPLATE.read_text()
+    css = deck.TEMPLATE.read_text(encoding="utf-8")
     assert (f"top: {deck.WATERMARK_TOP}px;" in css and f"font-size: {deck.WATERMARK_PX}px;" in css and "color: var(--faint);" in css), \
         "templates/deck.html の .watermark が deck.py の数字とずれた"
     assert deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))["faint"] == deck.WATERMARK_COLOR and deck.ratio(deck.WATERMARK_COLOR, "#ffffff") >= 4.5, "透かしの色は白の地で 4.5:1（Gray-536）"
@@ -1509,7 +1509,7 @@ def case_watermark():
         mid = (sh[0].left + sh[0].width // 2) / 6350
         assert abs(mid - 960) < 2 and sh[0].top / 6350 > 1040, f"{i}枚目の透かしが中央下でない: {mid} {sh[0].top / 6350}"
     html, info = deck.build_html(SAMPLE, TMP / "wm-off", placeholder=True)
-    assert 'class="watermark"' not in pathlib.Path(html).read_text() and "watermark" not in info, "付けていないのに透かしが出た"
+    assert 'class="watermark"' not in pathlib.Path(html).read_text(encoding="utf-8") and "watermark" not in info, "付けていないのに透かしが出た"
     try:
         deck.build_html(SAMPLE, TMP / "wm-nl", placeholder=True, watermark="a\nb")
         raise AssertionError("改行のある透かしが通った")

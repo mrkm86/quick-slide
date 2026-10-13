@@ -384,7 +384,7 @@ def fit_logo_plates(html_path, info) -> None:
     with tempfile.TemporaryDirectory(prefix="html-slide-logo-") as tmp:
         r = subprocess.run([node, str(pathlib.Path(__file__).with_name("logo_ground.mjs")), str(html_path), tmp,
                             str(LOGO_RING), *(",".join(map(str, b)) for b in boxes)],
-                           capture_output=True, text=True, timeout=600, env=B.child_env())
+                           capture_output=True, text=True, timeout=600, env=B.child_env(), encoding="utf-8")
         if r.returncode != 0:
             raise DeckError(f"ロゴの置き場を調べられなかった: {r.stderr.strip()[:300]}")
         hits = json.loads(r.stdout.strip().splitlines()[-1])["pages"]
@@ -646,4 +646,6 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8")
     sys.exit(main())

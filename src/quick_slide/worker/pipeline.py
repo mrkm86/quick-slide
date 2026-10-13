@@ -418,7 +418,7 @@ def _assemble(ctx: Context, engine: Engine, run_dir: Path, pages: list[dict[str,
     cmd = engine.assemble_command(ctx.tools.python, ctx.tools.skills_dir, manifest, cmd_dir)
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=ASSEMBLE_TIMEOUT_SECONDS,
-                           env=child_env(home=ctx.root.root, extra=ctx.tools.extra_env), cwd=str(run_dir))
+                           env=child_env(home=ctx.root.root, extra=ctx.tools.extra_env), cwd=str(run_dir), encoding="utf-8")
         ok = r.returncode == 0 and (cmd_dir / "deck.pptx").is_file() and (cmd_dir / "deck.pdf").is_file()
         if not ok:
             log.warning("書き出しを部品から組めませんでした（rc=%s）: %s", r.returncode, (r.stderr or "").strip()[:300])

@@ -56,7 +56,7 @@ def odp_effects(pptx) -> list[int] | None:
     with tempfile.TemporaryDirectory(prefix="html-slide-odp-") as tmp:
         # 別の LibreOffice が開いていてもぶつからないよう、使い捨てのプロファイルで動かす
         r = subprocess.run([soffice, f"-env:UserInstallation=file://{tmp}/profile", "--headless", "--convert-to", "odp",
-                            "--outdir", tmp, str(pptx)], capture_output=True, text=True, timeout=300)
+                            "--outdir", tmp, str(pptx)], capture_output=True, text=True, timeout=300, encoding="utf-8")
         odp = Path(tmp) / (Path(pptx).stem + ".odp")
         if not odp.exists():
             raise RuntimeError(f"soffice が ODP を作れない: {r.stderr.strip()[-300:]}")
@@ -69,7 +69,7 @@ def find_report(pptx: Path) -> Path | None:
     for p in (pptx.parent / "build.json", pptx.with_suffix(".build.json")):
         if p.exists():
             try:
-                d = json.loads(p.read_text())
+                d = json.loads(p.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 continue
             if d.get("renderer") == "html-slide" and Path(d.get("pptx", "")).name == pptx.name:
@@ -85,7 +85,7 @@ def verify(pptx, odp: bool = False, report=None) -> dict:
     res = {"slides": slides, "ok": all(s["ok"] for s in slides), "odp": None}
     if odp:
         rp = Path(report) if report else find_report(pptx)
-        rep = json.loads(rp.read_text()) if rp else None
+        rep = json.loads(rp.read_text(encoding="utf-8")) if rp else None
         counts = odp_effects(pptx)
         if counts is None:
             res["odp"] = {"skipped": "soffice が無い"}
@@ -128,4 +128,6 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8")
     sys.exit(main())

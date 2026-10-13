@@ -89,7 +89,7 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertTrue(calls[0]["has_contract"] and calls[0]["has_manuscript"] and not calls[0]["has_pitch_contract"])
         self.assertEqual(calls[0]["keys"], [])
-        self.assertTrue(calls[0]["cwd"].endswith(f"runs/{run['id']}/writer/round-1"))
+        self.assertEqual(Path(calls[0]["cwd"]).parts[-4:], ("runs", run["id"], "writer", "round-1"))
         with fx.server.store_lock:
             script = fx.store.script(run["script_id"])
             self.assertEqual((script["version"], script["check_rc"], script["written_by"], script["writer_backend"]),
@@ -214,7 +214,7 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(rec["settings"]["writer"], "claude")
         self.assertEqual((rec["settings"]["style"], rec["settings"]["image_look"]), ("visual", "photo"))
         # ブランドから作ったテーマの YAML は回の控え（settings/theme.yaml）に残り、エンジンにはそのファイルを渡す（P4）
-        self.assertTrue(rec["settings"]["theme"].endswith("/settings/theme.yaml"), rec["settings"]["theme"])
+        self.assertEqual(Path(rec["settings"]["theme"]).parts[-2:], ("settings", "theme.yaml"), rec["settings"]["theme"])
         self.assertEqual(rec["look"]["theme_file"], rec["settings"]["theme"])
         self.assertEqual(rec["look"]["theme"], {"background": "#FFFFFF", "ink": "#333333", "primary": "#0DB4F2"})
         with fx.server.store_lock:

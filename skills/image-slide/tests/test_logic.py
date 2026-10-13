@@ -61,7 +61,7 @@ def fake_home(root: pathlib.Path, age_days=1.0, left_days=5.0) -> pathlib.Path:
     (home / "auth.json").write_text(json.dumps({
         "auth_mode": "chatgpt", "OPENAI_API_KEY": None, "last_refresh": last,
         "tokens": {"id_token": "x", "access_token": fake_jwt(time.time() + left_days * 86400), "refresh_token": "r",
-                   "account_id": "a"}}))
+                   "account_id": "a"}}), encoding="utf-8")
     return home
 
 
@@ -73,7 +73,7 @@ def run(args, root: pathlib.Path, mode="ok", extra_env=None, home=None):
            "IMAGE_SLIDE_CONFIG": str(root / "no-config.yaml"), "OPENAI_API_KEY": "sk-test-should-not-pass",
            "IMAGE_SLIDE_CACHE": str(root / "cache"), "QUICK_SLIDE_HOME": str(root / "home"),
            **(extra_env or {})}
-    r = subprocess.run([sys.executable, str(ENTRY), *args], capture_output=True, text=True, env=env, timeout=300)
+    r = subprocess.run([sys.executable, str(ENTRY), *args], capture_output=True, text=True, env=env, timeout=300, encoding="utf-8")
     calls = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(log.glob("*.json"))] if log.exists() else []
     return r.returncode, r.stdout, r.stderr, calls
 
@@ -86,7 +86,7 @@ def rawdir(root: pathlib.Path, out: pathlib.Path) -> pathlib.Path:
 
 def write_script(root: pathlib.Path, data: dict) -> pathlib.Path:
     p = root / "deck.json"
-    p.write_text(json.dumps(data, ensure_ascii=False))
+    p.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     return p
 
 
@@ -109,8 +109,8 @@ def t_same_types_as_html_slide():
         check(chrome == hchrome, f"{k} の帯の有無がずれた")
     check(set(P.TYPE_NOTES) == set(S.TYPES), "中身の形の言葉が全部の型に無い")
     for name in ("default", "forest", "warm"):
-        a = (SKILL / "themes" / f"{name}.yaml").read_text().split("\n")
-        b = (HTML_SLIDE / "themes" / f"{name}.yaml").read_text().split("\n")
+        a = (SKILL / "themes" / f"{name}.yaml").read_text(encoding="utf-8").split("\n")
+        b = (HTML_SLIDE / "themes" / f"{name}.yaml").read_text(encoding="utf-8").split("\n")
         va = [x for x in a if x and not x.startswith("#")]
         vb = [x for x in b if x and not x.startswith("#")]
         check(va == vb, f"テーマ {name} の値が html-slide とずれた")
@@ -123,7 +123,7 @@ def t_sample_passes_both():
     check(len(list((root / "p").glob("slide-*.txt"))) == 5, "描く指示が5枚ぶん出ていない")
     if (HTML_SLIDE / "scripts" / "html_slide.py").is_file():
         r = subprocess.run([sys.executable, str(HTML_SLIDE / "scripts" / "html_slide.py"), "check", "--script", str(SAMPLE)],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8")
         check(r.returncode == 0, f"同じ台本が html-slide で通らない: {r.stderr}")
 
 
@@ -395,14 +395,14 @@ def t_logo_deck():
     rc, so, se, _ = run(["deck", "--script", str(SAMPLE), "--style", "standard", "--out", str(out), "--no-pdf", "--retries", "0",
                          "--logo", str(root / "logo.png")], root, mode="band_first")
     check(rc == 0, se)
-    b = json.loads((out / "build.json").read_text())
+    b = json.loads((out / "build.json").read_text(encoding="utf-8"))
     pages = b["logo"]["pages"]
     # 表紙は帯を頼まない（全面の絵を下で途切れさせない）→ 角がふさがっているので置かない。本文は帯の板の上の右下
     check(pages[0] == {"no": 1, "off": True}, f"表紙: {pages[0]}")
     check(all(p.get("corner") == "bottom-right" and p["plate"] is None for p in pages[1:]), f"本文: {pages[1:]}")
     check((b["logo"]["w"], b["logo"]["h"]) == (329, 44), f"329×44 に収めていない: {b['logo']}")
-    check("下端から" not in (out / "prompts" / "slide-01.txt").read_text(), "--logo で表紙にも帯を頼んだ")
-    check("下端から" in (out / "prompts" / "slide-02.txt").read_text(), "本文に帯を頼んでいない")
+    check("下端から" not in (out / "prompts" / "slide-01.txt").read_text(encoding="utf-8"), "--logo で表紙にも帯を頼んだ")
+    check("下端から" in (out / "prompts" / "slide-02.txt").read_text(encoding="utf-8"), "本文に帯を頼んでいない")
     check("ロゴは置かない" in se, "置かなかったことを知らせていない")
     prs = Presentation(str(out / "deck.pptx"))
     names = [[s.name for s in sl.shapes] for sl in prs.slides]
@@ -410,7 +410,7 @@ def t_logo_deck():
     # 白い絵: 表紙も右下に、白の地つきで置く。地とロゴは別の部品
     out2 = root / "out2"
     rc, so, se, _ = run(["deck", "--script", str(SAMPLE), "--style", "standard", "--out", str(out2), "--no-pdf", "--logo", str(root / "logo.png")], root)
-    b = json.loads((out2 / "build.json").read_text())
+    b = json.loads((out2 / "build.json").read_text(encoding="utf-8"))
     check(rc == 0 and all(p.get("corner") == "bottom-right" and p["plate"] == "#ffffff" for p in b["logo"]["pages"]), f"{b.get('logo')}")
     sl = Presentation(str(out2 / "deck.pptx")).slides[1]
     shapes = {s.name: s for s in sl.shapes}
@@ -423,7 +423,7 @@ def t_logo_deck():
     out3 = root / "out3"
     rc, so, se, _ = run(["deck", "--script", str(SAMPLE), "--style", "standard", "--out", str(out3), "--no-pdf", "--logo", str(root / "logo.png"),
                          "--logo-position", "bottom-left"], root)
-    b = json.loads((out3 / "build.json").read_text())
+    b = json.loads((out3 / "build.json").read_text(encoding="utf-8"))
     check(rc == 0 and b["logo"]["position"] == "bottom-left" and all(p.get("corner") == "bottom-left" for p in b["logo"]["pages"]), f"{b.get('logo')} {se}")
     shapes = {s.name: s for s in Presentation(str(out3 / "deck.pptx")).slides[1].shapes}
     check(shapes["フッタ"].left > shapes["ロゴ"].left + shapes["ロゴ"].width, "フッタがロゴの右にない")
@@ -445,10 +445,10 @@ def t_visual_bleed():
     rc, so, se, calls = run(["deck", "--script", str(SAMPLE), "--out", str(out), "--no-pdf", "--logo", str(root / "logo.png")],
                             root, mode="band_first")
     check(rc == 0, se)
-    t = (out / "prompts" / "slide-02.txt").read_text()
+    t = (out / "prompts" / "slide-02.txt").read_text(encoding="utf-8")
     check("全面に使ってよい" in t and "1色の無地にする" not in t, "visual の本文に帯を頼んだ")
     check(not any(c["n"] == 2 for c in _execs(calls)), "全面のページを帯の検査で描き直した")
-    b = json.loads((out / "build.json").read_text())
+    b = json.loads((out / "build.json").read_text(encoding="utf-8"))
     check(not any(s["plate"] for s in b["slides"]), "全面のページに帯の板を敷いた")
     check(all(s["band"] is None for s in b["slides"]), "全面のページを帯として記録した")
     st = P.build(S.load(SAMPLE), S.load(SAMPLE)["slides"][1], S.load_theme(None, SAMPLE.parent, {}),
@@ -492,7 +492,7 @@ def t_watermark():
     rc, so, se, _ = run(["deck", "--script", str(SAMPLE), "--style", "standard", "--out", str(out), "--no-pdf",
                          "--logo", str(root / "logo.png"), "--watermark", "example.com"], root)
     check(rc == 0, se)
-    b = json.loads((out / "build.json").read_text())
+    b = json.loads((out / "build.json").read_text(encoding="utf-8"))
     check(b.get("watermark") == "example.com", f"build.json に透かしが無い: {b.get('watermark')}")
     n = len(b["slides"])
     for no in range(1, n + 1):
@@ -512,21 +512,21 @@ def t_watermark():
     tops = [round(next(sh for sh in sl.shapes if sh.name == "ロゴ").top / 6350) for sl in prs.slides]
     check(tops[0] == round(L.LOGO_MID_Y - 22) and tops[1] == round(L.ROW_MID_RAISED - 22),
           f"表紙（下の文字の行が無い）のロゴまで上げた・本文を上げていない: {tops}")
-    check("透かし「example.com」" in (out / "inspect.md").read_text(), "inspect.md に透かしが無い")
+    check("透かし「example.com」" in (out / "inspect.md").read_text(encoding="utf-8"), "inspect.md に透かしが無い")
     # 付けなくても行の高さは同じ（フッタ・番号があるので上がる）・透かしは出ない
     out2 = root / "out2"
     rc, so, se, _ = run(["deck", "--script", str(SAMPLE), "--style", "standard", "--out", str(out2), "--no-pdf", "--logo", str(root / "logo.png")], root)
-    b2 = json.loads((out2 / "build.json").read_text())
+    b2 = json.loads((out2 / "build.json").read_text(encoding="utf-8"))
     check(rc == 0 and b2["logo"]["y"] == b["logo"]["y"] and "watermark" not in b2, f"透かしの有無で行が動いた: {b2.get('logo')}")
     check(marks(Image.open(out2 / "slides" / "slide-02.png"))[0] == 0, "透かしなしで透かしが出た")
     # フッタも番号も無い資料（週報のポスターなど）は、ロゴだけなので帯の中心のまま
-    data = json.loads(SAMPLE.read_text())
+    data = json.loads(SAMPLE.read_text(encoding="utf-8"))
     data.pop("footer", None)
     data["page_numbers"] = False
     out3 = root / "out3"
     rc, so, se, _ = run(["deck", "--script", str(write_script(root, data)), "--style", "standard", "--out", str(out3), "--no-pdf",
                          "--logo", str(root / "logo.png"), "--watermark", "example.com"], root)
-    b3 = json.loads((out3 / "build.json").read_text())
+    b3 = json.loads((out3 / "build.json").read_text(encoding="utf-8"))
     tops = [round(next(sh for sh in sl.shapes if sh.name == "ロゴ").top / 6350) for sl in Presentation(str(out3 / "deck.pptx")).slides]
     check(rc == 0 and b3["logo"]["y"] == round(L.LOGO_MID_Y - 22) and set(tops) == {round(L.LOGO_MID_Y - 22)},
           f"フッタも番号も無いのにロゴを上げた: {b3.get('logo')} {tops} {se}")
@@ -535,7 +535,7 @@ def t_watermark():
 def t_page_numbers_default_off():
     """ページ番号は既定でオフ（台本に page_numbers: true と書いたときだけ・html-slide と同じ）。"""
     root = tmpdir()
-    data = json.loads(SAMPLE.read_text())
+    data = json.loads(SAMPLE.read_text(encoding="utf-8"))
     data.pop("page_numbers", None)
     deck = S.load(write_script(root, data))
     check(deck["page_numbers"] is False, "既定でページ番号が出る")
@@ -585,7 +585,7 @@ def t_deck_parallel():
     for f in ("deck.pptx", "deck.pdf", "build.json", "inspect.md"):
         check((out / f).is_file(), f"{f} が無い")
     check(len(list((out / "slides").glob("slide-*.png"))) == 5, "確認用の PNG が5枚無い")
-    b = json.loads((out / "build.json").read_text())
+    b = json.loads((out / "build.json").read_text(encoding="utf-8"))
     check(b["auth"]["checked"] == 1 and all(s["status"] == "generated" for s in b["slides"]), f"build.json: {b['auth']}")
     check(all(s["normalize"]["op"] == "resize" for s in b["slides"]), "1672x941 が伸縮でそろっていない")
 
@@ -594,7 +594,7 @@ def t_deck_cache_and_redo():
     root = tmpdir()
     home = fake_home(root)
     out = root / "out"
-    data = json.loads(SAMPLE.read_text())
+    data = json.loads(SAMPLE.read_text(encoding="utf-8"))
     p = write_script(root, data)
     rc, _, se, _ = run(["deck", "--script", str(p), "--out", str(out), "--no-pdf"], root, home=home)
     check(rc == 0, se)
@@ -621,7 +621,7 @@ def t_deck_keep():
     root = tmpdir()
     home = fake_home(root)
     out = root / "out"
-    data = json.loads(SAMPLE.read_text())
+    data = json.loads(SAMPLE.read_text(encoding="utf-8"))
     p = write_script(root, data)
     rc, _, se, _ = run(["deck", "--script", str(p), "--out", str(out), "--no-pdf"], root, home=home)
     check(rc == 0, se)
@@ -633,7 +633,7 @@ def t_deck_keep():
     rc, so, se, calls = run(["deck", "--script", str(p), "--out", str(out), "--no-pdf", "--keep", "2"], root, home=home)
     check(rc == 0 and not calls, f"--keep のページを描き直した: {calls}")
     check((area / "slide-02.png").read_bytes() == before, "--keep のページの絵が替わった")
-    b = json.loads((out / "build.json").read_text())
+    b = json.loads((out / "build.json").read_text(encoding="utf-8"))
     check(b["slides"][1].get("kept") is True and b["slides"][1]["status"] == "cached", b["slides"][1])
     rc, so, se, calls = run(["deck", "--script", str(p), "--out", str(out), "--no-pdf", "--keep", "2", "--redo", "2"], root, home=home)
     check(rc == 0 and [c["page"] for c in _execs(calls)] == [2], "--redo が --keep に勝っていない")
@@ -647,14 +647,14 @@ def t_cache_area():
     root = tmpdir()
     home = fake_home(root)
     out = root / "out"
-    p = write_script(root, json.loads(SAMPLE.read_text()))
+    p = write_script(root, json.loads(SAMPLE.read_text(encoding="utf-8")))
     rc, _, se, _ = run(["deck", "--script", str(p), "--out", str(out), "--no-pdf"], root, home=home)
     check(rc == 0, se)
     area = rawdir(root, out)
     check(not (out / "raw").exists() and not (out / "base").exists(), f"出力フォルダに中間物が残った: {sorted(x.name for x in out.iterdir())}")
     check(len(list(area.glob("slide-*.png"))) == 5 and len(list(area.glob("slide-*.json"))) == 5, f"区画に絵と鍵が無い: {list(area.iterdir())}")
-    check(json.loads((area / K.STAMP).read_text())["owner"] == str(out.resolve()), "区画の印に持ち主が無い")
-    check(json.loads((out / "build.json").read_text())["cache"] == str(area), "build.json に区画の場所が無い")
+    check(json.loads((area / K.STAMP).read_text(encoding="utf-8"))["owner"] == str(out.resolve()), "区画の印に持ち主が無い")
+    check(json.loads((out / "build.json").read_text(encoding="utf-8"))["cache"] == str(area), "build.json に区画の場所が無い")
     check(len(list((out / "slides").glob("slide-*.png"))) == 5 and (out / "deck.pptx").is_file(), "ページの画像か PPTX が無い")
     # 前の形: 出力フォルダの raw/ と base/ → raw/ は区画へ移して使い回す・base/ は消す
     (out / "raw" / "history").mkdir(parents=True)
@@ -787,7 +787,7 @@ def t_quick_auth_looks_without_calling_codex():
     check(rc == 4 and "auth.json" in se and calls == [], f"記録が無いのに通った: {se}")
     apikey = root2 / "apikey-home"
     apikey.mkdir()
-    (apikey / "auth.json").write_text(json.dumps({"OPENAI_API_KEY": "sk-x", "tokens": None}))
+    (apikey / "auth.json").write_text(json.dumps({"OPENAI_API_KEY": "sk-x", "tokens": None}), encoding="utf-8")
     rc, so, se, calls = run(["auth", "--quick"], root2, home=apikey)
     check(rc == 4 and "API キー" in se, f"API キーのログインで通った: {se}")
     rc, so, se, calls = run(["auth", "--quick"], root2, extra_env={"IMAGE_SLIDE_CODEX": str(root2 / "no-such-codex")})
@@ -801,7 +801,7 @@ def t_stale_token_refreshes_once():
     check(rc == 0, se)
     ref = [c for c in calls if c["cmd"] == "refresh"]
     check(len(ref) == 1 and ref[0]["home"] == str(home), f"古いトークンの更新が実ホームで1回でない: {ref}")
-    b = json.loads((root / "out" / "build.json").read_text())
+    b = json.loads((root / "out" / "build.json").read_text(encoding="utf-8"))
     check(b["auth"]["refreshed_here"] is True and b["auth"]["hours_left"] > 24, b["auth"])
     # 最後の更新から7日を過ぎても、期限まで十分なら更新させない（codex は期限の5分前まで更新しないので、させても変わらない）
     root2 = tmpdir()
@@ -858,7 +858,7 @@ def t_band_retry_and_plate():
     check("plates=0" in so, so)
     root = tmpdir()
     rc, so, se, calls = run(["deck", "--script", str(SAMPLE), "--style", "standard", "--out", str(root / "out"), "--retries", "0"], root, mode="band_first")
-    b = json.loads((root / "out" / "build.json").read_text())
+    b = json.loads((root / "out" / "build.json").read_text(encoding="utf-8"))
     check(rc == 0 and [s["plate"] for s in b["slides"]] == [False, True, True, True, True], f"板: {[s['plate'] for s in b['slides']]}")
     check("帯が空いていない" in se, "板を敷いたのに警告が無い")
 
@@ -866,7 +866,7 @@ def t_band_retry_and_plate():
 def t_worker_refresh_is_reported():
     root = tmpdir()
     rc, so, se, calls = run(["deck", "--script", str(SAMPLE), "--out", str(root / "out"), "--no-pdf"], root, mode="refresh")
-    b = json.loads((root / "out" / "build.json").read_text())
+    b = json.loads((root / "out" / "build.json").read_text(encoding="utf-8"))
     check(rc == 0 and b["auth"]["worker_refreshed"] == 5 and "トークンが更新された" in se, f"{b['auth']} {se}")
 
 
@@ -880,7 +880,7 @@ def t_pptx_structure():
     check(rc == 0, se)
     prs = Presentation(str(out / "deck.pptx"))
     check(len(prs.slides) == 5 and prs.slide_width == 12192000 and prs.slide_height == 6858000, "16:9 の5枚でない")
-    data = json.loads(SAMPLE.read_text())
+    data = json.loads(SAMPLE.read_text(encoding="utf-8"))
     for i, (slide, spec) in enumerate(zip(prs.slides, data["slides"]), 1):
         names = [s.name for s in slide.shapes]
         pic = slide.shapes[0]
@@ -896,7 +896,7 @@ def t_pptx_structure():
             check(foot.text_frame.text == data["footer"], f"{i}枚目: フッタの文字 {foot.text_frame.text!r}")
         notes = slide.notes_slide.notes_text_frame.text
         check(notes == "\n".join(spec["talk"]), f"{i}枚目: ノートが talk と違う")
-    insp = (out / "inspect.md").read_text()
+    insp = (out / "inspect.md").read_text(encoding="utf-8")
     check("一字一句" in insp and "slide-05.png" in insp, "inspect.md に検品の手がかりが無い")
     check(f"フッタ「{data['footer']}」・ページ番号「2」・ロゴ" in insp, "inspect.md に帯に載せた部品が無い")
 
@@ -945,13 +945,13 @@ def t_failed_redo_keeps_old_pair():
     out = root / "out"
     rc, _, se, _ = run(["deck", "--script", str(SAMPLE), "--style", "standard", "--out", str(out), "--no-pdf"], root, home=home)
     check(rc == 0, se)
-    raw2, meta2 = (rawdir(root, out) / "slide-02.png").read_bytes(), (rawdir(root, out) / "slide-02.json").read_text()
+    raw2, meta2 = (rawdir(root, out) / "slide-02.png").read_bytes(), (rawdir(root, out) / "slide-02.json").read_text(encoding="utf-8")
     shutil.rmtree(root / "calls")
     rc, _, se, _ = run(["deck", "--script", str(SAMPLE), "--style", "standard", "--out", str(out), "--no-pdf", "--redo", "2"], root, home=home,
                        mode="band_then_fail")
     check(rc == 1, f"描き直しの失敗が rc=1 にならない: {rc} {se}")
     check((rawdir(root, out) / "slide-02.png").read_bytes() == raw2, "失敗した描き直しの絵が raw に入った（次の実行で使い回される）")
-    check((rawdir(root, out) / "slide-02.json").read_text() == meta2, "鍵が書き換わった")
+    check((rawdir(root, out) / "slide-02.json").read_text(encoding="utf-8") == meta2, "鍵が書き換わった")
     check(not list(rawdir(root, out).glob("*.try.png")), "候補の絵が残った")
 
 
@@ -1006,16 +1006,16 @@ def t_auth_malformed_is_rc4():
 def t_secrets_redacted():
     root = tmpdir()
     home = fake_home(root)
-    tokens = json.loads((home / "auth.json").read_text())["tokens"]
+    tokens = json.loads((home / "auth.json").read_text(encoding="utf-8"))["tokens"]
     tokens["refresh_token"] = "rt_SECRETSECRETSECRET123"
-    a = json.loads((home / "auth.json").read_text())
+    a = json.loads((home / "auth.json").read_text(encoding="utf-8"))
     a["tokens"] = tokens
-    (home / "auth.json").write_text(json.dumps(a))
+    (home / "auth.json").write_text(json.dumps(a), encoding="utf-8")
     out = root / "out"
     rc, so, se, _ = run(["deck", "--script", str(SAMPLE), "--out", str(out), "--retries", "0", "--parallel", "2"], root,
                         mode="leak", home=home)
     check(rc == 1, f"rc={rc}")
-    blobs = [se, (out / "build.json").read_text()] + [x.read_text() for x in (out / "logs").glob("*")]
+    blobs = [se, (out / "build.json").read_text(encoding="utf-8")] + [x.read_text(encoding="utf-8") for x in (out / "logs").glob("*")]
     for b in blobs:
         check("SECRETSECRET" not in b and "eyJhbGciOiJub25lIn0" not in b, "トークンがログ・build.json・画面に出た")
     check(any("［伏せた］" in b for b in blobs), "伏せた印が無い（伏せる処理を通っていない）")
@@ -1043,9 +1043,9 @@ def t_pptx_text_size():
 def t_stopped_worker_logs_redacted():
     root = tmpdir()
     home = fake_home(root)
-    a = json.loads((home / "auth.json").read_text())
+    a = json.loads((home / "auth.json").read_text(encoding="utf-8"))
     a["tokens"]["refresh_token"] = "rt_STOPPEDSECRET1234567"
-    (home / "auth.json").write_text(json.dumps(a))
+    (home / "auth.json").write_text(json.dumps(a), encoding="utf-8")
     out = root / "out"
     rc, so, se, calls = run(["deck", "--script", str(SAMPLE), "--out", str(out), "--parallel", "5"], root, home=home,
                             mode="auth_page1", extra_env={"FAKE_CODEX_SLOW": "30", "FAKE_CODEX_LEAK_EARLY": "1"})
@@ -1053,7 +1053,7 @@ def t_stopped_worker_logs_redacted():
     logs = list((out / "logs").glob("*"))
     names = sorted(x.name for x in logs if x.name.endswith(".stderr.txt"))
     check(names == [f"slide-{i:02d}.stderr.txt" for i in range(1, 6)], f"止めたワーカーのログがページの名前で写されていない: {names}")
-    check(not any("STOPPEDSECRET" in x.read_text() for x in logs), "止めたワーカーのログにトークンが残った")
+    check(not any("STOPPEDSECRET" in x.read_text(encoding="utf-8") for x in logs), "止めたワーカーのログにトークンが残った")
 
 
 def t_auth_with_image_stops():
@@ -1069,7 +1069,7 @@ def t_broken_meta_redraws():
     out = root / "out"
     rc, _, se, _ = run(["deck", "--script", str(SAMPLE), "--out", str(out), "--no-pdf"], root, home=home)
     check(rc == 0, se)
-    (rawdir(root, out) / "slide-02.json").write_text('{"key": ')
+    (rawdir(root, out) / "slide-02.json").write_text('{"key": ', encoding="utf-8")
     shutil.rmtree(root / "calls")
     rc, so, se, calls = run(["deck", "--script", str(SAMPLE), "--out", str(out), "--no-pdf"], root, home=home)
     check(rc == 0 and [c["page"] for c in _execs(calls)] == [2], f"壊れた鍵のページだけを描き直していない: rc={rc} {se}")
@@ -1129,7 +1129,7 @@ def _layout_file(root, name="weekly", ref=True, parts=None):
     if ref:
         d["reference"] = f"{name}-sample.png"
     d["parts"] = parts if parts is not None else {"week_badge": "ヘッダ右上のバッジ", "takeaway": "下部の主役色の帯"}
-    (root / f"{name}.yaml").write_text(yaml.safe_dump(d, allow_unicode=True))
+    (root / f"{name}.yaml").write_text(yaml.safe_dump(d, allow_unicode=True), encoding="utf-8")
     return root / f"{name}.yaml"
 
 
@@ -1158,11 +1158,11 @@ def t_custom_layout_prompt():
 
     def key_with(change):
         r2 = tmpdir()
-        d = _y.safe_load(lf.read_text())
+        d = _y.safe_load(lf.read_text(encoding="utf-8"))
         d.pop("reference", None)
         change(d)
         text = d.pop("_text", None)
-        (r2 / "l.yaml").write_text(_y.safe_dump(d, allow_unicode=True))
+        (r2 / "l.yaml").write_text(_y.safe_dump(d, allow_unicode=True), encoding="utf-8")
         lay = Y.load([r2 / "l.yaml"])
         sp = copy.deepcopy(spec)
         if text is not None:
@@ -1201,24 +1201,24 @@ def t_custom_layout_cli_and_errors():
         check(rc == 2 and want in se, f"部品の文字 {v!r}: rc={rc} {se}")
     for body, want in (("name: b\ncomposition: c\nparts: false\n", "parts は"), ("name: b\ncomposition: c\nreference: false\n", "reference は"),
                        ("name: b\ncomposition: c\n1: a\nz: b\n", "知らないキー")):
-        (root / "badv.yaml").write_text(body)
+        (root / "badv.yaml").write_text(body, encoding="utf-8")
         rc, so, se, _ = run(["check", "--script", str(write_script(root, ok)), "--layout", str(root / "badv.yaml")], root)
         check(rc == 2 and want in se, f"{body!r}: rc={rc} {se}")
     bad = root / "bad.yaml"
-    bad.write_text("name: b\nlayout: x\n")
+    bad.write_text("name: b\nlayout: x\n", encoding="utf-8")
     rc, so, se, _ = run(["check", "--script", str(write_script(root, ok)), "--layout", str(bad)], root)
     check(rc == 2 and "知らないキー" in se, se)
     # html-slide は _layout を読み飛ばす（台本は共通のまま）
     if (HTML_SLIDE / "scripts" / "html_slide.py").is_file():
         r = subprocess.run([sys.executable, str(HTML_SLIDE / "scripts" / "html_slide.py"), "check", "--script", str(write_script(root, ok))],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8")
         check(r.returncode == 0, f"_layout つきの台本が html-slide で通らない: {r.stderr}")
 
 
 def t_custom_layout_deck():
     root = tmpdir()
     lf = _layout_file(root)
-    data = json.loads(SAMPLE.read_text())
+    data = json.loads(SAMPLE.read_text(encoding="utf-8"))
     data["slides"][1]["_layout"] = {"name": "weekly", "parts": {"week_badge": "2026-W40"}}
     p = write_script(root, data)
     out = root / "out"
@@ -1226,9 +1226,9 @@ def t_custom_layout_deck():
     check(rc == 0, se)
     ex = _execs(calls)
     check([len(c["refs"]) for c in sorted(ex, key=lambda c: c["page"])] == [0, 1, 0, 0, 0], "構図の見本が2枚目だけに添えられていない")
-    b = json.loads((out / "build.json").read_text())
+    b = json.loads((out / "build.json").read_text(encoding="utf-8"))
     check([s["layout"] for s in b["slides"]] == [None, "weekly", None, None, None], b["slides"])
-    insp = (out / "inspect.md").read_text()
+    insp = (out / "inspect.md").read_text(encoding="utf-8")
     check("（レイアウト weekly）" in insp and "2026-W40" in insp, "inspect.md にレイアウトと部品の文字が無い")
 
 
@@ -1236,7 +1236,7 @@ def t_revise():
     root = tmpdir()
     from PIL import Image
     Image.new("RGB", (40, 40), "blue").save(root / "hint.png")
-    data = json.loads(SAMPLE.read_text())
+    data = json.loads(SAMPLE.read_text(encoding="utf-8"))
     p = write_script(root, data)
     out = root / "out"
     rv = lambda *x, mode="ok": run(["revise", "--script", str(p), "--out", str(out), "--no-pdf", *x], root, mode=mode)  # noqa: E731
@@ -1255,11 +1255,11 @@ def t_revise():
     hist = sorted((rawdir(root, out) / "history").glob("slide-02-*.png"))
     check(len(hist) == 1 and hist[0].read_bytes() == before and hist[0].with_suffix(".json").is_file(), f"前の絵を残していない: {hist}")
     check(ex[0]["refs"] == [str(hist[0])], f"土台が添えられていない: {ex[0]['refs']}")
-    text = (out / "prompts" / "slide-02.txt").read_text()
+    text = (out / "prompts" / "slide-02.txt").read_text(encoding="utf-8")
     for want in ("改稿（微修正）: 渡された現在のページ画像を土台にする", "添付の参照画像1は、いまのこのページの絵（土台）", "利用者の指示:\n見出しを大きく",
                  "新設しない"):
         check(want in text, f"微修正の指示に {want!r} が無い")
-    b = json.loads((out / "build.json").read_text())
+    b = json.loads((out / "build.json").read_text(encoding="utf-8"))
     row = b["slides"][1]
     check(row["status"] == "generated" and row["revision"]["mode"] == "minor" and row["revision"]["note"] == "見出しを大きく", row)
     check(all(r["status"] == "cached" for r in b["slides"] if r["no"] != 2), "ほかのページを描いた")
@@ -1267,14 +1267,14 @@ def t_revise():
     shutil.rmtree(root / "calls", ignore_errors=True)
     rc, so, se, calls = run(["deck", "--script", str(p), "--out", str(out), "--no-pdf"], root)
     check(rc == 0 and not _execs(calls), f"直した絵を deck が描き直した: {[c['page'] for c in _execs(calls)]}")
-    check(json.loads((out / "build.json").read_text())["slides"][1].get("revision"), "使い回しで直しの記録が消えた")
+    check(json.loads((out / "build.json").read_text(encoding="utf-8"))["slides"][1].get("revision"), "使い回しで直しの記録が消えた")
     # 作り直し: 今の絵は渡さない。添えた参考画像は渡す。文が無くても参考画像だけで直せる
     shutil.rmtree(root / "calls", ignore_errors=True)
     rc, so, se, calls = rv("--page", "2", "--remake", "--attach", str(root / "hint.png"))
     check(rc == 0, se)
     ex = _execs(calls)
     check(ex[0]["refs"] == [str((root / "hint.png").resolve())], f"作り直しで渡したもの: {ex[0]['refs']}")
-    text = (out / "prompts" / "slide-02.txt").read_text()
+    text = (out / "prompts" / "slide-02.txt").read_text(encoding="utf-8")
     check("改稿（作り直し）" in text and "参照画像1は、利用者が添えた参考画像" in text and "文章の指示は無い" in text and "土台）" not in text, text[-400:])
     # 台本が変わったほかのページは、revise では描かない（警告だけ）
     data["slides"][2]["headline"] = "変えた見出し"
@@ -1301,7 +1301,7 @@ def t_styles_builtin_and_custom():
         except S.ScriptError as e:
             check(new in str(e), f"{old} → {new} の案内が無い: {e}")
     root = tmpdir()
-    (root / "weekly-style.yaml").write_text("name: weekly\ndescription: 週報\ntext: フラットイラスト。写真は使わない\n")
+    (root / "weekly-style.yaml").write_text("name: weekly\ndescription: 週報\ntext: フラットイラスト。写真は使わない\n", encoding="utf-8")
     st = ST.load(str(root / "weekly-style.yaml"))
     p = write_script(root, {"slides": [{"type": "statement", "headline": "h"}]})
     deck = S.load(p)
@@ -1310,7 +1310,7 @@ def t_styles_builtin_and_custom():
     bad = [("name: x\n", "text が無い"), ("name: x\ntext: y\nlayout: z\n", "知らないキー"), ("- a\n", "name・description・text"),
            ("name: x\ntext: y\n1: a\nz: b\n", "知らないキー")]
     for body, want in bad:
-        (root / "bad.yaml").write_text(body)
+        (root / "bad.yaml").write_text(body, encoding="utf-8")
         rc, so, se, _ = run(["check", "--script", str(p), "--style", str(root / "bad.yaml")], root)
         check(rc == 2 and want in se, f"{body!r}: rc={rc} {se}")
     rc, so, se, _ = run(["check", "--script", str(p), "--style", "nazo"], root)
@@ -1318,7 +1318,7 @@ def t_styles_builtin_and_custom():
     rc, so, se, _ = run(["check", "--script", str(p), "--style", str(root / "weekly-style.yaml")], root)
     check(rc == 0 and "スタイル weekly" in so, so)
     lf = root / "lay.yaml"
-    lf.write_text("name: l\ncomposition: c\nstyle: s\n")
+    lf.write_text("name: l\ncomposition: c\nstyle: s\n", encoding="utf-8")
     rc, so, se, _ = run(["check", "--script", str(p), "--layout", str(lf)], root)
     check(rc == 2 and "--style で渡す" in se, f"レイアウトのファイルの style を止めていない: {se}")
 
@@ -1360,10 +1360,10 @@ def t_infographic_one_page():
     rc, so, se, calls = run(["deck", "--script", str(SAMPLE), "--out", str(out), "--style", "infographic"], root)
     check(rc == 0, se)
     check(len(_execs(calls)) == 1, f"5枚の台本で exec が {len(_execs(calls))} 回（1回のはず）")
-    b = json.loads((out / "build.json").read_text())
+    b = json.loads((out / "build.json").read_text(encoding="utf-8"))
     check(len(b["slides"]) == 1 and b["style"] == "infographic", b["slides"])
-    text = (out / "prompts" / "slide-01.txt").read_text()
-    data = json.loads(SAMPLE.read_text())
+    text = (out / "prompts" / "slide-01.txt").read_text(encoding="utf-8")
+    data = json.loads(SAMPLE.read_text(encoding="utf-8"))
     for want in ("1枚に凝縮する", '"区画": 5', "朝会は3つのことだけを話す", "まずは11月の4週間、試させてほしい", "（このページの中身）",
                  "並べ方の指定ではない", "スライドを並べたような見た目", "最初から設計する"):
         check(want in text, f"1枚の描く指示に {want!r} が無い")
@@ -1374,7 +1374,7 @@ def t_infographic_one_page():
     check("フッタ" in names and "ページ番号" not in names, f"1枚のポスターの帯の部品: {names}")
     notes = prs.slides[0].notes_slide.notes_text_frame.text
     check("【1枚目】" in notes and "【5枚目】" in notes and data["slides"][4]["talk"][0] in notes, "ノートに全ページの話す台本が入っていない")
-    insp = (out / "inspect.md").read_text()
+    insp = (out / "inspect.md").read_text(encoding="utf-8")
     check('"区画": 3' in insp, "inspect.md に区画が出ていない")
 
 
@@ -1383,18 +1383,18 @@ def t_infographic_layout_and_errors():
     check(ST.load("infographic")["one_page"] and not ST.load("visual")["one_page"], "one_page の印")
     root = tmpdir()
     lf = _layout_file(root, ref=False)
-    data = json.loads(SAMPLE.read_text())
+    data = json.loads(SAMPLE.read_text(encoding="utf-8"))
     data["slides"][0]["_layout"] = {"name": "weekly", "parts": {"week_badge": "W40"}}
     p = write_script(root, data)
     rc, so, se, _ = run(["check", "--script", str(p), "--style", "infographic", "--layout", str(lf), "--prompts", str(root / "pr")], root)
-    check(rc == 0 and "W40" in (root / "pr" / "slide-01.txt").read_text(), f"1枚目の _layout が効いていない: {se}")
+    check(rc == 0 and "W40" in (root / "pr" / "slide-01.txt").read_text(encoding="utf-8"), f"1枚目の _layout が効いていない: {se}")
     data["slides"][2]["_layout"] = "weekly2"
     rc, so, se, _ = run(["check", "--script", str(write_script(root, data)), "--style", "infographic", "--layout", str(lf)], root)
     check(rc == 2, f"2枚目以降の別のレイアウトを止めていない: {se}")
-    (root / "s.yaml").write_text("name: x\ntext: y\none_page: 'yes'\n")
+    (root / "s.yaml").write_text("name: x\ntext: y\none_page: 'yes'\n", encoding="utf-8")
     rc, so, se, _ = run(["check", "--script", str(SAMPLE), "--style", str(root / "s.yaml")], root)
     check(rc == 2 and "one_page は true か false" in se, se)
-    (root / "s2.yaml").write_text("name: poster\ntext: y\none_page: true\n")
+    (root / "s2.yaml").write_text("name: poster\ntext: y\none_page: true\n", encoding="utf-8")
     rc, so, se, _ = run(["check", "--script", str(SAMPLE), "--style", str(root / "s2.yaml")], root)
     check(rc == 0 and so.count("枚目") == 1, f"カスタムスタイルの one_page: true で1枚にならない: {so}")
 
@@ -1412,19 +1412,19 @@ def t_image_look_same_as_html_slide():
     check(ST.IMAGE_LOOKS["handdrawn"] in t and "絵の部分" in t, "画風の行が無い")
     check(P.page_key(t, []) != P.page_key(plain_, []), "画風を変えても鍵が変わらない")
     root = tmpdir()
-    (root / "s.yaml").write_text("name: x\ntext: y\nimage_look: oil\n")
+    (root / "s.yaml").write_text("name: x\ntext: y\nimage_look: oil\n", encoding="utf-8")
     rc, so, se, _ = run(["check", "--script", str(SAMPLE), "--style", str(root / "s.yaml")], root)
     check(rc == 2 and "image_look は" in se, se)
     rc, so, se, _ = run(["check", "--script", str(SAMPLE), "--image-look", "photo", "--prompts", str(root / "p")], root)
-    check(rc == 0 and ST.IMAGE_LOOKS["photo"] in (root / "p" / "slide-01.txt").read_text(), se)
+    check(rc == 0 and ST.IMAGE_LOOKS["photo"] in (root / "p" / "slide-01.txt").read_text(encoding="utf-8"), se)
     if not (HTML_SLIDE / "scripts" / "imagegen.py").is_file():
         print("html-slide が無いので、見比べは飛ばす")
         return
     sys.path.insert(0, str(HTML_SLIDE / "scripts"))
     import imagegen as HG
     check(ST.IMAGE_LOOKS == HG.IMAGE_LOOKS, "画風の言い回しが html-slide とずれた")
-    mine = (SKILL / "scripts" / "codex_run.py").read_text()
-    theirs = (HTML_SLIDE / "scripts" / "codex_run.py").read_text()
+    mine = (SKILL / "scripts" / "codex_run.py").read_text(encoding="utf-8")
+    theirs = (HTML_SLIDE / "scripts" / "codex_run.py").read_text(encoding="utf-8")
     norm = mine.replace("image-slide", "html-slide").replace("IMAGE_SLIDE", "HTML_SLIDE")
     check(norm == theirs, "html-slide の codex_run.py（写し）とずれた。直したら写し直す（名前の image-slide → html-slide だけが違う）")
 
@@ -1435,7 +1435,7 @@ def t_formats_and_thumbs():
     root = tmpdir()
     home = fake_home(root)
     out = root / "out"
-    p = write_script(root, json.loads(SAMPLE.read_text()))
+    p = write_script(root, json.loads(SAMPLE.read_text(encoding="utf-8")))
     (out / "slides").mkdir(parents=True)
     (out / "slides" / "slide-09.png").write_bytes(b"old")
     rc, so, se, _ = run(["deck", "--script", str(p), "--out", str(out)], root, home=home)
@@ -1444,7 +1444,7 @@ def t_formats_and_thumbs():
         check((out / f).is_file(), f"{f} が無い")
     check(not (out / "slides" / "slide-09.png").exists(), "前の回の9枚目が残った")
     check(sorted(q.name for q in (out / "slides").glob("*.png")) == [f"slide-{i:02d}.png" for i in range(1, 6)], "ページの画像が5枚でない")
-    b = json.loads((out / "build.json").read_text())
+    b = json.loads((out / "build.json").read_text(encoding="utf-8"))
     check(b["outputs"]["format"] == ["pptx", "pdf", "png", "thumbs"] and len(b["outputs"]["png"]) == 5, b["outputs"])
     check("thumbs: " in so and "pdf: " in so, so)
     from PIL import Image
@@ -1455,7 +1455,7 @@ def t_formats_and_thumbs():
     check(rc == 0, se)
     check(not any((out / f).exists() for f in ("deck.pptx", "deck.pdf", "thumbs.png")), "png だけなのにほかの出力を作った")
     check(len(list((out / "slides").glob("slide-*.png"))) == 5, "ページの画像が無い")
-    check("PPTX: 作っていない" in (out / "inspect.md").read_text(), "inspect.md が PPTX のあるふりをした")
+    check("PPTX: 作っていない" in (out / "inspect.md").read_text(encoding="utf-8"), "inspect.md が PPTX のあるふりをした")
     rc, so, se, _ = run(["deck", "--script", str(p), "--out", str(out), "--format", "png,jpg"], root, home=home)
     check(rc == 2 and "--format は" in se, se)
     if (HTML_SLIDE / "scripts" / "outputs.py").is_file():

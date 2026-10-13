@@ -322,7 +322,7 @@ def _node(args: list[str], what: str) -> bool:
     if not node:
         print(f"NG: {what}には node が要る（見つからない）。{B.SETUP_HINT}", file=sys.stderr)
         return False
-    r = subprocess.run([node, str(SNAPSHOT), *args], capture_output=True, text=True, timeout=600, env=B.child_env())
+    r = subprocess.run([node, str(SNAPSHOT), *args], capture_output=True, text=True, timeout=600, env=B.child_env(), encoding="utf-8")
     if r.returncode != 0:
         print(f"NG: {what}を作れなかった: {r.stderr.strip()[:300]}", file=sys.stderr)
         return False
@@ -434,14 +434,14 @@ def cmd_deck(a) -> int:
             report = R.render(html, out / "deck.pptx", report_path=out / "build.json",
                               parts_path=Path(a.parts).expanduser() if a.parts else None)
         except R.RenderError as e:
-            (out / "deck-info.json").write_text(json.dumps(info, ensure_ascii=False, indent=1) + "\n")
+            (out / "deck-info.json").write_text(json.dumps(info, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
             say_violations(e.violations)
             print(f"NG: {e}", file=sys.stderr)
             return e.rc
         say_violations(report.get("violations") or [])
     # ページの画像・PDF・サムネイル（ADR 0012）。作れなかったものがあれば rc=1
     made, out_rc = {}, 0
-    slides = json.loads(script.read_text())["slides"]
+    slides = json.loads(script.read_text(encoding="utf-8"))["slides"]
     if "png" in fmts or "thumbs" in fmts:
         if snapshot(html, out / "slides", len(slides)):
             pngs = [out / "slides" / f"slide-{i:02d}.png" for i in range(1, len(slides) + 1)]
@@ -459,7 +459,7 @@ def cmd_deck(a) -> int:
     if "pptx" in fmts:
         made["pptx"] = str(out / "deck.pptx")
     info["outputs"] = {"format": list(fmts), **made}
-    (out / "deck-info.json").write_text(json.dumps(info, ensure_ascii=False, indent=1) + "\n")
+    (out / "deck-info.json").write_text(json.dumps(info, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     if "pdf" in made:
         print(f"pdf: {made['pdf']}")
     if "png" in made:
@@ -540,8 +540,8 @@ def cmd_from_video(a) -> int:
         say_violations(e.violations)
         print(f"NG: {e}", file=sys.stderr)
         return e.rc
-    info = {"title": json.loads(script.read_text()).get("title", vdir.parent.name), "mode": "talk",
-            "slides": [{"no": i, "type": sc.get("layout")} for i, sc in enumerate(json.loads(script.read_text())["scenes"], 1)]}
+    info = {"title": json.loads(script.read_text(encoding="utf-8")).get("title", vdir.parent.name), "mode": "talk",
+            "slides": [{"no": i, "type": sc.get("layout")} for i, sc in enumerate(json.loads(script.read_text(encoding="utf-8"))["scenes"], 1)]}
     return finish(out / "deck.pptx", report, info, script, odp=not a.no_odp)
 
 
@@ -558,7 +558,7 @@ def cmd_images(a) -> int:
     if a.missing:
         slots = [x for x in slots if not x["exists"]]
     if a.json:
-        Path(a.json).expanduser().write_text(json.dumps(slots, ensure_ascii=False, indent=1) + "\n")
+        Path(a.json).expanduser().write_text(json.dumps(slots, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     for x in slots:
         mark = "あり" if x["exists"] else "なし"
         origin = {"path": "持ち込み", "placed": "置いた絵", "generated": "生成"}[x["origin"]]
@@ -685,4 +685,6 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8")
     sys.exit(main())

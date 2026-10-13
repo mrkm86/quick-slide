@@ -52,7 +52,7 @@ def fake_home(root: pathlib.Path) -> pathlib.Path:
     (home / "auth.json").write_text(json.dumps({
         "auth_mode": "chatgpt", "OPENAI_API_KEY": None, "last_refresh": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "tokens": {"id_token": "x", "access_token": f"{enc({'alg': 'none'})}.{enc({'exp': int(time.time()) + 5 * 86400})}.sig",
-                   "refresh_token": "r", "account_id": "a"}}))
+                   "refresh_token": "r", "account_id": "a"}}), encoding="utf-8")
     return home
 
 
@@ -63,14 +63,14 @@ def run(args, root: pathlib.Path, mode="ok"):
     env = {**os.environ, "HTML_SLIDE_CODEX": runnable(HERE / "fake_codex.py"), "FAKE_CODEX_LOG": str(log),
            "FAKE_CODEX_MODE": mode, "CODEX_HOME": str(fake_home(root)), "OPENAI_API_KEY": "sk-test-should-not-pass",
            "FAKE_CODEX_SLEEP": "0.1"}
-    r = subprocess.run([sys.executable, str(ENTRY), *args], capture_output=True, text=True, env=env, timeout=600)
+    r = subprocess.run([sys.executable, str(ENTRY), *args], capture_output=True, text=True, env=env, timeout=600, encoding="utf-8")
     calls = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(log.glob("*.json"))] if log.exists() else []
     return r.returncode, r.stdout, r.stderr, [c for c in calls if c.get("cmd") == "exec" and "t1" in c]
 
 
 def script(root: pathlib.Path, slides: list, name="deck.json") -> pathlib.Path:
     p = root / name
-    p.write_text(json.dumps({"title": "t", "slides": slides}, ensure_ascii=False))
+    p.write_text(json.dumps({"title": "t", "slides": slides}, ensure_ascii=False), encoding="utf-8")
     return p
 
 
@@ -109,11 +109,11 @@ def t_fill_generates_missing():
     check(rc == 0, se)
     check(len(calls) == 2 and len(gens(root)) == 2, f"描いた数: {len(calls)}・{gens(root)}")
     check(not any(c["api_key"] for c in calls), "OPENAI_API_KEY が codex に渡った")
-    meta = json.loads(gens(root)[0].with_suffix(".json").read_text())
+    meta = json.loads(gens(root)[0].with_suffix(".json").read_text(encoding="utf-8"))
     check(meta["image_look"] == "illustration" and "文字・ロゴ・透かしを描かない" in meta["text"]
           and G.IMAGE_LOOKS["illustration"] in meta["text"], meta)
     check("枚目" not in meta["text"], "描く指示にページ番号が入った（並べ替えで描き直しになる）")
-    shapes = {json.loads(p.with_suffix(".json").read_text())["shape"].split(",")[0] for p in gens(root)}
+    shapes = {json.loads(p.with_suffix(".json").read_text(encoding="utf-8"))["shape"].split(",")[0] for p in gens(root)}
     check(shapes <= {"landscape", "portrait", "square"}, shapes)
     rc, so, se, calls = run(["fill", "--script", str(sc)], root)
     check(rc == 0 and not calls, f"2回目も描いた: {len(calls)}")
@@ -134,7 +134,7 @@ def t_reorder_and_look():
     check(rc == 0 and not calls, "元の画風に戻したのに描いた")
     rc, so, se, calls = run(["fill", "--script", str(sc), "--style", "visual"], root)
     check(rc == 0 and len(calls) == 2, f"visual（既定は photo）で描いた数: {len(calls)}")
-    meta = [json.loads(p.with_suffix(".json").read_text()) for p in gens(root)]
+    meta = [json.loads(p.with_suffix(".json").read_text(encoding="utf-8")) for p in gens(root)]
     check({m["image_look"] for m in meta} == {"illustration", "handdrawn", "photo"}, "画風ごとに絵が残っていない")
 
 
@@ -157,7 +157,7 @@ def t_characters_to_first_slot():
     rc, so, se, calls = run(["fill", "--script", str(sc)], root)
     check(rc == 0 and len(calls) == 1, se)
     check(len(calls[0]["refs"]) == 1 and calls[0]["ref_modes"] == ["RGB"], calls[0])
-    meta = json.loads(gens(root)[0].with_suffix(".json").read_text())
+    meta = json.loads(gens(root)[0].with_suffix(".json").read_text(encoding="utf-8"))
     check("添付の参照画像1は Hana（ポーズ・表情: 考える）" in meta["text"] and meta["characters"][0]["name"] == "Hana", meta["text"])
     with tempfile.TemporaryDirectory() as tmp:
         _, info = deck.build_html(sc, tmp, placeholder="generated")
@@ -186,7 +186,7 @@ def t_deck_fills_and_falls_back():
     check(rc == 0 and not calls and "仮の枠" in se, se[-400:])
     rc, so, se, calls = run(["deck", "--script", str(sc), "--out", str(root / "ok"), "--no-png", "--no-odp"], root)
     check(rc == 0 and len(calls) == 2, se[-400:])
-    html = (root / "ok" / "deck.html").read_text()
+    html = (root / "ok" / "deck.html").read_text(encoding="utf-8")
     check('class="img-ph"' not in html and html.count('src="assets/s0') == 2, "描いた絵が HTML に入っていない")
 
 
@@ -205,7 +205,7 @@ def t_revise():
     check({p.name for p in gens(root)} == before, "直した絵の置き場（鍵）が変わった")
     hist = list((area(root) / "history").glob("gen-*.png"))
     check(len(hist) == 1, hist)
-    meta = json.loads(next(p for p in gens(root) if p.stem in hist[0].stem).with_suffix(".json").read_text())
+    meta = json.loads(next(p for p in gens(root) if p.stem in hist[0].stem).with_suffix(".json").read_text(encoding="utf-8"))
     check(meta["revision"]["mode"] == "minor" and meta["revision"]["note"] == "人を一人足す", meta)
     check((out / "deck.pptx").is_file(), "直したあと deck を組んでいない")
     rc, so, se, calls = run(["revise", *base, "--page", "2", "--remake", "--note", "夜の景色に"], root)
@@ -228,8 +228,8 @@ def t_cache_area():
     rc, so, se, calls = run(["deck", "--script", str(sc), "--out", str(out), "--no-png", "--no-odp"], root)
     check(rc == 0 and len(calls) == 2 and len(gens(root)) == 2, se[-400:])
     check(not (root / "images").exists(), "台本のそばに images/ を作った")
-    check(json.loads((area(root) / K.STAMP).read_text())["owner"] == str(root.resolve()), "区画の印に持ち主が無い")
-    info = json.loads((out / "deck-info.json").read_text())
+    check(json.loads((area(root) / K.STAMP).read_text(encoding="utf-8"))["owner"] == str(root.resolve()), "区画の印に持ち主が無い")
+    info = json.loads((out / "deck-info.json").read_text(encoding="utf-8"))
     check(info["cache"] == str(area(root)), f"deck-info に区画の場所が無い: {info.get('cache')}")
     linked = [p for p in (out / "assets").iterdir() if any(p.stat().st_ino == g.stat().st_ino for g in gens(root))]
     check(len(linked) == 2, f"描いた絵を assets/ に張っていない（写すと場所を二重に取る）: {sorted(p.name for p in (out / 'assets').iterdir())}")
@@ -249,7 +249,7 @@ def t_style_image_look():
     import deck_style as DS
     check(DS.load("standard")["image_look"] == "illustration" and DS.load("visual")["image_look"] == "photo", "組み込みの画風")
     root = tmpdir()
-    (root / "s.yaml").write_text("name: x\nimage_look: oil\n")
+    (root / "s.yaml").write_text("name: x\nimage_look: oil\n", encoding="utf-8")
     try:
         DS.load(str(root / "s.yaml"))
         raise AssertionError("知らない画風が通った")

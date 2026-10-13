@@ -25,7 +25,7 @@ class KillAndRestartTests(unittest.TestCase):
         self.tmp = temp_dir(self, "quick-slide-restart-")
         self.home = self.tmp / "home"
         (self.home / "config").mkdir(parents=True)
-        (self.home / "config" / "settings.json").write_text(json.dumps({"server": {"port": 0}, "worker": {"parallel": 1}}))
+        (self.home / "config" / "settings.json").write_text(json.dumps({"server": {"port": 0}, "worker": {"parallel": 1}}), encoding="utf-8")
         self.env = {
             **os.environ, "PYTHONPATH": str(REPO / "src"), "PYTHONDONTWRITEBYTECODE": "1", "QUICK_SLIDE_BROWSER": "manual",
             "QUICK_SLIDE_CLAUDE": runnable(FAKES / "fake_claude.py"), "QUICK_SLIDE_CODEX_TEXT": runnable(FAKES / "refuse.py"),
@@ -39,11 +39,11 @@ class KillAndRestartTests(unittest.TestCase):
 
     def cli(self, *args: str) -> dict:
         r = subprocess.run([sys.executable, "-m", "quick_slide.server", "--home", str(self.home), *args],
-                           env=self.env, capture_output=True, text=True, timeout=60, cwd=str(REPO))
+                           env=self.env, capture_output=True, text=True, timeout=60, cwd=str(REPO), encoding="utf-8")
         return json.loads(r.stdout.strip().splitlines()[-1])
 
     def record(self) -> dict:
-        return json.loads((self.home / "runtime" / "server.json").read_text())
+        return json.loads((self.home / "runtime" / "server.json").read_text(encoding="utf-8"))
 
     def http(self, method: str, path: str, body=None):
         rec = self.record()
