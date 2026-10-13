@@ -61,9 +61,21 @@ def contract_text(engine: Engine, skills_dir: Path) -> str:
     return "\n\n".join(parts)
 
 
+# 図解をできるだけ入れる（作るとき）。構造・手順・比較・数字・仕組みは、文字の箇条書きにせず図にする
+DIAGRAM_RULE = {
+    "presentation": "構造・手順・比較・数字・仕組み・関係があるページは、文字だけの型（bullets・statement）にせず図解の型"
+                    "（flow・steps・timeline・hub・matrix・equation・compare・pairs・table・bar-chart・line-chart・kpi など）で見せる。"
+                    "表紙・締めを除くページの半分以上を図解の型にするのを目安にする",
+    "pitch": "構造・手順・比較・数字・仕組み・関係があるページは、文字を並べず図（矢印・図形・グラフ・短いラベル）として描く"
+             "（_visual にそう書いてよい）。表紙・締めを除くページの半分以上を図解にするのを目安にする",
+    "motion": "構造・手順・比較・数字・仕組み・関係がある場面は、文字を並べず HTML・SVG の図で見せ、拍ごとに図が組み上がるようにする。"
+              "表紙・まとめを除く場面の半分以上を図解にするのを目安にする",
+}
+
+
 def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
     if engine.mode == "motion":
-        return [*motion.writer_rules(args), *(motion.OUTLINE_RULES if args.get("outline_fixed") else [])]
+        return [*motion.writer_rules(args), DIAGRAM_RULE["motion"], *(motion.OUTLINE_RULES if args.get("outline_fixed") else [])]
     rules = [
         "返すのは台本の JSON オブジェクト 1 つだけ。前後に説明・見出し・コードフェンスを付けない",
         "道具を使わない。ファイルを読まない・書かない。コマンドを実行しない。調べものをしない",
@@ -82,6 +94,7 @@ def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
         "各ページに id を付ける（英小文字・数字・ハイフンで 40 字以内・資料の中で重ならない。例 \"cover\"・\"p-why\"）。"
         "id は描くことには使わず、ページの同一性に使う。前の台本を直すときは、残すページの id を変えない",
     ]
+    rules.append(DIAGRAM_RULE[engine.mode])
     if args.get("images", True):
         rules.append("画像の枠は image: {\"prompt\": \"何を描くか\"} の形だけで書く。構造・手順・数字は図解の型にし、"
                      "空気・場面・気持ちを伝えるページにだけ画像を置く。prompt に画風（写真風・イラスト・手描きなど）を書かない"
@@ -228,9 +241,11 @@ def _edit_rules(engine: Engine, args: dict[str, Any]) -> list[str]:
         "画像の path は、下の「添えた画像」に書いたパスだけを使ってよい（ほかの path は書かない。いまある path はそのまま残してよい）",
     ]
     if args.get("images", True):
-        rules.append("画像の枠は image: {\"prompt\": \"何を描くか\"} で書く。prompt に画風・文字・ロゴ・実在の人物や会社や商品の名前を書かない")
+        rules.append("生成の画像の枠は image: {\"prompt\": \"何を描くか\"} で書く。prompt に画風・文字・ロゴ・実在の人物や会社や商品の名前を書かない。"
+                     "指示が画像を求めていないページに、新しく画像の枠を足さない")
     else:
-        rules.append("画像の枠を使わない（このデッキは画像なしで作っている）")
+        rules.append("生成の画像の枠（image の prompt）を新しく書かない（この機械では絵を生成できない）。"
+                     "下の「添えた画像」を入れるときは image: {\"path\": \"…\"} で書いてよい")
     if engine.mode == "presentation":
         rules.append("talk（話す台本）を書くなら、その数は型のクリックの段の数＋1 にそろえる。そろえられないページは talk を省く")
     else:
@@ -284,8 +299,10 @@ def _example_pages(engine: Engine, ids: list[str]) -> list[dict[str, Any]]:
 
 def build_revision_prompt(engine: Engine, args: dict[str, Any], *, script: dict[str, Any], targets: list[dict[str, Any]],
                           instruction: str, attachments: list[str], skills_dir: Path, scope: str = "pages",
+                          direction: list[str] | None = None,
                           previous: dict[str, Any] | str | None = None, problems: list[str] | None = None) -> str:
     """ページを指定した直し。`targets` は [{"id", "position", "title", "picture": "あり"|枠の名前の並び|None}]。
+    `direction` は利用者が「何を直しますか？」で選んだ方針の行（`edit_kinds.direction`。選ばなければ空）。
 
     台本係には 1 冊全体を見せる（流れを読むため）が、書いてよいのは指定したページだけで、返すのもその中身だけ。
     隣のページも直した方がよいと思ったら、書き換えずに suggestions に文で返す（サーバは当てない）。
@@ -337,10 +354,13 @@ def build_revision_prompt(engine: Engine, args: dict[str, Any], *, script: dict[
         "",
         *lines,
         "",
+        *(["# 直すもの（利用者が選んだ方針。下の指示と合わせて守る）", "", *[f"- {d}" for d in direction], ""]
+          if direction else []),
         "# 指示" + ("（スライド全体への指示。関係するページだけを直し、ほかは keep）" if scope == "deck" else ""),
         "",
         "<<<指示ここから",
-        instruction.strip() or "（文の指示は無い。添えた画像がそのまま指示）",
+        instruction.strip() or ("（文の指示は無い。上の「直すもの」に従って直す）" if direction
+                                else "（文の指示は無い。添えた画像がそのまま指示）"),
         "指示ここまで>>>",
         "",
         "# 添えた画像",

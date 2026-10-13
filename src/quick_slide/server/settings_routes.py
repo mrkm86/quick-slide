@@ -200,6 +200,20 @@ def upload(app, req):
     return Response.json(201, public_image(store_image(app, req.body)))
 
 
+def fetch_image(app, req):
+    """画像の URL から取り込む（修正の欄の「画像 → URL を指定」。docs/adr/0008-edit-kinds.md）。
+    取りに行くのは鍵の外（待っている間にほかの操作を止めない）。登録は選んで送った画像と同じ。"""
+    from .image_fetch import download
+
+    data = download(req.json_object().get("url"), max_bytes=MAX_IMAGE_BYTES)
+    return _store_fetched(app, data)
+
+
+@boundary
+def _store_fetched(app, data):
+    return Response.json(201, public_image(store_image(app, data)))
+
+
 def store_image(app, data):
     """画像のバイト列を検査して置き場に登録し、登録した行を返す（設定画面の画像と、インポートしたブランドのロゴ）。"""
     kind, size = decode_image(data)

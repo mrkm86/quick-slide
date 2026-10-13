@@ -162,7 +162,7 @@ python3 "${SKILL_DIR}/scripts/quick_slide_start.py" \
 | `--outline-fixed` | 原稿は会話で合意した構成（`## N. 見出し` が 1 ページ）。A のときだけ付ける |
 | `--wait`（`--wait-timeout` 秒・既定 900） | 描き終える（か失敗する）まで待ち、ページの見出し（`pages`）を返す。B では必ず付ける。`motion` は全拍の検査で長くなるので `--wait-timeout 2400` ほどにする |
 | `--brand-id` | ブランドの UUID（名前では指定できない。分からなければ渡さない） |
-| `--style-id` | スライドスタイルの UUID（設定の画面で登録したもの。分からなければ渡さない。`--style` と一緒なら `--style` が勝つ） |
+| `--style-id` | スライドスタイルの UUID（前に登録したもの。いまは設定の画面では作れない。分からなければ渡さない。`--style` と一緒なら `--style` が勝つ） |
 | `--new-deck` | 同じ内容を送り直したときも、必ず新しいスライドにする（既定では、同じ会話から 10 分以内に同じ内容が届くと同じスライドを返す） |
 | `--ensure-launch <launch_id>` / `--url` / `--browser-mode` | 下の「4.」 |
 | `--dry-run` | 投入せず、サーバの起動と payload の要約だけ出す |
