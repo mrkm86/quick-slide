@@ -17,6 +17,7 @@ import json
 import pathlib
 import re
 
+import oscompat as OS
 import places as PL
 
 SKILL = pathlib.Path(__file__).resolve().parent.parent
@@ -249,7 +250,7 @@ def images_of(spec, script_dir: pathlib.Path, no: int) -> list[dict]:
         found = None
         if im.get("path"):
             p = str(im["path"])
-            if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", p):
+            if OS.looks_like_url(p):
                 raise ScriptError(f"{no}枚目: {slot} に URL は使えない（ローカルのファイルを置いてパスで書く）: {p}")
             q = pathlib.Path(p).expanduser()
             q = q if q.is_absolute() else script_dir / q
@@ -344,7 +345,7 @@ def characters_of(spec, script_dir: pathlib.Path, no: int) -> list[dict]:
             raise ScriptError(f"{where}: pose は文字で書く")
         if not isinstance(image, str) or not image.strip():
             raise ScriptError(f"{where}: image（絵のパス）が無い")
-        if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", image):
+        if OS.looks_like_url(image):
             raise ScriptError(f"{where}: image に URL は使えない（ローカルのファイルのパスで書く）: {image}")
         q = pathlib.Path(image).expanduser()
         q = q if q.is_absolute() else script_dir / q

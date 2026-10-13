@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -63,6 +64,7 @@ class SeedDuplicateTests(unittest.TestCase):
             caches.seed_duplicate(root2, "d1", {"HTML_SLIDE_CONFIG": str(cfg), "HTML_SLIDE_CACHE": ""})
             self.assertTrue(any((tmp / "from-config").glob("scripts-*/gen-k1.png")), "設定ファイルは子の環境のものを読む")
 
+    @unittest.skipIf(os.name == "nt", "Windows は chmod で書けないフォルダを作れない（ADR 0012）")
     def test_records_never_keep_pointing_at_the_original_area(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)

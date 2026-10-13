@@ -589,7 +589,9 @@ def case_image_missing_placeholder():
         _build_in(d, sc)
         raise AssertionError("無い画像が通った")
     except T.DeckError as e:
-        assert os.sep + "gen-" in str(e) and os.environ["HTML_SLIDE_CACHE"] in str(e) and "fill" in str(e), str(e)
+        # エンジンは realpath にしてから書く（Windows の 8.3 の短い名前は長い名前に、mac の /var は /private/var になる）
+        cache = os.environ["HTML_SLIDE_CACHE"]
+        assert os.sep + "gen-" in str(e) and (cache in str(e) or os.path.realpath(cache) in str(e)) and "fill" in str(e), str(e)
     path, info = _build_in(d, sc, placeholder=True)
     html = path.read_text(encoding="utf-8")
     assert 'class="img-ph"' in html and "ここに画像: 夕方の商店街" in html

@@ -12,7 +12,7 @@ import unittest
 import uuid
 from pathlib import Path
 
-from helpers import allowed_static_bodies, make_static_root, start_server, temp_dir
+from helpers import allowed_static_bodies, can_symlink, make_static_root, start_server, temp_dir
 
 from quick_slide.server.static import STATIC_TYPES, StaticRoot, confine, decode_path, split_segments
 
@@ -132,8 +132,9 @@ class StaticResolverPropertyTests(unittest.TestCase):
     def test_realpath_confinement_is_enforced_independently(self) -> None:
         """walk が破れても、最終的に開くパスは realpath でルート配下であることを confine が強制する。"""
         root = Path(os.path.realpath(self.root))
-        self.assertFalse(confine(root / "link.html", root), "外を指す symlink は realpath が外なので拒否")
-        self.assertFalse(confine(root / "linkdir" / "secret.html", root))
+        if can_symlink():
+            self.assertFalse(confine(root / "link.html", root), "外を指す symlink は realpath が外なので拒否")
+            self.assertFalse(confine(root / "linkdir" / "secret.html", root))
         self.assertFalse(confine(root / ".." / "outside" / "secret.html", root))
         self.assertFalse(confine(root, root), "ルート自身は配信対象ではない")
         self.assertFalse(confine(Path("/etc/passwd"), root))

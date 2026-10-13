@@ -34,7 +34,8 @@ class ServerRecordAndStatusTests(unittest.TestCase):
         self.assertEqual((rec.pid, rec.instance_id, rec.port, rec.host), (os.getpid(), fx.server.instance_id, fx.port, "127.0.0.1"))
         self.assertEqual(rec.started_at, fx.server.started_at)
         self.assertEqual(rec.url, f"http://127.0.0.1:{fx.port}")
-        self.assertEqual(fx.root.server_json_path.stat().st_mode & 0o777, 0o600)
+        if os.name != "nt":   # Windows は 0600 でなく置き場のアクセス権で守る（ADR 0012）
+            self.assertEqual(fx.root.server_json_path.stat().st_mode & 0o777, 0o600)
         self.assertEqual(rec.session_token, fx.session())
         st = status(fx.root)
         self.assertTrue(st["running"], st)
@@ -268,7 +269,8 @@ class RealProcessLifecycleTests(unittest.TestCase):
         self.assertIn(f"GET /slides/{deck['id']} 200", log, "アクセスログはパスだけ（クエリ無し）")
         self.assertNotIn("token=", log)
         for p in (self.home / "runtime" / "server.out", self.home / "runtime" / "server.log"):
-            self.assertEqual(p.stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":   # Windows は 0600 でなく置き場のアクセス権で守る（ADR 0012）
+                self.assertEqual(p.stat().st_mode & 0o777, 0o600)
         # エンジンの置き場はサーバが作らない
         self.assertFalse((self.home / "engines").exists())
 

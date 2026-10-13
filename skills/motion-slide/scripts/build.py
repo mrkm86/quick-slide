@@ -1,8 +1,8 @@
 """台本の HTML に、エンジン・テーマの色・ロゴ・BGM を埋め込んで、HTML 1枚にする。
 
-    python3 -I build.py <台本.html> [--out <出力.html>] [--theme default|forest|warm|<YAML>]
+    python3 -E build.py <台本.html> [--out <出力.html>] [--theme default|forest|warm|<YAML>]
                         [--logo <PNG>|none] [--logo-alt <文字>] [--logo-height <px>] [--bgm <m4a|mp3>] [--no-thumbs]
-    python3 -I build.py --print-out-root
+    python3 -E build.py --print-out-root
 
 一覧（Esc / O）のサムネイルは、組んだあとに Chrome で場面ごとに撮って埋め込む（1場面 約 10KB・Playwright が要る）。
 

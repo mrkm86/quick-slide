@@ -1090,6 +1090,9 @@ def t_failure_lines_reading():
 
 
 def t_unreadable_auth_is_rc4():
+    if os.name == "nt":
+        print("skip: Windows は chmod(0) で読めないファイルを作れない（Quick Slide の ADR 0012）")
+        return
     root = tmpdir()
     home = fake_home(root)
     (home / "auth.json").chmod(0)

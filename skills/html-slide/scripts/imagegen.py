@@ -13,8 +13,8 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
-import re
 
+import oscompat as OS
 from deck_types import IMAGE_EXTS, DeckError
 
 # 画風。台本の prompt には「何を描くか」だけを書き、画風はここから足す（資料の中で絵の調子をそろえる）
@@ -66,7 +66,7 @@ def characters_of(raw, script_dir: pathlib.Path, no: int) -> list[dict]:
             raise DeckError(f"{where}: pose は文字で書く")
         if not isinstance(image, str) or not image.strip():
             raise DeckError(f"{where}: image（絵のパス）が無い")
-        if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", image):
+        if OS.looks_like_url(image):
             raise DeckError(f"{where}: image に URL は使えない（ローカルのファイルのパスで書く）: {image}")
         q = pathlib.Path(image).expanduser()
         q = q if q.is_absolute() else script_dir / q

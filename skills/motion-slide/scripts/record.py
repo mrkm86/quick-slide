@@ -1,6 +1,6 @@
 """組んだ HTML の自動再生を、仮想の時計で1コマずつ撮って mp4 にする（効果音と BGM も時刻どおりに重ねる）。
 
-    python3 -I record.py <index.html> [--out <video.mp4>] [--fps 30] [--start 1.1] [--seconds N] [--crf 18]
+    python3 -E record.py <index.html> [--out <video.mp4>] [--fps 30] [--start 1.1] [--seconds N] [--crf 18]
                          [--no-sfx] [--no-bgm] [--keep-ctrl]
 
 - 時計は scripts/vclock.js をページより先に差し込む。タイマー・rAF・performance.now を差し替え、CSS の動き（Web Animations）を

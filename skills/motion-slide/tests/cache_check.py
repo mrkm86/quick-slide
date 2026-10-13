@@ -1,6 +1,6 @@
 """場面ごとのキャッシュの鍵の試験（Chrome は使わない）。ADR 0004。
 
-    python3 -I cache_check.py <台本.json>   # 0=全部通った。落ちたら理由を出して 1
+    python3 -E cache_check.py <台本.json>   # 0=全部通った。落ちたら理由を出して 1
 """
 import copy
 import json

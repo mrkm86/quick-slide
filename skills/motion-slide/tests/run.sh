@@ -13,9 +13,17 @@ export MOTION_SLIDE_CONFIG=/nonexistent/motion-slide-config.yaml
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SK="$(cd "$DIR/.." && pwd)"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+# Windows の Git Bash: 下の試験は、パスを Python のコードの文字列（-c '…'）にも埋め込む。Git Bash は引数のパスは
+# Windows の形に直すが、コードの中の文字列は直さないので、始めから C:/… の形（bash でも Python でも読める）にそろえる
+if command -v cygpath >/dev/null 2>&1; then
+  DIR="$(cygpath -m "$DIR")"; SK="$(cygpath -m "$SK")"; TMP="$(cygpath -m "$TMP")"
+fi
 # 場面ごとの絵のキャッシュも使い捨てにする（実の置き場を読まない・書かない）
 export MOTION_SLIDE_CACHE="$TMP/cache"
-PY="python3 -I"
+# -I でなく -E: PYTHON* の環境変数は無視するが、利用者の場所（pip --user で入れた PyYAML など）は見る。
+# -X utf8: 下に埋め込んだ Python のコード（-c・ヒアドキュメント）の open() も UTF-8 で読み書きする（Windows の既定は cp932）。
+# スクリプトの本体の encoding の書き忘れは tests/test_windows_compat.py が見る
+PY="python3 -E -X utf8"
 
 pass=0
 fail=0
@@ -76,7 +84,7 @@ MS="$SK/scripts/motion_slide.py"
 mkdir -p "$TMP/j"
 $PY "$SK/scripts/split.py" "$SK/templates/deck.html" --out "$TMP/j/script.json" >/dev/null
 # 台本の JSON を直して NG を作る: mut 名前 'python の式（d は台本）'
-mut() { python3 -I -c "import json,sys; d=json.load(open('$TMP/j/script.json')); $2; json.dump(d, open('$TMP/j/$1.json','w'), ensure_ascii=False)"; }
+mut() { $PY -c "import json,sys; d=json.load(open('$TMP/j/script.json')); $2; json.dump(d, open('$TMP/j/$1.json','w'), ensure_ascii=False)"; }
 ngs() { set +e; out=$($PY "$MS" check --script "$TMP/j/$1.json" --quick 2>&1); r=$?; set -e; [ "$r" -eq 2 ] && echo "$out" | grep -q "$2"; }
 mut ok 'pass'
 mut no-title 'del d["scenes"][1]["title"]'

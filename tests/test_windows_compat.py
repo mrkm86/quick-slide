@@ -308,3 +308,14 @@ class EncodingTests(unittest.TestCase):
                    if '.reconfigure(encoding="utf-8")' not in p.read_text(encoding="utf-8")]
         self.assertGreater(len(entries), 10)
         self.assertEqual(missing, [])
+
+
+class UrlTests(unittest.TestCase):
+    def test_drive_letters_are_paths_not_urls(self) -> None:
+        """台本に Windows の絶対パスで画像を書いても、URL として断らない（N21）。"""
+        from quick_slide.oscompat import looks_like_url
+
+        for url in ("https://example.com/a.png", "data:image/png;base64,AA", "file:///tmp/a.png", "ftp://x/a.png"):
+            self.assertTrue(looks_like_url(url), url)
+        for path in ("C:\\Users\\a\\b.png", "C:/Users/a/b.png", "c:b.png", "images/a.png", "/abs/a.png", "~/a.png"):
+            self.assertFalse(looks_like_url(path), path)

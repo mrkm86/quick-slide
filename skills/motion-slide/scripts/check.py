@@ -1,6 +1,6 @@
 """組んだ HTML 1枚を Chrome で開き、全部の拍を順に進めて、崩れを数える。拍ごとの画像と、場面ごとの一覧画像も出す。
 
-    python3 -I check.py <index.html> [--out <フォルダ>] [--wait <ms>] [--only s3,s5] [--reuse <report.json>] [--strict]
+    python3 -E check.py <index.html> [--out <フォルダ>] [--wait <ms>] [--only s3,s5] [--reuse <report.json>] [--strict]
 
 見るもの:
   NG（rc=2）  JS のエラー ／ 見えている要素が舞台（1920×1080）の外にはみ出す ／ 文字が箱からあふれて切れる

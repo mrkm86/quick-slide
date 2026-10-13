@@ -1,7 +1,7 @@
 """場面ごとの台本（JSON）→ Motion Slide（HTML 1枚）。Quick Slide が html-slide と同じ扱いで呼べる入口。
 
-    python3 -I motion_slide.py check --script <台本.json> [--theme <名前|YAML>] [--quick] [--strict] [--wait <ms>]
-    python3 -I motion_slide.py deck  --script <台本.json> --out <フォルダ> [--theme …] [--logo <PNG>|none] [--logo-alt …]
+    python3 -E motion_slide.py check --script <台本.json> [--theme <名前|YAML>] [--quick] [--strict] [--wait <ms>]
+    python3 -E motion_slide.py deck  --script <台本.json> --out <フォルダ> [--theme …] [--logo <PNG>|none] [--logo-alt …]
                                      [--logo-height <px>] [--format png,thumbs] [--strict] [--wait <ms>] [--no-shoot]
 
 check  台本の形を検査する → 組み立てて Chrome で全部の拍を開き、はみ出し・切れ・JS のエラーを数える。OK なら "OK"。--quick は形の検査だけ（Chrome を使わない）
@@ -32,7 +32,7 @@ import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
 SKILL = HERE.parent
-sys.path.insert(0, str(HERE))   # python3 -I は台本のあるフォルダを探さないので、隣の deckjson を足す
+sys.path.insert(0, str(HERE))   # 隣の deckjson を読む（どこから起こされても）
 import build as buildmod  # noqa: E402
 import deckjson  # noqa: E402
 import shotcache  # noqa: E402
@@ -146,7 +146,7 @@ def pipeline(a, work, full):
     deck.write_text(deckjson.assemble(data), encoding="utf-8")
 
     # 一覧のサムネイルは build.py で撮らず（Chrome をもう1回起動することになる）、拍の絵から作って埋める
-    build = [PY, "-I", str(HERE / "build.py"), str(deck), "--out", str(index), "--no-thumbs"]
+    build = [PY, "-E", str(HERE / "build.py"), str(deck), "--out", str(index), "--no-thumbs"]
     theme = a.theme or data.get("theme")
     if theme:
         build += ["--theme", _theme_arg(theme, a.script)]
@@ -210,7 +210,7 @@ def pipeline(a, work, full):
     with tempfile.TemporaryDirectory(prefix="motion-slide-reuse-") as tmp:
         reuse_json = pathlib.Path(tmp) / "reuse.json"
         reuse_json.write_text(json.dumps(reuse, ensure_ascii=False), encoding="utf-8")
-        cmd = [PY, "-I", str(HERE / "check.py"), str(index), "--out", str(check_dir), "--wait", str(a.wait),
+        cmd = [PY, "-E", str(HERE / "check.py"), str(index), "--out", str(check_dir), "--wait", str(a.wait),
                "--only", todo, "--reuse", str(reuse_json)]
         r = run(cmd)
     if r.returncode not in (0, 2):
