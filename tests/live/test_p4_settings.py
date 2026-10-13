@@ -190,6 +190,25 @@ class SettingsScreensTest(unittest.TestCase):
         self.assertFalse(page.eval("Array.from(document.querySelectorAll('button')).some(b => b.textContent === '書式を登録')"))
         self.assertEqual(page.errors, [])
 
+    def test_brand_export_saves_as_qs_brand_name_zip(self) -> None:
+        config = {"schema_version": 1, "colors": {"primary": "#C8102E", "accent": "#1D4ED8"},
+                  "logo": {"variant": "transparent", "placement": {"corner": "bottom-right"}},
+                  "footer": {"text": "", "style": {"position": "footer_left"}}}
+        r = self.fx.post("/api/settings/brands", {"name": "配る/ブランド", "config": config,
+                         "assets": [{"asset_id": self.upload(), "role": "logo_transparent"}]})
+        self.assertEqual(r.status, 201, r.body)
+        page = self.open("/settings/brands", "document.querySelectorAll('.setting-row').length >= 2", "ブランドの一覧")
+        # 実際には落とさず、保存させようとしたファイル名を拾う
+        page.eval("window.__saved = []; HTMLAnchorElement.prototype.click = function () { if (this.download) { window.__saved.push(this.download); } };")
+        page.eval("Array.from(document.querySelectorAll('.setting-row')).find(r => r.textContent.indexOf('配る/ブランド') >= 0)"
+                  ".querySelector('button[aria-haspopup=menu]').click()")
+        page.until("!!document.querySelector('.menu')", what="メニュー")
+        page.eval("Array.from(document.querySelectorAll('.menu button')).find(b => b.textContent === 'エクスポート').click()")
+        page.until("window.__saved.length === 1", what="エクスポートの保存")
+        self.assertEqual(page.eval("window.__saved[0]"), "qs-ブランド-配る_ブランド.zip")
+        page.raise_if_broken()
+        self.assertEqual(page.errors, [])
+
     def test_style_types_engine_style_and_image_look(self) -> None:
         page = self.open("/settings/styles", "document.querySelectorAll('.pattern-choice').length === 30", "型の一覧が出ること")
         page.eval("Array.from(document.querySelectorAll('.settings-list button')).find(b => b.textContent.indexOf('新しい') >= 0).click()")
