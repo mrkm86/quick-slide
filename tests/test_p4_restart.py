@@ -19,7 +19,7 @@ import sys
 import time
 import unittest
 
-from helpers import FAKES, REPO, SKILLS_DIR, fake_codex_home, intake_payload, start_server, temp_dir
+from helpers import FAKES, REPO, SKILLS_DIR, fake_codex_home, intake_payload, runnable, start_server, temp_dir
 
 
 def free_port() -> int:
@@ -37,9 +37,9 @@ class RestartProcessTests(unittest.TestCase):
         self.write_settings({"server": {"port": self.port}, "worker": {"parallel": 1}})
         self.env = {
             **os.environ, "PYTHONPATH": str(REPO / "src"), "PYTHONDONTWRITEBYTECODE": "1", "QUICK_SLIDE_BROWSER": "manual",
-            "QUICK_SLIDE_CLAUDE": str(FAKES / "fake_claude.py"), "QUICK_SLIDE_CODEX_TEXT": str(FAKES / "refuse.py"),
+            "QUICK_SLIDE_CLAUDE": runnable(FAKES / "fake_claude.py"), "QUICK_SLIDE_CODEX_TEXT": runnable(FAKES / "refuse.py"),
             "FAKE_WRITER_LOG": str(self.tmp / "writer-calls"),
-            "IMAGE_SLIDE_CODEX": str(SKILLS_DIR / "image-slide" / "tests" / "fake_codex.py"),
+            "IMAGE_SLIDE_CODEX": runnable(SKILLS_DIR / "image-slide" / "tests" / "fake_codex.py"),
             "FAKE_CODEX_LOG": str(self.tmp / "codex-calls"),
             "CODEX_HOME": str(fake_codex_home(self.tmp)), "IMAGE_SLIDE_CACHE": str(self.tmp / "image-slide-cache"),
             "IMAGE_SLIDE_CONFIG": str(self.tmp / "no-config.yaml"),

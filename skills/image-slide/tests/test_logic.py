@@ -34,6 +34,17 @@ def check(cond, msg):
         raise AssertionError(msg)
 
 
+def runnable(script: pathlib.Path) -> str:
+    """偽物（`.py`）を、コマンドとして起こせる形で返す。Windows は `.py` を直接起こせないので、同じ Python で
+    走らせる `.cmd` の包みを一時フォルダに作る（cmd.exe は包みを OEM のコードページで読むので、その字で書く）。
+    偽物は `-X utf8` で起こす（本物の codex・claude と同じく、stdin・stdout を UTF-8 で読み書きする）。"""
+    if os.name != "nt":
+        return str(script)
+    cmd = pathlib.Path(tempfile.mkdtemp(prefix="image-slide-test-launch-")) / f"{script.stem}.cmd"
+    cmd.write_text(f'@"{sys.executable}" -X utf8 "{script}" %*\r\n', encoding="oem", newline="")
+    return str(cmd)
+
+
 def tmpdir() -> pathlib.Path:
     return pathlib.Path(tempfile.mkdtemp(prefix="image-slide-test."))
 
@@ -57,7 +68,7 @@ def fake_home(root: pathlib.Path, age_days=1.0, left_days=5.0) -> pathlib.Path:
 def run(args, root: pathlib.Path, mode="ok", extra_env=None, home=None):
     """偽物の codex で入口を流す。(rc, stdout, stderr, 呼び出しの記録)"""
     log = root / "calls"
-    env = {**os.environ, "IMAGE_SLIDE_CODEX": str(HERE / "fake_codex.py"), "FAKE_CODEX_LOG": str(log),
+    env = {**os.environ, "IMAGE_SLIDE_CODEX": runnable(HERE / "fake_codex.py"), "FAKE_CODEX_LOG": str(log),
            "FAKE_CODEX_MODE": mode, "CODEX_HOME": str(home or fake_home(root)),
            "IMAGE_SLIDE_CONFIG": str(root / "no-config.yaml"), "OPENAI_API_KEY": "sk-test-should-not-pass",
            "IMAGE_SLIDE_CACHE": str(root / "cache"), "QUICK_SLIDE_HOME": str(root / "home"),

@@ -20,8 +20,13 @@ unset QUICK_SLIDE_HOME QUICK_SLIDE_BROWSER
 REFUSE="$ROOT/tests/fakes/refuse.py"
 chmod +x "$ROOT"/tests/fakes/fake_*.py "$REFUSE" "$ROOT"/skills/*/tests/fake_codex.py 2>/dev/null
 export QUICK_SLIDE_CLAUDE="$REFUSE" QUICK_SLIDE_CODEX_TEXT="$REFUSE" HTML_SLIDE_CODEX="$REFUSE" IMAGE_SLIDE_CODEX="$REFUSE"
-SCRATCH="$(mktemp -d -t quick-slide-tests)"
+# 雛形の XXXXXX は GNU の mktemp（Windows の Git Bash）が要る。`-t <名前>` は mac でしか通らない
+TMPBASE="${TMPDIR:-/tmp}"   # mac の TMPDIR は / で終わる。// が残ると、パスを見比べる試験がずれる
+SCRATCH="$(mktemp -d "${TMPBASE%/}/quick-slide-tests.XXXXXX")"
 trap 'rm -rf "$SCRATCH"' EXIT
+# 試験が tempfile で作る一時フォルダもここへ寄せ、落ちた試験の分も最後にまとめて消す
+mkdir -p "$SCRATCH/tmp"
+export TMPDIR="$SCRATCH/tmp"
 export HTML_SLIDE_CACHE="$SCRATCH/html-slide-cache" IMAGE_SLIDE_CACHE="$SCRATCH/image-slide-cache" MOTION_SLIDE_CACHE="$SCRATCH/motion-slide-cache"
 export CODEX_HOME="$SCRATCH/no-codex-home"
 

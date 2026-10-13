@@ -25,7 +25,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE.parent) not in sys.path:
     sys.path.insert(0, str(HERE.parent))
 
-from helpers import FAKES, REPO, png_bytes, start_server, temp_dir  # noqa: E402
+from helpers import FAKES, REPO, png_bytes, runnable, start_server, temp_dir  # noqa: E402
 from test_p4_restart import free_port  # noqa: E402
 
 from quick_slide.ids import PRESET_STYLE_STANDARD_ID  # noqa: E402
@@ -63,8 +63,8 @@ class RestartButtonTest(unittest.TestCase):
         self.port = free_port()
         self.write({"server": {"port": self.port}})
         self.env = {**os.environ, "PYTHONPATH": str(REPO / "src"), "PYTHONDONTWRITEBYTECODE": "1",
-                    "QUICK_SLIDE_BROWSER": "manual", "QUICK_SLIDE_CLAUDE": str(FAKES / "refuse.py"),
-                    "QUICK_SLIDE_CODEX_TEXT": str(FAKES / "refuse.py")}
+                    "QUICK_SLIDE_BROWSER": "manual", "QUICK_SLIDE_CLAUDE": runnable(FAKES / "refuse.py"),
+                    "QUICK_SLIDE_CODEX_TEXT": runnable(FAKES / "refuse.py")}
         self.assertTrue(self.cli("start")["ok"])
         self.addCleanup(self.cli, "stop")
         self.br = browser.Browser()

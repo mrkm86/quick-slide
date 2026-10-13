@@ -11,9 +11,16 @@ export PYTHONDONTWRITEBYTECODE=1   # スキルの中に __pycache__ を残さな
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 chmod +x "$DIR/fake_codex.py"
+# 雛形の XXXXXX は GNU の mktemp（Windows の Git Bash）が要る。`-t <名前>` は mac でしか通らない
+TMPBASE="${TMPDIR:-/tmp}"   # mac の TMPDIR は / で終わる。// が残ると、パスを見比べる試験がずれる
+SCRATCH="$(mktemp -d "${TMPBASE%/}/image-slide-tests.XXXXXX")"
+trap 'rm -rf "$SCRATCH"' EXIT
+# 試験が tempfile で作る一時フォルダもここへ寄せ、落ちた試験の分も最後にまとめて消す
+mkdir -p "$SCRATCH/tmp" "$SCRATCH/quick-slide-home" "$SCRATCH/image-slide-cache"
+export TMPDIR="$SCRATCH/tmp"
 # 実の置き場（~/.quick-slide・~/Library/Caches/quick-slide）を読まない・書かない
-export QUICK_SLIDE_HOME="$(mktemp -d -t quick-slide-home)"
-export IMAGE_SLIDE_CACHE="$(mktemp -d -t image-slide-cache)"
+export QUICK_SLIDE_HOME="$SCRATCH/quick-slide-home"
+export IMAGE_SLIDE_CACHE="$SCRATCH/image-slide-cache"
 
 pass=0
 fail=0

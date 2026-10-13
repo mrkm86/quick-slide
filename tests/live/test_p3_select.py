@@ -16,7 +16,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE.parent) not in sys.path:
     sys.path.insert(0, str(HERE.parent))
 
-from helpers import FAKES, fake_tools, intake_payload, start_server, wait_until_idle  # noqa: E402
+from helpers import FAKES, fake_tools, intake_payload, runnable, start_server, wait_until_idle  # noqa: E402
 
 from quick_slide.settings import Settings, WorkerSettings  # noqa: E402
 
@@ -33,7 +33,7 @@ class SelectPagesAndInstructTest(unittest.TestCase):
             raise unittest.SkipTest("Chrome が無い環境")
 
     def setUp(self) -> None:
-        varied = str(FAKES / "fake_codex_varied.py")
+        varied = runnable(FAKES / "fake_codex_varied.py")
         tools, self.log = fake_tools(self, extra={"FAKE_WRITER_PAGES": "10", "FAKE_CODEX_SLEEP": "0.3",
                                                   "IMAGE_SLIDE_CODEX": varied})
         self.fx = start_server(self, tools=tools, settings=Settings(worker=WorkerSettings(parallel=1)))

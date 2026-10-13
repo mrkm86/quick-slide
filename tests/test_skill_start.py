@@ -13,7 +13,7 @@ import sys
 import time
 import unittest
 
-from helpers import FAKES, MANUSCRIPT, REPO, SKILLS_DIR, fake_codex_home, temp_dir
+from helpers import FAKES, MANUSCRIPT, REPO, SKILLS_DIR, fake_codex_home, runnable, temp_dir
 
 SCRIPT = REPO / "skills" / "quick-slide" / "scripts" / "quick_slide_start.py"
 # 会話の印（この試験を走らせている会話の値を拾わない）
@@ -32,9 +32,9 @@ class SkillStartTests(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if k not in CONVERSATION_VARS}
         env.update({
             "QUICK_SLIDE_HOME": str(self.home), "PYTHONDONTWRITEBYTECODE": "1",
-            "QUICK_SLIDE_CLAUDE": str(FAKES / "fake_claude.py"), "QUICK_SLIDE_CODEX_TEXT": str(FAKES / "refuse.py"),
+            "QUICK_SLIDE_CLAUDE": runnable(FAKES / "fake_claude.py"), "QUICK_SLIDE_CODEX_TEXT": runnable(FAKES / "refuse.py"),
             "FAKE_WRITER_LOG": str(self.tmp / "writer-calls"),
-            "IMAGE_SLIDE_CODEX": str(SKILLS_DIR / "image-slide" / "tests" / "fake_codex.py"),
+            "IMAGE_SLIDE_CODEX": runnable(SKILLS_DIR / "image-slide" / "tests" / "fake_codex.py"),
             "FAKE_CODEX_LOG": str(self.tmp / "codex-calls"), "IMAGE_SLIDE_CACHE": str(self.tmp / "image-slide-cache"),
             "IMAGE_SLIDE_CONFIG": str(self.tmp / "no-config.yaml"),
         })

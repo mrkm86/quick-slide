@@ -2,11 +2,13 @@
 
 - `os.open` は `O_BINARY` を付ける。付けないと Windows ではテキストモードで開き、`os.write` が `\\n` を `\\r\\n` に
   変える（32 バイトの `hmac.key` が 0x0A を含むたびに長くなり、壊れた鍵が残ってサーバが起動しなくなる）
+- 試験の偽物（`.py`）は `runnable()` で包んで渡す。Windows は `.py` を直接起こせない
 """
 
 from __future__ import annotations
 
 import ast
+import re
 import unittest
 from pathlib import Path
 
@@ -53,6 +55,25 @@ class OsOpenBinaryTests(unittest.TestCase):
         tree = ast.parse(source)
         found = ["O_BINARY" in flags_source(source, tree, c) for c in os_open_calls(tree)]
         self.assertEqual(found, [False, True])
+
+
+# 偽物の `.py` を、`runnable()` で包まずにコマンドとして渡している書き方
+BARE_FAKE = re.compile(r'str\([^()\n]*(?:fake_[a-z_]+|refuse)\.py"\)|str\(FAKE_CODEX\)')
+
+
+class FakeCommandTests(unittest.TestCase):
+    def test_fakes_are_passed_through_runnable(self) -> None:
+        """偽物は `runnable()` で包んで渡す。Windows は `.py` を直接起こせない（`shutil.which` も見つけない）。"""
+        bases = [ROOT / "tests", *sorted((ROOT / "skills").glob("*/tests"))]
+        bare = [f"{p.relative_to(ROOT).as_posix()}:{n}" for base in bases for p in sorted(base.rglob("test_*.py"))
+                + sorted(base.rglob("helpers.py")) if p != Path(__file__).resolve()   # 下の試験の見本は除く
+                for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1) if BARE_FAKE.search(line)]
+        self.assertEqual(bare, [], "偽物を runnable() で包む")
+
+    def test_the_check_catches_a_bare_fake(self) -> None:
+        self.assertTrue(BARE_FAKE.search('env = {"IMAGE_SLIDE_CODEX": str(HERE / "fake_codex.py")}'))
+        self.assertTrue(BARE_FAKE.search('"QUICK_SLIDE_CLAUDE": str(FAKES / "refuse.py"),'))
+        self.assertFalse(BARE_FAKE.search('"QUICK_SLIDE_CLAUDE": runnable(FAKES / "refuse.py"),'))
 
 
 if __name__ == "__main__":
