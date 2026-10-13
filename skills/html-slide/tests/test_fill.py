@@ -30,6 +30,16 @@ def check(cond, msg):
         raise AssertionError(msg)
 
 
+def runnable(script: pathlib.Path) -> str:
+    """偽物（`.py`）を、コマンドとして起こせる形で返す。Windows は `.py` を直接起こせないので、同じ Python で
+    走らせる `.cmd` の包みを一時フォルダに作る（cmd.exe は包みを OEM のコードページで読むので、その字で書く）。"""
+    if os.name != "nt":
+        return str(script)
+    cmd = pathlib.Path(tempfile.mkdtemp(prefix="html-slide-fill-test-launch-")) / f"{script.stem}.cmd"
+    cmd.write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="oem", newline="")
+    return str(cmd)
+
+
 def tmpdir() -> pathlib.Path:
     return pathlib.Path(tempfile.mkdtemp(prefix="html-slide-fill-test."))
 
@@ -49,7 +59,7 @@ def run(args, root: pathlib.Path, mode="ok"):
     """偽物の codex で入口を流す。(rc, stdout, stderr, この回の生成の呼び出し)"""
     log = root / "calls"
     shutil.rmtree(log, ignore_errors=True)
-    env = {**os.environ, "HTML_SLIDE_CODEX": str(HERE / "fake_codex.py"), "FAKE_CODEX_LOG": str(log),
+    env = {**os.environ, "HTML_SLIDE_CODEX": runnable(HERE / "fake_codex.py"), "FAKE_CODEX_LOG": str(log),
            "FAKE_CODEX_MODE": mode, "CODEX_HOME": str(fake_home(root)), "OPENAI_API_KEY": "sk-test-should-not-pass",
            "FAKE_CODEX_SLEEP": "0.1"}
     r = subprocess.run([sys.executable, str(ENTRY), *args], capture_output=True, text=True, env=env, timeout=600)

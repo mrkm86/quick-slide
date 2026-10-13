@@ -27,7 +27,7 @@ import time
 import unittest
 from pathlib import Path
 
-from helpers import MANUSCRIPT, REPO, fake_codex_home, temp_dir
+from helpers import MANUSCRIPT, REPO, fake_codex_home, runnable, temp_dir
 
 TEXT_SUFFIXES = {".json", ".md", ".txt", ".yaml", ".yml", ".html", ".log", ".out", ".jsonl", ".db", ".pptx", ".pdf"}
 
@@ -64,14 +64,14 @@ class FreshMachineTests(unittest.TestCase):
                 dirs.append(str(Path(p).parent))
         fakes = self.plugin / "tests" / "fakes"
         self.env = {
-            "HOME": str(self.home), "PATH": os.pathsep.join(dirs + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]),
+            "HOME": str(self.home), "USERPROFILE": str(self.home), "PATH": os.pathsep.join(dirs + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]),
             "LANG": "ja_JP.UTF-8", "TMPDIR": str(self.tmp / "tmp"),
             # 台本係と絵を描く codex は偽物（本物の LLM・Codex は呼ばない）
-            "QUICK_SLIDE_CLAUDE": str(fakes / "fake_claude.py"), "QUICK_SLIDE_CODEX_TEXT": str(fakes / "refuse.py"),
+            "QUICK_SLIDE_CLAUDE": runnable(fakes / "fake_claude.py"), "QUICK_SLIDE_CODEX_TEXT": runnable(fakes / "refuse.py"),
             "FAKE_WRITER_LOG": str(self.tmp / "writer-calls"),
             # 偽物の台本係は --no-images を読まないので、画像の枠を置かせない（置くと絵を描く codex を探しに行く）
             "FAKE_WRITER_IMAGES": "0",
-            "IMAGE_SLIDE_CODEX": str(self.plugin / "skills" / "image-slide" / "tests" / "fake_codex.py"),
+            "IMAGE_SLIDE_CODEX": runnable(self.plugin / "skills" / "image-slide" / "tests" / "fake_codex.py"),
             "FAKE_CODEX_LOG": str(self.tmp / "codex-calls"), "CODEX_HOME": str(fake_codex_home(self.home)),
         }
         self.setup_py = self.plugin / "skills" / "quick-slide" / "scripts" / "quick_slide_setup.py"

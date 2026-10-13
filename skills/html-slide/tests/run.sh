@@ -11,10 +11,17 @@ export PYTHONDONTWRITEBYTECODE=1   # スキルの中に __pycache__ を残さな
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export FIXTURES="$DIR/fixtures"
+# 雛形の XXXXXX は GNU の mktemp（Windows の Git Bash）が要る。`-t <名前>` は mac でしか通らない
+TMPBASE="${TMPDIR:-/tmp}"   # mac の TMPDIR は / で終わる。// が残ると、パスを見比べる試験がずれる
+SCRATCH="$(mktemp -d "${TMPBASE%/}/html-slide-tests.XXXXXX")"
+trap 'rm -rf "$SCRATCH"' EXIT
+# 試験が tempfile で作る一時フォルダもここへ寄せ、落ちた試験の分も最後にまとめて消す
+mkdir -p "$SCRATCH/tmp" "$SCRATCH/html-slide-cache" "$SCRATCH/quick-slide-home"
+export TMPDIR="$SCRATCH/tmp"
 # 描いた絵の置き場（キャッシュ・ADR 0014）は使い捨てのフォルダへ。実の ~/Library/Caches に書かない
-export HTML_SLIDE_CACHE="$(mktemp -d -t html-slide-cache)"
+export HTML_SLIDE_CACHE="$SCRATCH/html-slide-cache"
 # 設定も実の置き場（~/.quick-slide）を読まない（places.py）
-export QUICK_SLIDE_HOME="$(mktemp -d -t quick-slide-home)"
+export QUICK_SLIDE_HOME="$SCRATCH/quick-slide-home"
 
 pass=0
 fail=0

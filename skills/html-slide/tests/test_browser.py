@@ -22,7 +22,7 @@ sys.path.insert(0, str(SKILL / "scripts"))
 import browser as B  # noqa: E402
 
 TMP = pathlib.Path(tempfile.mkdtemp(prefix="html-slide-browser-")).resolve()
-KEYS = ("HOME", "QUICK_SLIDE_HOME", "HTML_SLIDE_NODE", "HTML_SLIDE_NODE_MODULES", "HTML_SLIDE_CHROME", "HTML_SLIDE_CONFIG")
+KEYS = ("HOME", "USERPROFILE", "QUICK_SLIDE_HOME", "HTML_SLIDE_NODE", "HTML_SLIDE_NODE_MODULES", "HTML_SLIDE_CHROME", "HTML_SLIDE_CONFIG")
 
 
 def check(cond, msg):
@@ -36,6 +36,8 @@ def env(**values):
     for k in KEYS:
         os.environ.pop(k, None)
     os.environ.update({k: str(v) for k, v in values.items()})
+    if "HOME" in values:   # Windows の Path.home() は HOME でなく USERPROFILE を見る
+        os.environ["USERPROFILE"] = str(values["HOME"])
     try:
         yield
     finally:
@@ -44,6 +46,16 @@ def env(**values):
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
+
+
+def runnable(script: pathlib.Path) -> str:
+    """偽物（`.py`）を、コマンドとして起こせる形で返す。Windows は `.py` を直接起こせないので、同じ Python で
+    走らせる `.cmd` の包みを一時フォルダに作る（cmd.exe は包みを OEM のコードページで読むので、その字で書く）。"""
+    if os.name != "nt":
+        return str(script)
+    cmd = pathlib.Path(tempfile.mkdtemp(prefix="html-slide-browser-launch-")) / f"{script.stem}.cmd"
+    cmd.write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="oem", newline="")
+    return str(cmd)
 
 
 def fake_chrome(folder: pathlib.Path, version: str) -> pathlib.Path:
@@ -130,7 +142,7 @@ def case_cli_json():
     home = TMP / "cli" / "home"
     home.mkdir(parents=True)
     e = {k: v for k, v in os.environ.items() if k not in KEYS}
-    e.update(HOME=str(home), QUICK_SLIDE_HOME=str(TMP / "cli" / "qs"), PYTHONDONTWRITEBYTECODE="1")
+    e.update(HOME=str(home), USERPROFILE=str(home), QUICK_SLIDE_HOME=str(TMP / "cli" / "qs"), PYTHONDONTWRITEBYTECODE="1")
     r = subprocess.run([sys.executable, str(SKILL / "scripts" / "browser.py")], capture_output=True, text=True, env=e)
     check(r.returncode == 0, r.stderr)
     data = json.loads(r.stdout.strip().splitlines()[-1])
@@ -146,7 +158,7 @@ def case_rc4_before_drawing():
     home.mkdir(parents=True)
     calls = TMP / "rc4" / "codex-calls"
     with env(HOME=home, QUICK_SLIDE_HOME=TMP / "rc4" / "qs", HTML_SLIDE_CONFIG=TMP / "rc4" / "none.yaml"):
-        os.environ["HTML_SLIDE_CODEX"] = str(HERE / "fake_codex.py")
+        os.environ["HTML_SLIDE_CODEX"] = runnable(HERE / "fake_codex.py")
         os.environ["FAKE_CODEX_LOG"] = str(calls)
         try:
             for argv in (["check", "--script", str(script)],

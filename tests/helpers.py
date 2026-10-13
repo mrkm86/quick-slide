@@ -36,6 +36,19 @@ T0 = "2026-09-07T00:00:00.000000Z"
 logging.getLogger("quick_slide").addHandler(logging.NullHandler())
 
 
+def runnable(script: Path) -> str:
+    """偽物（`.py`）を、コマンドとして起こせる形で返す。
+
+    Windows は `.py` を直接起こせない（`shutil.which` も `PATHEXT` に無いので見つけない）。同じ Python で走らせる
+    `.cmd` の包みを一時フォルダに作って返す。cmd.exe は包みを OEM のコードページで読むので、その字で書く。
+    """
+    if os.name != "nt":
+        return str(script)
+    cmd = Path(tempfile.mkdtemp(prefix="quick-slide-launch-")) / f"{script.stem}.cmd"
+    cmd.write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="oem", newline="")
+    return str(cmd)
+
+
 def temp_dir(testcase, prefix: str = "quick-slide-test-") -> Path:
     tmp = Path(tempfile.mkdtemp(prefix=prefix)).resolve()  # /var → /private/var（置き場は実パスで扱う）
     testcase.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
@@ -107,7 +120,7 @@ class ServerFixture:
         self.clock = clock or FixedClock(T0)
         self.server = QuickSlideServer(self.root, settings=settings or Settings(), host=host, port=0,
                                        static_root=static_root or WEB_APP_DIR, clock=self.clock,
-                                       tools=tools or Tools(claude=str(FAKES / "refuse.py"), codex=str(FAKES / "refuse.py")),
+                                       tools=tools or Tools(claude=runnable(FAKES / "refuse.py"), codex=runnable(FAKES / "refuse.py")),
                                        start_workers=start_workers)
         self.thread = self.server.start_in_thread()
         self.port = self.server.bound_port
@@ -309,15 +322,15 @@ def fake_tools(testcase, *, mode: str = "ok", images: bool = True, skills_dir: P
     env = {
         "FAKE_WRITER_LOG": str(tmp / "writer-calls"), "FAKE_WRITER_MODE": mode, "FAKE_WRITER_IMAGES": "1" if images else "0",
         "FAKE_CODEX_LOG": str(tmp / "codex-calls"), "CODEX_HOME": str(fake_codex_home(tmp)),
-        "HTML_SLIDE_CODEX": str(SKILLS_DIR / "html-slide" / "tests" / "fake_codex.py"),
-        "IMAGE_SLIDE_CODEX": str(SKILLS_DIR / "image-slide" / "tests" / "fake_codex.py"),
+        "HTML_SLIDE_CODEX": runnable(SKILLS_DIR / "html-slide" / "tests" / "fake_codex.py"),
+        "IMAGE_SLIDE_CODEX": runnable(SKILLS_DIR / "image-slide" / "tests" / "fake_codex.py"),
         "HTML_SLIDE_CACHE": str(tmp / "html-slide-cache"), "IMAGE_SLIDE_CACHE": str(tmp / "image-slide-cache"),
         "MOTION_SLIDE_CACHE": str(tmp / "motion-slide-cache"),
         "HTML_SLIDE_CONFIG": str(tmp / "no-config.yaml"), "IMAGE_SLIDE_CONFIG": str(tmp / "no-config.yaml"),
         **(extra or {}),
     }
     # モーションが組むのに要るもの（Playwright の Chromium）の確かめは、本物を探さず「揃っている」と答える偽物にする
-    return Tools(claude=str(FAKES / "fake_claude.py"), codex=str(FAKES / "fake_codex_text.py"),
+    return Tools(claude=runnable(FAKES / "fake_claude.py"), codex=runnable(FAKES / "fake_codex_text.py"),
                  skills_dir=skills_dir or SKILLS_DIR, extra_env=env,
                  motion_probe=[sys.executable, "-c", "print('[]')"]), tmp
 

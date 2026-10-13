@@ -14,7 +14,7 @@ import time
 import unittest
 from pathlib import Path
 
-from helpers import FAKES, fake_tools, intake_payload, start_server, wait_until_idle, writer_calls
+from helpers import FAKES, fake_tools, intake_payload, runnable, start_server, wait_until_idle, writer_calls
 
 from quick_slide.scriptdoc import dumps, without_pins
 from quick_slide.settings import Settings, WorkerSettings
@@ -39,7 +39,7 @@ class EditBase(unittest.TestCase):
     runtime = "codex"
 
     def setUp(self) -> None:
-        varied = str(FAKES / "fake_codex_varied.py")   # 描くたびに違う絵（「絵だけ直した」を中身で見分ける）
+        varied = runnable(FAKES / "fake_codex_varied.py")   # 描くたびに違う絵（「絵だけ直した」を中身で見分ける）
         self.tools, self.log = fake_tools(self, extra={"FAKE_WRITER_PAGES": "10", "FAKE_CODEX_SLEEP": "0.05",
                                                        "IMAGE_SLIDE_CODEX": varied, "HTML_SLIDE_CODEX": varied})
         self.fx = start_server(self, tools=self.tools, settings=CONFIG)
