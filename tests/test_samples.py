@@ -173,7 +173,7 @@ class StartupTests(unittest.TestCase):
         # 入れ直した 1 冊とは別に、ごみ箱の 1 冊は残っている（戻せる）
         self.assertEqual([t["id"] for t in fx.get("/api/trash").json()["items"]], [pitch["id"]])
 
-    def test_purged_sample_is_not_imported_again(self) -> None:
+    def test_purged_sample_stays_gone_until_restored(self) -> None:
         tmp = temp_dir(self, "quick-slide-srv-")
         fx = ServerFixture(tmp, samples_dir=SAMPLES_DIR)
         try:
@@ -188,6 +188,12 @@ class StartupTests(unittest.TestCase):
         fx = ServerFixture(tmp, samples_dir=SAMPLES_DIR)
         self.addCleanup(fx.close)
         self.assertNotIn("motion", [c["mode"] for c in self.live_decks(fx)])
+        # 「入れ直す」なら、完全に削除した見本も新しい 1 冊として戻る
+        r = fx.post("/api/samples/restore").json()
+        self.assertEqual((len(r["imported"]), r["message"]), (1, "見本を 1 冊入れました。"))
+        motion = [c for c in self.live_decks(fx) if c["mode"] == "motion"]
+        self.assertEqual(len(motion), 1)
+        self.assertEqual(motion[0]["ready_count"], motion[0]["page_count"])
 
     def test_new_version_advances_untouched_decks_only(self) -> None:
         directory = copy_bundle(self)
