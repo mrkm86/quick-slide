@@ -283,6 +283,27 @@ def t_bad_files():
     check(r.returncode == 2 and "NG:" in r.stderr, f"入口の rc: {r.returncode} {r.stderr}")
 
 
+def t_svg_only_image():
+    """PNG の控えの無い SVG の画像は、Chrome で描いて PNG にし、回転を掛ける（ネットへは読みに行かない）。"""
+    from PIL import Image
+    rep = PI.Report()
+    m = PI.Media(TMP / "svg", rep)
+    svg = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 5"><rect width="10" height="5" fill="#ff0000"/>'
+           b'<image href="http://example.com/x.png" width="1" height="1"/></svg>')
+    rel, w, h = m.svg(1, svg, crop=(0, 0, 0, 0), size=(100, 50), mask=None, rot=90, fh=False, fv=False, alpha=1.0,
+                      gray=False, duo=None, clr_change=None, tile=False)
+    again, _, _ = m.svg(2, svg, crop=(0, 0, 0, 0), size=(100, 50), mask=None, rot=90, fh=False, fv=False, alpha=1.0,
+                        gray=False, duo=None, clr_change=None, tile=False)
+    check(again == rel, f"同じ SVG は 1 つの画像: {rel} / {again}")
+    check(abs(w - 50) < 0.5 and abs(h - 100) < 0.5, f"回した外接の大きさ: {w}×{h}")
+    m.finish()
+    im = Image.open(TMP / "svg" / rel).convert("RGBA")
+    check(im.width < im.height, f"回した向き: {im.size}")
+    px = im.getpixel((im.width // 2, im.height // 2))
+    check(px[0] > 200 and px[1] < 60 and px[3] > 200, f"赤く描けた: {px}")
+    check(not rep.items, f"報告: {rep.items}")
+
+
 def t_xml_entities():
     """XML の実体参照を解かない（外のファイルを読まない）。"""
     import ooxml as X

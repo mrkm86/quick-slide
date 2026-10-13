@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+import re
+
 import ooxml as X
 from ooxml import A
 from pptx_import import CJK, FONT_ALIASES, JA_FALLBACK, JA_SERIF_FALLBACK, LINE_HEIGHT, SERIF_HINT, WINGDINGS, esc, f2
@@ -15,6 +17,7 @@ from pptx_import import CJK, FONT_ALIASES, JA_FALLBACK, JA_SERIF_FALLBACK, LINE_
 ANCHOR = {"t": "flex-start", "ctr": "center", "b": "flex-end", "just": "flex-start", "dist": "space-between"}
 ALIGN = {"l": "left", "ctr": "center", "r": "right", "just": "justify", "dist": "justify", "thaiDist": "justify", "justLow": "justify"}
 VERTICAL_STACK = ("eaVert", "wordArtVert", "wordArtVertRtl", "mongolianVert")
+WEIGHT_SUFFIX = re.compile(r"\s+(Light|Medium|Bold|Regular|DemiBold|SemiBold|Semibold|Heavy|Black|Thin|ExtraBold|UI|W\d)$", re.I)
 SYMBOL_FONTS = ("Wingdings", "Wingdings 2", "Wingdings 3", "Symbol", "Webdings", "Marlett")
 
 
@@ -27,9 +30,12 @@ def font_stack(latin: str | None, ea: str | None, text: str) -> str:
         n = n.replace('"', "").replace("'", "").replace(";", "").replace("<", "").replace(">", "").strip()
         if n and n not in names:
             names.append(n)
-        for al in FONT_ALIASES.get(n, []):
-            if al not in names:
-                names.append(al)
+        # 太さの付いた名前（游ゴシック Bold など）は、太さを外した名前でも探す（mac の字体は太さを名前に持たない）
+        base = WEIGHT_SUFFIX.sub("", n).strip()
+        for cand in (n, base):
+            for al in [cand] + FONT_ALIASES.get(cand, []):
+                if al and al not in names:
+                    names.append(al)
     serif = bool(names) and bool(SERIF_HINT.search(names[0]))
     stack = [f"'{n}'" for n in names] + (JA_SERIF_FALLBACK if serif else JA_FALLBACK)
     return ", ".join(stack)
@@ -197,6 +203,11 @@ def render(ctx, tx, chain: X.TextChain, bp: dict, bx: dict, prst: str, para_hook
     vert = bp["vert"]
     if vert in ("vert", "vert270"):
         rot = (rot + (90 if vert == "vert" else 270)) % 360
+        x, y, w, h = x + w / 2 - h / 2, y + h / 2 - w / 2, h, w
+    if vert in VERTICAL_STACK and not CJK.search("".join(t.text or "" for t in tx.iter(A + "t"))):
+        # 英字だけの縦書きは、PowerPoint でも字が横に寝る（右へ 90° 回した横書きと同じ）
+        vert = "vert"
+        rot = (rot + 90) % 360
         x, y, w, h = x + w / 2 - h / 2, y + h / 2 - w / 2, h, w
     stack = vert in VERTICAL_STACK
     if stack:

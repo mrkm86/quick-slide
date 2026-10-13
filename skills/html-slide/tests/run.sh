@@ -168,6 +168,7 @@ imp "エンジンの html 型: 画像を assets/ へ・段を数える・handout
 imp "deck（Chrome）: 取り込んだ台本が rc=0・クリックの数・取り込みの印・回した文字の rot・ノート" deck_end_to_end
 imp "PPTX でないもの・外へ出る部品の名前は rc=2" bad_files
 imp "XML の実体参照を解かない" xml_entities
+imp "PNG の控えの無い SVG の画像は Chrome で描いて PNG に（同じものは 1 つ・回転・ネットへ読みに行かない）" svg_only_image
 
 # --- Node のモジュールと Chrome の在りか（ADR 0016） ---
 browser() { run "$1" python3 "$DIR/test_browser.py" "$2"; }

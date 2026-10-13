@@ -49,7 +49,8 @@ FONT_ALIASES = {
     "游ゴシック Medium": ["Yu Gothic Medium", "YuGothic"], "Yu Gothic UI": ["Yu Gothic", "YuGothic"],
     "メイリオ": ["Meiryo"], "ＭＳ Ｐゴシック": ["MS PGothic"], "ＭＳ ゴシック": ["MS Gothic"],
     "ＭＳ 明朝": ["MS Mincho"], "ＭＳ Ｐ明朝": ["MS PMincho"], "游明朝": ["Yu Mincho", "YuMincho"],
-    "BIZ UDPゴシック": ["BIZ UDPGothic"], "BIZ UDゴシック": ["BIZ UDGothic"],
+    "BIZ UDPゴシック": ["BIZ UDPGothic"], "BIZ UDゴシック": ["BIZ UDGothic"], "Meiryo UI": ["Meiryo"],
+    "UD デジタル 教科書体 N-B": ["UD Digi Kyokasho N-B"], "UD デジタル 教科書体 N-R": ["UD Digi Kyokasho N-R"],
 }
 SERIF_HINT = re.compile(r"明朝|Mincho|Serif|Times|Georgia|Garamond|Century", re.I)
 CJK = re.compile(r"[　-ヿ㐀-鿿豈-﫿＀-￯]")
@@ -284,17 +285,74 @@ class Media:
         self.dir = out / "media"
         self.report = report
         self.done: dict[str, str] = {}
+        self.svg_jobs: list[tuple[int, bytes, dict, str]] = []
+
+    @staticmethod
+    def _turned(size, rot):
+        w, h = size
+        if rot % 360:
+            r = math.radians(rot)
+            w, h = abs(size[0] * math.cos(r)) + abs(size[1] * math.sin(r)), abs(size[0] * math.sin(r)) + abs(size[1] * math.cos(r))
+        return w, h
+
+    def svg(self, no: int, blob: bytes, **ops) -> tuple[str, float, float]:
+        """SVG の画像（PNG の控えが無いもの）。名前だけ先に決め、`finish` で Chrome に描かせてから加工する。"""
+        key = hashlib.sha256(blob + repr(sorted(ops.items())).encode()).hexdigest()[:16]
+        if key not in self.done:
+            self.done[key] = f"media/s{no:02d}-{key}.png"
+            self.svg_jobs.append((no, blob, ops, self.done[key]))
+        rel = self.done[key]
+        w, h = self._turned(ops.get("size", (100, 100)), ops.get("rot", 0.0))
+        return rel, w, h
+
+    def finish(self) -> None:
+        """溜めた SVG を 1 回の Chrome でまとめて PNG にし、切り抜き・回転などを掛ける。描けなければ透明の画像にして報告する。"""
+        if not self.svg_jobs:
+            return
+        import subprocess
+        import tempfile
+        from PIL import Image
+        self.dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="qs-svg-") as tmp:
+            jobs = []
+            for i, (no, blob, ops, rel) in enumerate(self.svg_jobs):
+                src = pathlib.Path(tmp) / f"{i}.svg"
+                src.write_bytes(blob)
+                w, h = ops.get("size", (100, 100))
+                k = min(IMAGE_DENSITY, 4096 / max(w, h, 1))
+                jobs.append({"svg": str(src), "png": str(pathlib.Path(tmp) / f"{i}.png"), "w": max(1, w * k), "h": max(1, h * k)})
+            (pathlib.Path(tmp) / "jobs.json").write_text(json.dumps(jobs))
+            ok = False
+            try:
+                import browser as B
+                node, _ = B.node()
+                if node and not B.missing():
+                    r = subprocess.run([node, str(pathlib.Path(__file__).resolve().parent / "svg_raster.mjs"),
+                                        str(pathlib.Path(tmp) / "jobs.json")], capture_output=True, text=True,
+                                       timeout=600, env=B.child_env())
+                    ok = r.returncode == 0
+            except (OSError, subprocess.SubprocessError):
+                ok = False
+            for (no, blob, ops, rel), j in zip(self.svg_jobs, jobs):
+                png = pathlib.Path(j["png"])
+                dest = self.dir / pathlib.Path(rel).name
+                if ok and png.is_file():
+                    self.picture(no, png.read_bytes(), ".png", name=dest.name, **ops)
+                    if dest.is_file():
+                        continue
+                self.report.add(no, "画像（SVG）", "描けないので透明にした（Chrome が要る）")
+                Image.new("RGBA", (2, 2), (0, 0, 0, 0)).save(dest)
 
     def picture(self, no: int, blob: bytes, ext: str, *, crop=(0, 0, 0, 0), size=(100, 100), mask: str | None = None,
                 rot: float = 0.0, fh=False, fv=False, alpha: float = 1.0, gray=False, duo=None, clr_change=None,
-                tile=False) -> tuple[str, float, float] | None:
+                tile=False, name: str | None = None) -> tuple[str, float, float] | None:
         """画像を加工して書く。(media/ からの相対パス, 書いた画像の表示の幅, 高さ px) を返す。読めなければ None。
 
         size は表示の大きさ（px）。crop は (左, 上, 右, 下) の割合（負は余白）。mask は形の d（size の座標）。
         回転した画像は、回した外接の箱の大きさになる（呼ぶ側は中心をそろえて置く）。"""
         from PIL import Image, ImageDraw, ImageOps
         key = hashlib.sha256(blob + repr((crop, size, mask, round(rot, 2), fh, fv, alpha, gray, duo, clr_change, tile)).encode()).hexdigest()[:16]
-        if key in self.done:
+        if key in self.done and name is None:
             path = self.done[key]
             w, h = size
             if rot % 360:
@@ -380,16 +438,16 @@ class Media:
             out_h = abs(dw * math.sin(r)) + abs(dh * math.cos(r))
         opaque = im.getchannel("A").getextrema()[0] >= 255
         self.dir.mkdir(parents=True, exist_ok=True)
-        if opaque and jpeg_src:
+        if opaque and jpeg_src and name is None:
             name = f"s{no:02d}-{key}.jpg"
             im.convert("RGB").save(self.dir / name, "JPEG", quality=90, optimize=True)
         else:
-            name = f"s{no:02d}-{key}.png"
+            name = name or f"s{no:02d}-{key}.png"
             if opaque:
                 im = im.convert("RGB")
             im.save(self.dir / name, "PNG", optimize=True)
         rel = f"media/{name}"
-        self.done[key] = rel
+        self.done.setdefault(key, rel)
         return rel, out_w, out_h
 
 
@@ -925,6 +983,10 @@ class ShapeReader:
         rid = blip.get(R + "embed")
         part = self.part_for(el)
         if not rid:
+            # PNG の控えを持たない SVG の画像（asvg:svgBlip だけ）
+            sv = next((e for e in blip.iter() if X.local(e) == "svgBlip"), None)
+            rid = sv.get(R + "embed") if sv is not None else None
+        if not rid:
             if blip.get(R + "link"):
                 self.ctx.rep("外部の画像（リンク）", "取りに行かない。空の枠にした")
             return None, None, blip
@@ -955,6 +1017,8 @@ class ShapeReader:
         ctx = self.ctx
         blob, ext, blip = self.blip_blob(blip_fill, el)
         if blob is None:
+            if blip is not None and not blip.get(R + "link"):
+                ctx.rep("画像", "中身が無いので空の枠にした")
             return self.missing_img(bx)
         if ext in (".emf", ".wmf", ".emz", ".wmz"):
             conv = convert_metafile(blob, ext)
@@ -985,8 +1049,12 @@ class ShapeReader:
             elif n in ("lum", "biLevel", "alphaBiLevel", "tint", "hsl"):
                 ctx.rep("画像の色の調整", "写さない（元の色のまま）")
         tile = X.q(blip_fill, "a:tile") is not None
-        got = ctx.media.picture(ctx.no, blob, ext, crop=crop, size=(bx["w"], bx["h"]), mask=mask, rot=bx["rot"],
-                                fh=bx["fh"], fv=bx["fv"], alpha=alpha, gray=gray, duo=duo, clr_change=clr, tile=tile)
+        ops = dict(crop=crop, size=(bx["w"], bx["h"]), mask=mask, rot=bx["rot"], fh=bx["fh"], fv=bx["fv"], alpha=alpha,
+                   gray=gray, duo=duo, clr_change=clr, tile=tile)
+        if ext == ".svg":
+            got = ctx.media.svg(ctx.no, blob, **ops)
+        else:
+            got = ctx.media.picture(ctx.no, blob, ext, **ops)
         if got is None:
             return self.missing_img(bx)
         rel, ow, oh = got
@@ -1418,6 +1486,7 @@ def import_pptx(src: pathlib.Path, out: pathlib.Path) -> dict:
                            "transition": "none", "_import": {"slide": no}})
     if not slides:
         raise ImportError_("スライドが 1 枚も無い")
+    deck.media.finish()
     title = (deck.prs.core_properties.title or "").strip() or src.stem
     ty, tdict = theme_yaml(deck)
     (out / "theme.yaml").write_text(ty, encoding="utf-8")
