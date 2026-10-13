@@ -265,4 +265,13 @@ def answer_for(kind: str, prompt: str) -> tuple[str | None, str | None]:
             return pathlib.Path(fixed).read_text(encoding="utf-8"), None
         return json.dumps(motion_script("scenes" if MODE == "scenes_key" else "slides"), ensure_ascii=False), None
     script = ten_page_script() if os.environ.get("FAKE_WRITER_PAGES") == "10" else valid_script()
+    # 挿絵（image.svg）のページを足す（ADR 0011）。bad_first は 1 回目だけ描けない挿絵（viewBox が無い）を書く
+    illust = os.environ.get("FAKE_WRITER_ILLUST")
+    if illust:
+        svg = ('<svg viewBox="0 0 960 1080"><rect width="960" height="1080" fill="#e6f1f3"/>'
+               '<icon name="users" x="250" y="330" size="460" fill="#006f83"/></svg>')
+        if illust == "bad_first" and n == 0:
+            svg = '<svg><rect width="10" height="10"/></svg>'
+        script["slides"].insert(-1, {"id": "p-illust", "type": "photo", "layout": "right", "headline": "挿絵のページ（架空）",
+                                     "image": {"svg": svg}})
     return "```json\n" + json.dumps(script, ensure_ascii=False, indent=1) + "\n```", None

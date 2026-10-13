@@ -19,6 +19,7 @@
 | `skills/html-slide/` | エンジン: 編集できて動く PPTX |
 | `skills/image-slide/` | エンジン: 画像生成で1枚ずつ描く資料 |
 | `skills/quick-slide/` | 会話の入口（原稿を整えて投入し、スライドの画面の URL を返す） |
+| `skills/illust/` | 挿絵を SVG で描いて確かめ、PNG にする（エンジンからは呼ばない。サーバが呼ぶ） |
 | `samples/` | 同梱の見本（モードごとに 1 冊。最初の起動で入る）。台本の正本は `samples/<見本>/script.json`、`built/` は `samples/build.py` が書く（手で直さない。`docs/adr/0007-bundled-samples.md`） |
 | `src/quick_slide/`・`web/app/` | 常駐サーバ（台本係・描き係のワーカーを含む）と画面（段の進め方は `docs/DESIGN.md` §7、控えは `docs/P1-NOTES.md`〜`docs/P5-NOTES.md`） |
 
@@ -35,6 +36,7 @@
 ```bash
 bash skills/image-slide/tests/run.sh   # 本物の Codex は呼ばない
 bash skills/html-slide/tests/run.sh
+bash skills/illust/tests/run.sh
 bash tests/run.sh                      # サーバと画面（本物のヘッドレス Chrome で画面を開く試験を含む）
 QUICK_SLIDE_FRESH_E2E=1 bash tests/run.sh   # 上に加えて「配った機体」の通し（写しと空の HOME で導入から書き出しまで。puppeteer-core と Chrome を落とす）
 ```
