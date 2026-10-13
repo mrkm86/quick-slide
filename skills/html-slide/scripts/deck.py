@@ -522,7 +522,9 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
             img_warns.append(f"{no}枚目（{spec['type']}）: スタイル {sty['name']} では画像を置く型だが、image が無い"
                              "（prompt を書けば Codex で描いて埋める）")
         clicks = s.clicks if steps_on else 0
-        talk = talk_lines(no, spec, clicks)
+        imported = getattr(s, "imported", False)
+        # 取り込んだページは talk の代わりに notes（元の PPTX のノート）を持てる。［クリック］の数は照合しない（ADR 0025）
+        talk = [spec["notes"] or ""] if imported and "notes" in spec and "talk" not in spec else talk_lines(no, spec, clicks)
         tr = spec.get("transition") or "fade"
         if tr in RETIRED_TRANSITIONS:
             img_warns.append(f"{no}枚目（{spec.get('type')}）: transition: {tr} は退役した（ブラウザで再現できない・{RETIRED_TRANSITIONS[tr]} に替えて描く）。台本から外す")
@@ -544,7 +546,10 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
             parts.append(f'<div class="watermark" data-keep="watermark" data-name="透かし">{T.esc(watermark)}</div>')
         notes = (CLICK.join(talk) if mode == "talk" else "\n".join(x for x in talk if x))
         body = "\n      ".join(parts)
-        sections.append(f'    <section data-slide data-type="{spec["type"]}" data-transition="{tr}">\n      {body}\n'
+        extra = ""
+        if imported:
+            extra = " data-imported" + (f' style="{T.esc_plain(s.section_style)}"' if getattr(s, "section_style", None) else "")
+        sections.append(f'    <section data-slide data-type="{spec["type"]}" data-transition="{tr}"{extra}>\n      {body}\n'
                         f'      <aside class="notes">{T.esc_plain(notes)}</aside>\n    </section>')
         info_slides.append({"no": no, "type": spec["type"], "styled": styled,
                             "clicks": clicks if mode == "talk" else 0, "transition": tr})

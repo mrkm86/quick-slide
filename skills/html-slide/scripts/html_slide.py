@@ -9,6 +9,7 @@
     deck        台本 → HTML → PPTX・PDF・ページの画像・サムネイル（--format で選ぶ）→ 照合 → inspect.md
     assemble    ページごとの部品（PPTX の部品 JSON・PDF の何ページ目か）を並べて、PPTX・PDF を 1 本ずつ書く（ADR 0024）
     render      決まりに沿った HTML → PPTX
+    import      既存の PPTX → 取り込みの台本（html 型のページ）・画像・テーマ・報告（ADR 0025）。deck に渡せば組める
     from-video  html-video が焼いた解説動画（<出力>/<preset>）→ PPTX
     verify      PPTX のクリックとノートの照合（--odp で LibreOffice の読み取りも）
 
@@ -522,6 +523,21 @@ def cmd_render(a) -> int:
     return finish(Path(out).resolve(), report, None, None, odp=not a.no_odp)
 
 
+def cmd_import(a) -> int:
+    import pptx_import as PI
+    out = Path(a.out).expanduser() if a.out else out_root() / Path(a.pptx).stem
+    try:
+        rep = PI.import_pptx(Path(a.pptx), out)
+    except PI.ImportError_ as e:
+        print(f"NG: {e}", file=sys.stderr)
+        return 2
+    for it in rep["items"]:
+        where = f"{it['slide']}枚目" if it["slide"] else "全体"
+        print(f"報告: {where}: {it['what']} — {it['how']}" + (f"（{it['count']} か所）" if it["count"] > 1 else ""), file=sys.stderr)
+    print(f"取り込み: {rep['slides']} 枚 → {out / 'script.json'}（報告は {out / 'import-report.json'}）")
+    return 0
+
+
 def cmd_from_video(a) -> int:
     vdir = Path(a.video_dir).expanduser().resolve()
     project = vdir / "project"
@@ -665,6 +681,9 @@ def main(argv=None) -> int:
     r.add_argument("--html", required=True)
     r.add_argument("--out")
     r.add_argument("--no-odp", action="store_true")
+    ip = sub.add_parser("import", help="既存の PPTX → 取り込みの台本（deck --script <out>/script.json で組む）")
+    ip.add_argument("--pptx", required=True, help="取り込む PPTX")
+    ip.add_argument("--out", help="台本・画像・報告を書くフォルダ（省略時は config の out:/<PPTX の名前>）")
     f = sub.add_parser("from-video", help="html-video の出力 → PPTX")
     f.add_argument("--video-dir", required=True, help="html-video の <出力>/<preset>（project/ と build.json がある所）")
     f.add_argument("--script", help="台本（省略時は <video-dir>/../script.json）")
@@ -678,7 +697,7 @@ def main(argv=None) -> int:
     try:
         return {"images": cmd_images, "catalog": cmd_catalog, "check": cmd_check, "deck": cmd_deck, "render": cmd_render,
                 "from-video": cmd_from_video, "verify": cmd_verify, "fill": cmd_fill, "revise": cmd_revise,
-                "assemble": cmd_assemble}[a.cmd](a)
+                "assemble": cmd_assemble, "import": cmd_import}[a.cmd](a)
     except R.RenderError as e:
         print(f"NG: {e}", file=sys.stderr)
         return e.rc

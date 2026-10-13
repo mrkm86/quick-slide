@@ -158,6 +158,17 @@ fill "revise: 微修正は今の絵を土台に・--remake は添えない・前
 fill "描いた絵はキャッシュの区画（台本のフォルダごと）・assets/ はハードリンク・前の置き場（images/gen-）は写して使い元は残す（ADR 0014）" cache_area
 fill "スタイルの image_look・expects_images（visual は表紙に画像が無ければ警告）" style_image_look
 
+# --- 既存の PPTX の取り込み（ADR 0025） ---
+imp() { run "$1" python3 "$DIR/test_import.py" "$2"; }
+imp "取り込みの台本: html 型・見出し・ノート・テーマ・画像は media/・非表示とスライドの外を報告・切り替え" structure
+imp "色と文字: 塗りと文字の色・pt × 2 px・字体の名前は単引用符・回した文字の箱" colors_and_text
+imp "4:3 は中央に置いて左右を背景で埋める" geometry_4x3
+imp "アニメーション: 段落ごと・自動の段 0・ワイプの向き・同時の遅れ・ホイール・終了は写さず報告" animations
+imp "エンジンの html 型: 画像を assets/ へ・段を数える・handout は段を外す・script・on*・url()・a・URL の画像・背景の url() は rc=2" engine_html_type
+imp "deck（Chrome）: 取り込んだ台本が rc=0・クリックの数・取り込みの印・回した文字の rot・ノート" deck_end_to_end
+imp "PPTX でないもの・外へ出る部品の名前は rc=2" bad_files
+imp "XML の実体参照を解かない" xml_entities
+
 # --- Node のモジュールと Chrome の在りか（ADR 0016） ---
 browser() { run "$1" python3 "$DIR/test_browser.py" "$2"; }
 browser "在りかの順: 環境変数 → 設定 → Quick Slide の置き場 → 前からの置き場・環境変数と設定は無くても落ちない" order

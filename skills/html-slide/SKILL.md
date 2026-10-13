@@ -1,6 +1,6 @@
 ---
 name: html-slide
-description: 台本（資料用の JSON）や HTML から、編集できて PowerPoint の本物のアニメーションで動く PPTX を作るスキル。台本を書けば、画面の型29種（表紙・目次・章扉・結論・主張・大きな数字・KPI・カード・矢羽根・比較・2×2・棒グラフ・折れ線・表・箇条書き・年表・体制・写真・ギャラリー・図・注釈つきの画像・引用・締め・式・放射・NG→OK の対・お知らせの枠・用語と説明・手順の案内）で HTML を組み、全面のヒーロー画像・左右の画像（1/2・2/5・1/3）・横長の帯・コラージュ・ビフォーアフター・画像つきカードなど画像をはめ込む置き方と、画像なしの表紙・章扉をテーマの色の図形で飾る置き方（graphic）と、項目に添える線のアイコン・結論の1行の帯（takeaway）も持つ（一覧画像を catalog で出せる）。画像の枠に「何を描くか」だけを書けば、Codex（ChatGPT のサブスク枠の gpt-image-2）で描いて埋める（写真風・イラスト・手描きを --image-look で資料全体に・ページのキャラ _characters も描き込む）。手持ちの写真は path で差し込み、描いた絵は1枚ずつ微修正・作り直しできる。クリックで要素が順に出る・モーフで画面がつながる・ノートに話す台本が入った PPTX にする。文字も図形も PowerPoint の部品なので、あとから直せる。PPTX と一緒に PDF（文字を選べる）・ページごとの画像（PNG）・全ページのサムネイル一覧も出し、--format で画像だけにもできる（週報・月報に貼る用）。スタイルは standard（説明・報告向け）と visual（ビジュアル寄り・ピッチ向け）から選べ、カスタムの YAML も渡せる。決まりに沿った HTML なら何でも PPTX にでき、html-video が焼いた解説動画の HTML も PPTX にできる。「スライドを作って」「パワポにして」「ヒーロー画像の表紙」「資料を作って」「稟議の資料」「提案書」「動くパワポ」「編集できるスライド」「提案資料」「html-slide」「html-pptx（旧名）」「動画をパワポにして」「叩き台を作って」「この写真に差し替えて」「この絵を直して」「スライドを画像で」「PDF も」「サムネイルで見たい」等で発動。※同じ台本を画像生成で1枚丸ごと描くなら image-slide、解説動画は html-video の領分。
+description: 台本（資料用の JSON）や HTML から、編集できて PowerPoint の本物のアニメーションで動く PPTX を作るスキル。台本を書けば、画面の型29種（表紙・目次・章扉・結論・主張・大きな数字・KPI・カード・矢羽根・比較・2×2・棒グラフ・折れ線・表・箇条書き・年表・体制・写真・ギャラリー・図・注釈つきの画像・引用・締め・式・放射・NG→OK の対・お知らせの枠・用語と説明・手順の案内）で HTML を組み、全面のヒーロー画像・左右の画像（1/2・2/5・1/3）・横長の帯・コラージュ・ビフォーアフター・画像つきカードなど画像をはめ込む置き方と、画像なしの表紙・章扉をテーマの色の図形で飾る置き方（graphic）と、項目に添える線のアイコン・結論の1行の帯（takeaway）も持つ（一覧画像を catalog で出せる）。画像の枠に「何を描くか」だけを書けば、Codex（ChatGPT のサブスク枠の gpt-image-2）で描いて埋める（写真風・イラスト・手描きを --image-look で資料全体に・ページのキャラ _characters も描き込む）。手持ちの写真は path で差し込み、描いた絵は1枚ずつ微修正・作り直しできる。クリックで要素が順に出る・モーフで画面がつながる・ノートに話す台本が入った PPTX にする。文字も図形も PowerPoint の部品なので、あとから直せる。PPTX と一緒に PDF（文字を選べる）・ページごとの画像（PNG）・全ページのサムネイル一覧も出し、--format で画像だけにもできる（週報・月報に貼る用）。スタイルは standard（説明・報告向け）と visual（ビジュアル寄り・ピッチ向け）から選べ、カスタムの YAML も渡せる。決まりに沿った HTML なら何でも PPTX にでき、html-video が焼いた解説動画の HTML も PPTX にできる。「スライドを作って」「パワポにして」「ヒーロー画像の表紙」「資料を作って」「稟議の資料」「提案書」「動くパワポ」「編集できるスライド」「提案資料」「html-slide」「html-pptx（旧名）」「動画をパワポにして」「このパワポを取り込んで」「叩き台を作って」「この写真に差し替えて」「この絵を直して」「スライドを画像で」「PDF も」「サムネイルで見たい」等で発動。※同じ台本を画像生成で1枚丸ごと描くなら image-slide、解説動画は html-video の領分。
 ---
 
 # html-slide — 編集できて動く PPTX
@@ -8,7 +8,7 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 台本（資料用の JSON）→ 型が HTML を組む → Chrome で位置を読む → python-pptx で PPTX。
 **文字・図形は PowerPoint の部品**（画像に焼かない）で、アニメーションは PowerPoint の `<p:timing>` を直接書く。
 
-> **ドキュメント**: 設計判断は [`docs/adr/`](docs/adr/)（0001 HTML の決まり・0002 字体・0003 名前・0004 ストーリーテンプレートを持たない・0005 スタイル・0006 テーマの色・0007 ロゴ・0008 ロゴの位置・0009 透かし・0010 handout は動きなし・0011 画像の枠を Codex で埋める・0012 出力は PPTX・PDF・ページの画像・サムネイル・0013 API で描く道は見送り・0014 描いた絵はキャッシュに置く・0015 置き場の根っこは ~/.quick-slide・0016 Node のモジュールと Chrome の在りか・0017 図形の表紙・0018 少ない中身は大きく・0019 図解の型とアイコンと締めの帯・0020 DADS の基礎・0021 型の構造の直しと3つの型・0022 余白のあるページは大きく組む・0023 モーフをやめる）、HTML の決まりは [`references/contract.md`](references/contract.md)、台本の仕様と画面の型は [`references/deck-format.md`](references/deck-format.md)、画像の枠の埋め方は [`references/images.md`](references/images.md)、部品 JSON は [`references/parts-format.md`](references/parts-format.md)、機体に置く手順は [`references/deploy.md`](references/deploy.md)。
+> **ドキュメント**: 設計判断は [`docs/adr/`](docs/adr/)（0001 HTML の決まり・0002 字体・0003 名前・0004 ストーリーテンプレートを持たない・0005 スタイル・0006 テーマの色・0007 ロゴ・0008 ロゴの位置・0009 透かし・0010 handout は動きなし・0011 画像の枠を Codex で埋める・0012 出力は PPTX・PDF・ページの画像・サムネイル・0013 API で描く道は見送り・0014 描いた絵はキャッシュに置く・0015 置き場の根っこは ~/.quick-slide・0016 Node のモジュールと Chrome の在りか・0017 図形の表紙・0018 少ない中身は大きく・0019 図解の型とアイコンと締めの帯・0020 DADS の基礎・0021 型の構造の直しと3つの型・0022 余白のあるページは大きく組む・0023 モーフをやめる・0024 ページごとの部品と assemble・0025 既存の PPTX の取り込み）、HTML の決まりは [`references/contract.md`](references/contract.md)、台本の仕様と画面の型は [`references/deck-format.md`](references/deck-format.md)、画像の枠の埋め方は [`references/images.md`](references/images.md)、部品 JSON は [`references/parts-format.md`](references/parts-format.md)、機体に置く手順は [`references/deploy.md`](references/deploy.md)。
 > **過去に受けた指摘** → [`FEEDBACK.md`](FEEDBACK.md)。**着手前に読む。**
 > **テスト**: `bash tests/run.sh`
 > **出荷検品**: [`INSPECTION.md`](INSPECTION.md)（画面型）。検品役が読むのは `<出力先>/inspect.md`。
@@ -27,6 +27,7 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 | 決まりに沿った HTML が手元にある | `render` |
 | html-video が焼いた解説動画を PPTX にする | `from-video` |
 | できた PPTX の、クリックとノートの照合 | `verify` |
+| 既存の PPTX を取り込む（画像・色・配置をそのまま写した台本にする。そのまま `deck` に渡せる） | `import --pptx <file> --out <フォルダ>` → `deck --script <フォルダ>/script.json`（[ADR 0025](docs/adr/0025-import-pptx.md)） |
 | 違う回のページを混ぜた PPTX・PDF を組む（呼ぶ側が、ページごとの部品を残しておく。`deck --parts <JSON>`） | `assemble --manifest <JSON> --out <フォルダ>`（[ADR 0024](docs/adr/0024-page-parts-and-assemble.md)） |
 
 すべて `python3 <このスキルのフォルダ>/scripts/html_slide.py <入口> …`（引数は `--help`）。
@@ -78,7 +79,8 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 
 | パス | 中身 |
 |---|---|
-| `scripts/html_slide.py` | 入口（catalog / images / fill / revise / check / deck / assemble / render / from-video / verify） |
+| `scripts/html_slide.py` | 入口（catalog / images / fill / revise / check / deck / assemble / render / import / from-video / verify） |
+| `scripts/pptx_import.py`・`pptx_text.py`・`pptx_table.py`・`pptx_chart.py`・`pptx_anim.py`・`ooxml.py`・`ooxml_geom.py` | 既存の PPTX → 取り込みの台本（図形・文字・画像・表・グラフ・SmartArt・アニメーション・テーマ。ADR 0025） |
 | `scripts/imagegen.py`・`scripts/codex_run.py` | 生成の枠の描く指示・鍵・画風・キャラ ／ Codex の認証と並列の生成（image-slide の写し） |
 | `scripts/deck.py`・`scripts/deck_types.py` | 台本 → HTML（画面の型23種と画像の置き方）・雛形・画像の枠の一覧 |
 | `scripts/deck_style.py`・`styles/` | スタイル（standard・visual・カスタム）の読み込みと検査・既定の当て方 |

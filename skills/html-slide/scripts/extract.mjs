@@ -333,6 +333,21 @@ function installLib() {
       const lhCss = parseFloat(cs.lineHeight);
       p.lh = r2(isNaN(lhCss) ? u.bottom - u.top : lhCss);
     }
+    // 回した箱の中の文字（取り込んだページ）: 箱の中心のまわりに、文字の箱の中心を回す
+    for (let n = el; n && n !== ctx.root; n = n.parentNode) {
+      if (!n.__qsRot) continue;
+      const q = n.__qsRot, rad = q.deg * Math.PI / 180;
+      const qx = q.cx - ctx.origin.left, qy = q.cy - ctx.origin.top;
+      const turn = rc => {
+        const cx = rc.x + rc.w / 2 - qx, cy = rc.y + rc.h / 2 - qy;
+        const nx = qx + cx * Math.cos(rad) - cy * Math.sin(rad), ny = qy + cx * Math.sin(rad) + cy * Math.cos(rad);
+        return { ...rc, x: r2(nx - rc.w / 2), y: r2(ny - rc.h / 2) };
+      };
+      p.rect = turn(p.rect);
+      if (p.box) p.box = turn(p.box);
+      p.rot = r2(((p.rot || 0) + q.deg + 360) % 360) || undefined;
+      break;
+    }
     out.push(p);
   };
 
@@ -682,6 +697,16 @@ function contractMain() {
       tr = RETIRED_TRANS[tr];
     }
     if (!TRANS.includes(tr)) V(no, sec, 'bad-transition', `data-transition="${tr}"（${TRANS.join(' / ')} のどれか）`);
+    // 取り込んだページ（PPTX から。data-imported）は、字体の違いで起きるはみ出し・スライドの外の飾り・ノートの［クリック］を止めない（警告）。
+    // 回すだけの transform（文字の箱の回転）も通す（PowerPoint の文字の箱の回転に写す・ADR 0025）
+    const imported = sec.hasAttribute('data-imported');
+    const LV = rule => (imported && ['text-overflow', 'outside-slide', 'notes-clicks'].includes(rule) ? 'warn' : 'error');
+    const rotOnly = t => {
+      const m = (t || '').match(/^matrix\(([^)]+)\)$/);
+      if (!m) return false;
+      const [a, b, c, d, e, f] = m[1].split(',').map(Number);
+      return Math.abs(a - d) < 1e-4 && Math.abs(b + c) < 1e-4 && Math.abs(a * a + b * b - 1) < 1e-3 && Math.abs(e) < 0.01 && Math.abs(f) < 0.01;
+    };
     const asides = [...sec.querySelectorAll('aside.notes')];
     const notes = asides.map(notesText).filter(Boolean).join('\n');
     const inNotes = el => asides.some(a => a.contains(el));
@@ -734,7 +759,8 @@ function contractMain() {
       const cs = getComputedStyle(el);
       const D = (rule, detail, level = 'error') => V(no, el, rule, detail, level, sec);
       if (cs.transform !== 'none' || (cs.rotate && cs.rotate !== 'none') || (cs.scale && cs.scale !== 'none') || (cs.translate && cs.translate !== 'none'))
-        D('transform', `transform: ${cs.transform}（位置は left・top・flex で決める）`);
+        if (!(imported && rotOnly(cs.transform) && (!cs.rotate || cs.rotate === 'none') && (!cs.scale || cs.scale === 'none') && (!cs.translate || cs.translate === 'none')))
+          D('transform', `transform: ${cs.transform}（位置は left・top・flex で決める）`);
       if (cs.filter !== 'none') D('filter', `filter: ${cs.filter}`);
       if (cs.backdropFilter && cs.backdropFilter !== 'none') D('backdrop-filter', `backdrop-filter: ${cs.backdropFilter}`);
       if (cs.clipPath !== 'none') D('clip-path', `clip-path: ${cs.clipPath}`);
@@ -779,7 +805,7 @@ function contractMain() {
         let anc = false;
         for (let n = el.parentNode; n && n !== sec; n = n.parentNode) if (outside.has(n)) { anc = true; break; }
         outside.add(el);
-        if (!anc) D('outside-slide', `section の外にはみ出す（${Math.round(r.left - o.left)},${Math.round(r.top - o.top)},${Math.round(r.width)}×${Math.round(r.height)}）`);
+        if (!anc) D('outside-slide', `section の外にはみ出す（${Math.round(r.left - o.left)},${Math.round(r.top - o.top)},${Math.round(r.width)}×${Math.round(r.height)}）`, LV('outside-slide'));
       }
       // 文字のはみ出し（文字を含む箱で、中身が箱より大きい。いちばん内側だけ出す）
       if (!H.isInline(el) && el.clientWidth > 0 && (el.textContent || '').trim() &&
@@ -787,13 +813,28 @@ function contractMain() {
     }
     for (const el of overflow) {
       if (overflow.some(x => x !== el && el.contains(x))) continue;
-      V(no, el, 'text-overflow', `文字が箱からはみ出す（中身 ${el.scrollWidth}×${el.scrollHeight} > 箱 ${el.clientWidth}×${el.clientHeight}。文を短くする）`, 'error', sec);
+      V(no, el, 'text-overflow', `文字が箱からはみ出す（中身 ${el.scrollWidth}×${el.scrollHeight} > 箱 ${el.clientWidth}×${el.clientHeight}。文を短くする）`, LV('text-overflow'), sec);
     }
 
-    // 部品
+    // 部品。取り込んだページの回した文字の箱は、回さない姿で測り、あとで中心を回す（H.text が __qsRot を見る）
+    const rotated = [];
+    if (imported) {
+      for (const el of sec.querySelectorAll('*')) {
+        if (el.namespaceURI !== 'http://www.w3.org/1999/xhtml' || inNotes(el)) continue;
+        const t = getComputedStyle(el).transform;
+        if (!t || t === 'none' || !rotOnly(t)) continue;
+        const deg = H.rot({ transform: t });
+        if (!deg) continue;
+        const b0 = el.getBoundingClientRect();
+        rotated.push({ el, prev: el.style.transform });
+        el.__qsRot = { deg, cx: (b0.left + b0.right) / 2, cy: (b0.top + b0.bottom) / 2 };
+        el.style.transform = 'none';
+      }
+    }
     const prims = [];
     const ctx = { origin: o, root: sec, unitOf, nameOf, skip: el => inNotes(el) };
     for (const c of H.paintOrder(sec)) H.walk(c, prims, ctx);
+    for (const r of rotated) { r.el.style.transform = r.prev; delete r.el.__qsRot; }
     // 背景（section → body → html の順に、最初に色のあるもの）
     let background = null;
     for (const n of [sec, document.body, document.documentElement]) {
@@ -812,9 +853,9 @@ function contractMain() {
     // 段の数とノートの［クリック］
     const steps = new Set(Object.entries(units).filter(([id]) => drawn.has(id)).map(([, u]) => u.step).filter(s => s !== null && s >= 1)).size;
     const said = (notes.match(/［クリック］/g) || []).length;
-    if (steps !== said) V(no, sec, 'notes-clicks', `段の数 ${steps} とノートの［クリック］${said} 個が合わない`);
+    if (steps !== said && !imported) V(no, sec, 'notes-clicks', `段の数 ${steps} とノートの［クリック］${said} 個が合わない`);
     if (/\[クリック\]/.test(notes)) V(no, sec, 'notes-ascii-click', 'ノートの [クリック] は全角の［クリック］で書く（半角は数えない）', 'warn');
-    slides.push({ id: sec.id || `s${no}`, transition: tr, background, notes, prims, units, steps, notes_clicks: said });
+    slides.push({ id: sec.id || `s${no}`, transition: tr, background, notes, prims, units, steps, notes_clicks: said, imported: imported || undefined });
   });
   for (const s of sections) s.style.display = '';
   return { slides, violations, title: document.title || '' };

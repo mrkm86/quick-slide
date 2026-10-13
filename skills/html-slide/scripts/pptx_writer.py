@@ -538,7 +538,9 @@ def build_slide(prs, s, si, line_breaks=False):
     said = notes.count(CLICK)
     return {"no": si + 1, "id": sid, "transition": tr, "steps": steps,
             "effects": sum(len(e) for _, e in groups), "auto": sum(len(e) for m, e in groups if m == "auto"),
-            "notes_clicks": said, "fx": fx_count, "shapes": len(slide.shapes), "ok": steps == said}
+            "notes_clicks": said, "fx": fx_count, "shapes": len(slide.shapes),
+            # 取り込んだページ（PPTX から）は、元のノートに［クリック］が無いので照合しない（ADR 0025）
+            "ok": steps == said or bool(s.get("imported")), **({"imported": True} if s.get("imported") else {})}
 
 
 def write(parts: dict, out_path, *, line_breaks: bool = False) -> dict:

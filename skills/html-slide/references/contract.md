@@ -46,6 +46,9 @@ html-slide の描き出し係は、**この決まりに沿った HTML だけ**�
 flex・grid の `order`（0 以外。重なり順が HTML の順とずれる）、重ね順の文脈（stacking context）を作らない親の中の `z-index`
 （`auto` 以外。`z-index` は section の直下か、`position` と `z-index` を持つ親の直接の子どうしでだけ使う）。section 自身も同じく検査する。
 
+**取り込んだページ**（section に `data-imported`。`import` が書く・[ADR 0025](../docs/adr/0025-import-pptx.md)）は、文字のはみ出し・section の外へのはみ出しを警告にし、
+ノートの［クリック］の数を照合しない。回すだけの `transform: rotate()` を通す（PowerPoint の文字の箱の回転に写す）。
+
 **並べ方は自由。** flex・grid・絶対配置のどれでもよい。変換器はブラウザが計算した位置を読む。
 
 ## 4. 例

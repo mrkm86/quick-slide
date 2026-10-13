@@ -80,12 +80,16 @@ def find_report(pptx: Path) -> Path | None:
 def verify(pptx, odp: bool = False, report=None) -> dict:
     pptx = Path(pptx)
     slides = read_pptx(pptx)
+    rp = Path(report) if report else find_report(pptx)
+    rep = json.loads(rp.read_text()) if rp and rp.exists() else None
+    # 取り込んだページ（PPTX から・ADR 0025）は、元のノートに［クリック］が無いので、クリックとノートを照合しない
+    imported = {s["no"] for s in (rep or {}).get("slides", []) if s.get("imported")}
     for s in slides:
-        s["ok"] = s["clicks"] == s["notes_clicks"] and not s["morph"]      # モーフは退役（ADR 0023）。出ていたら NG
+        s["ok"] = (s["clicks"] == s["notes_clicks"] or s["no"] in imported) and not s["morph"]   # モーフは退役（ADR 0023）。出ていたら NG
+        if s["no"] in imported:
+            s["imported"] = True
     res = {"slides": slides, "ok": all(s["ok"] for s in slides), "odp": None}
     if odp:
-        rp = Path(report) if report else find_report(pptx)
-        rep = json.loads(rp.read_text()) if rp else None
         counts = odp_effects(pptx)
         if counts is None:
             res["odp"] = {"skipped": "soffice が無い"}
