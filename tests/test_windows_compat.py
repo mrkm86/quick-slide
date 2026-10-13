@@ -187,3 +187,45 @@ class ChildStdinTests(unittest.TestCase):
                                  stdin_text=prompt)
         self.assertTrue(result.ok, result)
         self.assertEqual(bytes.fromhex(result.stdout.strip()), prompt.encode("utf-8"))
+
+
+class AssetPathTests(unittest.TestCase):
+    def test_asset_paths_are_slash_separated(self) -> None:
+        """DB の relative_path はいつも "/" 区切り。"\\" が入ると配信が通らない（Windows の str(Path)。N2）。"""
+        from helpers import open_store
+
+        from quick_slide.errors import ValidationError
+
+        store = open_store(self)
+        with store.transaction():
+            with self.assertRaises(ValidationError):
+                store.register_asset(relative_path="assets\\brand\\original.png", media_type="image/png",
+                                     sha256="0" * 64, bytes_=1)
+            store.register_asset(relative_path="assets/brand/original.png", media_type="image/png",
+                                 sha256="0" * 64, bytes_=1)
+
+
+class FontTests(unittest.TestCase):
+    def test_mac_font_candidates_did_not_change(self) -> None:
+        from quick_slide import oscompat as OS
+
+        if OS.WINDOWS:
+            self.skipTest("mac の候補")
+        dfonts = "/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts"
+        self.assertEqual(OS.yu_gothic_files(), {"regular": f"{dfonts}/YuGothR.ttc", "bold": f"{dfonts}/YuGothB.ttc"})
+        self.assertEqual(OS.japanese_fonts("bold"), (f"{dfonts}/YuGothB.ttc", "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc",
+                                                     "/System/Library/Fonts/Hiragino Sans GB.ttc"))
+        self.assertEqual(OS.japanese_fonts("regular"), (f"{dfonts}/YuGothR.ttc", "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc"))
+
+    @unittest.skipUnless(os.name == "nt", "Windows の字体のフォルダ")
+    def test_windows_has_yu_gothic_and_a_japanese_font(self) -> None:
+        """Windows 10 以降は游ゴシックが OS に入っている（B7）。PIL で日本語を描けること。"""
+        from PIL import ImageFont
+
+        from quick_slide import oscompat as OS
+
+        for weight, path in OS.yu_gothic_files().items():
+            self.assertTrue(Path(path).is_file(), f"{weight}: {path}")
+        for weight in ("bold", "regular"):
+            first = next(p for p in OS.japanese_fonts(weight) if Path(p).is_file())
+            self.assertIsNotNone(ImageFont.truetype(first, 40, index=0).getbbox("日本語"))

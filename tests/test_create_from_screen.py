@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from pathlib import Path
 from urllib.parse import quote
 
 from helpers import fake_tools, open_store, start_server, wait_until_idle, writer_calls
@@ -118,7 +119,7 @@ class CreateFlowTests(unittest.TestCase):
                 self.assertIn(flag, argv)
             self.assertEqual(c["keys"], [], "API キーは下調べ係にも渡さない")
             self.assertEqual(c["request"], REQUEST)
-            self.assertIn("/research/round-1", c["cwd"])
+            self.assertEqual(Path(c["cwd"]).parts[-2:], ("research", "round-1"))
         self.assertEqual([c["form"][0].split("（")[0] for c in calls], ["プレゼン", "ピッチ", "モーション"])
         writes = script_calls(log)
         self.assertEqual(len(writes), 3)

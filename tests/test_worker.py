@@ -316,7 +316,7 @@ class FlowTests(unittest.TestCase):
         env = child_env(home=Path("/tmp/h"), extra=KEYS, base={**KEYS, "PATH": "/usr/bin", "CLAUDECODE": "1"})
         self.assertFalse(set(API_KEY_VARS) & set(env))
         self.assertNotIn("CLAUDECODE", env)
-        self.assertEqual((env["QUICK_SLIDE_HOME"], env["PATH"]), ("/tmp/h", "/usr/bin"))
+        self.assertEqual((env["QUICK_SLIDE_HOME"], env["PATH"]), (str(Path("/tmp/h")), "/usr/bin"))
 
     def test_backend_choice(self) -> None:
         both = {"claude": "/x/claude", "codex": "/x/codex"}

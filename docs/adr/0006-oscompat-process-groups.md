@@ -15,6 +15,7 @@ mac・Linux と Windows で書き方が変わるものを、`oscompat.py` に寄
 | 子を自分の組で起こす | `group_kwargs` | `start_new_session=True` | `CREATE_NEW_PROCESS_GROUP`・`CREATE_NO_WINDOW` |
 | 子を孫ごと止める | `popen_group` / `kill_group` / `end_group` | 組に SIGTERM → 待つ → SIGKILL | 起こした直後に Job Object へ入れ、止めるときは Job ごと止める |
 | 待ち受けの口を自分だけにする | `REUSE_ADDRESS` / `bind_exclusively` | `SO_REUSEADDR`（TIME_WAIT の口を使い直すだけ） | `SO_REUSEADDR` を使わず `SO_EXCLUSIVEADDRUSE`（Windows の `SO_REUSEADDR` は、ほかが待ち受けている口に重ねて bind できる。Windows 機の試験で見つかった N15） |
+| 日本語の字体ファイル | `yu_gothic_files` / `japanese_fonts` | 游ゴシックは PowerPoint for Mac 同梱、ほかはヒラギノ | `%WINDIR%\Fonts` の游ゴシック・メイリオ・BIZ UDゴシック（Windows 10 以降は游ゴシックが OS に入っている。B7） |
 
 ### 置き方
 

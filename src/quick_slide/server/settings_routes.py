@@ -223,7 +223,7 @@ def store_image(app, data):
             os.fsync(f.fileno())
         os.replace(temp, destination)
         with app.store.transaction():
-            app.store.register_asset(relative_path=str(destination.relative_to(root)), media_type=media,
+            app.store.register_asset(relative_path=destination.relative_to(root).as_posix(), media_type=media,
                                      sha256=hashlib.sha256(data).hexdigest(), bytes_=len(data),
                                      width=size[0], height=size[1], asset_id=aid)
         return image_row(app, aid)

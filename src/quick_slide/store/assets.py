@@ -27,8 +27,10 @@ class AssetsMixin(StoreBase):
         asset_id: str | None = None,
     ) -> dict[str, Any]:
         self._require_tx()
-        if not relative_path or relative_path.startswith("/") or ".." in relative_path.split("/"):
-            raise ValidationError("relative_path は保存ルート相対・正規化済みであること")
+        # 区切りはいつも "/"（Windows の "\\" を入れると、配信の split_segments が通らず image_unavailable になる。N2）
+        if (not relative_path or relative_path.startswith("/") or "\\" in relative_path
+                or ".." in relative_path.split("/")):
+            raise ValidationError("relative_path は保存ルート相対・正規化済み・\"/\" 区切りであること")
         if not _SHA256_RE.match(sha256):
             raise ValidationError("sha256 は小文字 hex 64 文字")
         if bytes_ < 0:
