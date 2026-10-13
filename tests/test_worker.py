@@ -135,7 +135,7 @@ class FlowTests(unittest.TestCase):
         self.assertIn("pages", steps)
         dones = [(e["payload"]["progress"]["done"]) for e in evs if (e["payload"].get("progress") or {}).get("step") == "pages"]
         self.assertEqual(dones, sorted(dones))
-        deck_call = [json.loads(p.read_text()) for p in sorted((log / "engine").glob("*-deck.json"))][0]
+        deck_call = [json.loads(p.read_text(encoding="utf-8")) for p in sorted((log / "engine").glob("*-deck.json"))][0]
         argv = deck_call["argv"]
         self.assertEqual(deck_call["kind"], "image")
         self.assertEqual(argv[argv.index("--style") + 1], "standard")

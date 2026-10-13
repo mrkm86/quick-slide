@@ -73,7 +73,7 @@ class EditBase(unittest.TestCase):
     def drawn_pages(self, before: set[str]) -> list[int]:
         out = []
         for name in sorted(self.codex_calls() - before):
-            rec = json.loads((self.log / "codex-calls" / name).read_text())
+            rec = json.loads((self.log / "codex-calls" / name).read_text(encoding="utf-8"))
             if rec.get("cmd") == "exec" and "t1" in rec:
                 out.append(rec["page"])
         return sorted(out)
@@ -238,7 +238,7 @@ class PitchEditTests(EditBase):
         self.assertEqual(argv[0][argv[0].index("--page") + 1], "8")
         self.assertNotIn("--remake", argv[0])
         # 微修正: 今の絵を土台に渡した（参照画像が 1 枚）
-        rec = [json.loads((self.log / "codex-calls" / n).read_text()) for n in sorted(self.codex_calls() - calls)]
+        rec = [json.loads((self.log / "codex-calls" / n).read_text(encoding="utf-8")) for n in sorted(self.codex_calls() - calls)]
         self.assertEqual([len(x["refs"]) for x in rec if x.get("cmd") == "exec" and "t1" in x], [1])
         p8 = next(p for p in self.view(deck)["pages"] if p["key"] == "p-eight")
         self.assertNotEqual(p8["image_url"], old["p-eight"]["image_url"])
@@ -533,7 +533,7 @@ class PresentationEditTests(EditBase):
         self.assertEqual(len(kept), 4, "前の枠の絵はそのまま（同じ inode）")
         self.assertEqual(len(now) - len(gens), 2, "描いたのは 7・8 枚目の枠だけ")
         execs = [n for n in self.codex_calls() - calls
-                 if (lambda r: r.get("cmd") == "exec" and "t1" in r)(json.loads((self.log / "codex-calls" / n).read_text()))]
+                 if (lambda r: r.get("cmd") == "exec" and "t1" in r)(json.loads((self.log / "codex-calls" / n).read_text(encoding="utf-8")))]
         self.assertEqual(len(execs), 2)
         self.assert_screen_matches_pptx(deck)
         # 絵だけの直し（revise）→ 戻す
