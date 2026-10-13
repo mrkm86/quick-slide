@@ -3,12 +3,18 @@
 - `os.open` は `O_BINARY` を付ける。付けないと Windows ではテキストモードで開き、`os.write` が `\\n` を `\\r\\n` に
   変える（32 バイトの `hmac.key` が 0x0A を含むたびに長くなり、壊れた鍵が残ってサーバが起動しなくなる）
 - 試験の偽物（`.py`）は `runnable()` で包んで渡す。Windows は `.py` を直接起こせない
+- OS を見分ける呼び出し（ロック・PID・子を孫ごと止める）は `oscompat.py` に寄せ、3 つの写しを同じに保つ（ADR 0006）
 """
 
 from __future__ import annotations
 
 import ast
+import os
 import re
+import subprocess
+import sys
+import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -78,3 +84,74 @@ class FakeCommandTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# OS を見分けて書く呼び出し。`oscompat.py` の外に書かない（ADR 0006）
+POSIX_ONLY = re.compile(r"^\s*import fcntl|os\.killpg\(|os\.kill\([^)]*,\s*0\)|start_new_session\s*=|signal\.SIGKILL")
+OSCOMPAT_COPIES = [ROOT / "src" / "quick_slide" / "oscompat.py",
+                   ROOT / "skills" / "html-slide" / "scripts" / "oscompat.py",
+                   ROOT / "skills" / "image-slide" / "scripts" / "oscompat.py"]
+
+
+class OsCompatTests(unittest.TestCase):
+    def test_the_three_copies_are_the_same(self) -> None:
+        first = OSCOMPAT_COPIES[0].read_bytes()
+        for path in OSCOMPAT_COPIES[1:]:
+            self.assertEqual(path.read_bytes(), first, f"{path.relative_to(ROOT).as_posix()} がサーバの写しとずれた")
+
+    def test_posix_only_calls_live_in_oscompat(self) -> None:
+        found = [f"{p.relative_to(ROOT).as_posix()}:{n}" for p in python_files() if p.name != "oscompat.py"
+                 for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1) if POSIX_ONLY.search(line)]
+        self.assertEqual(found, [], "OS を見分ける呼び出しは oscompat.py に寄せる（ADR 0006）")
+
+    def test_the_lock_is_exclusive_and_released(self) -> None:
+        from quick_slide import oscompat as OS
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "server.lock"
+            first = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o600)
+            second = os.open(path, os.O_RDWR | getattr(os, "O_BINARY", 0))
+            try:
+                self.assertTrue(OS.lock_nowait(first))
+                self.assertFalse(OS.lock_nowait(second), "2 つ目が同じロックを取れた")
+                OS.unlock(first)
+                self.assertTrue(OS.lock_nowait(second), "外したロックを取れない")
+            finally:
+                os.close(first)
+                os.close(second)
+
+    def test_pid_alive_tells_a_finished_process(self) -> None:
+        from quick_slide import oscompat as OS
+
+        self.assertTrue(OS.pid_alive(os.getpid()))
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        child.wait()
+        self.assertFalse(OS.pid_alive(child.pid), "終わったプロセスを生きていると言った")
+        self.assertFalse(OS.pid_alive(0))
+
+    def test_kill_group_stops_grandchildren(self) -> None:
+        """子が起こした孫も止まる（Windows の .cmd の包みの下の node・codex.exe にあたる）。"""
+        from quick_slide import oscompat as OS
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pid_file = Path(tmp) / "grandchild.pid"
+            code = ("import subprocess, sys, time\n"
+                    "g = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+                    f"open({str(pid_file)!r}, 'w').write(str(g.pid))\n"
+                    "time.sleep(60)\n")
+            proc = OS.popen_group([sys.executable, "-c", code])
+            try:
+                deadline = time.monotonic() + 10
+                while not pid_file.exists() or not pid_file.read_text():
+                    self.assertLess(time.monotonic(), deadline, "孫が起きない")
+                    time.sleep(0.05)
+                grandchild = int(pid_file.read_text())
+                self.assertTrue(OS.pid_alive(grandchild))
+                OS.kill_group(proc, grace=5.0)
+                self.assertIsNotNone(proc.poll(), "子が止まらない")
+                deadline = time.monotonic() + 10
+                while OS.pid_alive(grandchild) and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                self.assertFalse(OS.pid_alive(grandchild), "孫が残った")
+            finally:
+                OS.end_group(proc)
