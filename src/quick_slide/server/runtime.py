@@ -2,14 +2,13 @@
 
 - `server.json`: PID・開始時刻・インスタンス ID・bind 先・URL・セッショントークン。モード 0600。
   同じ利用者のプロセス（CLI の `stop` など）だけが読み、状態を変える要求にセッショントークンを添える
-- 二重起動の防止は 3 段: `runtime/server.lock` の flock（プロセスが死ねば自動解放）→ `status()` の生存確認 → bind 自体
+- 二重起動の防止は 3 段: `runtime/server.lock` の排他ロック（`oscompat`。プロセスが死ねば自動解放）→ `status()` の生存確認 → bind 自体
 - **`status()` は `server.json` があるだけでは「稼働中」と言わない**。PID が生きていて、かつ HTTP の health が
   返り、その `instance_id` が記録と一致したときだけ `running=True`。それ以外は理由つきで `running=False`
 """
 
 from __future__ import annotations
 
-import fcntl
 import http.client
 import json
 import os
@@ -17,6 +16,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from ..oscompat import lock_nowait, pid_alive, unlock
 from ..paths import DataRoot
 
 RECORD_VERSION = 1
@@ -106,18 +106,6 @@ def remove_record(root: DataRoot, instance_id: str) -> bool:
         return False
 
 
-def pid_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
 def http_host(host: str) -> str:
     return f"[{host}]" if ":" in host else host
 
@@ -165,7 +153,7 @@ def status(root: DataRoot, *, timeout: float = 2.0) -> dict[str, Any]:
 
 
 class InstanceLock:
-    """`runtime/server.lock` の排他 flock。プロセスが終われば OS が解放する。"""
+    """`runtime/server.lock` の排他ロック（`oscompat.lock_nowait`）。プロセスが終われば OS が解放する。"""
 
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -174,9 +162,7 @@ class InstanceLock:
     def acquire(self) -> bool:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(self.path, os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o600)
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
+        if not lock_nowait(fd):
             os.close(fd)
             return False
         self._fd = fd
@@ -186,7 +172,7 @@ class InstanceLock:
         if self._fd is None:
             return
         try:
-            fcntl.flock(self._fd, fcntl.LOCK_UN)
+            unlock(self._fd)
         finally:
             os.close(self._fd)
             self._fd = None

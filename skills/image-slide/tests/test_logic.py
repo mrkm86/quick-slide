@@ -737,6 +737,8 @@ def t_places():
             os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
     check((SKILL / "scripts" / "places.py").read_bytes() == (HTML_SLIDE / "scripts" / "places.py").read_bytes(),
           "places.py が html-slide とずれた（同じファイルを写す）")
+    check((SKILL / "scripts" / "oscompat.py").read_bytes() == (HTML_SLIDE / "scripts" / "oscompat.py").read_bytes(),
+          "oscompat.py が html-slide とずれた（同じファイルを写す。サーバの src/quick_slide/oscompat.py も同じ）")
 
 
 def t_auth_dead_stops():

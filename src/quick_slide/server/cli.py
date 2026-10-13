@@ -20,6 +20,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from ..errors import QuickSlideError, ValidationError
+from ..oscompat import group_kwargs
 from ..paths import DataRoot
 from ..settings import BROWSER_MODES, Settings
 from .app import SESSION_HEADER, QuickSlideServer
@@ -124,7 +125,7 @@ def cmd_start(args: argparse.Namespace) -> int:
     if args.static_root is not None:
         cmd += ["--static-root", str(args.static_root)]
     try:
-        child = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out_fd, stderr=out_fd, start_new_session=True, close_fds=True)
+        child = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out_fd, stderr=out_fd, close_fds=True, **group_kwargs())
     finally:
         os.close(out_fd)
     deadline = time.monotonic() + args.timeout

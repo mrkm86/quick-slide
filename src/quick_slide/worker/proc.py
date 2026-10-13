@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import os
-import signal
 import subprocess
 import threading
 import time
@@ -16,6 +15,8 @@ from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from ..oscompat import end_group, kill_group, popen_group
 
 
 @dataclass
@@ -40,27 +41,14 @@ def _private_writer(path: Path | None):
     return os.fdopen(fd, "w", encoding="utf-8")
 
 
-def _kill_group(proc: subprocess.Popen) -> None:
-    for sig, wait in ((signal.SIGTERM, 5.0), (signal.SIGKILL, 5.0)):
-        try:
-            os.killpg(proc.pid, sig)
-        except (ProcessLookupError, PermissionError):
-            return
-        try:
-            proc.wait(timeout=wait)
-            return
-        except subprocess.TimeoutExpired:
-            continue
-
-
 def run_process(cmd: list[str], *, cwd: Path, env: Mapping[str, str], timeout: float,
                 stop: threading.Event | None = None, stdin_text: str | None = None,
                 on_line: Callable[[str], None] | None = None, stdout_path: Path | None = None,
                 stderr_path: Path | None = None, tail_lines: int = 200) -> ProcResult:
     try:
-        proc = subprocess.Popen(cmd, cwd=str(cwd), env=dict(env), stdin=subprocess.PIPE if stdin_text is not None
-                                else subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, encoding="utf-8", errors="replace", start_new_session=True)
+        proc = popen_group(cmd, cwd=str(cwd), env=dict(env), stdin=subprocess.PIPE if stdin_text is not None
+                           else subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           text=True, encoding="utf-8", errors="replace")
     except OSError as exc:
         return ProcResult(None, "", launch_error=exc.__class__.__name__)
     out_chunks: list[str] = []
@@ -111,23 +99,21 @@ def run_process(cmd: list[str], *, cwd: Path, env: Mapping[str, str], timeout: f
     while proc.poll() is None:
         if stop is not None and stop.is_set():
             stopped = True
-            _kill_group(proc)
+            kill_group(proc)
             break
         if time.monotonic() >= deadline:
             timed_out = True
-            _kill_group(proc)
+            kill_group(proc)
             break
         time.sleep(0.1)
     for t in threads:
         t.join(timeout=2)
     if any(t.is_alive() for t in threads):
         # 子は終わったのに、孫（子が起こしたもの）が出力の口を握ったまま残っている。グループごと片付ける
-        try:
-            os.killpg(proc.pid, signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            pass
+        kill_group(proc)
         for t in threads:
             t.join(timeout=10)
+    end_group(proc)
     for f in (out_file, err_file, proc.stdout, proc.stderr):
         if f is not None:
             try:
