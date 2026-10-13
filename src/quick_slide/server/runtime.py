@@ -64,7 +64,7 @@ def write_record(root: DataRoot, record: ServerRecord) -> Path:
     root.runtime_dir.mkdir(parents=True, exist_ok=True)
     path = root.server_json_path
     tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o600)
     try:
         os.write(fd, json.dumps(asdict(record), ensure_ascii=False, indent=1).encode("utf-8"))
         os.fsync(fd)
@@ -173,7 +173,7 @@ class InstanceLock:
 
     def acquire(self) -> bool:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+        fd = os.open(self.path, os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o600)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:

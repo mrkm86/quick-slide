@@ -231,7 +231,7 @@ def _private_home(snapshot: bytes) -> pathlib.Path:
     home = pathlib.Path(tempfile.mkdtemp(prefix="image-slide-home."))
     try:
         home.chmod(0o700)
-        fd = os.open(home / "auth.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        fd = os.open(home / "auth.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
         with os.fdopen(fd, "wb") as f:
             f.write(snapshot)
         # 実ホームの設定（プラグイン・フック・MCP）は持ち込まない。起動が軽く、ほかの作業に引きずられない

@@ -51,7 +51,7 @@ SRC_DIR = Path(__file__).resolve().parents[2]   # `quick_slide` の親（後継�
 def _write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o600)
     try:
         os.write(fd, json.dumps(data, ensure_ascii=False, indent=1).encode("utf-8"))
     finally:
@@ -152,7 +152,7 @@ def spawn_successor(app: Any, restart_id: str) -> subprocess.Popen:
     env["PYTHONPATH"] = os.pathsep.join(paths)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     app.root.runtime_dir.mkdir(parents=True, exist_ok=True)
-    out_fd = os.open(app.root.server_stdio_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    out_fd = os.open(app.root.server_stdio_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_BINARY", 0), 0o600)
     try:
         child = subprocess.Popen(successor_command(app, restart_id), stdin=subprocess.DEVNULL, stdout=out_fd,
                                  stderr=out_fd, start_new_session=True, close_fds=True, env=env, cwd=os.getcwd())

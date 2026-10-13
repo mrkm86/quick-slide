@@ -36,7 +36,7 @@ def _private_writer(path: Path | None):
     if path is None:
         return None
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o600)
     return os.fdopen(fd, "w", encoding="utf-8")
 
 
