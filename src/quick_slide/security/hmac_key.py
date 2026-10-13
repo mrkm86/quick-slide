@@ -43,7 +43,7 @@ def _create(path: Path) -> None:
     key = secrets.token_bytes(KEY_BYTES)
     tmp = path.with_name(path.name + ".tmp")
     try:
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
         try:
             os.write(fd, key)
             os.fsync(fd)

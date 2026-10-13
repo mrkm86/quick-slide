@@ -36,7 +36,7 @@ def _print_json(obj: object) -> None:
 def _configure_logging(root: DataRoot, *, to_stderr: bool) -> None:
     root.runtime_dir.mkdir(parents=True, exist_ok=True)
     path = root.server_log_path
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_BINARY", 0), 0o600)
     os.close(fd)
     handlers: list[logging.Handler] = [logging.FileHandler(path, encoding="utf-8")]
     if to_stderr:
@@ -115,7 +115,7 @@ def cmd_start(args: argparse.Namespace) -> int:
                      **{k: current[k] for k in ("pid", "url", "instance_id", "started_at")}})
         return 0
     root.ensure()
-    out_fd = os.open(root.server_stdio_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    out_fd = os.open(root.server_stdio_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_BINARY", 0), 0o600)
     cmd = [sys.executable, "-m", "quick_slide.server", "--home", str(root.root), "serve", "--quiet"]
     if args.host is not None:
         cmd += ["--host", args.host]

@@ -69,7 +69,7 @@ class ResolvedFile:
 
     def read(self) -> bytes | None:
         """symlink を辿らずに開き、lstat と同じ通常ファイルであることを確かめてから読む。違えば None。"""
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
         try:
             fd = os.open(self.path, flags)
         except OSError:
