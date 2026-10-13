@@ -249,6 +249,14 @@ def cmd_check(a) -> int:
 
 def cmd_auth(a) -> int:
     cfg = S.load_config()
+    if a.quick:
+        try:
+            X.quick_check(cfg)
+        except X.CodexError as e:
+            print(f"NG: {e.detail}", file=sys.stderr)
+            return 4
+        print("OK: codex があり、ChatGPT のログインの記録がある（トークンが生きているかは見ていない）")
+        return 0
     try:
         cli = X.find_cli(cfg)
         r = X.check_auth(cli, log=log)
@@ -558,7 +566,9 @@ def main(argv=None) -> int:
     c = sub.add_parser("check", help="台本を読み、描く指示を組む（Codex は呼ばない）")
     common(c)
     c.add_argument("--prompts", help="描く指示を書き出すフォルダ")
-    sub.add_parser("auth", help="Codex の認証を確かめる")
+    au = sub.add_parser("auth", help="Codex の認証を確かめる")
+    au.add_argument("--quick", action="store_true",
+                    help="子プロセスを起こさず、codex が見つかるかとログインの記録があるかだけを見る（画面に「使えるか」を出す用）")
     d = sub.add_parser("deck", help="台本 → 並列に描く → PPTX・PDF")
     common(d)
     d.add_argument("--out", help="出力フォルダ（省略時は config の out:/<台本の名前>）")

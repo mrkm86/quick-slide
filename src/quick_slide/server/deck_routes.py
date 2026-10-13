@@ -333,7 +333,7 @@ def deck_view(store, deck_id: str) -> dict[str, Any]:
 
 # --- 読み取り ---
 def route_vocabulary(server: "QuickSlideServer", req: "Request") -> "Response":
-    return _json(200, vocabulary())
+    return _json(200, vocabulary(server.kind_refusals()))
 
 
 def _mode_param(raw: str | None) -> str | None:

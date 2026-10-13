@@ -73,6 +73,11 @@ class CreateBoxTest(unittest.TestCase):
                   " t.dispatchEvent(new Event('input')); })()")
         self.assertTrue(page.eval("document.querySelector('.create__go').disabled"))
         page.eval("document.querySelectorAll('.create__radio')[1].click()")
+        # 選んでいない札は薄いグレーに沈む（選んだ札だけが色を持つ）
+        backgrounds = page.eval("Array.from(document.querySelectorAll('.kind-card')).map(c => getComputedStyle(c).backgroundColor)")
+        self.assertEqual(backgrounds[0], "rgb(242, 242, 242)")
+        self.assertEqual(backgrounds[2], "rgb(242, 242, 242)")
+        self.assertNotEqual(backgrounds[1], "rgb(242, 242, 242)")
         page.eval("(function(){ var t = document.querySelector('.create__text'); t.value = 'AI の動向を 5 ページで';"
                   " t.dispatchEvent(new Event('input')); })()")
         self.assertFalse(page.eval("document.querySelector('.create__go').disabled"))
@@ -84,6 +89,29 @@ class CreateBoxTest(unittest.TestCase):
         self.assertEqual(body["schema_version"], 1)
         # 選んだ形式は覚える
         self.assertEqual(page.eval("localStorage.getItem('qs-create-kind')"), "pitch")
+        page.raise_if_broken()
+        self.assertEqual(page.errors, [])
+
+    def test_unavailable_kind_cannot_be_chosen_and_says_why(self) -> None:
+        """この機械でいま作れない形式（`available: false`）は札を残して押せなくし、理由（サーバの語）を札の下に出す。
+        前に選んだ形式が使えなくなっていたら、使える最初の形式を選んでおく。"""
+        kinds = [dict(k) for k in KINDS]
+        kinds[1].update(available=False, reason="理由 B")
+        page = self.br.open(f"{self.fx.base_url}/")
+        page.until("!!window.SS && !!window.SS.vocab", what="語彙")
+        page.eval("localStorage.setItem('qs-create-kind', 'pitch')")
+        page.eval(f"window.SS.vocab.deck_kinds = {json.dumps(kinds)}; window.SS.render();")
+        page.until("document.querySelectorAll('.kind-card').length === 3", what="形式の 3 枚")
+        self.assertEqual(page.eval("Array.from(document.querySelectorAll('.create__radio')).map(r => r.disabled)"), [False, True, False])
+        self.assertEqual(page.eval("Array.from(document.querySelectorAll('.create__radio')).map(r => r.checked)"), [True, False, False],
+                         "覚えていた形式が使えないなら、使える最初の形式")
+        self.assertTrue(page.eval("document.querySelectorAll('.kind-card')[1].classList.contains('kind-card--off')"))
+        self.assertEqual(page.eval("document.querySelector('.create__kind-off').textContent"), "テスト形式B: 理由 B")
+        self.assertEqual(page.eval("document.querySelectorAll('.create__radio')[1].getAttribute('aria-describedby')"),
+                         page.eval("document.querySelector('.create__kind-off').id"), "読み上げでも理由が分かる")
+        # 押しても選べない
+        page.eval("document.querySelectorAll('.kind-card')[1].click()")
+        self.assertFalse(page.eval("document.querySelectorAll('.create__radio')[1].checked"))
         page.raise_if_broken()
         self.assertEqual(page.errors, [])
 

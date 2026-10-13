@@ -150,6 +150,20 @@ def _read_auth(path: pathlib.Path) -> bytes:
         raise CodexError("auth", f"{path} が読めない（{e.__class__.__name__}）。`codex login` で入り直す")
 
 
+def quick_check(cfg: dict) -> str:
+    """子プロセスを起こさずに見られるところだけ見る（codex が見つかり、ChatGPT のログインの記録がある）。
+    呼ぶ側が「描けそうか」を画面に出すための軽い確かめで、トークンが生きているか・更新できるかは見ない
+    （それは描く前の `check_auth` が見る）。戻り値は codex の在りか。"""
+    cli = find_cli(cfg)
+    path = real_home() / "auth.json"
+    if not path.is_file():
+        raise CodexError("auth", f"{path} が無い。`codex login` で ChatGPT のアカウントに1度だけログインする")
+    f = freshness(_read_auth(path))
+    if not f["chatgpt"]:
+        raise CodexError("auth", f["why"])
+    return cli
+
+
 def check_auth(cli: str, log=print) -> dict:
     """実行の最初に1度だけ呼ぶ。{snapshot（auth.json の中身）, report（build.json に書く・秘密は含まない）}。"""
     home = real_home()

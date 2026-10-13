@@ -6,6 +6,8 @@ image_look・images を足した）。デッキ（モードはここで決まり
   （一致した文字列は返さない。パターンの名前だけ）
 - 会話の識別子の生値が原稿やタイトルにも入っていたら 400（生値を永続化しない）
 - まだ受けない項目（既存のデッキへの追加・会話抜粋・添付・書式）は 400 `not_ready_in_v2`
+- その形式をこの機械でいま描けない（ピッチなのに Codex が無い・ログインしていない）なら 409 `engine_unavailable`
+  （`QuickSlideServer.kind_refusals`。デッキは作らない）
 
 **原稿か依頼か**（docs/adr/0002-create-from-screen.md）: `manuscript` と `request` は**ちょうどどちらか 1 つ**。
 - `manuscript`（`origin.kind` は conversation など）: 呼ぶ側がもう材料を整えている。台本係へそのまま渡す（いままでどおり）
@@ -54,6 +56,17 @@ def route_intake(server: "QuickSlideServer", req: "Request") -> "Response":
                                f"{label}に秘密情報らしい文字列が含まれています。除いて再投入してください。",
                                details={"field": field_name, "patterns": hits})
     _reject_echoed_conversation_key(payload)
+    # その形式をこの機械で描けないと分かっているなら、デッキを作る前に断る（ピッチは Codex が要る。
+    # 画面は札を押せなくしているが、会話の入口からも同じ口に来る）。入力の誤り（400）は機械の事情より先に言う
+    with server.store_lock:
+        assert server.store is not None
+        try:
+            mode = server.store.intake_mode(payload)
+        except NotReadyError as exc:
+            raise ApiError(400, NOT_READY_CODE, str(exc)) from None
+    refusal = server.kind_refusals().get(mode)
+    if refusal:
+        raise ApiError(409, "engine_unavailable", refusal, details={"mode": mode})
     with server.store_lock:
         assert server.store is not None
         try:
