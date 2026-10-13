@@ -1,0 +1,4 @@
+# 改行はどの OS でも LF で取り出す。Windows の git の既定（core.autocrlf=true）で CRLF に変わると、見本の目録の
+# ハッシュが合わずに見本が読み込まれず、SKILL.md も ---\r\n 始まりになる（Issue #1 の N20・C6）。
+# 中身から文字かどうかを判じ、画像などはそのまま
+* text=auto eol=lf

@@ -229,3 +229,26 @@ class FontTests(unittest.TestCase):
         for weight in ("bold", "regular"):
             first = next(p for p in OS.japanese_fonts(weight) if Path(p).is_file())
             self.assertIsNotNone(ImageFont.truetype(first, 40, index=0).getbbox("日本語"))
+
+
+class LineEndingTests(unittest.TestCase):
+    def test_gitattributes_checks_out_lf_everywhere(self) -> None:
+        text = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+        self.assertIn("* text=auto eol=lf", text.splitlines())
+
+    def test_tracked_text_files_have_no_crlf(self) -> None:
+        """取り出した文字のファイルに CRLF が無い（Windows で clone しても見本の目録のハッシュが合う。N20）。"""
+        if not (ROOT / ".git").exists():
+            self.skipTest("git の作業フォルダでない（配った写し）")
+        listed = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"], capture_output=True, check=True).stdout
+        crlf = []
+        for name in filter(None, listed.decode("utf-8").split("\0")):
+            path = ROOT / name
+            if not path.is_file():
+                continue
+            data = path.read_bytes()
+            if b"\0" in data[:8000]:
+                continue   # 画像など
+            if b"\r\n" in data:
+                crlf.append(name)
+        self.assertEqual(crlf, [], "CRLF で取り出されている（.gitattributes を入れる前の clone なら、取り出し直す）")
