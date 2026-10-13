@@ -598,8 +598,10 @@ class QuickSlideServer:
             h.send_response(resp.status)
             h.send_header("Content-Type", resp.content_type)
             h.send_header("Content-Length", str(len(resp.body)))
+            own = {k.lower() for k, _ in resp.headers}
             for k, v in SECURITY_HEADERS:
-                h.send_header(k, v)
+                if k.lower() not in own:   # 答えが自分で決めた見出し（描いた回の控えの Cache-Control）を優先する
+                    h.send_header(k, v)
             for k, v in resp.headers:
                 h.send_header(k, v)
             if resp.close:

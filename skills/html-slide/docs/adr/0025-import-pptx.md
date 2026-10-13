@@ -13,7 +13,8 @@
    状態を持たない・ほかのスキルを呼ばない。依存は今の 4 つ（python-pptx・lxml・Pillow・PyYAML）だけ
 2. **型 `html`**（`deck_types.IMPORTED_TYPES`）: キーは `html`（section の中身）・`background`（色か linear-gradient）・`notes`（元のノート）・
    `title`（一覧に出す見出し）。台本を書く側（台本係）の型の一覧・カタログには載せない
-   - 画像（`<img src>`）は台本のフォルダからのパスで、組むときに `assets/` へ写す
+   - 画像（`<img src>`）は台本のフォルダからのパスで、組むときに `assets/` へ写す。名前はファイルのパスだけで決め（`h-<sha256 の頭>`）、
+     何ページで使っても 1 つにする（全ページのロゴを 1 つの画像に。ブラウザがページの数だけ読まない）
    - 段は HTML の `data-step`・`data-fx`・`data-delay`。`mode: handout` は段を外し、`steps: false` は段を遅れに直す
    - 書けないもの（rc=2）: `script`・`style`・`iframe`・`a` などの要素、`on…` の属性、`href`、style の `url()`・`@import`、
      `javascript:`、外の URL の画像

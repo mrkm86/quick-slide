@@ -107,6 +107,10 @@ def motion_document(html: str) -> str:
     return html + tag
 
 
+RUN_FILE_CACHE = "private, max-age=604800, immutable"
+_IMG_SRC = re.compile(r"(<img\b[^>]*?\s)src=", re.I)
+
+
 def frame_document(html: str, base: str, fonts_dir: Path) -> str:
     """回の HTML を仕切りの中で開く形にする: `file://` の字体を配信のパスへ書き換え・再生スクリプトを足す。
 
@@ -121,7 +125,9 @@ def frame_document(html: str, base: str, fonts_dir: Path) -> str:
         return 'local("sans-serif")'
 
     html = _FONT_URL.sub(font, html)
-    # 画像は相対パス（assets/…）なので、文書の URL（…/deck.html）からそのまま引ける。どこにも書き換えは要らない
+    # 画像は相対パス（assets/…）なので、文書の URL（…/deck.html）からそのまま引ける。ただし src は data-qs-src に移し、
+    # 再生スクリプトが見るページから読む（全ページの画像を最初にまとめて読まない。写真の多いデッキで数十 MB になる）
+    html = _IMG_SRC.sub(r"\1data-qs-src=", html)
     tag = f'<script src="{PLAYER_PATH}"></script>'
     if _BODY_END.search(html):
         return _BODY_END.sub(lambda m: tag + m.group(0), html, count=1)
@@ -294,10 +300,12 @@ def route_present_file(server: "QuickSlideServer", req: "Request") -> "Response"
         body = frame_document(data.decode("utf-8", errors="replace"), base, fonts).encode("utf-8")
         return Response(200, body, content_type=resolved.content_type,
                         headers=(("Content-Security-Policy", frame_csp(host)),))
-    extra: tuple[tuple[str, str], ...] = ()
+    # 回の控えは描き終えたら変わらない（回の id ごとの置き場）。画像と字体はブラウザに覚えさせ、開き直すたびに読み直さない。
+    # 覚えるのはこの機械のこのブラウザだけ（private）
+    extra: tuple[tuple[str, str], ...] = (("Cache-Control", RUN_FILE_CACHE),)
     if rel.startswith("fonts/"):
         # 仕切りの中の文書のオリジンは不透明（null）なので、字体は CORS で読まれる。字体は秘密ではない
-        extra = (("Access-Control-Allow-Origin", "*"),)
+        extra += (("Access-Control-Allow-Origin", "*"),)
     return Response(200, data, content_type=resolved.content_type, headers=extra)
 
 

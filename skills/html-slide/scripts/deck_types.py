@@ -2695,8 +2695,11 @@ def t_html(s: Slide):
             s.err(f"画像は {' / '.join(IMAGE_EXTS)} のどれか: {p.name}")
         if not p.is_file():
             s.err(f"画像が無い: {p}")
-        name = f"h{s.no:02d}-{hashlib.sha256(str(p).encode()).hexdigest()[:10]}{'.jpg' if ext == '.jpeg' else ext}"
-        s.assets.append((p, name))
+        # 名前はファイルのパスだけで決める（ページの番号を入れない）。全ページに出るロゴなどを 1 つの画像にして、
+        # 発表の画面がページの数だけ同じ画像を読まないようにする
+        name = f"h-{hashlib.sha256(str(p).encode()).hexdigest()[:16]}{'.jpg' if ext == '.jpeg' else ext}"
+        if (p, name) not in s.assets:
+            s.assets.append((p, name))
         return f'{m.group(1)}"assets/{name}"'
 
     frag = re.sub(r'(<img\b[^>]*?\ssrc=)"([^"]*)"', swap, frag)

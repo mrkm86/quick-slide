@@ -31,6 +31,7 @@ _ASSET_REFS_CTE = (
     " SELECT asset_id, NULL, 'brand_assets' FROM brand_assets"
     " UNION ALL SELECT rp.asset_id, r.deck_id, 'run_pages' FROM run_pages rp JOIN runs r ON r.id=rp.run_id"
     "  WHERE rp.asset_id IS NOT NULL"
+    " UNION ALL SELECT asset_id, deck_id, 'page_previews' FROM page_previews"
     ")"
 )
 

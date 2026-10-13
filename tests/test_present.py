@@ -169,6 +169,17 @@ class PresentDocumentTests(PresentBase):
         self.assertNotIn("file://", body)
         self.assertEqual(self.fx.get("/static/present-frame.js").status, 200)
 
+    def test_images_load_from_the_shown_page_and_run_files_are_cached(self) -> None:
+        """画像の src は data-qs-src に移す（再生スクリプトが見るページから読む）。回の控えの画像・字体はブラウザに覚えさせ、
+        中の文書と API はこれまでどおり覚えさせない。"""
+        body = self.fx.get(f"{self.base}/deck.html").body.decode()
+        self.assertIn('data-qs-src="assets/', body)
+        self.assertNotRegex(body, r"<img\b[^>]*\ssrc=")
+        img = self.fx.get(f"{self.base}/assets/s01-image.png")
+        self.assertEqual(img.headers["cache-control"], "private, max-age=604800, immutable")
+        self.assertEqual(self.fx.get(f"{self.base}/deck.html").headers["cache-control"], "no-store")
+        self.assertEqual(self.fx.get("/api/health").headers["cache-control"], "no-store")
+
     def test_font_is_served_from_the_run_copy_only(self) -> None:
         body = self.fx.get(f"{self.base}/deck.html").body.decode()
         m = re.search(r'url\("(/present/[^"]+/fonts/[0-9a-f]{16}\.ttf)"\)', body)

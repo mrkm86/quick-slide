@@ -217,7 +217,16 @@ def t_engine_html_type():
     html, info = D.build_html(out / "script.json", TMP / "built")
     text = html.read_text()
     check(text.count("data-imported") == 6, "取り込んだページの印")
-    check('src="assets/h04-' in text and not re.search(r'src="media/', text), "画像は assets/ へ")
+    check('src="assets/h-' in text and not re.search(r'src="media/', text), "画像は assets/ へ")
+    # 同じ画像を何ページで使っても、assets/ には 1 つ（発表の画面がページの数だけ読まない）
+    img = next((out / "media").iterdir())
+    two = TMP / "two.json"
+    two.write_text(json.dumps({"slides": [{"type": "html", "html": f'<img src="{img}">'},
+                                          {"type": "html", "html": f'<img src="{img}">'}]}))
+    html3, _ = D.build_html(two, TMP / "built-two")
+    names = re.findall(r'src="assets/(h-[^"]+)"', html3.read_text())
+    check(len(names) == 2 and len(set(names)) == 1, f"同じ画像の名前: {names}")
+    check(len(list((TMP / "built-two" / "assets").iterdir())) == 1, "assets/ に 1 つ")
     check([s["clicks"] for s in info["slides"]][:3] == [0, 3, 2], f"段の数: {[s['clicks'] for s in info['slides']]}")
     html2, info2 = D.build_html(out / "script.json", TMP / "built-h", mode="handout")
     check("data-step" not in html2.read_text().split("<body>")[-1], "handout は段を外す")

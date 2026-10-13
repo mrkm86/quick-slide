@@ -5,6 +5,7 @@
   画像は imported/media/）→ 描いた回（ロゴ・フッタ・ページ番号は足さない）→ スライドの画面のページ・発表の画面の HTML
 - 語彙: 取り込めるのはプレゼンだけ（`deck_kinds[].importable`）・ボタンの語
 - 複製: 取り込んだ画像（imported/）も写す
+- 非表示のページの下見の絵（docs/adr/0012-hidden-page-previews.md）: 描いて画面に出す・枚数と PPTX には入れない・複製でも写す
 """
 
 from __future__ import annotations
@@ -125,6 +126,18 @@ class ImportEndToEndTests(unittest.TestCase):
         self.assertNotIn("<div", view["pages"][0].get("body") or "", "本文は HTML の見える文字だけ")
         out = root.run_dir(body["deck_id"], run["id"])
         self.assertTrue((out / "deck.pptx").is_file())
+        # 非表示のページも下見の絵を持ち（画面は薄く出す）、発表・書き出し・枚数には入らない（docs/adr/0012-hidden-page-previews.md）
+        hidden = view["pages"][1]
+        self.assertTrue(hidden["hidden"])
+        self.assertTrue(hidden["image_url"], "非表示のページの下見の絵が無い")
+        self.assertEqual(hidden["display"]["key"], "ready")
+        pic = fx.get(hidden["image_url"])
+        self.assertEqual((pic.status, pic.headers["content-type"]), (200, "image/png"))
+        card = fx.get("/api/decks?limit=5").json()["items"][0]
+        self.assertEqual(card["page_count"], 1, "下見の絵は枚数に数えない")
+        import zipfile
+        with zipfile.ZipFile(out / "deck.pptx") as z:
+            self.assertEqual(len([n for n in z.namelist() if n.startswith("ppt/slides/slide")]), 1, "PPTX に非表示のページを入れない")
         # 取り込んだページの直しは、まだ受けない（理由を返す）
         r = fx.post(f"/api/decks/{body['deck_id']}/instructions",
                     {"scope": "page", "slide_id": view["pages"][0]["slide_id"], "text": "見出しを短く"})
@@ -134,6 +147,9 @@ class ImportEndToEndTests(unittest.TestCase):
         self.assertEqual(r.status, 201, r.body)
         new_id = r.json()["deck"]["id"]
         self.assertTrue((root.scripts_dir(new_id) / img[0]).is_file(), "複製に imported/ が無い")
+        dup = fx.get(f"/api/decks/{new_id}").json()
+        self.assertTrue(dup["pages"][1]["image_url"], "複製でも非表示のページの下見の絵を写す")
+        self.assertNotEqual(dup["pages"][1]["image_url"], hidden["image_url"])
 
 
 class ImportStoreTests(unittest.TestCase):

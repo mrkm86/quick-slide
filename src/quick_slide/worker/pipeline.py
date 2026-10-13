@@ -47,7 +47,10 @@ from ..render.runner import (
     render_deck,
 )
 from ..scriptdoc import (
+    content_sha,
     engine_view,
+    is_hidden,
+    slides_of,
     one_page,
     outline_headings,
     output_pages,
@@ -388,7 +391,66 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
              failure_kind=outcome.failure_kind, pages=outcome.pages)
     log.info("run %s: %s rc=%s pages=%d", run_id, outcome.state, outcome.rc,
              sum(1 for p in outcome.pages.values() if p.get("file")))
+    if outcome.state == "done" and engine.mode == "presentation" and not one_page(args):
+        try:
+            draw_hidden_previews(ctx, engine, run, data)
+        except Exception:  # noqa: BLE001 - 下見の絵は描けなくても回は成り立つ（画面は「未生成」のまま）
+            log.exception("run %s: 非表示のページの下見の絵を描けませんでした", run_id)
     return outcome.state
+
+
+def draw_hidden_previews(ctx: Context, engine: Engine, run: dict[str, Any], data: dict[str, Any]) -> int:
+    """非表示のページだけを、絵（PNG）だけ描いて下見にする（docs/adr/0012-hidden-page-previews.md）。描いた枚数を返す。
+
+    非表示のページは描く回に入らない（発表・書き出し・枚数に入らない）。中身は見たいので、描き終えたあとに別に描く。
+    プレゼン（html-slide）だけ: 数秒で描ける。新しい絵は生成しない（`--no-fill`。描いてある生成の絵はキャッシュから使う）。
+    中身の sha256 が下見と同じページは描き直さない。"""
+    store = ctx.store
+    deck_id = run["deck_id"]
+    hidden = [s for s in slides_of(data) if is_hidden(s) and isinstance(s.get("id"), str)]
+    if not hidden:
+        return 0
+    have = ctx.call(store.page_previews, deck_id)
+    keys = {p["key"]: p["page_id"] for p in ctx.call(store.script_pages, ctx.call(store.head_script, deck_id)["id"])}
+    todo = []
+    for s in hidden:
+        sha = content_sha(s)
+        pv = have.get(keys.get(s["id"], ""))
+        if pv is None or pv["content_sha256"] != sha or pv["asset_state"] != "ready":
+            todo.append((s, sha))
+    if not todo:
+        return 0
+    args = run["args"]
+    view = engine_script_view({**data, "slides": [{k: v for k, v in s.items() if not k.startswith("_")} for s, _ in todo]},
+                              args)
+    script_path = W.write_engine_script(ctx.root.scripts_dir(deck_id) / "engine-hidden.json", view)
+    out = ctx.root.deck_dir(deck_id) / "work-hidden"
+    shutil.rmtree(out, ignore_errors=True)
+    out.mkdir(parents=True, exist_ok=True)
+    cmd = engine.deck_command(ctx.tools.python, ctx.tools.skills_dir, script_path, out, args)
+    i = cmd.index("--format")
+    cmd[i + 1] = "png"
+    if "--parts" in cmd:
+        j = cmd.index("--parts")
+        del cmd[j:j + 2]
+    cmd.append("--no-fill")
+    env = child_env(home=ctx.root.root, extra=ctx.tools.extra_env)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=ctx.settings.worker.render_timeout_seconds,
+                           env=env, cwd=str(out))
+    except subprocess.TimeoutExpired:
+        log.warning("run %s: 非表示のページの下見の絵が時間内に描けませんでした", run["id"])
+        return 0
+    (ctx.root.run_dir(deck_id, run["id"]) / "hidden-previews.log").write_text(r.stdout + "\n--- stderr ---\n" + r.stderr,
+                                                                              encoding="utf-8")
+    drawn = 0
+    for no, (s, sha) in enumerate(todo, 1):
+        png = out / "slides" / f"slide-{no:02d}.png"
+        if png.is_file():
+            ctx.call(store.save_page_preview, deck_id, run["id"], s["id"], sha, png)
+            drawn += 1
+    log.info("run %s: 非表示のページの下見の絵 %d/%d 枚（rc=%s）", run["id"], drawn, len(todo), r.returncode)
+    return drawn
 
 
 def adopt_pins(ctx: Context, engine: Engine, run_dir: Path, pages: list[dict[str, Any]], pins: dict[str, Pin],
