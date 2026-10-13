@@ -23,14 +23,22 @@ START = REPO / "skills" / "quick-slide" / "scripts" / "quick_slide_start.py"
 FAKE_CODEX = REPO / "skills" / "image-slide" / "tests" / "fake_codex.py"
 
 
-def tool_dirs() -> list[str]:
-    """本物の python3・node・npm の在りか（PATH に入れる。claude・codex のある場所は入れない）。"""
-    out = []
-    for name in ("python3", "node"):
-        p = shutil.which(name)
-        if p and str(Path(p).parent) not in out:
-            out.append(str(Path(p).parent))
-    return out + ["/usr/bin", "/bin"]
+def tool_dirs(base: Path) -> list[str]:
+    """本物の python3・node だけを置いたフォルダ（PATH に入れる。claude・codex は見せない）。
+
+    在りかのフォルダをそのまま入れると、そこにある実物の claude・codex まで見える（Windows の npm は codex.cmd・
+    claude.cmd を node.exe と同じフォルダに置く。N17）。Windows は symlink に特権が要るので、`.cmd` の包みにする。
+    """
+    tools = base / "tools"
+    tools.mkdir()
+    for name, real in (("python3", sys.executable), ("node", shutil.which("node"))):
+        if real is None:
+            continue
+        if os.name == "nt":
+            (tools / f"{name}.cmd").write_text(f'@"{real}" %*\r\n', encoding="oem", newline="")
+        else:
+            (tools / name).symlink_to(real)
+    return [str(tools), "/usr/bin", "/bin"]
 
 
 class SetupBase(unittest.TestCase):
@@ -43,9 +51,10 @@ class SetupBase(unittest.TestCase):
         self.qs = self.home / ".quick-slide"
         self.fakebin = self.tmp / "bin"
         self.fakebin.mkdir()
+        self.tool_dirs = tool_dirs(self.tmp)
 
     def env(self, **extra: str) -> dict[str, str]:
-        env = {**windows_base_env(), "HOME": str(self.home), "USERPROFILE": str(self.home), "PATH": os.pathsep.join([str(self.fakebin), *tool_dirs()]),
+        env = {**windows_base_env(), "HOME": str(self.home), "USERPROFILE": str(self.home), "PATH": os.pathsep.join([str(self.fakebin), *self.tool_dirs]),
                "LANG": "ja_JP.UTF-8", "PYTHONDONTWRITEBYTECODE": "1", "TMPDIR": str(self.tmp),
                "IMAGE_SLIDE_CODEX": runnable(FAKE_CODEX), "FAKE_CODEX_LOG": str(self.tmp / "codex-log"),
                "QUICK_SLIDE_CLAUDE": runnable(FAKES / "fake_claude.py"),

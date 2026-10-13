@@ -172,3 +172,18 @@ class FakeEncodingAndShellTests(unittest.TestCase):
                  if p != Path(__file__).resolve()
                  for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1) if '["bash",' in line]
         self.assertEqual(found, [], "shutil.which(\"bash\") で見つけたパスで呼ぶ")
+
+
+class ChildStdinTests(unittest.TestCase):
+    def test_the_prompt_reaches_the_child_byte_for_byte(self) -> None:
+        """台本係に渡すプロンプトは、改行も含めて UTF-8 のバイトのまま届く（Windows のテキストの包みは \\n を \\r\\n に
+        変える。N16）。"""
+        from quick_slide.worker.proc import run_process
+
+        prompt = "1 行目\n指示ここまで>>>\n対象の id: p-1\n"
+        echo = "import sys; sys.stdout.write(sys.stdin.buffer.read().hex())"
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_process([sys.executable, "-c", echo], cwd=Path(tmp), env=os.environ, timeout=30,
+                                 stdin_text=prompt)
+        self.assertTrue(result.ok, result)
+        self.assertEqual(bytes.fromhex(result.stdout.strip()), prompt.encode("utf-8"))

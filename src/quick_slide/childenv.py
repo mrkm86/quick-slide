@@ -5,6 +5,9 @@
 
 入れ子の印（会話から起こしたサーバが受け継いだ「いま Claude Code / Codex の中にいる」という印）も消す。
 残っていると、子の CLI が自分を入れ子の会話だと思い込む。
+
+子の Python（エンジン）は UTF-8 モードで起こす（`PYTHONUTF8=1`）。Windows の既定の cp932 で stdout・stderr を書くと、
+サーバは UTF-8 で読むので化けて、エンジンの言う理由（「codex が見つからない」など）を読み違える。
 """
 
 from __future__ import annotations
@@ -34,4 +37,5 @@ def child_env(*, home: Path, extra: Mapping[str, str] | None = None,
         env.pop(name, None)
     env["QUICK_SLIDE_HOME"] = str(home)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["PYTHONUTF8"] = "1"
     return env

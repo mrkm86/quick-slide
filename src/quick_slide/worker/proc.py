@@ -59,7 +59,8 @@ def run_process(cmd: list[str], *, cwd: Path, env: Mapping[str, str], timeout: f
     def feed() -> None:
         try:
             assert proc.stdin is not None
-            proc.stdin.write(stdin_text or "")
+            # バイトで書く。テキストの包みに書くと、Windows では \n が \r\n に変わって台本係に届く（N16）
+            proc.stdin.buffer.write((stdin_text or "").encode("utf-8"))
         except (BrokenPipeError, OSError, ValueError):
             pass
         finally:
