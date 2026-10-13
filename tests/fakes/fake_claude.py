@@ -31,7 +31,7 @@ def main() -> int:
         print("fake claude: -p --output-format json だけ受ける", file=sys.stderr)
         return 2
     tools = argv[argv.index("--tools") + 1]
-    prompt = sys.stdin.read()
+    prompt = sys.stdin.buffer.read().decode("utf-8")   # 本物と同じく UTF-8 で読む（Windows の既定は cp932）
     if tools == WEB_TOOLS:
         allowed = argv[argv.index("--allowedTools") + 1] if "--allowedTools" in argv else None
         mode = argv[argv.index("--permission-mode") + 1] if "--permission-mode" in argv else None

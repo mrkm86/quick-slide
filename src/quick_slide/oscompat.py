@@ -11,6 +11,7 @@
 | 子を自分の組で起こす | `start_new_session=True` | `CREATE_NEW_PROCESS_GROUP`・`CREATE_NO_WINDOW` |
 | 子を孫ごと止める | 組に SIGTERM → 待つ → SIGKILL | 起こした直後に入れた Job Object を止める（入れられなければ `taskkill /T /F`） |
 | 終わった子の後始末 | 何もしない | Job Object を閉じる（`end_group`） |
+| 待ち受けの口を自分だけにする | `SO_REUSEADDR`（TIME_WAIT の口を使い直すだけ） | `SO_REUSEADDR` を使わず `SO_EXCLUSIVEADDRUSE` |
 
 Windows で孫ごと止めるのに Job Object を使うのは、`codex.cmd` のような包みが cmd.exe → node → codex.exe と
 段を重ねるため。`taskkill /T` は親子の記録をたどるので、cmd.exe が先に終わると下の段にたどり着けない。
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 import os
 import signal
+import socket
 import subprocess
 from typing import Any
 
@@ -88,6 +90,20 @@ def unlock(fd: int) -> None:
         msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
     else:
         fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+# --- 待ち受けの口 ------------------------------------------------------------------------------
+
+# `socketserver` の `allow_reuse_address` に渡す値。mac・Linux の SO_REUSEADDR は TIME_WAIT の口を使い直すだけで、
+# ほかが待ち受けている口は取れない。Windows の SO_REUSEADDR は待ち受け中の口も横取りできてしまうので使わない
+REUSE_ADDRESS = not WINDOWS
+
+
+def bind_exclusively(sock: socket.socket) -> None:
+    """bind の前に呼ぶ。Windows では SO_EXCLUSIVEADDRUSE を付け、ほかが使っている口への bind を失敗させる
+    （付けないと、ほかのアプリが待ち受けている口に重ねて bind できてしまう）。mac・Linux は何もしない。"""
+    if WINDOWS:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
 
 
 # --- PID ---------------------------------------------------------------------------------

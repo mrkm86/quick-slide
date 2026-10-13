@@ -22,7 +22,7 @@ def main() -> int:
     home = pathlib.Path(os.environ.get("CODEX_HOME", ""))
     before = set(home.glob("generated_images/*/*.png")) if home.is_dir() else set()
     data = sys.stdin.buffer.read() if not sys.stdin.isatty() else b""
-    r = subprocess.run([sys.executable, INNER, *sys.argv[1:]], input=data, stdout=sys.stdout, stderr=sys.stderr)
+    r = subprocess.run([sys.executable, "-X", "utf8", INNER, *sys.argv[1:]], input=data, stdout=sys.stdout, stderr=sys.stderr)
     if r.returncode != 0 or not sys.argv[1:] or sys.argv[1] != "exec":
         return r.returncode
     new = sorted(set(home.glob("generated_images/*/*.png")) - before, key=lambda p: p.stat().st_mtime)

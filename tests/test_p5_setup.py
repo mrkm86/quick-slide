@@ -16,7 +16,7 @@ import textwrap
 import unittest
 from pathlib import Path
 
-from helpers import FAKES, REPO, runnable, temp_dir
+from helpers import FAKES, REPO, runnable, temp_dir, windows_base_env
 
 SETUP = REPO / "skills" / "quick-slide" / "scripts" / "quick_slide_setup.py"
 START = REPO / "skills" / "quick-slide" / "scripts" / "quick_slide_start.py"
@@ -45,7 +45,7 @@ class SetupBase(unittest.TestCase):
         self.fakebin.mkdir()
 
     def env(self, **extra: str) -> dict[str, str]:
-        env = {"HOME": str(self.home), "USERPROFILE": str(self.home), "PATH": os.pathsep.join([str(self.fakebin), *tool_dirs()]),
+        env = {**windows_base_env(), "HOME": str(self.home), "USERPROFILE": str(self.home), "PATH": os.pathsep.join([str(self.fakebin), *tool_dirs()]),
                "LANG": "ja_JP.UTF-8", "PYTHONDONTWRITEBYTECODE": "1", "TMPDIR": str(self.tmp),
                "IMAGE_SLIDE_CODEX": runnable(FAKE_CODEX), "FAKE_CODEX_LOG": str(self.tmp / "codex-log"),
                "QUICK_SLIDE_CLAUDE": runnable(FAKES / "fake_claude.py"),

@@ -74,7 +74,7 @@ def run(args, root: pathlib.Path, mode="ok", extra_env=None, home=None):
            "IMAGE_SLIDE_CACHE": str(root / "cache"), "QUICK_SLIDE_HOME": str(root / "home"),
            **(extra_env or {})}
     r = subprocess.run([sys.executable, str(ENTRY), *args], capture_output=True, text=True, env=env, timeout=300)
-    calls = [json.loads(p.read_text()) for p in sorted(log.glob("*.json"))] if log.exists() else []
+    calls = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(log.glob("*.json"))] if log.exists() else []
     return r.returncode, r.stdout, r.stderr, calls
 
 

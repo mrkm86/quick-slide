@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 import unittest
@@ -49,10 +50,15 @@ class VendoredFilesTests(unittest.TestCase):
         self.assertRegex(readme, r"- コミット: [0-9a-f]{40}")
 
 
+# 名前の "bash" で起こすと、Windows は PATH より先に System32 を探し、WSL の bash.exe に当たる。見つけたパスで呼ぶ
+BASH = shutil.which("bash")
+
+
 class UpdateScriptTests(unittest.TestCase):
+    @unittest.skipIf(BASH is None, "bash が無い")
     def test_a_tag_that_is_not_a_version_is_refused_before_anything_runs(self) -> None:
         for bad in ("v|;e${IFS}printf${IFS}injected;#", "main", "v1", "$(id)", "v1.1.1;ls", "--bogus"):
-            r = subprocess.run(["bash", str(VENDOR / "update.sh"), bad], capture_output=True, text=True, errors="replace", timeout=30)
+            r = subprocess.run([BASH, str(VENDOR / "update.sh"), bad], capture_output=True, text=True, errors="replace", timeout=30)
             self.assertEqual(r.returncode, 2, (bad, r.stderr))
 
 

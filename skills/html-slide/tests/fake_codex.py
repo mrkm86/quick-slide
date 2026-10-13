@@ -30,7 +30,7 @@ MODE = os.environ.get("FAKE_CODEX_MODE", "ok")
 
 def record(**kw):
     LOG.mkdir(parents=True, exist_ok=True)
-    with open(LOG / f"{os.getpid()}-{uuid.uuid4().hex[:6]}.json", "w") as f:
+    with open(LOG / f"{os.getpid()}-{uuid.uuid4().hex[:6]}.json", "w", encoding="utf-8") as f:
         json.dump(kw, f, ensure_ascii=False)
 
 
@@ -71,7 +71,8 @@ def main():
     if not argv or argv[0] != "exec":
         print("fake codex: unknown command", file=sys.stderr)
         return 2
-    text = sys.stdin.read() if argv[-1] == "-" else argv[-1]
+    # 本物の codex と同じく、stdin はいつも UTF-8 で読む（Windows の既定の cp932 で読むとページ番号を読めない）
+    text = sys.stdin.buffer.read().decode("utf-8") if argv[-1] == "-" else argv[-1]
     refs = [argv[i + 1] for i, a in enumerate(argv) if a == "-i"]
     from PIL import Image
     ref_modes = [Image.open(r).mode for r in refs]   # 透過が白に合成されて届いたか（_flat_refs）

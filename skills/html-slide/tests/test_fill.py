@@ -64,7 +64,7 @@ def run(args, root: pathlib.Path, mode="ok"):
            "FAKE_CODEX_MODE": mode, "CODEX_HOME": str(fake_home(root)), "OPENAI_API_KEY": "sk-test-should-not-pass",
            "FAKE_CODEX_SLEEP": "0.1"}
     r = subprocess.run([sys.executable, str(ENTRY), *args], capture_output=True, text=True, env=env, timeout=600)
-    calls = [json.loads(p.read_text()) for p in sorted(log.glob("*.json"))] if log.exists() else []
+    calls = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(log.glob("*.json"))] if log.exists() else []
     return r.returncode, r.stdout, r.stderr, [c for c in calls if c.get("cmd") == "exec" and "t1" in c]
 
 
