@@ -1202,6 +1202,20 @@ def t_photo(s: Slide):
         return _photo_band(s)
     head = s.text("headline", required=True)
     kicker, body, caption = s.text("kicker"), s.text("body"), s.text("caption")
+    hide = s.spec.get("hide_text", False)
+    if not isinstance(hide, bool):
+        s.err("hide_text は true か false")
+    if hide and layout != "full":
+        s.err("hide_text は layout: full のときだけ")
+    # 全面（full）の hide_text: 画像だけを全面に敷く扉絵（幕も文字も出さない。見出しはページの名前として持つだけ。ADR 0026）
+    if hide:
+        parts = [s.img(s.spec.get("image"), "image", "photo", 0, 0, W, H, anim=s.anim(0, "fade", 0, "写真"),
+                       clear="右下（出典）" if caption else None)]
+        if caption:   # 出典は右下に小さく（読めるよう、文字の後ろだけ暗くする）
+            cs, _ = fit(caption, 20, 900, what="caption", lines=1, lh=1.5, min_size=18)
+            parts.append(f'<div class="scrim" style="right:{X0}px; bottom:{X0}px; padding:6px 14px" data-name="写真の出典">'
+                         f'<div class="sub" style="font-size:{cs}px">{esc(caption)}</div></div>')
+        return parts
     if layout == "full":
         tw = 992
         hs, _ = fit(head, 57, tw, what="見出し（headline）", lines=3, lh=1.4, min_size=45, bold=True)
@@ -2738,7 +2752,7 @@ TYPES = {
     "compare": (t_compare, HEAD_KEYS | {"left", "right", "accent", "arrow"}, True),
     "bar-chart": (t_bar_chart, HEAD_KEYS | {"bars", "unit", "note", "max", "callout"}, True),
     "table": (t_table, HEAD_KEYS | {"columns", "rows", "highlight", "widths"}, True),
-    "photo": (t_photo, {"image", "layout", "split", "kicker", "headline", "body", "caption"}, False),
+    "photo": (t_photo, {"image", "layout", "split", "kicker", "headline", "body", "caption", "hide_text"}, False),
     "quote": (t_quote, {"quote", "by", "position", "kicker", "source", "layout", "image"}, True),
     "bullets": (t_bullets, HEAD_KEYS | {"items", "image", "side", "split"}, True),
     "timeline": (t_timeline, HEAD_KEYS | {"items", "current"}, True),
