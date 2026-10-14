@@ -22,6 +22,7 @@ from helpers import temp_dir, wait_until_idle, writer_calls
 from test_engines_e2e import html_slide_ready
 from test_p4_settings import Base, engine_calls
 
+from quick_slide.oscompat import yu_gothic_files
 from quick_slide.paths import SKILLS_DIR, DataRoot
 from quick_slide.render import look as LOOK
 from quick_slide.render.caches import deck_cache_areas
@@ -277,10 +278,10 @@ class BrandFontTests(unittest.TestCase):
 
     def test_the_real_engine_accepts_a_theme_with_brand_font_files(self) -> None:
         why = html_slide_ready()
-        yu = Path("/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts")
-        if why or not (yu / "YuGothR.ttc").is_file():
+        yu = yu_gothic_files()   # mac は PowerPoint 同梱、Windows は OS の字体
+        if why or not Path(yu["regular"]).is_file():
             self.skipTest(why or "游ゴシックの字体ファイルが無い")
-        self.config("html-slide", {"Brand Gothic": {"regular": str(yu / "YuGothR.ttc"), "bold": str(yu / "YuGothB.ttc")}})
+        self.config("html-slide", {"Brand Gothic": {"regular": yu["regular"], "bold": yu["bold"]}})
         font = LOOK.brand_font(self.root, self.brand("Brand Gothic"), "html-slide")
         theme = self.tmp / "theme.yaml"
         theme.write_text('background: "#FFFFFF"\nink: "#404040"\nprimary: "#0DB4F2"\n' + LOOK.font_yaml(font),

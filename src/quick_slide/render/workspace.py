@@ -57,7 +57,8 @@ PRESENT = "present"
 # 書き出しの部品（ページごとの PPTX の部品と、deck.pdf の何ページ目か）の置き場（回のフォルダの中）
 PARTS = "parts"
 PARTS_FILE = "parts.json"
-PRESENT_FONT_TYPES = frozenset({".ttf", ".otf", ".woff", ".woff2"})
+# 游ゴシック（mac は PowerPoint 同梱・Windows は OS）・ヒラギノ・メイリオは .ttc（TrueType Collection。N30）
+PRESENT_FONT_TYPES = frozenset({".ttf", ".ttc", ".otf", ".woff", ".woff2"})
 _FONT_URL = re.compile(r'url\("file://([^"]+)"\)')
 _ASSET_SRC = re.compile(r'\bsrc="assets/([^"/]+)"')
 

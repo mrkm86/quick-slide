@@ -26,9 +26,9 @@ def routed(path: str) -> bool:
 
 
 class PresentBase(Base):
-    def start_with_font(self):
+    def start_with_font(self, name: str = "Fake-Regular.ttf"):
         self.start()
-        font = self.fx.root.root / "fonts-for-test" / "Fake-Regular.ttf"
+        font = self.fx.root.root / "fonts-for-test" / name
         font.parent.mkdir(parents=True, exist_ok=True)
         font.write_bytes(FAKE_FONT)
         self.font = font
@@ -107,6 +107,20 @@ class PresentApiTests(PresentBase):
         caps = self.fx.get(f"/api/decks/{empty['id']}").json()["capabilities"]
         self.assertFalse(caps["present"]["available"])
         self.assertTrue(caps["present"]["reason"])
+
+
+class PresentTtcFontTests(PresentBase):
+    def test_a_ttc_font_is_kept_and_served(self) -> None:
+        """游ゴシック・ヒラギノ・メイリオは .ttc。発表の画面でも控えて配る（控えないと sans-serif で出る。N30）。"""
+        self.start_with_font("Fake-Regular.ttc")
+        deck, run = self.make_presentation()
+        name = W.present_font_name(str(self.font))
+        self.assertTrue(name.endswith(".ttc"), name)
+        self.assertTrue((self.fx.root.run_dir(deck, run["id"]) / W.PRESENT / "fonts" / name).is_file())
+        body = self.fx.get(f"/present/{deck}/{run['id']}/deck.html").body.decode()
+        self.assertIn(f'url("/present/{deck}/{run["id"]}/fonts/{name}")', body)
+        r = self.fx.get(f"/present/{deck}/{run['id']}/fonts/{name}")
+        self.assertEqual((r.status, r.body, r.headers["content-type"]), (200, FAKE_FONT, "font/collection"))
 
 
 class PresentRunHtmlTests(PresentBase):
