@@ -13,6 +13,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import url from 'url';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
@@ -416,7 +417,10 @@ function installLib() {
     const bh = b.height - pt - parseFloat(cs.paddingBottom) - parseFloat(cs.borderBottomWidth);
     const iw = el.naturalWidth, ih = el.naturalHeight;
     let src = el.currentSrc || el.src;
-    if (src.startsWith('file://')) src = decodeURIComponent(new URL(src).pathname);
+    if (src.startsWith('file://')) {
+      src = decodeURIComponent(new URL(src).pathname);
+      if (/^\/[A-Za-z]:\//.test(src)) src = src.slice(1);   // Windows: file:///C:/… の pathname は /C:/…（N26）
+    }
     const pos = (cs.objectPosition || '50% 50%').split(/\s+/).map(v => (v.endsWith('%') ? parseFloat(v) / 100 : 0.5));
     let rect = { left: b.left + pl, top: b.top + pt, width: bw, height: bh }, crop = null;
     const fit = cs.objectFit;
@@ -975,7 +979,7 @@ async function main() {
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
-    await page.goto('file://' + htmlPath, { waitUntil: 'load', timeout: 60000 });
+    await page.goto(url.pathToFileURL(path.resolve(htmlPath)).href, { waitUntil: 'load', timeout: 60000 });
     await page.evaluate(() => document.fonts.ready);
     await page.evaluate(installLib);
     const data = await page.evaluate(mode === 'contract' ? contractMain : hyperMain);

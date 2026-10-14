@@ -60,7 +60,7 @@ run "描く指示: 構図・部品の文字・作風・構図の見本の番号�
 run "check に出る・渡していない名前・無い部品・形の誤り・無いファイル・知らないキーは rc=2・html-slide は読み飛ばす" custom_layout_cli_and_errors
 run "deck: 構図の見本は指定したページだけに添える・build.json と inspect.md に出る" custom_layout_deck
 echo "--- 合成"
-run "16:9 にそろえる（伸縮・左右を切る・地の色で足す）" normalize
+run "16:9 にそろえる（伸縮・左右を切る・地の色で足す）・透明な所は地の色に合成する" normalize
 run "帯の検査（白・物あり・無地の暗い帯）と、帯の上の文字の色" band_check
 echo "--- 認証と並列（偽物の codex）"
 run "並列で描く・認証の確認は1回・API キーを渡さない・隔離ホームは別々で消える・実 auth.json は不変" deck_parallel

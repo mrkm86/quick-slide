@@ -92,7 +92,8 @@ def case_print_html():
 def _pages(pdf: pathlib.Path) -> int | None:
     if not shutil.which("pdfinfo"):
         return None
-    r = subprocess.run(["pdfinfo", str(pdf)], capture_output=True, text=True, encoding="utf-8")
+    # Windows の pdfinfo（Git に付いてくる）は題名などを cp932 で出す。読めない字は置き換える（見るのは Pages: の行だけ）
+    r = subprocess.run(["pdfinfo", str(pdf)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     return int(next(ln.split()[-1] for ln in r.stdout.splitlines() if ln.startswith("Pages:")))
 
 

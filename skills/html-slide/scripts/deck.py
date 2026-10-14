@@ -21,7 +21,6 @@ import pathlib
 import re
 import shutil
 import sys
-import urllib.parse
 
 sys.dont_write_bytecode = True   # 置いた場所（配る物の中・ほかの環境からのリンク先）に __pycache__ を残さない
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -256,7 +255,8 @@ def _metric_overrides(path: str) -> str:
 
 def font_faces(family: str, files: dict) -> str:
     def url(p):
-        return "file://" + urllib.parse.quote(p)
+        # Windows の C:\… も file:///C:/… にする（"file://" ＋ quote だと file://C%3A%5C… になり、Chrome が読めない。N29）
+        return pathlib.Path(p).absolute().as_uri()
     return (f'@font-face {{ font-family: "{family}"; font-weight: 400; src: url("{url(files["regular"])}");{_metric_overrides(files["regular"])} }}\n'
             f'      @font-face {{ font-family: "{family}"; font-weight: 700; src: url("{url(files["bold"])}");{_metric_overrides(files["bold"])} }}')
 

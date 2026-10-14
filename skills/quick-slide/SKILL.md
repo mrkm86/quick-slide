@@ -23,8 +23,9 @@ description: Quick Slide で会話の続きからスライドを作り、会話�
 
 ### Windows で使うとき（Python の呼び方）
 
-- このファイルの `python3` は、Windows では **`py -3`** に読み替える（`python3` は Microsoft Store のスタブで、`Python` と
-  だけ出して終わる）。`py` が無ければ `python`
+- **このファイルの `python3` は、Windows では必ず `py -3` に読み替える。** `python3` は Microsoft Store のスタブで、`Python`
+  とだけ出して終わる。`python` は `py -3` と版も入っているパッケージも違うことがあるので、**`py` が無いときだけ** `python` を使う
+  （`--setup` が入れたパッケージは、`--setup` を流した Python にしか入らない。いつも同じ起こし方をする）
 - **Python が見つからないとき**: `py -3 --version`・`python --version` を順に試す。Store のスタブ（`Python` とだけ出て終了
   コード 49）は「無い」とみなす。無ければ、利用者の同意を取ってから `winget install -e --id Python.Python.3.13 --scope user`
   を流す（winget が無ければ python.org の入手先を案内する）。入れたらターミナルを開き直してもらう
