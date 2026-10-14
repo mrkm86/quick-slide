@@ -115,13 +115,17 @@ def _options(pairs: tuple[tuple[str, str], ...]) -> list[dict[str, Any]]:
 
 
 IMPORTED_LEAD = "このページの空いている所に、挿絵を重ねます。元の文字・図形・画像はそのままです。"
+IMPORTED_TEXT_LEAD = "文字だけを直します。位置・色・書式・図形はそのままです。"
 
 
 def offered_for_imported(mode: str) -> list[dict[str, Any]]:
-    """取り込んだページ（PPTX から）の修正の欄に出す種類。いまは挿絵を重ねることだけ（docs/adr/0013）。"""
+    """取り込んだページ（PPTX から）の修正の欄に出す種類。文字（見た目を保って文字だけ。docs/adr/0014）と、
+    挿絵を重ねること（docs/adr/0013）。"""
     if mode != "presentation":
         return []
-    return [{"kind": "illustration", "label": LABELS["illustration"], "icon": ICONS["illustration"], "lead": IMPORTED_LEAD,
+    return [{"kind": "text", "label": LABELS["text"], "icon": ICONS["text"], "lead": IMPORTED_TEXT_LEAD,
+             "options": _options(TEXT_TOUCHES), "many": True, "empty_reason": TEXT_REQUIRED},
+            {"kind": "illustration", "label": LABELS["illustration"], "icon": ICONS["illustration"], "lead": IMPORTED_LEAD,
              "options": [], "many": False, "empty_reason": None}]
 
 

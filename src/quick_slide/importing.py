@@ -143,3 +143,42 @@ def report_lines(rep: dict[str, Any], limit: int = 40) -> list[str]:
         n = it.get("count") or 1
         out.append(f"{where}: {it.get('what')} — {it.get('how')}" + (f"（{n} か所）" if n > 1 else ""))
     return out[:limit]
+
+
+# ---- 取り込んだページの文字を、見た目を保ったまま直す（docs/adr/0014-imported-text-edits.md）----
+# ページの HTML のタグの間の文字（見出し・各行・箇条書きの印）に番号を振って台本係に渡し、番号ごとの直した文字だけを
+# 受け取って差し替える。位置・色・書式・アニメーションは変えない。HTML はエンジンの import が書いたもの（スクリプトも
+# コメントも無い）なので、タグの間の文字はこの形で拾える
+_TEXT_NODE = re.compile(r">([^<>]*\S[^<>]*)<")
+# 箇条書きの印だけの文字（台本係に「直さない」と言う）
+_BULLETS = set("•・◦▪▫■□●○◆◇▶►‣⁃-–—*※✓✔")
+
+
+def text_segments(html: str) -> list[dict[str, Any]]:
+    """ページの文字の並び（{n, text, bullet}。n は 1 から）。"""
+    import html as htmllib
+
+    out = []
+    for i, m in enumerate(_TEXT_NODE.finditer(html or ""), 1):
+        text = htmllib.unescape(m.group(1)).strip()
+        out.append({"n": i, "text": text, "bullet": bool(text) and all(c in _BULLETS for c in text)})
+    return out
+
+
+def replace_texts(html: str, changes: dict[int, str]) -> str:
+    """番号の文字だけを差し替えた HTML（前後の空白は元のまま残す）。"""
+    import html as htmllib
+
+    count = 0
+
+    def sub(m: "re.Match[str]") -> str:
+        nonlocal count
+        count += 1
+        if count not in changes:
+            return m.group(0)
+        raw = m.group(1)
+        lead = raw[:len(raw) - len(raw.lstrip())]
+        tail = raw[len(raw.rstrip()):]
+        return ">" + lead + htmllib.escape(changes[count], quote=False) + tail + "<"
+
+    return _TEXT_NODE.sub(sub, html or "")

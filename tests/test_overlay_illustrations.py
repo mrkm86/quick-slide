@@ -3,7 +3,7 @@
 - ページの HTML から箱（位置・大きさ・中の文字）を拾い、台本係が空いている場所・大きさ・SVG を決める
 - 文字の箱に重なりすぎる置き方は書き直させる。台本の版はページの `illustrations` に SVG のまま持つ
 - 描く前に PNG にして、ページの HTML の最後に `<img>` として重ねる（元の文字・図形は変えない）
-- 取り込んだページで受けるのは「挿絵」を 1 ページずつだけ。ほかの直しはこれまでどおり理由を返す
+- 取り込んだページで受けるのは「挿絵」と「文字」（ADR 0014）を 1 ページずつだけ。ほかの直しはこれまでどおり理由を返す
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ class UnitTests(unittest.TestCase):
         self.assertIn("illustrations", view["slides"][0], "元の台本は変えない")
 
     def test_imported_pages_offer_only_the_illustration(self) -> None:
-        self.assertEqual([k["kind"] for k in edit_kinds.offered_for_imported("presentation")], ["illustration"])
+        self.assertEqual([k["kind"] for k in edit_kinds.offered_for_imported("presentation")], ["text", "illustration"])
         self.assertEqual(edit_kinds.offered_for_imported("pitch"), [])
 
 
@@ -60,10 +60,10 @@ class EndToEndTests(unittest.TestCase):
         deck = r.json()["deck_id"]
         self.assertEqual(wait_until_idle(fx, deck, seconds=300)["state"], "done")
         view = fx.get(f"/api/decks/{deck}").json()
-        self.assertEqual([k["kind"] for k in view["imported_edit_kinds"]], ["illustration"])
+        self.assertEqual([k["kind"] for k in view["imported_edit_kinds"]], ["text", "illustration"])
         sid = view["pages"][0]["slide_id"]
         url = f"/api/decks/{deck}/instructions"
-        for body in ({"scope": "page", "slide_id": sid, "text": "", "kind": "text", "options": ["short"]},
+        for body in ({"scope": "page", "slide_id": sid, "text": "", "kind": "diagram"},
                      {"scope": "pages", "slide_ids": [sid], "text": "", "kind": "illustration"}):
             r = fx.post(url, body)
             self.assertEqual((r.status, r.json()["error"]["code"]), (409, "imported_page"), body)

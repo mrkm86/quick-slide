@@ -201,6 +201,8 @@ def invalid_script() -> dict:
 def prompt_kind(prompt: str) -> str:
     if "挿絵を 1 つ重ねます" in prompt:   # 取り込んだページに挿絵を重ねる（docs/adr/0013）
         return "overlay"
+    if "取り込んだページの**文字だけ**" in prompt:   # 取り込んだページの文字を直す（docs/adr/0014）
+        return "imported_text"
     if "# 直すページ" in prompt:
         return "revise"
     if "ページを足します" in prompt:
@@ -245,6 +247,16 @@ def answer_for(kind: str, prompt: str) -> tuple[str | None, str | None]:
         svg = (f'<svg viewBox="0 0 {box["w"]} {box["h"]}"><rect width="{box["w"]}" height="{box["h"]}" rx="40" fill="#e6f1f3"/>'
                '<icon name="users" x="40" y="60" size="320" fill="#006f83"/></svg>')
         return json.dumps({**box, "svg": svg, "summary": "右の空いた所に人の挿絵を重ねた（架空）"}, ensure_ascii=False), None
+    if what == "imported_text":
+        # 番号の行（- n: 文字）を読み、印でない行の頭 2 つに「（直し）」を付ける。long_first は 1 回目だけ長すぎる
+        segs = [(int(m.group(1)), m.group(2)) for m in re.finditer(r"^- (\d+): (.*?)(（箇条書きの印。直さない）)?$",
+                                                                 prompt, re.M) if not m.group(3)]
+        long_first = MODE == "imported_text_long_first" and n_what == 0
+        # overflow_first: 1 回目は字数の決まりには収まるが、見出しの箱からはみ出す長さにする
+        wide_first = MODE == "imported_text_overflow_first" and n_what == 0
+        changes = [{"n": n, "text": (t * 5 if long_first else t + "を長くして箱からはみ出させる続き"
+                                      if wide_first and i == 0 else t + "（直し）")} for i, (n, t) in enumerate(segs[:2])]
+        return json.dumps({"changes": changes, "summary": "見出しと要点を直した（架空）"}, ensure_ascii=False), None
     if what == "revise":
         return json.dumps(revision_answer(prompt, n_what), ensure_ascii=False), None
     if what == "insert":

@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from .. import edit_kinds, motion
+from .. import edit_kinds, importing, motion
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, engine_for
 from ..pins import PinRefused, pin_source
@@ -61,7 +61,13 @@ from ..scriptdoc import (
 from ..writer import jlint as JLINT
 from ..writer.backends import WriterFailed, ask, choose_backend, extract_json
 from ..writer.patch import apply_revision, insert_after, parse_insert, parse_revision
-from ..writer.prompt import ContractMissing, build_insert_prompt, build_overlay_prompt, build_revision_prompt
+from ..writer.prompt import (
+    ContractMissing,
+    build_imported_text_prompt,
+    build_insert_prompt,
+    build_overlay_prompt,
+    build_revision_prompt,
+)
 from .pipeline import (
     Context,
     RenderPlan,
@@ -97,6 +103,8 @@ class EditResult:
     candidate: dict[str, Any] | None = None   # 台本係が書いて検査を通った版（もう保存してある）
     # ほかの台本の版に、この直しだけを当て直す（ページを指定した直し。ほかのページの直しが先に当たっていたとき）
     rebase: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+    # 検査の警告のうち、この直しでは書き直させるもの（`NG:` の行にして返す。最後の回は止めない）
+    ng_warnings: Callable[[list[str]], list[str]] | None = None
 
 
 # ---- 同じデッキの仕事の順番（docs/adr/0012-parallel-edits.md）----
@@ -427,6 +435,10 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
         if checked.stopped:
             return fail("サーバを止めたので、台本を確かめるのを中断しました。もう一度頼んでください。", "stopped")
         if checked.rc == 0:
+            extra = result.ng_warnings(checked.warnings) if result.ng_warnings and round_no < rounds else []
+            if extra:
+                previous, problems = answer, extra
+                continue
             result.candidate = candidate
             return result
         if checked.rc == 2 and LOOK.theme_refused(checked.problems):
@@ -463,6 +475,11 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
         if len(keys) != 1:
             raise EditRefused("取り込んだページに挿絵を重ねるのは、1 ページずつです。")
         return _overlay(ctx, job, run, req, data, keys[0], positions[keys[0]])
+    # 取り込んだページの文字は、見た目を保ったまま文字だけを直す（docs/adr/0014-imported-text-edits.md）
+    if req.get("kind") in (None, "text") and keys and all(page_types.get(k) == IMPORTED_TYPE for k in keys):
+        if len(keys) != 1:
+            raise EditRefused("取り込んだページの文字を直すのは、1 ページずつです。")
+        return _imported_text(ctx, job, run, req, data, keys[0], positions[keys[0]])
     rels, paths = _attachments(ctx, deck_id, req.get("attachments") or [])
     pictures = _pictures(ctx, deck_id, engine.mode, keys) if not one_page(args) else {}
     by_key = {str(s.get("id")): s for s in slides_of(data)}
@@ -503,6 +520,75 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
                           rebase=rebase if page_local else None), []
 
     ctx.call(ctx.store.set_job_note, job["id"], {"keys": keys})
+    return _writer_loop(ctx, job, run, req, data, build, parse_and_apply)
+
+
+def _imported_text(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[str, Any], data: dict[str, Any],
+                   key: str, position: int):
+    """取り込んだページの文字を直す。台本係は番号ごとの直した文字だけを返し、ページの HTML のその文字だけを差し替える
+    （位置・色・書式・アニメーションは変えない）。"""
+    page = next(s for s in slides_of(data) if str(s.get("id")) == key)
+    segments = importing.text_segments(page.get("html") or "")
+    by_n = {s["n"]: s for s in segments}
+    instruction = req.get("text") or ""
+    direction = edit_kinds.direction("presentation", "text", req.get("options") or []) if req.get("kind") == "text" else []
+    target = {"id": key, "position": position, "title": headline_of(page)}
+
+    def build(previous, problems):
+        return build_imported_text_prompt(page=target, segments=segments, instruction=instruction, direction=direction,
+                                          previous=previous, problems=problems)
+
+    def apply(other: dict[str, Any], changes: dict[int, str]) -> dict[str, Any]:
+        out = deep(other)
+        for s in slides_of(out):
+            if str(s.get("id")) == key:
+                old_title = (s.get("title") or "").strip()
+                s["html"] = importing.replace_texts(s.get("html") or "", changes)
+                for n, text in changes.items():   # 一覧に出す見出し（取り込みの title）も、同じ文字なら直す
+                    if old_title and by_n[n]["text"] == old_title:
+                        s["title"] = text
+        return without_pins(out, {key})
+
+    def parse_and_apply(answer):
+        try:
+            got = answer if isinstance(answer, dict) else extract_json(str(answer))
+        except WriterFailed:
+            return None, ["NG: 返したものが JSON のオブジェクト 1 つではなかった。決まった形の JSON オブジェクトだけを返す"]
+        raw = got.get("changes")
+        if not isinstance(raw, list):
+            return None, ["NG: changes を [{\"n\": 番号, \"text\": \"直した文字\"}] の配列で書く"]
+        changes: dict[int, str] = {}
+        problems = []
+        for c in raw:
+            n, text = (c.get("n"), c.get("text")) if isinstance(c, dict) else (None, None)
+            if not isinstance(n, int) or n not in by_n:
+                problems.append(f"NG: 番号 {n!r} は無い（1〜{len(segments)}）")
+            elif not isinstance(text, str) or not text.strip():
+                problems.append(f"NG: {n} の文字を空にしない（消すことはできない）")
+            elif n in changes:
+                problems.append(f"NG: {n} を 2 回書かない")
+            else:
+                old = by_n[n]["text"]
+                if len(text.strip()) > max(2 * len(old), len(old) + 20):
+                    problems.append(f"NG: {n} の文字が元（{len(old)} 字）より大きく増えた（{len(text.strip())} 字）。"
+                                    "箱からはみ出すので短くする")
+                changes[n] = text.strip()
+        if problems:
+            return None, problems
+        summary = str(got.get("summary") or "")[:200]
+        if not changes:
+            raise EditRefused(f"{position}ページの文字は直しませんでした" + (f"（{summary}）" if summary else "") + "。")
+        def overflow(warnings: list[str]) -> list[str]:
+            # 直した文字が箱からはみ出したら短くさせる（取り込んだページのはみ出しは、字体の違いでもともと出ることが
+            # あるので警告止まり。直した文字のものだけを拾う）
+            heads = [t[:12] for t in changes.values()]
+            return [f"NG: {w.split(':', 1)[1].strip()}" for w in warnings
+                    if "[text-overflow]" in w and any(h and h in w for h in heads)]
+
+        return EditResult(data=apply(data, changes), plan=RenderPlan(), summary=summary or "文字を直した",
+                          routes={key: "script"}, rebase=lambda other: apply(other, changes), ng_warnings=overflow), []
+
+    ctx.call(ctx.store.set_job_note, job["id"], {"keys": [key]})
     return _writer_loop(ctx, job, run, req, data, build, parse_and_apply)
 
 
