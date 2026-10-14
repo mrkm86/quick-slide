@@ -468,8 +468,9 @@ def _imported_images(store: Any, deck_id: str, pages: list[dict[str, Any]]) -> d
         return {}
     head = store.head_script(deck_id)
     data = store.load_script(head) if head else {}
-    return {keys[str(s.get("id"))]: len(importing.page_images(s.get("html") or "")) for s in slides_of(data)
-            if str(s.get("id")) in keys}
+    # 元のページの画像と、前に重ねた挿絵・図解・画像（どちらも差し替えられる）
+    return {keys[str(s.get("id"))]: len(importing.page_images(s.get("html") or "")) + len(s.get("illustrations") or [])
+            for s in slides_of(data) if str(s.get("id")) in keys}
 
 
 def _export_formats(mode: str) -> list[dict[str, Any]]:

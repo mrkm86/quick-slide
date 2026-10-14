@@ -771,9 +771,13 @@ def _overlay_image(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: 
 
 def _replace_image(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[str, Any], data: dict[str, Any],
                    key: str, position: int):
-    """取り込んだページの画像を、同じ枠のまま中身だけ替える（docs/adr/0015）。画像が 1 つで渡した画像があれば台本係は呼ばない。"""
+    """取り込んだページの画像を、同じ枠のまま中身だけ替える（docs/adr/0015）。画像が 1 つで渡した画像があれば台本係は呼ばない。
+
+    替えられるのは、元のページの画像と、前に重ねた挿絵・図解・画像（ページの `illustrations`）のうち見えているもの。
+    重ねたものは位置と大きさをそのままに、中身だけを替える。その下に大半が隠れていた重ねたものは取り除く（新しい画像の
+    周りからはみ出して見えるため）。"""
     page = next(s for s in slides_of(data) if str(s.get("id")) == key)
-    images = importing.page_images(page.get("html") or "")
+    images = _replaceable(page)
     if not images:
         raise EditRefused(f"{position}ページには差し替える画像がありません。「空いた所に足す」を選んでください。")
     rel, _, generate = _picture_source(ctx, run, req)
@@ -781,9 +785,14 @@ def _replace_image(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: 
 
     def replaced(other: dict[str, Any], n: int, src: str) -> dict[str, Any]:
         out = deep(other)
+        where, index = images[n - 1]["ref"]
         for s in slides_of(out):
-            if str(s.get("id")) == key:
-                s["html"] = importing.replace_image(s.get("html") or "", n, src)
+            if str(s.get("id")) != key:
+                continue
+            if where == "html":
+                s["html"] = importing.replace_image(s.get("html") or "", index, src)
+            else:   # 重ねたもの: 位置と大きさはそのまま、中身だけ（写真は枠いっぱいに切り抜く）
+                s[ILL.OVERLAY_KEY] = _replace_overlay(list(s.get(ILL.OVERLAY_KEY) or []), index, src)
         return without_pins(out, {key})
 
     if rel and len(images) == 1 and not (req.get("text") or "").strip():
@@ -811,6 +820,39 @@ def _replace_image(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: 
 
     ctx.call(ctx.store.set_job_note, job["id"], {"keys": [key]})
     return _writer_loop(ctx, job, run, req, data, build, parse_and_apply)
+
+
+def _replaceable(page: dict[str, Any]) -> list[dict[str, Any]]:
+    """差し替えられる画像の並び（{n, kind, src, x, y, w, h, ref}）。元のページの画像のあとに、前に重ねたもの。
+    あとから重ねたものの下に大半が隠れているものは除く（見えていないものを替えても、利用者には替わって見えない）。"""
+    out = [{**img, "kind": "元の画像", "ref": ("html", img["n"])} for img in importing.page_images(page.get("html") or "")]
+    laid = [(j, it) for j, it in enumerate(page.get(ILL.OVERLAY_KEY) or []) if isinstance(it, dict)]
+    for j, it in laid:
+        image = it.get("image") if isinstance(it.get("image"), dict) else {}
+        kind = "重ねた画像" if image.get("path") else "重ねた挿絵・図"
+        out.append({"kind": kind, "src": image.get("path") or "（SVG）", **_box_of(it), "ref": ("overlay", j)})
+    out = [img for img in out if not _mostly_under(img, [_box_of(it) for j, it in laid
+                                                         if img["ref"][0] == "html" or j > img["ref"][1]])]
+    for n, img in enumerate(out, 1):
+        img["n"] = n
+    return out
+
+
+def _replace_overlay(items: list[Any], index: int, src: str) -> list[Any]:
+    """重ねたものの `index` 番目の中身を替え、その下に大半が隠れていた重ねたものを取り除く。"""
+    items[index] = {**{k: v for k, v in items[index].items() if k not in ("image", "fit")}, "image": {"path": src}, "fit": "cover"}
+    box = _box_of(items[index])
+    return [it for j, it in enumerate(items) if j == index or not isinstance(it, dict) or not _mostly_under(_box_of(it), [box])]
+
+
+def _box_of(item: dict[str, Any]) -> dict[str, int]:
+    return {k: int(item.get(k) or 0) for k in ("x", "y", "w", "h")}
+
+
+def _mostly_under(box: dict[str, Any], covers: list[dict[str, Any]]) -> bool:
+    """箱の半分より多くが、どれか 1 つの箱の下に隠れているか。"""
+    area = max(1, box["w"] * box["h"])
+    return any(_overlap(box, c) / area > HIDDEN_UNDER for c in covers)
 
 
 def _rebuild_imported(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[str, Any], data: dict[str, Any],
@@ -857,6 +899,7 @@ def _rebuild_imported(ctx: Context, job: dict[str, Any], run: dict[str, Any], re
 
 OVERLAY_MIN_SIDE = 160
 OVERLAY_TEXT_OVERLAP = 0.1   # 文字の箱との重なりは、挿絵の面積の 1 割まで
+HIDDEN_UNDER = 0.5   # 差し替え: 半分より多くが上の絵の下にあるものは「隠れている」
 
 
 def _overlap(a: dict[str, float], b: dict[str, Any]) -> float:

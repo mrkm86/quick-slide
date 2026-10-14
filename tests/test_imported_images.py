@@ -53,6 +53,20 @@ class UnitTests(unittest.TestCase):
                       'object-fit:cover" />', out)
         self.assertIn('src="imported/media/bg.png"', out, "背景は替えない")
 
+    def test_a_hidden_overlay_is_not_offered_and_goes_with_the_one_above(self) -> None:
+        """前に重ねた絵の下に大半が隠れた絵は、差し替えの候補に出さない。上の絵を替えたら、下の絵は取り除く。"""
+        from quick_slide.worker import edit
+
+        under = {"image": {"svg": "<svg/>"}, "x": 1120, "y": 280, "w": 700, "h": 640}
+        bar = {"image": {"svg": "<svg/>"}, "x": 86, "y": 878, "w": 740, "h": 190}
+        top = {"image": {"path": "overlays/gen.png"}, "x": 1100, "y": 288, "w": 740, "h": 576, "fit": "cover"}
+        page = {"html": IMG, "illustrations": [under, bar, top]}
+        self.assertEqual([(i["kind"], i["ref"]) for i in edit._replaceable(page)],
+                         [("元の画像", ("html", 1)), ("重ねた挿絵・図", ("overlay", 1)), ("重ねた画像", ("overlay", 2))])
+        out = edit._replace_overlay([under, bar, top], 2, "attachments/new.png")
+        self.assertEqual([i["image"] for i in out], [{"svg": "<svg/>"}, {"path": "attachments/new.png"}])
+        self.assertEqual((out[1]["x"], out[1]["y"], out[1]["w"], out[1]["h"]), (1100, 288, 740, 576))
+
     def test_imported_kinds_ways_and_confirmation(self) -> None:
         kinds = {k["kind"]: k for k in edit_kinds.offered_for_imported("presentation", can_generate=True)}
         self.assertEqual([o["value"] for o in kinds["image"]["options"]], ["add", "replace", "main"])
@@ -129,6 +143,19 @@ class EndToEndTests(unittest.TestCase):
         srcs = [i["src"] for i in importing.page_images(page["html"])]
         self.assertEqual(len(srcs), 1)
         self.assertTrue(srcs[0].startswith("attachments/"), srcs)
+
+    def test_replace_an_overlay_keeps_its_place(self) -> None:
+        """前に重ねたもの（挿絵・図解・画像）も差し替えられる。位置と大きさはそのまま、中身だけ替わる。"""
+        page = self.send(1, "diagram", "add")
+        before = dict(page["illustrations"][0])
+        view = self.fx.get(f"/api/decks/{self.deck}").json()
+        self.assertEqual(view["imported_images"][view["pages"][0]["slide_id"]], 1, "重ねたものも数える（差し替えの札が出る）")
+        page = self.send(1, "image", "replace", picture=True)
+        after = page["illustrations"][0]
+        self.assertEqual({k: after[k] for k in ("x", "y", "w", "h")}, {k: before[k] for k in ("x", "y", "w", "h")})
+        self.assertTrue(after["image"]["path"].startswith("attachments/"))
+        self.assertNotIn("svg", after["image"])
+        self.assertEqual(after["fit"], "cover")
 
     def test_rebuild_around_a_picture_and_around_a_diagram(self) -> None:
         page = self.send(1, "image", "main", picture=True)

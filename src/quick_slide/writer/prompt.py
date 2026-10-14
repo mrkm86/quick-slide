@@ -548,7 +548,8 @@ def build_overlay_prompt(args: dict[str, Any], *, page: dict[str, Any], boxes: l
 def build_replace_prompt(*, page: dict[str, Any], images: list[dict[str, Any]], instruction: str, generate: bool,
                          previous: dict[str, Any] | str | None = None, problems: list[str] | None = None) -> str:
     """取り込んだページの画像を 1 つ差し替える（docs/adr/0015）。どの画像を替えるか（と、生成なら何を描くか）を決める。"""
-    lines = [f"- {i['n']}: x={i['x']} y={i['y']} 幅={i['w']} 高さ={i['h']}（{Path(i['src']).name}）" for i in images]
+    lines = [f"- {i['n']}: {i.get('kind') or '画像'}・x={i['x']} y={i['y']} 幅={i['w']} 高さ={i['h']}（{Path(i['src']).name}）"
+             for i in images]
     out = [
         "# あなたの仕事",
         "",
