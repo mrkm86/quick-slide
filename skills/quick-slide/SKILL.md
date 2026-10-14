@@ -26,6 +26,9 @@ description: Quick Slide で会話の続きからスライドを作り、会話�
 - **このファイルの `python3` は、Windows では必ず `py -3` に読み替える。** `python3` は Microsoft Store のスタブで、`Python`
   とだけ出して終わる。`python` は `py -3` と版も入っているパッケージも違うことがあるので、**`py` が無いときだけ** `python` を使う
   （`--setup` が入れたパッケージは、`--setup` を流した Python にしか入らない。いつも同じ起こし方をする）
+- **`py -3` が `No installed Python found!` と言うとき**（Codex の砂場の中など。利用者ごとに入れた Python の登録が見えない）:
+  `python` の前に、`%LOCALAPPDATA%\Programs\Python\Python3*\python.exe` のうち 3.12 以上で一番新しいものを直に指して使う。
+  `python` は PATH の先にある別の古い Python のことがある。サーバは **3.12 以上**が要る（古いと `code: python_too_old`）
 - **Python が見つからないとき**: `py -3 --version`・`python --version` を順に試す。Store のスタブ（`Python` とだけ出て終了
   コード 49）は「無い」とみなす。無ければ、利用者の同意を取ってから `winget install -e --id Python.Python.3.13 --scope user`
   を流す（winget が無ければ python.org の入手先を案内する）。入れたらターミナルを開き直してもらう
@@ -62,6 +65,24 @@ python3 "${SKILL_DIR}/scripts/quick_slide_setup.py" --doctor
 4. もう一度 `--doctor` を流し、使いたいモードの `ready` が真になったら投入に進む
 
 `quick_slide_start.py --doctor`・`--setup [--yes]` でも同じものが走る。
+
+#### Codex から使うとき
+
+Codex は会話の中のコマンドを砂場（サンドボックス）で走らせる。砂場の中からは **Quick Slide のサーバを起こせない**
+（データの置き場・`~/.codex`・`~/.claude` など、作業場の外に書けない）。また PATH が利用者のターミナルと違い、**入っている
+`codex`・`claude`・Node・Python が見えないことがある**。
+
+- **サーバは、利用者のターミナルで先に起こしておいてもらう。** 起きていれば、Codex からの投入・直しはいつもどおり通る
+
+  ```bash
+  python3 "${SKILL_DIR}/scripts/quick_slide_start.py" --start-server    # Windows は py -3
+  ```
+
+- 投入で **`code: start_in_terminal`** が返ったら、**回り道をしない**（作業場の中に置き場を作る・別の Python を探す・エンジンを
+  直に呼ぶ、をしない）。返った `command` を会話に書き、利用者にターミナルで流してもらってから、同じ投入をやり直す
+- 診断の JSON の `inside_codex` が真なら、Node・`codex`・台本を書く CLI が `ng` でも、**入れる案内（`npm install -g …`・
+  `codex login`）をすぐに会話に書かない。** まず利用者に、自分のターミナルで `--doctor` を走らせてもらう（コマンドは出力の
+  `fix` にある）。そこでも足りないと出たら入れてもらう
 
 ### 0. 最初の 1 冊の作り方を決める（2 つ）
 
@@ -262,6 +283,8 @@ PPTX・PDF は**画面の右上のボタン**で書き出す（画面に出て�
 | 症状 | 見ること |
 |---|---|
 | `code: server_unavailable` / `server_start_timeout` | メッセージをそのまま伝える。データの置き場の `runtime/server.log` と `server.out` に理由がある |
+| `code: start_in_terminal` | Codex の砂場の中からはサーバを起こせない。返った `command` を会話に書き、利用者のターミナルで流してもらってからやり直す（回り道をしない。上の「Codex から使うとき」） |
+| `code: python_too_old` | 起こした Python が 3.12 より古い。メッセージのとおり `py -3` か 3.12 以上の python.exe で起こし直す（上の「Windows で使うとき」） |
 | `code: server_unreachable` | Codex の砂場が手元（127.0.0.1）への通信を塞いでいる。`codex -c sandbox_workspace_write.network_access=true exec ...` で開ける |
 | `code: repo_not_found` / `repo_invalid` | 本体が見つからない。`--where` で探した先を見る |
 | `code: secret_like_content` | 原稿に秘密らしい文字列がある。**該当箇所を会話に引用せず**、`[秘匿]` に置き換えて投入し直す |
@@ -271,6 +294,7 @@ PPTX・PDF は**画面の右上のボタン**で書き出す（画面に出て�
 | `code: wait_timeout` | まだ描いている。`url` を会話に書き、画面で進みを見てもらう（仕事は止まっていない） |
 | `status: revise_failed` / `result: failed` | `result_message`（サーバの 1 文）をそのまま伝える |
 | 「描くのに要るもの（Node・Chrome など）が足りません」・`dependency` | 上の「導入を確かめる」。`--doctor` → 利用者に聞いて `--setup --yes` |
+| Codex の中で `--doctor` が「`codex` CLI が見つかりません」「台本を書く CLI が見つかりません」と言う（`inside_codex: true`） | 入っているのに砂場から見えないだけのことがある。入れる案内をせず、利用者のターミナルで `--doctor` を走らせてもらう（上の「Codex から使うとき」） |
 | 画面に「ログインできていません」の帯 | 台本を書く CLI（`claude` は /login、`codex` は `codex login`）か、絵を描く Codex（`codex login`）のログインが切れている。帯の文のとおりに伝える |
 
 ## 秘匿

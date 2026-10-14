@@ -1,6 +1,7 @@
 """ワーカーが呼ぶ実行ファイルの在りか（試験は偽物に差し替える）。
 
-- 台本係の CLI: `QUICK_SLIDE_CLAUDE`（既定は PATH の `claude`）・`QUICK_SLIDE_CODEX_TEXT`（既定は PATH の `codex`）
+- 台本係の CLI: `QUICK_SLIDE_CLAUDE`（既定は PATH の `claude`）・`QUICK_SLIDE_CODEX_TEXT`（既定は PATH の `codex`）。
+  PATH で見つからなければ、よくある置き場（npm のグローバルの置き場など。`clidirs.py`）も見る
 - エンジン: `skills/` の下の入口を、このサーバと同じ Python で呼ぶ
 - エンジンが絵を描くときの `codex` はエンジン自身が探す（`HTML_SLIDE_CODEX`・`IMAGE_SLIDE_CODEX`・設定・PATH）
 
@@ -11,11 +12,11 @@
 from __future__ import annotations
 
 import os
-import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .. import clidirs
 from ..paths import SKILLS_DIR
 
 ENV_CLAUDE = "QUICK_SLIDE_CLAUDE"
@@ -34,10 +35,11 @@ class Tools:
     motion_probe: list[str] | None = None
 
     def _lookup(self, explicit: str | None, env_name: str, command: str) -> str | None:
+        env = {**os.environ, **self.extra_env}
         value = explicit or self.extra_env.get(env_name) or os.environ.get(env_name)
         if value:
-            return value if Path(value).is_file() else shutil.which(value)
-        return shutil.which(command)
+            return value if Path(value).is_file() else clidirs.which(value, env)
+        return clidirs.which(command, env)
 
     def claude_path(self) -> str | None:
         return self._lookup(self.claude, ENV_CLAUDE, "claude")

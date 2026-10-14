@@ -315,7 +315,7 @@ class FlowTests(unittest.TestCase):
             _, run = self.make(fx)
         self.assertEqual(run["state"], "done", run["message"])
         self.assertEqual([c["keys"] for c in writer_calls(log)], [[]])
-        env = child_env(home=Path("/tmp/h"), extra=KEYS, base={**KEYS, "PATH": "/usr/bin", "CLAUDECODE": "1"})
+        env = child_env(home=Path("/tmp/h"), extra=KEYS, base={**KEYS, "PATH": "/usr/bin", "CLAUDECODE": "1", "QUICK_SLIDE_CLI_DIRS": ""})
         self.assertFalse(set(API_KEY_VARS) & set(env))
         self.assertNotIn("CLAUDECODE", env)
         self.assertEqual((env["QUICK_SLIDE_HOME"], env["PATH"]), (str(Path("/tmp/h")), "/usr/bin"))
