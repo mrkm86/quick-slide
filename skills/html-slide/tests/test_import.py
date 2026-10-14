@@ -254,7 +254,8 @@ def t_deck_end_to_end():
     """deck（Chrome）: 取り込んだ台本が rc=0 で PPTX・ページの画像になる・クリックの数は元の段・回した文字の rot。"""
     out, _, _ = imported()
     r = subprocess.run([sys.executable, str(SKILL / "scripts" / "html_slide.py"), "deck", "--script", str(out / "script.json"),
-                        "--out", str(TMP / "deck"), "--no-fill", "--format", "pptx,png"], capture_output=True, text=True, timeout=600)
+                        "--out", str(TMP / "deck"), "--no-fill", "--format", "pptx,png"], capture_output=True, text=True,
+                       encoding="utf-8", timeout=600)
     check(r.returncode == 0, f"deck が rc={r.returncode}: {r.stderr[-800:]}")
     check("verify=OK" in r.stdout, f"照合: {r.stdout[-300:]}")
     rep = json.loads((TMP / "deck" / "build.json").read_text(encoding="utf-8"))
@@ -288,7 +289,7 @@ def t_bad_files():
     except PI.ImportError_ as e:
         check("名前" in str(e), str(e))
     r = subprocess.run([sys.executable, str(SKILL / "scripts" / "html_slide.py"), "import", "--pptx", str(p), "--out", str(TMP / "z")],
-                       capture_output=True, text=True, timeout=120)
+                       capture_output=True, text=True, encoding="utf-8", timeout=120)
     check(r.returncode == 2 and "NG:" in r.stderr, f"入口の rc: {r.returncode} {r.stderr}")
 
 
