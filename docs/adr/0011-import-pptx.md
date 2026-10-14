@@ -27,8 +27,8 @@
    「PPTX を取り込む」ボタンを出し、ドロップも受ける。押すとファイルを選び、送ったらデッキの画面へ移る
 7. **元の非表示のスライド**は非表示のページのまま入れる（戻せば描く）
 8. **まだしないこと**: 取り込んだページを直す（台本係は型のページしか書かない）。直しの口は 409 `imported_page` と理由を返す。
-   （2026-10-14: 挿絵を重ねる直しと、見た目を保って文字を直す直しは受ける。`docs/adr/0013-overlay-illustrations.md`・
-   `docs/adr/0014-imported-text-edits.md`）
+   （2026-10-14: 文字・挿絵・画像・図解の直しを受ける。`docs/adr/0013-overlay-illustrations.md`・
+   `docs/adr/0014-imported-text-edits.md`・`docs/adr/0015-imported-images-and-diagrams.md`）
    ページを足す・並べ替え・非表示・複製はできる
 
 ## 理由

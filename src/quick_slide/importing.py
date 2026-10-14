@@ -182,3 +182,43 @@ def replace_texts(html: str, changes: dict[int, str]) -> str:
         return ">" + lead + htmllib.escape(changes[count], quote=False) + tail + "<"
 
     return _TEXT_NODE.sub(sub, html or "")
+
+
+# ---- 取り込んだページの画像（差し替える。docs/adr/0015-imported-images-and-diagrams.md）----
+_IMG = re.compile(r"<img\b[^>]*>")
+_SRC = re.compile(r'\bsrc="([^"]*)"')
+_PX = re.compile(r"(left|top|width|height)\s*:\s*(-?[\d.]+)px")
+
+
+def page_images(html: str) -> list[dict[str, Any]]:
+    """ページの中の画像（{n, src, x, y, w, h}。n は 1 から・ページ全体の背景の画像は除く）。位置はページの座標。
+
+    取り込みの HTML は、画像を外側の箱（left:0;top:0 の入れ物）の中に絶対配置で置くので、`<img>` の style の数がそのまま
+    ページの座標になる。"""
+    out = []
+    for m in _IMG.finditer(html or ""):
+        tag = m.group(0)
+        if 'data-name="背景"' in tag:
+            continue
+        src = _SRC.search(tag)
+        nums = {k: float(v) for k, v in _PX.findall(tag)}
+        out.append({"n": len(out) + 1, "src": src.group(1) if src else "", "x": round(nums.get("left", 0)),
+                    "y": round(nums.get("top", 0)), "w": round(nums.get("width", 0)), "h": round(nums.get("height", 0))})
+    return out
+
+
+def replace_image(html: str, n: int, src: str) -> str:
+    """n 番目の画像（背景を除く）の src だけを替えた HTML。位置・大きさ・切り抜き方は元のまま。"""
+    import html as htmllib
+
+    count = 0
+
+    def sub(m: "re.Match[str]") -> str:
+        nonlocal count
+        tag = m.group(0)
+        if 'data-name="背景"' in tag:
+            return tag
+        count += 1
+        return _SRC.sub(f'src="{htmllib.escape(src)}"', tag, count=1) if count == n else tag
+
+    return _IMG.sub(sub, html or "")

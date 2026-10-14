@@ -57,8 +57,9 @@ def apply_overlays(data: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(path, str):
                 continue
             x, y, w, h = (float(it.get(k) or 0) for k in ("x", "y", "w", "h"))
+            fit = "cover" if it.get("fit") == "cover" else "contain"   # 写真は枠いっぱいに切り抜き、挿絵・図は全体を収める
             tags.append(f'<img src="{htmllib.escape(path)}" alt="" style="position:absolute;left:{x:g}px;top:{y:g}px;'
-                        f'width:{w:g}px;height:{h:g}px;object-fit:contain" />')
+                        f'width:{w:g}px;height:{h:g}px;object-fit:{fit}" />')
         if tags:
             s["html"] += ('\n<div style="position:absolute;left:0;top:0;width:0;height:0" data-name="挿絵">'
                           + "".join(tags) + "</div>")

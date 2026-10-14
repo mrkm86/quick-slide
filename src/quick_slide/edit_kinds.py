@@ -116,26 +116,57 @@ def _options(pairs: tuple[tuple[str, str], ...]) -> list[dict[str, Any]]:
 
 IMPORTED_LEAD = "このページの空いている所に、挿絵を重ねます。元の文字・図形・画像はそのままです。"
 IMPORTED_TEXT_LEAD = "文字だけを直します。位置・色・書式・図形はそのままです。"
+IMPORTED_IMAGE_LEAD = "「＋」から渡した画像を使います。渡さなければ生成します。"
+IMPORTED_IMAGE_LEAD_NO_GENERATE = "「＋」から渡した画像を使います。"
+IMPORTED_DIAGRAM_LEAD = "中身の流れや関係を図にします。"
+# 取り込んだページの画像・図解の選び方（docs/adr/0015）。差し替えるは、ページに画像があるときだけ画面が出す
+IMPORTED_WAYS = (("add", "空いた所に足す"), ("replace", "差し替える"), ("main", "主役にして組み直す"))
+REBUILD_CONFIRM = "このページは、元の見た目から型の見た目に組み直します（元の文字は見出しや中身として載せ直します）。よろしいですか？"
+IMPORTED_ATTACHMENT_REQUIRED = "この機械では画像を生成できません。「＋」から画像を渡してください。"
 
 
-def offered_for_imported(mode: str) -> list[dict[str, Any]]:
-    """取り込んだページ（PPTX から）の修正の欄に出す種類。文字（見た目を保って文字だけ。docs/adr/0014）と、
-    挿絵を重ねること（docs/adr/0013）。"""
+def offered_for_imported(mode: str, *, can_generate: bool = True) -> list[dict[str, Any]]:
+    """取り込んだページ（PPTX から）の修正の欄に出す種類。文字（見た目を保って文字だけ。docs/adr/0014）・
+    挿絵を重ねる（docs/adr/0013）・画像と図解（空いた所に足す・差し替える・主役にして組み直す。docs/adr/0015）。"""
     if mode != "presentation":
         return []
-    return [{"kind": "text", "label": LABELS["text"], "icon": ICONS["text"], "lead": IMPORTED_TEXT_LEAD,
-             "options": _options(TEXT_TOUCHES), "many": True, "empty_reason": TEXT_REQUIRED},
-            {"kind": "illustration", "label": LABELS["illustration"], "icon": ICONS["illustration"], "lead": IMPORTED_LEAD,
-             "options": [], "many": False, "empty_reason": None}]
+
+    def ways(*values: str, attach: bool = False) -> list[dict[str, Any]]:
+        out = []
+        for v, label in IMPORTED_WAYS:
+            if v in values:
+                o: dict[str, Any] = {"value": v, "label": label}
+                if v == "main":
+                    o["confirm"] = REBUILD_CONFIRM
+                if v == "replace":
+                    o["needs_picture"] = True
+                if attach:
+                    o["uses_attachment"] = True   # 渡した画像は、そのまま入れる画像になる（画面の札に「入れる」）
+                    if v in ("add", "replace") and not can_generate:
+                        o["attachment_reason"] = IMPORTED_ATTACHMENT_REQUIRED
+                out.append(o)
+        return out
+
+    def entry(kind: str, lead: str, options: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
+        return {"kind": kind, "label": LABELS[kind], "icon": ICONS[kind], "lead": lead, "options": options,
+                "many": False, "empty_reason": None, **extra}
+
+    return [entry("text", IMPORTED_TEXT_LEAD, _options(TEXT_TOUCHES), many=True, empty_reason=TEXT_REQUIRED),
+            entry("diagram", IMPORTED_DIAGRAM_LEAD, ways("add", "main")),
+            entry("illustration", IMPORTED_LEAD, []),
+            entry("image", IMPORTED_IMAGE_LEAD if can_generate else IMPORTED_IMAGE_LEAD_NO_GENERATE,
+                  ways("add", "replace", "main", attach=True))]
 
 
-def parse(mode: str, raw_kind: Any, raw_options: Any, *, can_generate: bool) -> tuple[str | None, list[str]]:
+def parse(mode: str, raw_kind: Any, raw_options: Any, *, can_generate: bool, imported: bool = False
+          ) -> tuple[str | None, list[str]]:
     """送られた種類と選択肢を確かめる。種類を選ばない（None）ならそのまま。誤りは ValueError（画面向けの文）。"""
     if raw_kind is None:
         if raw_options not in (None, []):
             raise ValueError("直すものを選んでから、選択肢を送ってください。")
         return None, []
-    entry = next((e for e in offered(mode, can_generate=can_generate) if e["kind"] == raw_kind), None)
+    kinds = offered_for_imported(mode, can_generate=can_generate) if imported else offered(mode, can_generate=can_generate)
+    entry = next((e for e in kinds if e["kind"] == raw_kind), None)
     if entry is None:
         raise ValueError("このスライドでは、その直し方は選べません。画面を読み込み直してください。")
     options = raw_options if raw_options is not None else []
@@ -152,10 +183,15 @@ def parse(mode: str, raw_kind: Any, raw_options: Any, *, can_generate: bool) -> 
     return raw_kind, options
 
 
-def missing(kind: str | None, options: list[str], *, text: str, attachments: int) -> str | None:
+def missing(kind: str | None, options: list[str], *, text: str, attachments: int, imported: bool = False,
+            can_generate: bool = True) -> str | None:
     """送るのに足りないもの（画面向けの文）。足りていれば None。種類を選ばないときは、これまでどおり呼ぶ側が見る。"""
     if kind == "text" and not text and not options and not attachments:
         return TEXT_REQUIRED
+    if imported:   # 取り込んだページの画像: 生成できない機械では、足す・差し替えるに画像が要る
+        if kind == "image" and options and options[0] in ("add", "replace") and not can_generate and not attachments:
+            return IMPORTED_ATTACHMENT_REQUIRED
+        return None
     if kind == "image" and options and options[0] in NEEDS_ATTACHMENT and not attachments:
         return ATTACHMENT_REQUIRED[options[0]]
     return None

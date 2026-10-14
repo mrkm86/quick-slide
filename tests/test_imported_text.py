@@ -33,7 +33,8 @@ class UnitTests(unittest.TestCase):
         self.assertIn("<span> 直した要点 </span>", out, "前後の空白は元のまま")
 
     def test_imported_pages_offer_text_and_illustration(self) -> None:
-        self.assertEqual([k["kind"] for k in edit_kinds.offered_for_imported("presentation")], ["text", "illustration"])
+        self.assertEqual([k["kind"] for k in edit_kinds.offered_for_imported("presentation")],
+                         ["text", "diagram", "illustration", "image"])
 
 
 class EndToEndTests(unittest.TestCase):

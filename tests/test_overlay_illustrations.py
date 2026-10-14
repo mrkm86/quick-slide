@@ -44,7 +44,8 @@ class UnitTests(unittest.TestCase):
         self.assertIn("illustrations", view["slides"][0], "元の台本は変えない")
 
     def test_imported_pages_offer_only_the_illustration(self) -> None:
-        self.assertEqual([k["kind"] for k in edit_kinds.offered_for_imported("presentation")], ["text", "illustration"])
+        self.assertEqual([k["kind"] for k in edit_kinds.offered_for_imported("presentation")],
+                         ["text", "diagram", "illustration", "image"])
         self.assertEqual(edit_kinds.offered_for_imported("pitch"), [])
 
 
@@ -60,10 +61,10 @@ class EndToEndTests(unittest.TestCase):
         deck = r.json()["deck_id"]
         self.assertEqual(wait_until_idle(fx, deck, seconds=300)["state"], "done")
         view = fx.get(f"/api/decks/{deck}").json()
-        self.assertEqual([k["kind"] for k in view["imported_edit_kinds"]], ["text", "illustration"])
+        self.assertEqual([k["kind"] for k in view["imported_edit_kinds"]], ["text", "diagram", "illustration", "image"])
         sid = view["pages"][0]["slide_id"]
         url = f"/api/decks/{deck}/instructions"
-        for body in ({"scope": "page", "slide_id": sid, "text": "", "kind": "diagram"},
+        for body in ({"scope": "page", "slide_id": sid, "text": "", "kind": "image", "options": ["generate"]},
                      {"scope": "pages", "slide_ids": [sid], "text": "", "kind": "illustration"}):
             r = fx.post(url, body)
             self.assertEqual((r.status, r.json()["error"]["code"]), (409, "imported_page"), body)
@@ -78,7 +79,7 @@ class EndToEndTests(unittest.TestCase):
         with fx.server.store_lock:
             head = fx.store.load_script(fx.store.head_script(deck))
         items = head["slides"][0]["illustrations"]
-        self.assertEqual([(i["x"], i["y"], i["w"], i["h"]) for i in items], [(1450, 300, 400, 500)])
+        self.assertEqual([(i["x"], i["y"], i["w"], i["h"]) for i in items], [(1450, 60, 220, 220)])
         self.assertIn("<svg", items[0]["image"]["svg"], "台本の版は SVG のまま")
         engine = json.loads(fx.root.engine_script_path(deck).read_text(encoding="utf-8"))
         page = engine["slides"][0]

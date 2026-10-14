@@ -433,6 +433,7 @@ def route_deck(server: "QuickSlideServer", req: "Request") -> "Response":
         store = server.store
         view = deck_view(store, deck_id)
         card = card_public(store.deck_card(view["row"]))
+        imported_images = _imported_images(store, deck_id, view["pages"])
     return _json(200, {
         "deck": card,
         # 構成（台本の版＋採用した描いた回）。P2 は見せる回（P3 で採用が入る）
@@ -451,8 +452,24 @@ def route_deck(server: "QuickSlideServer", req: "Request") -> "Response":
         # 修正の欄の「何を直しますか？」に出す種類と選択肢（モードと機械で決まる。docs/adr/0008-edit-kinds.md）
         "edit_kinds": edit_kinds.offered(view["row"]["mode"], can_generate=can_generate),
         # 取り込んだページ（PPTX から。ページの type が html）の修正の欄に出す種類（docs/adr/0013）
-        "imported_edit_kinds": edit_kinds.offered_for_imported(view["row"]["mode"]),
+        "imported_edit_kinds": edit_kinds.offered_for_imported(view["row"]["mode"], can_generate=can_generate),
+        # 取り込んだページの中の画像の数（「差し替える」はページに画像があるときだけ出す。docs/adr/0015）
+        "imported_images": imported_images,
     })
+
+
+def _imported_images(store: Any, deck_id: str, pages: list[dict[str, Any]]) -> dict[str, int]:
+    """取り込んだページ（型 html）ごとの、中の画像の数（ページの id → 数）。取り込んだページが無ければ台本を読まない。"""
+    from .. import importing
+    from ..scriptdoc import IMPORTED_TYPE, slides_of
+
+    keys = {p["key"]: p["slide_id"] for p in pages if p.get("type") == IMPORTED_TYPE}
+    if not keys:
+        return {}
+    head = store.head_script(deck_id)
+    data = store.load_script(head) if head else {}
+    return {keys[str(s.get("id"))]: len(importing.page_images(s.get("html") or "")) for s in slides_of(data)
+            if str(s.get("id")) in keys}
 
 
 def _export_formats(mode: str) -> list[dict[str, Any]]:

@@ -467,7 +467,13 @@
       row.appendChild(b);
     });
     picker.read = function () { return { kind: state.kind, options: state.options.slice() }; };
-    // 出せる種類が 1 つだけ（取り込んだページの「挿絵」）なら、はじめから選んでおく（選ばずに書いても送れない欄なので）
+    // 選んだ選び方の、送る前に確かめる一言（取り込んだページを「主役にして組み直す」。見た目が変わる）
+    picker.confirm = function () {
+      var e = entryOf(state.kind);
+      var o = e && e.options.filter(function (x) { return x.value === state.options[0]; })[0];
+      return (o && o.confirm) || "";
+    };
+    // 出せる種類が 1 つだけなら、はじめから選んでおく
     var only = kinds.length === 1 ? kinds[0].kind : null;
     picker.reset = function () { state.kind = only; state.options = []; paint(); };
     picker.reset();
@@ -554,7 +560,7 @@
       // 送れない理由は 1 つだけ出す（上から順に、最初に当たったもの）。文はすべてサーバのもの
       var reason = "";
       var picked = kind.read(), entry = kind.entry();
-      var source = entry && entry.kind === "image" ? entry.options.filter(function (o) { return o.value === picked.options[0]; })[0] : null;
+      var source = entry && entry.kind === "image" ? entry.options.filter(function (o) { return o.value === (picked.options[0] || (entry.options[0] || {}).value); })[0] : null;
       if (att.over) { reason = words.too_many_attachments_reason; }
       else if (text.length > textLimit) { reason = words.text_too_long_reason; }
       // 種類を選んだら、足りないものは種類ごとの文（サーバの文）。文字以外は選ぶだけで送れる
@@ -563,7 +569,7 @@
       else if (!entry && !text.trim() && !counted()) { reason = words.empty_reason; }
       ta.placeholder = entry ? "補足（任意）" : basePlaceholder;
       // 渡した画像の役割は、選んだ札で決まる（画像 → 渡した画像を入れる なら「入れる」、ほかは「参考」）
-      att.paintRoles(source && source.attachment_reason ? "入れる" : "参考");
+      att.paintRoles(source && (source.attachment_reason || source.uses_attachment) ? "入れる" : "参考");
       if (why.textContent !== reason) { why.textContent = reason; }
       // **何も書いていないだけの行は、書き始めるまで静かにしておく。**押せない理由は
       // 押せないボタン自身（title）といつでも読める場所に残すが、毎回同じ 1 文を出さない
@@ -593,6 +599,7 @@
     }
     box.__sync = function () { grow(); sync(); };
     box.__kind = function () { return kind.read(); };
+    box.__confirm = function () { return kind.confirm ? kind.confirm() : ""; };
     box.__resetKind = function () { kind.reset(); };
     // 見出しの対象が変わったとき（並べ替えで番号が動いた・選び方が変わった）の読み上げの名前
     box.__target = function (text) { ta.setAttribute("aria-label", text + " " + words.section_label); };
@@ -993,6 +1000,14 @@
     } catch (e) { /* 覚えられなくてもその場では畳む */ }
   }
 
+  // 取り込んだページの種類（docs/adr/0015）。「差し替える」は、そのページに画像があるときだけ出す
+  function importedKindsFor(ctx, page) {
+    var n = (ctx.importedImages || {})[page.slide_id] || 0;
+    return (ctx.importedKinds || []).map(function (k) {
+      return Object.assign({}, k, { options: k.options.filter(function (o) { return !o.needs_picture || n > 0; }) });
+    });
+  }
+
   function pageArticle(page, ctx) {
     var caps = ctx.caps;
     var d = page.display;
@@ -1107,7 +1122,7 @@
       { reasonId: ctx.reasonIds && ctx.reasonIds.page_instruction,
         canMinor: page.can_minor, currentImage: page.image_url,
         // 取り込んだページ（PPTX から。型 html）は、出せる種類が違う（いまは挿絵を重ねるだけ。docs/adr/0013）
-        kinds: page.type === "html" ? ctx.importedKinds : ctx.editKinds,
+        kinds: page.type === "html" ? importedKindsFor(ctx, page) : ctx.editKinds,
         onSubmit: function (box, btn) { ctx.submit(page.slide_id, box, btn); } }));
     article.__tools = tools;
     article.__open = function () { ctx.openTools(page.slide_id, fixBtn); };
@@ -1693,7 +1708,7 @@
       var deck = data.deck;
       var reasons = screenReasons(caps);
       var ctx = { caps: caps, pages: data.pages, reasonIds: reasons.ids, editKinds: data.edit_kinds || [],
-                  importedKinds: data.imported_edit_kinds || [] };
+                  importedKinds: data.imported_edit_kinds || [], importedImages: data.imported_images || {} };
       var reload = function () { if (guard()) { SS.views.deck(root, route, guard); } };
       // 並べ替えが握る 4 つ。答えが返るたびに握り直す（握りっぱなしにすると 2 回目が必ず断られる）
       var order = data.pages.map(function (p) { return p.slide_id; });  // いま画面に出ている並び
@@ -2823,6 +2838,8 @@
       };
       ctx.submit = function (slideId, box, btn) {
         var read = readBox(box);
+        var sure = box.__confirm ? box.__confirm() : "";
+        if (sure && !SS.confirm(sure)) { return; }
         var n = nodes[slideId];
         // 土台にする版は「いま映している版」。採用で動くので、送る瞬間の値を照合に渡す
         // （画面が映していた版とサーバが土台にする版が違っていたら、サーバが断る）
