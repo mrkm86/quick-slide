@@ -317,6 +317,22 @@
     return box;
   }
 
+  // ---- 新しいバージョンのお知らせ（docs/adr/0020-release-and-update-notice.md）----
+  // サーバが GitHub に確かめた答え（`/api/update`）を見て、新しいバージョンがあるときだけホームの頭に**控えめな 1 行**を出す。
+  // 閉じるボタンは置かない（更新するまで出し続ける。目立たせないことで、うるさくしない）。
+  // 確かめられなかった・止めている・最新のときは何も出さない
+  function updateNotice(root, guard) {
+    SS.api("/api/update").then(function (st) {
+      if (!guard() || !st || !st.update_available || !st.latest_version) { return; }
+      root.insertBefore(h("p", { class: "update-notice small", role: "status" },
+        h("span", null, h("span", { class: "update-notice__dot", "aria-hidden": "true" }),
+          "Quick Slide " + st.latest_version + " が公開されています（現在：" + st.current_version + "）"),
+        // 変更点は GitHub のリリースの頁（同じウィンドウで開く）。更新のしかたは 設定 › 更新
+        st.release_url ? h("a", { href: st.release_url, rel: "noopener noreferrer", class: "update-notice__notes", text: "変更点" }) : null,
+        h("a", { href: "/settings/updates", "data-nav": true, class: "update-notice__more", text: "更新のしかた" })), root.firstChild);
+    }).catch(function () { /* お知らせのためにホームを止めない */ });
+  }
+
   // ---- ホーム ----
   SS.views.home = function (root, route, guard) {
     SS.clear(root).appendChild(h("p", { class: "muted", text: "読み込んでいます…" }));
@@ -348,6 +364,7 @@
         recent.appendChild(h("div", { class: "empty", text: "スライドがまだありません。" }));
       }
       root.appendChild(recent);
+      updateNotice(root, guard);
     });
   };
 

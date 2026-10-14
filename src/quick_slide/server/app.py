@@ -53,6 +53,7 @@ from ..render.runner import engine_unavailable
 from ..security.tokens import hash_token
 from ..settings import Settings, bind_refusal, bind_scope, file_fingerprint, is_loopback_host, listen_of
 from ..store import Store
+from ..updates import Fetch, UpdateChecker
 from ..worker.pool import WorkerPool
 from ..worker.tools import Tools
 from .errors import GENERIC_500_MESSAGE, ApiError, bad_json, from_store_error, method_not_allowed, not_found
@@ -245,6 +246,7 @@ class QuickSlideServer:
         tools: Tools | None = None,
         start_workers: bool = True,
         samples_dir: Path | str | None = None,
+        update_fetch: Fetch | None = None,
     ) -> None:
         self.root = root if isinstance(root, DataRoot) else DataRoot.resolve(root)
         # 起動したときに読んだ設定の印。仕事のたびに見比べ、変わっていれば読み直す（待ち受けの段は起動時のまま）
@@ -287,6 +289,9 @@ class QuickSlideServer:
         # 「入れ直す」はこの置き場を読む
         self.samples_dir = Path(samples_dir) if samples_dir is not None else None
         self.samples_summary: dict[str, Any] | None = None
+        # 新しいリリースのお知らせ（updates.py）。常駐の serve・start は `updates.fetch_latest` を渡す。
+        # None なら外へ出ない（試験の既定。試験は GitHub を叩かない）
+        self.updates = UpdateChecker(update_fetch)
         self.workers: WorkerPool | None = None
         self._kind_refusals: tuple[float, dict[str, str]] | None = None
         self._kind_refusals_lock = threading.Lock()
@@ -956,6 +961,7 @@ from . import present_routes as _present_routes  # noqa: E402
 from . import samples_routes as _samples_routes  # noqa: E402
 from . import import_routes as _import_routes  # noqa: E402
 from . import settings_routes as _settings_routes  # noqa: E402
+from . import update_routes as _update_routes  # noqa: E402
 
 _not_ready = _later.not_ready
 
@@ -966,6 +972,8 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"POST"}), _exact("/api/settings/images"), _settings_routes.upload),
     (frozenset({"POST"}), _exact("/api/images/fetch"), _settings_routes.fetch_image),
     (frozenset({"POST"}), _exact("/api/settings/server"), _settings_routes.save_server),
+    (frozenset({"POST"}), _exact("/api/settings/updates"), _update_routes.route_save),
+    (frozenset({"GET"}), _exact("/api/update"), _update_routes.route_status),
     (frozenset({"POST"}), _exact("/api/settings/brands/preview"), _settings_routes.preview_brand),
     (frozenset({"POST"}), _exact("/api/settings/brands/import/check"), _settings_routes.check_import),
     (frozenset({"POST"}), _exact("/api/settings/brands/import"), _settings_routes.import_brand),
@@ -981,6 +989,7 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"GET"}), _exact("/settings/brands"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _exact("/settings/styles"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _exact("/settings/server"), QuickSlideServer._route_index),
+    (frozenset({"GET"}), _exact("/settings/updates"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _exact("/settings/samples"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _exact("/api/samples"), _samples_routes.route_list),
     (frozenset({"POST"}), _exact("/api/samples/restore"), _samples_routes.route_restore),
