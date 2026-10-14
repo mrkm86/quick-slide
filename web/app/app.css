@@ -1300,6 +1300,14 @@ html.is-locked { overflow: hidden; }
 .thumbs__head { display: none; }
 .pages { grid-column: 2; width: 100%; max-width: 1200px; justify-self: center; gap: var(--space-5); }
 .deck-body[data-panel="closed"] .pages { max-width: 1280px; }
+/* 左の列（ページ一覧）を畳んだとき（ヘッダの左端のボタン・PC の幅だけ）。スライドの列が左へ広がる */
+.deck-bar__thumbs { flex: none; }
+.deck-body[data-thumbs="closed"] { grid-template-columns: minmax(0, 1fr) var(--panel-w); }
+.deck-body[data-thumbs="closed"][data-panel="closed"] { grid-template-columns: minmax(0, 1fr); }
+.deck-body[data-thumbs="closed"] .thumbs { display: none; }
+.deck-body[data-thumbs="closed"] .pages { grid-column: 1; max-width: 1440px; }
+.deck-body[data-thumbs="closed"][data-panel="closed"] .pages { max-width: 1600px; }
+.deck-body[data-thumbs="closed"] .panel { grid-column: 2; }
 
 /* スライドの列。**スライドと 1 行だけ**（選ぶ・番号・題・直す・⋮） */
 .page { padding: 0; background: none; border: 0; border-radius: 0; scroll-margin-top: calc(var(--deckbar-h) + var(--space-3)); }
@@ -1416,6 +1424,9 @@ html.is-locked { overflow: hidden; }
   .thumbs__head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) var(--space-2) 0 var(--space-3); }
   .thumbs__head h2 { font-size: var(--font-size-20); }
   .thumb { min-height: var(--tap); grid-template-columns: minmax(0, 1fr); }   /* 番号の札は絵の左上に重ねる */
+  /* 畳む・開くのボタンは PC の幅だけ。狭い画面のページ一覧は⋮メニューから開く板（畳んだ印は効かせない） */
+  .deck-bar__thumbs { display: none; }
+  .deck-body[data-thumbs="closed"] .thumbs { display: flex; }
   @media (prefers-reduced-motion: reduce) { .panel, .thumbs { transition: none; } }
 }
 

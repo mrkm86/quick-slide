@@ -59,6 +59,15 @@ class DeckScreenShowsDrawnPagesTest(unittest.TestCase):
         self.assertEqual(page.errors, [])
         self.assertEqual(page.eval("Array.from(document.querySelectorAll('#view .notice--error')).length"), 0)
         self.assertEqual(page.eval("document.querySelectorAll('.thumb img').length"), 4)
+        # ヘッダの左端のボタンで左の列（ページ一覧）を畳むと、スライドの列が広がる。もう一度押すと開く（PC の幅だけ）
+        if page.eval("innerWidth") >= 1024:
+            narrow = page.eval("document.querySelector('.pages').getBoundingClientRect().width")
+            page.eval("document.querySelector('.deck-bar__thumbs').click()")
+            self.assertEqual(page.eval("getComputedStyle(document.querySelector('.thumbs')).display"), "none")
+            self.assertEqual(page.eval("document.querySelector('.deck-bar__thumbs').getAttribute('aria-expanded')"), "false")
+            self.assertGreater(page.eval("document.querySelector('.pages').getBoundingClientRect().width"), narrow)
+            page.eval("document.querySelector('.deck-bar__thumbs').click()")
+            self.assertEqual(page.eval("getComputedStyle(document.querySelector('.thumbs')).display"), "flex")
         titles = page.eval("Array.from(document.querySelectorAll('.page__title')).map(e => e.textContent)")
         self.assertEqual(titles[1], "会議の4割は何も決めずに終わっている")
         self.assertTrue(page.eval("document.querySelector('.planning-band').hidden"), "描き終えたら帯は畳む")
