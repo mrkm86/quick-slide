@@ -62,6 +62,8 @@ BROWSER_PY = SKILLS_DIR / "html-slide" / "scripts" / "browser.py"
 # python と py -3 で版も site-packages も違うことがある。A1）
 SETUP_CMD = (subprocess.list2cmdline if os.name == "nt" else shlex.join)(
     [sys.executable, str(Path(__file__).resolve()), "--setup"])
+PLAYWRIGHT_INSTALL_CMD = (subprocess.list2cmdline if os.name == "nt" else shlex.join)(
+    [sys.executable, "-m", "playwright", "install", "chromium"])
 
 
 def data_root(explicit: str | None) -> Path:
@@ -265,7 +267,7 @@ def check_motion(rep: Report) -> dict[str, Any]:
     chromium = chromium_path() if have else None
     rep.add("playwright-chromium", "Playwright の Chromium（モーションが全部の拍を開く）", "ok" if chromium else "ng",
             chromium or ("入っていません" if have else "Playwright が無いので確かめられません"),
-            fix=None if chromium else f"{SETUP_CMD}（`python3 -m playwright install chromium`。数百 MB）。モーションを使わないなら要りません",
+            fix=None if chromium else f"{SETUP_CMD}（`{PLAYWRIGHT_INSTALL_CMD}`。数百 MB）。モーションを使わないなら要りません",
             needed_for=("motion",))
     return {"playwright": have, "chromium": chromium}
 

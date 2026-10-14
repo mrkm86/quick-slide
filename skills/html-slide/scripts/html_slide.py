@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -37,6 +36,7 @@ import cache as K  # noqa: E402
 import codex_run as X  # noqa: E402
 import deck  # noqa: E402
 import imagegen as G  # noqa: E402
+import oscompat as OS  # noqa: E402
 import outputs as OUT  # noqa: E402
 import pdfpages as PDF  # noqa: E402
 import places as PL  # noqa: E402
@@ -158,7 +158,7 @@ def draw_slots(jobs: list[dict], parallel: int | None, retries: int) -> tuple[in
         cand = dest.with_name(dest.stem + ".try.png")
         got = X.generate(cli, auth["snapshot"], j["text"], j["refs"], cand, dest.parent / "logs",
                          timeout=timeout, should_stop=runner.stop.is_set, shape=j["slot"]["shape"])
-        os.replace(cand, dest)
+        OS.replace(cand, dest)
         _sidecar(dest, j["slot"], {"seconds": got["seconds"], "attempts": attempt, **j.get("extra", {})})
         return got
 
@@ -376,7 +376,7 @@ def write_pdf(html: Path, pdf: Path) -> bool:
         part = pdf.with_suffix(".tmp.pdf")
         ok = _node([str(print_html(html, Path(tmp))), "-", "--pdf", str(part)], "PDF ")
         if ok:
-            os.replace(part, pdf)
+            OS.replace(part, pdf)
         else:
             part.unlink(missing_ok=True)
         return ok
@@ -497,7 +497,7 @@ def cmd_assemble(a) -> int:
                  "slides": slides}
         tmp = out / "deck.pptx.tmp"
         rep = pptx_writer.write(parts, tmp)
-        os.replace(tmp, out / "deck.pptx")
+        OS.replace(tmp, out / "deck.pptx")
         print(f"pptx: {out / 'deck.pptx'}（{len(rep['slides'])}枚）")
     if picks:
         try:

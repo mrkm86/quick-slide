@@ -605,7 +605,7 @@ def case_image_missing_placeholder():
         _build_in(d, brought, placeholder="generated")
         raise AssertionError("持ち込みの無い絵が通った")
     except T.DeckError as e:
-        assert "images/nai.png" in str(e), str(e)
+        assert os.path.join("images", "nai.png") in str(e), str(e)   # エンジンは OS の区切り文字で書く
 
 
 def case_image_slots():

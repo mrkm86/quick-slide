@@ -360,3 +360,35 @@ class WindowsHomeAccessTests(unittest.TestCase):
                                 "--doctor"], capture_output=True, text=True, encoding="utf-8", env=env, timeout=120)
         checks = {c["id"]: c for c in json.loads(r.stdout.strip().splitlines()[-1])["checks"]}
         self.assertEqual(checks["home_access"]["level"], "ok", checks["home_access"])
+
+
+class ReplaceTests(unittest.TestCase):
+    def test_replace_goes_through_oscompat(self) -> None:
+        """サーバと html-slide・image-slide は os.replace でなく oscompat.replace を使う（Windows で一瞬つかまれて断られたら、
+        待って試し直す。C2）。"""
+        bases = [ROOT / "src", ROOT / "skills" / "html-slide" / "scripts", ROOT / "skills" / "image-slide" / "scripts"]
+        found = [f"{p.relative_to(ROOT).as_posix()}:{n}" for base in bases for p in sorted(base.rglob("*.py"))
+                 if p.name != "oscompat.py" and "vendor" not in p.parts and "__pycache__" not in p.parts
+                 for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1) if "os.replace(" in line]
+        self.assertEqual(found, [])
+
+    def test_replace_retries_when_windows_refuses(self) -> None:
+        from unittest import mock
+
+        from quick_slide import oscompat as OS
+
+        with tempfile.TemporaryDirectory() as tmp:
+            src, dst = Path(tmp) / "a", Path(tmp) / "b"
+            src.write_text("new", encoding="utf-8")
+            real, calls = os.replace, []
+
+            def flaky(a, b):
+                calls.append(1)
+                if len(calls) < 3:
+                    raise PermissionError(13, "アクセスが拒否されました")
+                real(a, b)
+
+            with mock.patch.object(OS, "WINDOWS", True), mock.patch.object(OS, "_REPLACE_WAITS", (0, 0, 0, 0)), \
+                    mock.patch.object(OS.os, "replace", flaky):
+                OS.replace(src, dst)
+            self.assertEqual((len(calls), dst.read_text(encoding="utf-8")), (3, "new"))

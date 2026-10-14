@@ -197,7 +197,7 @@ class SetupTests(SetupBase):
         self.assertEqual(rc, 4)
         self.assertEqual(out["installed"], [])
         self.assertEqual(out["planned"], ["puppeteer-core", "chrome"])
-        self.assertIn("npm install --prefix", text)
+        self.assertRegex(text, r"(?i)npm(\.cmd)? install --prefix")   # Windows は npm.cmd の包み
         self.assertFalse((self.tmp / "npm-log").exists(), "聞かずに入れない")
         self.assertFalse(self.qs.exists())
 

@@ -16,6 +16,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from .. import oscompat
 from ..oscompat import lock_nowait, pid_alive, unlock
 from ..paths import DataRoot
 
@@ -70,7 +71,7 @@ def write_record(root: DataRoot, record: ServerRecord) -> Path:
         os.fsync(fd)
     finally:
         os.close(fd)
-    os.replace(tmp, path)
+    oscompat.replace(tmp, path)
     os.chmod(path, 0o600)
     return path
 

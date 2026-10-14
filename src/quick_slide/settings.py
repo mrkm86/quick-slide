@@ -21,6 +21,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import oscompat
 from .errors import ValidationError
 
 ENV_BROWSER = "QUICK_SLIDE_BROWSER"
@@ -74,7 +75,7 @@ def restore_server_section(path: Path, listen: dict) -> None:
         raw = _read_raw(path)
     except ValidationError:
         if path.exists():
-            os.replace(path, path.with_name(path.name + ".broken"))
+            oscompat.replace(path, path.with_name(path.name + ".broken"))
         raw = {}
     server = dict(raw.get("server") or {}) if isinstance(raw.get("server"), dict) else {}
     server["host"] = listen["host"]
@@ -103,7 +104,7 @@ def _write_raw(path: Path, raw: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".writing")
     tmp.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, path)   # 途中で落ちても、古い内容か新しい内容のどちらかになる
+    oscompat.replace(tmp, path)   # 途中で落ちても、古い内容か新しい内容のどちらかになる
 
 
 def file_fingerprint(path: Path) -> tuple[int, int, str] | None:

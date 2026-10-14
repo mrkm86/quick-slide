@@ -14,6 +14,7 @@
 | 待ち受けの口を自分だけにする | `SO_REUSEADDR`（TIME_WAIT の口を使い直すだけ） | `SO_REUSEADDR` を使わず `SO_EXCLUSIVEADDRUSE` |
 | 日本語の字体ファイル | 游ゴシックは PowerPoint for Mac 同梱、ほかはヒラギノ | `%WINDIR%\\Fonts` の游ゴシック・メイリオ・BIZ UDゴシック |
 | 台本のパスが URL か | スキーム（`https:` など）で始まるか | 同じ。ただしドライブ文字（`C:\\`・`C:/`）は URL でない |
+| ファイルを置き換える | `os.replace` | `os.replace`。ほかのプロセスが一瞬つかんでいて断られたら、少し待って再試行する |
 
 Windows で孫ごと止めるのに Job Object を使うのは、`codex.cmd` のような包みが cmd.exe → node → codex.exe と
 段を重ねるため。`taskkill /T` は親子の記録をたどるので、cmd.exe が先に終わると下の段にたどり着けない。
@@ -26,6 +27,7 @@ import re
 import signal
 import socket
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -94,6 +96,27 @@ def unlock(fd: int) -> None:
         msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
     else:
         fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+# --- ファイルを置き換える ------------------------------------------------------------------------
+
+# Windows でほかのプロセスが一瞬つかんでいて断られたときの待ち（秒）。合わせて 3 秒ほど
+_REPLACE_WAITS = (0.05, 0.1, 0.2, 0.4, 0.8, 1.5)
+
+
+def replace(src: "str | os.PathLike[str]", dst: "str | os.PathLike[str]") -> None:
+    """`os.replace` と同じ（同じボリュームの中で、置き換えは一度に起きる）。
+
+    Windows では、できたばかりのファイルをウイルス対策や検索の索引づけが一瞬開いていると、`PermissionError`
+    （WinError 5・32）で断られる。そのときは少し待って試し直す（C2）。mac・Linux は 1 回だけ呼ぶ。
+    """
+    for wait in (_REPLACE_WAITS if WINDOWS else ()):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            time.sleep(wait)
+    os.replace(src, dst)
 
 
 # --- 台本のパスが URL か ----------------------------------------------------------------------

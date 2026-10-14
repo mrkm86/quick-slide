@@ -25,6 +25,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .. import oscompat
 from ..enums import (
     DECK_MODES,
     JOB_KINDS,
@@ -400,7 +401,7 @@ class RunsMixin(StoreBase):
             path.parent.mkdir(parents=True, exist_ok=True)
             tmp = path.with_name(path.name + ".tmp")
             tmp.write_bytes(raw)
-            os.replace(tmp, path)
+            oscompat.replace(tmp, path)
             sid = self.new_id()
             self._exec(
                 "INSERT INTO scripts(id,deck_id,version,path,sha256,written_by,writer_backend,intake_id,instruction,"
@@ -486,7 +487,7 @@ class RunsMixin(StoreBase):
                 import shutil
 
                 shutil.copyfile(src, tmp)
-            os.replace(tmp, dst)
+            oscompat.replace(tmp, dst)
             data = dst.read_bytes()
             w, h = _png_size(data)
             staged[no] = (rel, hashlib.sha256(data).hexdigest(), len(data), w, h)

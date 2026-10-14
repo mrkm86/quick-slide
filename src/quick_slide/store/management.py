@@ -34,6 +34,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from .. import oscompat
 from ..errors import NotFoundError, StateError, ValidationError
 from .base import StoreBase
 
@@ -78,7 +79,7 @@ def _write_json_atomic(path: Path, obj: dict[str, Any]) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
-    os.replace(tmp, path)
+    oscompat.replace(tmp, path)
 
 
 def _dir_bytes(path: Path) -> int:
@@ -286,7 +287,7 @@ class DeckManagementMixin(StoreBase):
                     missing.append(a["asset_id"])
                     continue
                 dst.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(src, dst)
+                oscompat.replace(src, dst)
                 moved.append(a["asset_id"])
                 _rmdir_if_empty(src.parent)
         except OSError as exc:
@@ -345,7 +346,7 @@ class DeckManagementMixin(StoreBase):
         restored: list[str] = []
         for src, dst, aid in plan:
             dst.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(src, dst)
+            oscompat.replace(src, dst)
             restored.append(aid)
             _rmdir_if_empty(src.parent)
         with self.transaction():

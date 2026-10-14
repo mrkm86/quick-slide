@@ -48,15 +48,18 @@ python3 <プラグイン>/skills/quick-slide/scripts/quick_slide_setup.py --setu
 
 会話で「Quick Slide の導入を確かめて」と頼めば、スキルが `--doctor` を流し、入れてよいか聞いてから `--setup --yes` を流す。
 
+Windows では `python3` を `py -3` に読み替える（`python3` は Microsoft Store のスタブで動かない）。診断は Windows では、
+置き場のアクセス権・OneDrive の同期先の中に無いか・長いパスも確かめる（`docs/adr/0012-windows-file-permissions.md`）。
+
 | 何 | `--setup` が入れるか | どこへ |
 |---|---|---|
-| Python 3.10 以上 | 入れない（python.org か Homebrew） | — |
+| Python 3.10 以上 | 入れない（python.org か Homebrew。Windows は python.org か `winget install -e --id Python.Python.3.13 --scope user`） | — |
 | python-pptx・lxml・Pillow・PyYAML | 入れる（`pip --user`。Python が外から管理されているときは手順を言う） | 利用者の場所 |
-| Node 18 以上・npm | 入れない（nodejs.org か `brew install node`） | — |
+| Node 18 以上・npm | 入れない（nodejs.org か `brew install node`。Windows は `winget install -e --id OpenJS.NodeJS.LTS`） | — |
 | puppeteer-core | 入れる（`npm install --prefix`） | `~/.quick-slide/engines/html-slide/node/` |
 | Chrome（headless shell） | 入れる（`@puppeteer/browsers`） | `~/.quick-slide/engines/html-slide/chrome/` |
-| Playwright と Chromium（モーションだけ要る） | 入れる（`pip --user`・`python3 -m playwright install chromium`） | Playwright の置き場 |
-| 游ゴシック（プレゼンが文字の幅を測る） | 入れない（PowerPoint for Mac に同梱。無ければ html-slide の設定の `fonts:`） | — |
+| Playwright と Chromium（モーションだけ要る） | 入れる（`pip --user`・`<その Python> -m playwright install chromium`） | Playwright の置き場 |
+| 游ゴシック（プレゼンが文字の幅を測る） | 入れない（mac は PowerPoint for Mac に同梱、Windows は OS に入っている。無ければ html-slide の設定の `fonts:`） | — |
 | `codex` CLI（絵を描く・台本係にもなる） | 入れない（`npm install -g @openai/codex`。全体に入れるため） | — |
 | `claude` CLI（台本係） | 入れない（Claude Code に付いてくる） | — |
 

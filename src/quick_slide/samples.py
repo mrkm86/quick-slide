@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from . import oscompat
 from .engines import engine_for
 from .enums import DECK_MODES
 from .paths import SAMPLES_DIR, DataRoot
@@ -548,8 +549,8 @@ def pack(store: Any, root: DataRoot, deck_id: str, folder: Path, *, cache_roots:
         old = folder / ".built-old"
         shutil.rmtree(old, ignore_errors=True)
         if built.exists():
-            os.replace(built, old)
-        os.replace(stage, built)
+            oscompat.replace(built, old)
+        oscompat.replace(stage, built)
         shutil.rmtree(old, ignore_errors=True)
         return body
     finally:
