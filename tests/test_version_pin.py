@@ -23,7 +23,7 @@ from quick_slide.engines import Engine
 from quick_slide.server.vocabulary import PIN_EXPORT_REDRAW_NOTE
 
 from test_engines_e2e import html_slide_ready
-from test_p3_edit import EditBase
+from p3_edit_helpers import EditBase
 
 sys.path.insert(0, str(REPO / "skills" / "html-slide" / "scripts"))
 import pdfpages  # noqa: E402

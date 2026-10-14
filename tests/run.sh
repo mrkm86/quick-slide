@@ -9,7 +9,7 @@
 #   - .pyc を書かない（このリポは配布物そのもので、__pycache__ を残さない）
 #   - 失敗したら非ゼロで落ちる
 #
-# 使い方: bash tests/run.sh [-v]
+# 使い方: bash tests/run.sh [-v] [-j 並列数]（既定 4、-j 1 は直列）
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -36,11 +36,12 @@ cd "$ROOT"
 # `python -m unittest` と同じ。ただし試験を回すこのプロセスの表示（-v の試験名・失敗の報告）だけは UTF-8 にする
 # （Windows の既定は cp932）。PYTHONIOENCODING や -X utf8 は使わない: 子のプロセスや本体の open() にも効いて、
 # 本体の文字コードの書き忘れを隠してしまう
-"$PY" -c 'import sys, unittest
+"$PY" -c 'import sys
 for stream in (sys.stdout, sys.stderr):
     stream.reconfigure(encoding="utf-8")
 sys.argv[0] = "python -m unittest"
-unittest.main(module=None)' discover -s tests -t tests "$@"
+import runpy
+runpy.run_path("tests/parallel.py", run_name="__main__")' "$@"
 rc=$?
 # 念のため（PYTHONDONTWRITEBYTECODE を外して走らせた後でも残さない）
 find "$ROOT/src" "$ROOT/tests" "$ROOT/skills" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null   # エンジンを子で呼ぶ試験が skills にも残す

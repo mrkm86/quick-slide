@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 import unittest
 
-from test_p3_edit import EditBase, pptx_notes
+from p3_edit_helpers import EditBase, pptx_notes
 
 
 class FastPageOpsTests(EditBase):

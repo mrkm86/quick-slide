@@ -20,7 +20,7 @@ from quick_slide.engines import ENGINES
 from quick_slide.server.errors import ApiError
 from quick_slide.writer import prompt as P
 
-from test_p3_edit import EditBase
+from p3_edit_helpers import EditBase
 
 PAGE = """<html><head><title>T</title><meta property="og:title" content="記事の題"></head><body>
 <img src="/logo.png" alt="ロゴ"><nav><img src="/nav.png"></nav>
