@@ -77,11 +77,11 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
 
     def test_settings_screens(self) -> None:
         # 設定のトップは各設定へのリンクの一覧（タブは無い）
-        page = self.open("/settings", "document.querySelectorAll('.settings-index__link').length === 3", "設定のトップ")
+        page = self.open("/settings", "document.querySelectorAll('.settings-index__link').length === 4", "設定のトップ")
         self.assertEqual(page.eval("Array.from(document.querySelectorAll('.settings-index__link')).map(a => a.getAttribute('href')).join(' ')"),
-                         "/settings/brands /settings/server /settings/samples")
+                         "/settings/brands /settings/server /settings/samples /settings/updates")
         # スライドスタイルの画面はやめた（docs/adr/0009）。前の URL は設定のトップを開く
-        self.open("/settings/styles", "document.querySelectorAll('.settings-index__link').length === 3", "前の URL は設定のトップ")
+        self.open("/settings/styles", "document.querySelectorAll('.settings-index__link').length === 4", "前の URL は設定のトップ")
         page = self.open("/settings/brands", "document.querySelectorAll('.setting-row').length >= 1", "ブランドの一覧")
         self.assertEqual(page.eval("document.querySelector('.breadcrumb [aria-current]').textContent"), "ブランド")
         page = self.open(f"/settings/brands/{PRESET_BRAND_ID}",
@@ -92,6 +92,9 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
         # 見本を入れないサーバ（試験の既定）でも開ける。理由を出し、「見本を入れ直す」は出さない
         page = self.open("/settings/samples", "!!document.querySelector('.setting-panel .reason')", "見本")
         self.assertIsNone(page.eval("document.querySelector('.sample-restore')"))
+        # 新しい版を確かめないサーバ（試験の既定）でも開ける。理由を出し、「今すぐ確かめる」は押せない
+        page = self.open("/settings/updates", "!!document.querySelector('.update-check')", "更新")
+        self.assertTrue(page.eval("document.querySelector('.update-check').disabled"))
 
     def test_deck_management_works_from_the_screen(self) -> None:
         """名前を変える（鉛筆）・ピン留め・複製・ごみ箱へ・元に戻す・完全に削除。"""

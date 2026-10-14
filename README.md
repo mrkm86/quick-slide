@@ -91,6 +91,34 @@ Quick Slide はログインを代わりにしない（`--doctor` がコマンド
 消してよく、消した見本は次の起動で戻らない。戻したいときは画面の 設定 › 見本 の「見本を入れ直す」。
 見本の中身と作り直し方は [`samples/`](samples/README.md)。
 
+### 5. 更新する
+
+新しいバージョンが公開されると、ホームの画面の頭にお知らせが出る（変更点は GitHub のリリースの頁、更新のしかたは 設定 › 更新）。
+変更の記録は [`CHANGELOG.md`](CHANGELOG.md)。
+
+更新は、次のどれかでする。
+
+1. **会話で頼む**（おすすめ）: Claude Code か Codex に「**Quick Slide を更新して**」と伝える。スキルが新しいバージョンと変更点を見せ、
+   よいか聞いてから、使っているアプリのコマンドで更新する（`skills/quick-slide/scripts/quick_slide_update.py`）
+2. **コマンドを会話に貼る**: 下のコマンドを、Claude Code か Codex の会話にそのまま貼り付ける
+3. **ターミナルで実行する**: 下のコマンドを自分で実行する
+
+```text
+# Claude Code（そのあと /reload-plugins か、新しい会話）
+claude plugin marketplace update quick-slide
+claude plugin update quick-slide@quick-slide
+
+# Codex（そのあと Codex を起動し直す）
+codex plugin marketplace upgrade quick-slide
+codex plugin add quick-slide@quick-slide
+```
+
+動いている Quick Slide のサーバは止めなくてよい。次に使ったとき、新しいバージョンの入口が古いバージョンのサーバを起こし直す
+（処理中の作業があれば終わってから）。Codex から使うときは、ターミナルで `--start-server` をもう一度流す。
+
+新しいバージョンがあるかは、サーバが GitHub（`api.github.com`）の最新のリリースを 6 時間に 1 回まで問い合わせて確かめる。送るのは
+問い合わせと、いま使っているバージョンの番号だけ。止めるには 設定 › 更新 の切り替えか、環境変数 `QUICK_SLIDE_NO_UPDATE_CHECK=1`。
+
 ## 置き場
 
 | 何 | 既定 | 変え方 |

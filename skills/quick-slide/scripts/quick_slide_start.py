@@ -49,6 +49,7 @@ import argparse
 import http.client
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -228,8 +229,83 @@ def _start_failed(home: Path, code: str, message: str) -> Failure:
     return Failure(code, message, EXIT_STARTUP)
 
 
+# --- 古い版のサーバを入れ替える（docs/adr/0020-release-and-update-notice.md）---
+# プラグインを新しい版にしても、常駐のサーバは止めるまで前の版のまま動く。新しい版の入口（このスクリプト）が、
+# 自分より古い版のサーバを見つけたら、手が空いていれば止めてから起こす（新しい版で起動する）。処理中の作業が
+# あれば触らない（古い版のまま使い、次の機会に入れ替える）。Codex の砂場の中では起こし直せないので触らない。
+# 自分の方が古いとき（別のアプリに古い版が残っている）は入れ替えない（行ったり来たりさせない）。
+
+_VERSION_RE = re.compile(r'^__version__ = "([^"]+)"$', re.M)
+_SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")
+
+
+def product_version(repo: Path) -> str | None:
+    try:
+        m = _VERSION_RE.search((repo / "src" / "quick_slide" / "__init__.py").read_text(encoding="utf-8"))
+    except OSError:
+        return None
+    return m.group(1) if m else None
+
+
+def _version_key(text: Any) -> tuple | None:
+    m = _SEMVER_RE.match(text) if isinstance(text, str) else None
+    if not m:
+        return None
+    core = tuple(int(x) for x in m.groups()[:3])
+    if m.group(4) is None:
+        return (*core, 1, ())
+    return (*core, 0, tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in m.group(4).split(".")))
+
+
+def is_newer(candidate: Any, than: Any) -> bool:
+    a, b = _version_key(candidate), _version_key(than)
+    return a is not None and b is not None and a > b
+
+
+def _running_server(home: Path) -> dict[str, Any] | None:
+    """動いているサーバの版と、走っている仕事の数（health）。動いていない・読めなければ None。"""
+    try:
+        record = json.loads((home / "runtime" / "server.json").read_text(encoding="utf-8"))
+        status, body = request(record, "GET", "/api/health", timeout=5.0)
+    except (OSError, ValueError, KeyError, TypeError, Failure):
+        return None
+    if not isinstance(body, dict) or body.get("service") != "quick-slide":
+        return None
+    worker = body.get("worker") or {}
+    return {"version": body.get("version"), "busy": int(worker.get("busy") or 0) if isinstance(worker, dict) else 0}
+
+
+def replace_outdated_server(repo: Path, home: Path, timeout: float) -> dict[str, Any] | None:
+    """自分より古い版のサーバが動いていれば、手が空いているときだけ止める（このあとの `start` が新しい版で起こす）。"""
+    mine = product_version(repo)
+    if mine is None or inside_codex():
+        return None
+    running = _running_server(home)
+    if running is None or not is_newer(mine, running["version"]):
+        return None
+    note = {"from": running["version"], "to": mine}
+    if running["busy"] > 0:
+        return {**note, "replaced": False, "busy": running["busy"]}
+    cmd = [sys.executable, "-m", "quick_slide.server", "--home", str(home), "--timeout", str(timeout), "stop"]
+    try:
+        proc = subprocess.run(cmd, cwd=str(repo), env=_product_env(repo), stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True, timeout=timeout + 20.0, encoding="utf-8")
+        stopped = proc.returncode == 0 and bool((_last_json_line(proc.stdout) or {}).get("stopped"))
+    except (OSError, subprocess.TimeoutExpired):
+        stopped = False
+    return {**note, "replaced": stopped}
+
+
 def ensure_server(repo: Path, home: Path, timeout: float) -> dict[str, Any]:
-    """製品の `start` を呼ぶ。既に動いていれば `already_running` で即返る。"""
+    """製品の `start` を呼ぶ。既に動いていれば `already_running` で即返る（自分より古い版なら、先に入れ替える）。"""
+    swap = replace_outdated_server(repo, home, timeout)
+    result = _start(repo, home, timeout)
+    if swap is not None:
+        result = {**result, "version_swap": swap}
+    return result
+
+
+def _start(repo: Path, home: Path, timeout: float) -> dict[str, Any]:
     cmd = [sys.executable, "-m", "quick_slide.server", "--home", str(home), "--timeout", str(timeout), "start", "--quiet"]
     try:
         proc = subprocess.run(cmd, cwd=str(repo), env=_product_env(repo), stdin=subprocess.DEVNULL,
@@ -527,6 +603,7 @@ def cmd_start_server(repo: Path, home: Path, args: argparse.Namespace) -> int:
     record = read_record(home)
     emit({"status": "server", "url": record.get("url"), "pid": started.get("pid"),
           "already_running": bool(started.get("already_running")), "home": str(home),
+          "version_swap": started.get("version_swap"),
           "message": "Quick Slide のサーバが動いています。会話に戻って、もう一度頼んでください。"})
     return EXIT_OK
 
@@ -634,7 +711,8 @@ def cmd_import(repo: Path, home: Path, args: argparse.Namespace) -> int:
     runtime = args.runtime or detect_conversation()[0]
     started = ensure_server(repo, home, args.server_timeout)
     record = read_record(home)
-    server = {"url": record.get("url"), "pid": started.get("pid"), "already_running": bool(started.get("already_running"))}
+    server = {"url": record.get("url"), "pid": started.get("pid"), "already_running": bool(started.get("already_running")),
+              "version_swap": started.get("version_swap")}
     if args.dry_run:
         emit({"status": "dry_run", "server": server, "import": {"name": src.name, "bytes": src.stat().st_size}})
         return EXIT_OK
@@ -689,7 +767,8 @@ def run(args: argparse.Namespace) -> int:
     payload, key_source = build_payload(args)
     started = ensure_server(repo, home, args.server_timeout)
     record = read_record(home)
-    server = {"url": record.get("url"), "pid": started.get("pid"), "already_running": bool(started.get("already_running"))}
+    server = {"url": record.get("url"), "pid": started.get("pid"), "already_running": bool(started.get("already_running")),
+              "version_swap": started.get("version_swap")}
     if args.dry_run:
         emit({"status": "dry_run", "server": server, "payload": payload_summary(payload, key_source)})
         return EXIT_OK

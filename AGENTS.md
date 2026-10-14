@@ -22,6 +22,7 @@
 | `skills/illust/` | 挿絵を SVG で描いて確かめ、PNG にする（エンジンからは呼ばない。サーバが呼ぶ） |
 | `samples/` | 同梱の見本（モードごとに 1 冊。最初の起動で入る）。台本の正本は `samples/<見本>/script.json`、`built/` は `samples/build.py` が書く（手で直さない。`docs/adr/0007-bundled-samples.md`） |
 | `src/quick_slide/`・`web/app/` | 常駐サーバ（台本係・描き係のワーカーを含む）と画面（段の進め方は `docs/DESIGN.md` §7、控えは `docs/P1-NOTES.md`〜`docs/P5-NOTES.md`） |
+| `CHANGELOG.md`・`tools/release.py` | 版ごとの変更（そのまま GitHub のリリースの本文になる）と、版を上げる手伝い。手順は `docs/RELEASING.md` |
 
 エンジンは状態を持たず、ほかのスキルを呼ばない（素材はファイルで受ける）。
 

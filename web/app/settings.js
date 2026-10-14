@@ -661,7 +661,9 @@
     { section: "server", href: "/settings/server", label: "アクセス", title: "アクセス",
       lead: "Quick Slide を、このパソコンだけで使うか、ほかのパソコンやスマートフォンからも開けるようにするかを決めます。" },
     { section: "samples", href: "/settings/samples", label: "見本", title: "見本",
-      lead: "プレゼン・ピッチ・モーションの見本のスライドです。消したあとでも、ここから入れ直せます。" }
+      lead: "プレゼン・ピッチ・モーションの見本のスライドです。消したあとでも、ここから入れ直せます。" },
+    { section: "updates", href: "/settings/updates", label: "更新", title: "更新",
+      lead: "使っている Quick Slide のバージョンと、新しいバージョンのお知らせです。" }
   ];
 
   // 各設定の画面の見出し: パンくず（設定 › いまの画面）→ H1（いまの画面の名前）と説明
@@ -972,6 +974,107 @@
     });
   }
 
+  // ---- 更新（/settings/updates。docs/adr/0020-release-and-update-notice.md）----
+  // 版の比べ方も GitHub への問い合わせもサーバ（`/api/update`）。画面は答えを並べるだけ
+  var UPDATE_ERRORS = {
+    unreachable: "GitHub につながらず、新しいバージョンを確かめられませんでした。ネットワークを確かめて、あとでもう一度お試しください。",
+    no_release: "公開されたリリースがまだありません。",
+    bad_response: "GitHub の答えを読み取れず、新しいバージョンを確かめられませんでした。あとでもう一度お試しください。"
+  };
+  var UPDATE_OFF = {
+    env: "環境変数 QUICK_SLIDE_NO_UPDATE_CHECK で、新しいバージョンを確かめるのを止めています。",
+    settings: "新しいバージョンを確かめるのを止めています。",
+    server: "このサーバは、新しいバージョンを確かめない設定で起動しています。"
+  };
+  function commandBlock(label, lines, after) {
+    var commands = lines.join("\n");
+    var code = text("code", commands);
+    var copy = h("button", { type: "button", class: "btn btn--small btn--ghost update-howto__copy", "aria-label": label + " のコマンドをコピー" },
+      SS.icon("content_copy"), h("span", { text: "コピー" }));
+    copy.addEventListener("click", function () {
+      SS.copyText(commands).then(function (ok) {
+        if (ok) { SS.toast(label + " のコマンドをコピーしました。"); return; }
+        var range = document.createRange();   // 写せなかったら文字を選んでおき、自分で写してもらう
+        range.selectNodeContents(code);
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+        SS.toast("コピーできませんでした。選んだ文字を ⌘C（Windows は Ctrl+C）でコピーしてください。", { kind: "error" });
+      });
+    });
+    return h("div", { class: "update-howto__item" },
+      h("div", { class: "update-howto__head" }, text("h3", label), copy),
+      h("pre", { class: "update-howto__code" }, code),
+      after ? text("p", after, "small muted") : null);
+  }
+  function updatesScreen(root, guard, refresh) {
+    return SS.api("/api/update" + (refresh ? "?refresh=1" : "")).then(function (st) {
+      if (!guard()) { return; }
+      var errors = h("div", { role: "alert" });
+      var said;
+      if (!st.enabled) { said = UPDATE_OFF[st.disabled_by] || UPDATE_OFF.settings; }
+      else if (st.update_available) { said = "新しいバージョン " + st.latest_version + " が公開されています。"; }
+      else if (st.error && !st.latest_version) { said = UPDATE_ERRORS[st.error] || UPDATE_ERRORS.unreachable; }
+      else if (st.latest_version) { said = "最新のバージョンを使っています。"; }
+      else { said = "まだ確かめていません。"; }
+      var when = st.enabled && st.checked_at
+        ? "最後に確かめた日時: " + SS.fmtDate(st.checked_at) + (st.stale ? "（いまは確かめられなかったため、前の結果です）" : "") : "";
+
+      var check = button("今すぐ確かめる", function () {
+        check.disabled = true;
+        updatesScreen(root, guard, true).catch(function (error) {
+          check.disabled = false;
+          SS.clear(errors).appendChild(text("p", safeError(error), "notice notice--error"));
+        });
+      }, "update-check");
+      check.disabled = !st.enabled;
+
+      var toggle = h("input", { type: "checkbox", id: "update-check-toggle" });
+      toggle.checked = st.disabled_by !== "settings";
+      toggle.disabled = st.disabled_by === "env" || st.disabled_by === "server";
+      toggle.addEventListener("change", function () {
+        toggle.disabled = true;
+        SS.api("/api/settings/updates", { method: "POST", body: { check: toggle.checked } }).then(function () {
+          SS.toast(toggle.checked ? "新しいバージョンを確かめるようにしました。" : "新しいバージョンを確かめるのを止めました。");
+          SS.navigate("/settings/updates", true);
+        }).catch(function (error) {
+          toggle.disabled = false;
+          toggle.checked = !toggle.checked;
+          SS.clear(errors).appendChild(text("p", safeError(error), "notice notice--error"));
+        });
+      });
+      var switchField = h("div", { class: "setting-field setting-field--optional" },
+        h("label", { for: "update-check-toggle" }, toggle, " 新しいバージョンが出たら知らせる"),
+        text("p", "オンのあいだ、このサーバは 6 時間に 1 回まで、GitHub（api.github.com）に最新のリリースを問い合わせます。送るのは問い合わせと、いま使っているバージョンの番号だけです。スライドの中身や設定は送りません。", "small muted"));
+
+      var panel = h("div", { class: "setting-panel" },
+        h("p", null, text("strong", "現在のバージョン：" + st.current_version)),
+        h("div", { class: st.update_available ? "notice notice--info" : "notice", role: "status" }, text("p", said),
+          // 変更点はアプリの中に写さず、GitHub のリリースの頁を見てもらう（外のサイトへはこの 1 本だけ。同じウィンドウで開く）
+          st.latest_version && st.release_url ? h("p", null, h("a", { href: st.release_url, rel: "noopener noreferrer",
+            class: "update-release__link", text: "Quick Slide " + st.latest_version + " の変更点を見る（GitHub）" })) : null,
+          when ? text("p", when, "small muted") : null),
+        h("div", { class: "setting-actions" }, check), errors, switchField);
+
+      if (st.update_available) {
+        // やり方は 3 つ（頼む・コマンドを会話に貼る・ターミナルで実行する）。どれでもよいことが一目で分かるように並べる
+        var ways = h("ol", { class: "update-howto__ways" },
+          h("li", null, text("strong", "会話で頼む（おすすめ）"),
+            text("p", "Claude Code か Codex に「Quick Slide を更新して」と伝えます。")),
+          h("li", null, text("strong", "コマンドを会話に貼る"),
+            text("p", "下のコマンドを、Claude Code か Codex の会話にそのまま貼り付けます。")),
+          h("li", null, text("strong", "ターミナルで実行する"),
+            text("p", "下のコマンドを自分で実行します。")));
+        panel.appendChild(h("section", { class: "update-howto", "aria-label": "更新のしかた" }, text("h2", "更新のしかた"),
+          text("p", "次のどれかで更新できます。"), ways,
+          commandBlock("Claude Code", ["claude plugin marketplace update quick-slide", "claude plugin update quick-slide@quick-slide"],
+            "更新したら /reload-plugins を実行するか、新しい会話を始めます。"),
+          commandBlock("Codex", ["codex plugin marketplace upgrade quick-slide", "codex plugin add quick-slide@quick-slide"],
+            "更新したら Codex を起動し直します。"),
+          text("p", "動いている Quick Slide のサーバは、次に Quick Slide を使ったときに新しいバージョンで起動し直します（処理中の作業があれば、終わってから）。", "small muted")));
+      }
+      SS.clear(root).appendChild(h("div", { class: "settings-page" }, settingsHead("updates"), panel));
+    });
+  }
+
   // 「再起動が必要」の帯（アクセスの画面）。処理中の作業があれば「終わるのを待って」と「今すぐ」を出す。
   // 押したあとの進み・つなぎ直し・新しい URL への移動は core.js の SS.restartServer
   function restartBanner(state) {
@@ -1015,6 +1118,7 @@
     SS.clear(root).appendChild(text("p", "設定を読み込んでいます…"));
     if (route.section === "index") { settingsIndex(root); return Promise.resolve(); }
     if (route.section === "samples") { return samplesScreen(root, guard); }
+    if (route.section === "updates") { return updatesScreen(root, guard); }
     return SS.api("/api/settings").then(function (catalog) {
       if (!guard()) { return; }
       if (route.section === "server") { return serverScreen(root, catalog); }

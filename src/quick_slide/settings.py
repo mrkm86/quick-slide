@@ -2,7 +2,8 @@
 
 `intake`（原稿の上限・抜粋の保存期間）・`launch`（起動トークンの期限）・`browser`（画面の開き方）・
 `server`（bind 先とポート）・`writer`（台本係の LLM: `auto` / `claude` / `codex`）・`worker`（同時に動かす仕事の数・
-時間の上限・検査の回数）・既定のブランド。値は暫定運用値。未知のキーは拒否せず無視する。
+時間の上限・検査の回数）・`updates`（新しいリリースを確かめるか。`updates.py`）・既定のブランド。値は暫定運用値。
+未知のキーは拒否せず無視する。
 
 `browser.mode` は環境変数 `QUICK_SLIDE_BROWSER` で上書きできる。
 
@@ -63,6 +64,17 @@ def save_server_section(path: Path, *, host: str, host_names: Sequence[str], por
     raw["server"] = server
     _write_raw(path, raw)
     return settings
+
+
+def save_updates_section(path: Path, *, check: bool) -> None:
+    """`settings.json` の `updates.check` だけを書き換える（設定 › 更新 の切り替え。ほかのキーには触らない）。"""
+    if not isinstance(check, bool):
+        raise ValidationError("updates.check は true か false")
+    raw = _read_raw(path)
+    updates = dict(raw.get("updates") or {}) if isinstance(raw.get("updates"), dict) else {}
+    updates["check"] = check
+    raw["updates"] = updates
+    _write_raw(path, raw)
 
 
 def restore_server_section(path: Path, listen: dict) -> None:
@@ -312,6 +324,21 @@ class WorkerSettings:
 
 
 @dataclass(frozen=True)
+class UpdateSettings:
+    """新しいリリースのお知らせ（`updates.py`）。`check` が false なら GitHub に問い合わせない。
+
+    環境変数 `QUICK_SLIDE_NO_UPDATE_CHECK=1` でも止まる（そちらは問い合わせのたびに読む。画面に理由を出し分けるため、
+    ここには混ぜない）。
+    """
+
+    check: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.check, bool):
+            raise ValidationError("updates.check は true か false")
+
+
+@dataclass(frozen=True)
 class Settings:
     intake: IntakeSettings = field(default_factory=IntakeSettings)
     launch: LaunchSettings = field(default_factory=LaunchSettings)
@@ -320,6 +347,7 @@ class Settings:
     writer: str = "auto"
     worker: WorkerSettings = field(default_factory=WorkerSettings)
     default_brand_id: str | None = None
+    updates: UpdateSettings = field(default_factory=UpdateSettings)
 
     def __post_init__(self) -> None:
         if self.writer not in WRITER_CHOICES:
@@ -342,6 +370,7 @@ class Settings:
         browser_raw = _section(raw, "browser")
         server_raw = _section(raw, "server")
         worker_raw = _section(raw, "worker")
+        updates_raw = _section(raw, "updates")
         try:
             intake = IntakeSettings(
                 max_manuscript_chars=int(intake_raw.get("max_manuscript_chars", IntakeSettings.max_manuscript_chars)),
@@ -377,6 +406,7 @@ class Settings:
                 render_timeout_seconds=worker_raw.get("render_timeout_seconds", WorkerSettings.render_timeout_seconds),
                 max_check_rounds=worker_raw.get("max_check_rounds", WorkerSettings.max_check_rounds),
             )
+            updates = UpdateSettings(check=updates_raw.get("check", UpdateSettings.check))
         except (TypeError, ValueError) as exc:
             raise ValidationError(f"settings.json の値の型が不正です（{exc.__class__.__name__}）") from exc
         default_brand = raw.get("default_brand_id")
@@ -386,7 +416,7 @@ class Settings:
         if not isinstance(writer, str):
             raise ValidationError("writer は文字列（auto / claude / codex）")
         return cls(intake=intake, launch=launch, browser=browser, server=server, writer=writer, worker=worker,
-                   default_brand_id=default_brand)
+                   default_brand_id=default_brand, updates=updates)
 
 
 def _section(raw: dict, key: str) -> dict:

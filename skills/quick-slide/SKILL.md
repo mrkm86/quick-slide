@@ -1,6 +1,6 @@
 ---
 name: quick-slide
-description: Quick Slide で会話の続きからスライドを作り、会話から直す。この機械で初めて使うとき・「足りない」と言われたときは導入の確かめ（--doctor）と、利用者に聞いてからの導入（--setup）もする。ユーザーが「スライドにして」「資料にまとめて」「プレゼンを作って」「パワポにして」「企画書/提案書/説明資料にして」「デッキにして」「ピッチ資料にして」「〇〇について調べて5ページぐらいでまとめて」、または make slides / build a deck / turn this into a presentation のように言ったら、ツール名が出てこなくても使う。手元の PPTX を「取り込んで」「このパワポを Quick Slide で見たい」と言われたときも使う（原稿は要らない）。作ったスライドについて「7・8枚目を直して」「この絵を夜に」「見出しを短く」と言われたときも使う。人に見せる資料は構成（ページごとの見出しと要点）を会話で合意してから描き、自分が知るための「調べてまとめて」は調べてそのまま描く。会話の内容を原稿に整え、ローカルの Quick Slide（未起動なら自分で起動する）に投入し、スライドの画面の URL を会話に返す。台本を書き（Claude Code か Codex）、検査して、エンジン（html-slide・image-slide）が描くところまでは Quick Slide が自分で進める。
+description: Quick Slide で会話の続きからスライドを作り、会話から直す。この機械で初めて使うとき・「足りない」と言われたときは導入の確かめ（--doctor）と、利用者に聞いてからの導入（--setup）もする。ユーザーが「スライドにして」「資料にまとめて」「プレゼンを作って」「パワポにして」「企画書/提案書/説明資料にして」「デッキにして」「ピッチ資料にして」「〇〇について調べて5ページぐらいでまとめて」、または make slides / build a deck / turn this into a presentation のように言ったら、ツール名が出てこなくても使う。手元の PPTX を「取り込んで」「このパワポを Quick Slide で見たい」と言われたときも使う（原稿は要らない）。「Quick Slide を更新して」「新しいバージョンにして」「アップデートして」と言われたときも使う（下の「Quick Slide を更新する」）。作ったスライドについて「7・8枚目を直して」「この絵を夜に」「見出しを短く」と言われたときも使う。人に見せる資料は構成（ページごとの見出しと要点）を会話で合意してから描き、自分が知るための「調べてまとめて」は調べてそのまま描く。会話の内容を原稿に整え、ローカルの Quick Slide（未起動なら自分で起動する）に投入し、スライドの画面の URL を会話に返す。台本を書き（Claude Code か Codex）、検査して、エンジン（html-slide・image-slide）が描くところまでは Quick Slide が自分で進める。
 ---
 
 # Quick Slide（会話から 1 冊・会話から直す）
@@ -83,6 +83,40 @@ Codex は会話の中のコマンドを砂場（サンドボックス）で走�
 - 診断の JSON の `inside_codex` が真なら、Node・`codex`・台本を書く CLI が `ng` でも、**入れる案内（`npm install -g …`・
   `codex login`）をすぐに会話に書かない。** まず利用者に、自分のターミナルで `--doctor` を走らせてもらう（コマンドは出力の
   `fix` にある）。そこでも足りないと出たら入れてもらう
+
+### Quick Slide を更新する（「Quick Slide を更新して」と言われたとき）
+
+画面のホームに「Quick Slide X が公開されています」と出たときや、利用者が「更新して」「新しいバージョンにして」と言ったとき。
+
+1. まず確かめる（何も変えない・数秒。GitHub の最新のリリースを見る）
+
+   ```bash
+   python3 "${SKILL_DIR}/scripts/quick_slide_update.py"
+   ```
+
+   最終行の JSON の `status` で分ける:
+
+   | `status` | 会話ですること |
+   |---|---|
+   | `up_to_date` | `message` をそのまま伝えて終わる |
+   | `update_available` | 現在のバージョン（`current_version`）・新しいバージョン（`latest_version`）・変更点（`notes` を短くまとめる）・リリースの頁（`release_url`）を伝え、**更新してよいか聞く** |
+   | `manual` | `message` をそのまま伝える（フォルダから読んでいるときは、こちらから git を動かさない） |
+   | `error` | `message` をそのまま伝える（GitHub に届かない・リリースがまだ無い） |
+
+2. 承知されたら `--yes` で更新する（聞かずに流さない）
+
+   ```bash
+   python3 "${SKILL_DIR}/scripts/quick_slide_update.py" --yes
+   ```
+
+   `status: updated` なら `message` をそのまま伝える（Claude Code は `/reload-plugins` か新しい会話、Codex は起動し直し）。
+   動いているサーバは止めなくてよい。次に Quick Slide を使ったとき、新しいバージョンの入口が古いバージョンのサーバを起こし直す
+   （処理中の作業があれば、終わるまで古いバージョンのまま。投入の JSON の `server.version_swap` に出る）。
+   `manual`・`error` のときは、`message` にある**コマンドを会話に書き、利用者のターミナルで流してもらう**（回り道をしない）
+
+- **Codex から更新するとき**: 更新は `~/.codex` に書くので、砂場の中では通らない。`--yes` は**砂場の外で走らせる承認を求めて**流す。
+  断られたら、`commands` を会話に書いて利用者のターミナルで流してもらう。Codex から使うときはサーバをターミナルで起こしているので、
+  更新のあと、利用者にターミナルで `--start-server` をもう一度流してもらう（古いバージョンのサーバが新しいバージョンに入れ替わる）
 
 ### 0. 最初の 1 冊の作り方を決める（2 つ）
 
@@ -283,6 +317,7 @@ PPTX・PDF は**画面の右上のボタン**で書き出す（画面に出て�
 | 症状 | 見ること |
 |---|---|
 | `code: server_unavailable` / `server_start_timeout` | メッセージをそのまま伝える。データの置き場の `runtime/server.log` と `server.out` に理由がある |
+| 投入の JSON の `server.version_swap` が `replaced: false` | 古い版のサーバに処理中の作業があったので、入れ替えなかった（そのまま使える）。手が空いたあとの次の投入で入れ替わる |
 | `code: start_in_terminal` | Codex の砂場の中からはサーバを起こせない。返った `command` を会話に書き、利用者のターミナルで流してもらってからやり直す（回り道をしない。上の「Codex から使うとき」） |
 | `code: python_too_old` | 起こした Python が 3.12 より古い。メッセージのとおり `py -3` か 3.12 以上の python.exe で起こし直す（上の「Windows で使うとき」） |
 | `code: server_unreachable` | Codex の砂場が手元（127.0.0.1）への通信を塞いでいる。`codex -c sandbox_workspace_write.network_access=true exec ...` で開ける |

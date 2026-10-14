@@ -8,12 +8,13 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import re
 import subprocess
 import sys
 import time
 import unittest
 
-from helpers import FAKES, MANUSCRIPT, REPO, SKILLS_DIR, fake_codex_home, runnable, temp_dir
+from helpers import FAKES, MANUSCRIPT, REPO, SKILLS_DIR, SYMLINK_REASON, can_symlink, fake_codex_home, runnable, temp_dir
 
 SCRIPT = REPO / "skills" / "quick-slide" / "scripts" / "quick_slide_start.py"
 # 会話の印（この試験を走らせている会話の値を拾わない）
@@ -204,6 +205,46 @@ class SkillStartTests(unittest.TestCase):
                 self.assertIn(str(home), out["command"], "既定でない置き場はコマンドに書く")
                 self.assertTrue(out["command"].startswith("py -3 " if os.name == "nt" else "python3 "), out["command"])
                 self.assertIn(out["command"], out["message"])
+
+    def newer_plugin(self, version: str):
+        """版だけが違うプラグインの写し（中身はこのリポへの symlink。`__init__.py` だけ書き換える）。"""
+        root = self.tmp / f"plugin-{version}"
+        pkg = root / "src" / "quick_slide"
+        pkg.mkdir(parents=True)
+        for item in (REPO / "src" / "quick_slide").iterdir():
+            if item.name not in ("__init__.py", "__pycache__"):
+                (pkg / item.name).symlink_to(item, target_is_directory=item.is_dir())
+        init = (REPO / "src" / "quick_slide" / "__init__.py").read_text(encoding="utf-8")
+        (pkg / "__init__.py").write_text(re.sub(r'^__version__ = ".*"$', f'__version__ = "{version}"', init, flags=re.M), encoding="utf-8")
+        return root
+
+    def health_version(self) -> str:
+        record = json.loads((self.home / "runtime" / "server.json").read_text(encoding="utf-8"))
+        conn = http.client.HTTPConnection("127.0.0.1", record["port"], timeout=10)
+        conn.request("GET", "/api/health", headers={"Host": f"127.0.0.1:{record['port']}"})
+        version = json.loads(conn.getresponse().read())["version"]
+        conn.close()
+        return version
+
+    @unittest.skipUnless(can_symlink(), SYMLINK_REASON)
+    def test_a_newer_plugin_replaces_an_older_idle_server(self) -> None:
+        """プラグインを新しい版にしたら、次に使ったときに古い版のサーバが入れ替わる。古い版の入口は入れ替えない。"""
+        from quick_slide import __version__
+        rc, out, _, stderr = self.start("--start-server")
+        self.assertEqual(rc, 0, (out, stderr))
+        self.assertIsNone(out["version_swap"])
+        first_pid = out["pid"]
+        newer = self.newer_plugin("99.0.0")
+        rc, out, _, stderr = self.start("--start-server", "--repo", str(newer))
+        self.assertEqual(rc, 0, (out, stderr))
+        self.assertEqual(out["version_swap"], {"from": __version__, "to": "99.0.0", "replaced": True})
+        self.assertFalse(out["already_running"])
+        self.assertNotEqual(out["pid"], first_pid)
+        self.assertEqual(self.health_version(), "99.0.0")
+        # 古い版の入口からは入れ替えない（別のアプリに古い版が残っていても、行ったり来たりしない）
+        rc, out, _, _ = self.start("--start-server")
+        self.assertEqual((rc, out["already_running"], out["version_swap"]), (0, True, None))
+        self.assertEqual(self.health_version(), "99.0.0")
 
     def test_where_and_repo_override(self) -> None:
         rc, out, _, _ = self.start("--where")

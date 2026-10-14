@@ -76,6 +76,8 @@ class FreshMachineTests(unittest.TestCase):
             "FAKE_CODEX_LOG": str(self.tmp / "codex-calls"), "CODEX_HOME": str(fake_codex_home(self.home)),
             # PATH の外のよくある置き場は探させない（そこにある本物の claude・codex を見つけてしまう）
             "QUICK_SLIDE_CLI_DIRS": "",
+            # 新しい版を GitHub に確かめさせない（この通しで外へ出るのは導入だけ）
+            "QUICK_SLIDE_NO_UPDATE_CHECK": "1",
         }
         self.setup_py = self.plugin / "skills" / "quick-slide" / "scripts" / "quick_slide_setup.py"
         self.start_py = self.plugin / "skills" / "quick-slide" / "scripts" / "quick_slide_start.py"

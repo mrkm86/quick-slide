@@ -51,7 +51,7 @@ class ScreenAndServerAgreeTests(unittest.TestCase):
         self.assertEqual(missing, [], "画面が呼ぶのにサーバに無い URL")
 
     def test_the_screen_pages_are_routed(self) -> None:
-        for path in ("/", "/slides", f"/slides/{uuid.uuid4()}", "/settings", "/settings/brands", "/settings/styles", "/settings/server",
+        for path in ("/", "/slides", f"/slides/{uuid.uuid4()}", "/settings", "/settings/brands", "/settings/styles", "/settings/server", "/settings/updates",
                      f"/settings/brands/{uuid.uuid4()}"):
             self.assertTrue(routed(path), path)
 
