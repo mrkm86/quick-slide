@@ -59,15 +59,18 @@ class DeckScreenShowsDrawnPagesTest(unittest.TestCase):
         self.assertEqual(page.errors, [])
         self.assertEqual(page.eval("Array.from(document.querySelectorAll('#view .notice--error')).length"), 0)
         self.assertEqual(page.eval("document.querySelectorAll('.thumb img').length"), 4)
-        # ヘッダの左端のボタンで左の列（ページ一覧）を畳むと、スライドの列が広がる。もう一度押すと開く（PC の幅だけ）
+        # 左の列（ページ一覧）の上のボタンで畳むと、列はボタンだけの細い帯になり、スライドの列が広がる。同じボタンで開く（PC の幅だけ）
         if page.eval("innerWidth") >= 1024:
             narrow = page.eval("document.querySelector('.pages').getBoundingClientRect().width")
-            page.eval("document.querySelector('.deck-bar__thumbs').click()")
-            self.assertEqual(page.eval("getComputedStyle(document.querySelector('.thumbs')).display"), "none")
-            self.assertEqual(page.eval("document.querySelector('.deck-bar__thumbs').getAttribute('aria-expanded')"), "false")
+            self.assertLess(page.eval("document.querySelector('.thumbs__toggle').getBoundingClientRect().top"),
+                            page.eval("document.querySelector('.thumb').getBoundingClientRect().top"), "ボタンはサムネイルの上")
+            page.eval("document.querySelector('.thumbs__toggle').click()")
+            self.assertEqual(page.eval("getComputedStyle(document.querySelector('.thumbs__list')).display"), "none")
+            self.assertEqual(page.eval("document.querySelector('.thumbs__toggle').getAttribute('aria-expanded')"), "false")
             self.assertGreater(page.eval("document.querySelector('.pages').getBoundingClientRect().width"), narrow)
-            page.eval("document.querySelector('.deck-bar__thumbs').click()")
-            self.assertEqual(page.eval("getComputedStyle(document.querySelector('.thumbs')).display"), "flex")
+            self.assertLess(page.eval("document.querySelector('.thumbs').getBoundingClientRect().width"), 80)
+            page.eval("document.querySelector('.thumbs__toggle').click()")
+            self.assertEqual(page.eval("getComputedStyle(document.querySelector('.thumbs__list')).display"), "flex")
         # ページをタイトル行だけに畳む（確認し終えたページ）。読み直しても畳んだまま（同じ版のあいだ）
         page.eval("document.querySelectorAll('.page__fold')[1].click()")
         self.assertEqual(page.eval("getComputedStyle(document.querySelectorAll('.page__stage')[1]).display"), "none")

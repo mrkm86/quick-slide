@@ -1890,13 +1890,13 @@
       // ---- 上の帯（1 行）: 戻る・題・進み具合の札・書き出し・⋮ ----
       // 「13 ページ・ブランド: 既定」「ピン留め」は ⋮ のメニューの頭へ畳んだ。大きな進みの箱は札へ畳んだ。
       var pband = data.pages.length ? progressBand(data.counts) : null;
-      // 左の列（ページ一覧）を畳む・開く（PC の幅だけ。畳むとスライドの列が広がる。v1 と同じ・2026-10-14）。
+      // 左の列（ページ一覧）を畳む・開く（PC の幅だけ。畳むとスライドの列が広がる。v1 と同じ・2026-10-14）。ボタンは列の上（下で差し込む）。
       // 畳んだかはこのブラウザに覚える（localStorage。読めなくても動く）
       var THUMBS_KEY = "qs.deck.thumbs-collapsed";
       var thumbsCollapsed = false;
       try { thumbsCollapsed = localStorage.getItem(THUMBS_KEY) === "1"; } catch (e) { /* 覚えていなくても開いて出す */ }
-      var thumbsToggle = h("button", { class: "btn btn--icon btn--ghost deck-bar__thumbs", type: "button",
-        "aria-controls": "deck-thumbs" });
+      var thumbsToggle = h("button", { class: "btn btn--icon btn--ghost thumbs__toggle", type: "button",
+        "aria-controls": "deck-thumbs-list" });
       var paintThumbsToggle = function () {
         var label = thumbsCollapsed ? "ページ一覧を開く" : "ページ一覧を畳む";
         SS.clear(thumbsToggle).appendChild(SS.icon(thumbsCollapsed ? "left_panel_open" : "left_panel_close"));
@@ -1911,7 +1911,6 @@
         paintThumbsToggle();
       });
       var deckBar = h("header", { class: "deck-bar" },
-        thumbsToggle,
         h("a", { class: "deck-bar__back", href: "/slides", "data-nav": true, "aria-label": "スライド一覧へ戻る" },
           SS.icon("arrow_back"), h("span", { class: "deck-bar__back-text", text: "一覧" })),
         titleBox,
@@ -2007,6 +2006,12 @@
       var body = h("div", { class: "deck-body" });
       var aside = thumbsAside(data.pages, caps, ctx);
       aside.id = "deck-thumbs";
+      // 畳む・開くのボタンは列のいちばん上（2026-10-14・利用者の指定。ヘッダの左端はデッキの題の場所なので分かりにくかった）。
+      // 畳んでもこの帯だけは細く残し、同じ位置から開ける
+      var thumbsList = aside.querySelector(".thumbs__list");
+      if (thumbsList) { thumbsList.id = "deck-thumbs-list"; }
+      aside.insertBefore(h("div", { class: "thumbs__bar" }, h("span", { class: "thumbs__bar-label", text: "ページ一覧" }), thumbsToggle),
+        aside.firstChild);
       body.appendChild(aside);
       paintThumbsToggle();
       var deckBox = deckInstruction(caps, reasons.ids, { canMinor: deckCanMinor(data.pages), kinds: ctx.editKinds,
