@@ -183,10 +183,11 @@ class DeckManagementMixin(StoreBase):
         raw = self.script_path(script).read_bytes()
         rel = f"decks/{new_id}/scripts/1.json"
         _link_file(self.script_path(script), self.root.root / rel)
-        if (src_scripts / "attachments").is_dir():
-            _link_tree(src_scripts / "attachments", dst_scripts / "attachments")
-        if (src_scripts / "imported").is_dir():   # 取り込んだページの画像（台本の html が相対 imported/media/… で指す）
-            _link_tree(src_scripts / "imported", dst_scripts / "imported")
+        # 台本が相対パスで指す素材: 添えた画像・取り込んだページの画像（imported/media/…）・生成して重ねた画像（overlays/。
+        # 作り直せない）・挿絵の PNG（illustrations/。SVG から作り直せるが、描き直しを省く）
+        for folder in ("attachments", "imported", "overlays", "illustrations"):
+            if (src_scripts / folder).is_dir():
+                _link_tree(src_scripts / folder, dst_scripts / folder)
         sid = self.new_id()
         self._exec(
             "INSERT INTO scripts(id,deck_id,version,path,sha256,written_by,writer_backend,intake_id,instruction,round,"

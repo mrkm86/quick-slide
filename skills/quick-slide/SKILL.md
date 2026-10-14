@@ -113,7 +113,7 @@ python3 "${SKILL_DIR}/scripts/quick_slide_setup.py" --doctor
 |---|---|---|
 | `presentation`（既定） | 文字も図形も PowerPoint の部品として組んだ、**あとから直せて、クリックで動く PPTX**（エンジン html-slide） | 説明・報告・提案。数字や文言をあとで直す・話しながら見せる |
 | `pitch` | 各ページを**画像生成で丸ごと描いた**資料（エンジン image-slide）。PPTX にも絵として入る | 印象で伝えるピッチ・企画のイメージ。絵の中の文字はあとで直せない |
-| `motion` | **クリックで「拍」が進む Web プレゼン**（エンジン motion-slide）。HTML 1枚で、図が動き・飛び・線でつながる。PPTX・PDF にはならない（書き出しは「HTML（1枚）」だけ） | 画面で見せて説明する（発表の画面か、HTML を開いて見せる）。動きで理解を助けたい解説・講座・記事の読み解き。画像は使わない（図は HTML で描く）。作るのに全部の拍を Chrome で確かめるので数分かかる（Playwright の Chromium が要る。`quick_slide_setup.py --doctor` の `motion`） |
+| `motion` | **クリックで「拍」が進む Web プレゼン**（エンジン motion-slide）。HTML 1枚で、図が動き・飛び・線でつながる。PPTX・PDF にはならない（書き出しは「HTML」だけ） | 画面で見せて説明する（発表の画面か、HTML を開いて見せる）。動きで理解を助けたい解説・講座・記事の読み解き。画像は使わない（図は HTML で描く）。作るのに全部の拍を Chrome で確かめるので数分かかる（Playwright の Chromium が要る。`quick_slide_setup.py --doctor` の `motion`） |
 
 迷ったら `presentation`。ユーザーが「絵で」「イメージで」「ワクワクする感じで」と言ったら `pitch`。「動くプレゼン」「クリックで進む」「Web プレゼン」「モーション」と言ったら `motion`。
 スタイルは `--style`（presentation: `standard` 既定・`visual`／pitch: `visual` 既定・`standard`・`infographic`＝全ページを 1 枚のポスターに／motion: `standard` だけ。色とロゴは設定のブランド）。

@@ -254,6 +254,23 @@ def case_photo_url():
     expect_error(one({"type": "cover", "title": "t", "image": "data:image/png;base64,AAAA"}), "url2", "URL は使えない")
 
 
+def case_photo_image_only():
+    """photo の全面の hide_text: 画像だけを敷く扉絵（幕も文字も出さない。見出しはページの名前として持つだけ）。出典だけは
+    右下に小さく。左右・帯には使えない・見出しは要る（ADR 0026）。"""
+    html, _ = build(one({"type": "photo", "image": "assets/meeting.png", "headline": "扉の題", "hide_text": True}), "photo-only")
+    page = pathlib.Path(html).read_text(encoding="utf-8").split("<section", 2)[1]
+    assert "<h1" not in page and 'class="scrim"' not in page, "画像だけのページに文字や幕を出した"
+    assert 'class="photo"' in page and "width:1920px; height:1080px" in page, "全面の画像が無い"
+    assert "扉の題" not in page, "見出しを画面に出した"
+    html, _ = build(one({"type": "photo", "image": "assets/meeting.png", "headline": "扉の題", "hide_text": True,
+                         "caption": "出典: 記事の題 https://example.com/"}), "photo-only-cap")
+    page = pathlib.Path(html).read_text(encoding="utf-8").split("<section", 2)[1]
+    assert "<h1" not in page and "出典: 記事の題" in page and 'data-name="写真の出典"' in page
+    expect_error(one({"type": "photo", "image": "assets/meeting.png", "hide_text": True}), "photo-only-nohead", "headline が無い")
+    expect_error(one({"type": "photo", "image": "assets/meeting.png", "headline": "h", "layout": "left", "hide_text": True}),
+                 "photo-left-hide", "layout: full のときだけ")
+
+
 def case_missing_image():
     expect_error(one({"type": "photo", "image": "assets/nai.png", "headline": "h"}), "noimg", "画像が無い", "nai.png")
 
