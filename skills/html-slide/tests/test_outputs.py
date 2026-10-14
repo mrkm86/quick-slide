@@ -92,7 +92,8 @@ def case_print_html():
 def _pages(pdf: pathlib.Path) -> int | None:
     if not shutil.which("pdfinfo"):
         return None
-    r = subprocess.run(["pdfinfo", str(pdf)], capture_output=True, text=True, encoding="utf-8")
+    # Windows の pdfinfo は題名などを cp932 で出すことがある。読めない字は置き換える（見るのは Pages: の行だけ）
+    r = subprocess.run(["pdfinfo", str(pdf)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     return int(next(ln.split()[-1] for ln in r.stdout.splitlines() if ln.startswith("Pages:")))
 
 
@@ -119,7 +120,7 @@ def case_deck_formats():
     info = json.loads((out / "deck-info.json").read_text(encoding="utf-8"))
     assert info["outputs"]["format"] == ["pdf", "png", "thumbs"] and len(info["outputs"]["png"]) == n
     if shutil.which("pdfinfo"):
-        r = subprocess.run(["pdfinfo", str(out / "deck.pdf")], capture_output=True, text=True, encoding="utf-8")
+        r = subprocess.run(["pdfinfo", str(out / "deck.pdf")], capture_output=True, text=True, encoding="utf-8", errors="replace")
         assert "960 x 540 pts" in r.stdout, "PDF のページが PPTX と同じ 13.333×7.5 インチでない"
     rc = H.main(["deck", "--script", str(script), "--out", str(out), "--no-odp", "--no-fill"])
     assert rc == 0 and (out / "deck.pptx").is_file(), rc

@@ -39,7 +39,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from urllib.parse import unquote
 
 from ..engines import engine_for
 from ..errors import NotFoundError
@@ -118,7 +117,7 @@ def frame_document(html: str, base: str, fonts_dir: Path) -> str:
     外へ取りに行かせない）。`base` は `/present/<デッキ>/<回>`。
     """
     def font(m: re.Match[str]) -> str:
-        path = unquote(m.group(1))
+        path = W.font_path_of_url(m.group(1))
         name = W.present_font_name(path)
         if (fonts_dir / name).is_file():
             return f'url("{base}/fonts/{name}")'

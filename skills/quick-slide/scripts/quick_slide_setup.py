@@ -62,6 +62,9 @@ BROWSER_PY = SKILLS_DIR / "html-slide" / "scripts" / "browser.py"
 # python と py -3 で版も site-packages も違うことがある。A1）
 SETUP_CMD = (subprocess.list2cmdline if os.name == "nt" else shlex.join)(
     [sys.executable, str(Path(__file__).resolve()), "--setup"])
+# 入れるコマンドに渡す環境。子の Python（pip・playwright）も UTF-8 で出させる（この出力に混ざるので）。
+# Playwright は入れるときに「使っていない版」の Chromium を消すが、ほかの道具が使っている版も消えるので消させない
+INSTALL_ENV = {**os.environ, "PYTHONUTF8": "1", "PLAYWRIGHT_SKIP_BROWSER_GC": "1"}
 PLAYWRIGHT_INSTALL_CMD = (subprocess.list2cmdline if os.name == "nt" else shlex.join)(
     [sys.executable, "-m", "playwright", "install", "chromium"])
 
@@ -619,7 +622,7 @@ def setup(home: Path, *, yes: bool) -> int:
         if st["id"] in ("puppeteer-core", "chrome"):
             Path(st.get("path") or (home / "engines" / "html-slide" / "node")).mkdir(parents=True, exist_ok=True)
         try:
-            r = subprocess.run(cmd, stdin=subprocess.DEVNULL, timeout=1800)
+            r = subprocess.run(cmd, stdin=subprocess.DEVNULL, timeout=1800, env=INSTALL_ENV)
             ok = r.returncode == 0
         except (OSError, subprocess.SubprocessError) as exc:
             say(f"  動きませんでした（{exc.__class__.__name__}）")

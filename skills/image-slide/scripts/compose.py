@@ -27,7 +27,14 @@ def normalize(src: pathlib.Path, background: str):
     """(1920×1080 の RGB 画像, 何をしたか)。"""
     from PIL import Image, ImageOps
     with Image.open(src) as im:
-        im = im.convert("RGB")
+        if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+            # 透明な所は地の色に合成する（そのまま RGB にすると黒になり、絵の縁が欠けて見える。Codex が透明を含む絵を
+            # 返すことがある。N27）
+            rgba = im.convert("RGBA")
+            im = Image.new("RGB", rgba.size, _rgb(background))
+            im.paste(rgba, mask=rgba.getchannel("A"))
+        else:
+            im = im.convert("RGB")
     w, h = im.size
     target = L.W / L.H
     ratio = w / h

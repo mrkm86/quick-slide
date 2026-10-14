@@ -68,11 +68,15 @@ run "時刻表: s3 の拍2 は 7.8+17.8+4.2 = 29.8 秒から"            bash -c
 run "MIDI: 音符から events.json と song.mid"     bash -c "cd '$TMP' && $PY -c \"import sys; sys.path.insert(0,'$SK/scripts/bgm'); from midi import Song; s=Song(84); s.program(0,0); s.note(1,0,60,80,.5); s.drum(2,49,100); print(s.save('$TMP/bgm'))\" && head -c 4 '$TMP/bgm/song.mid' | grep -q MThd && grep -q '\"k\": \"pc\"' '$TMP/bgm/events.json'"
 if $PY -c "import playwright" 2>/dev/null; then
   run "一覧のサムネイルが場面の数（3）だけ入る"   bash -c "$PY -c \"import re,json,sys; h=open('$TMP/ok/index.html').read(); m=re.search(r'id=.ms-thumbs.>(.*?)</script>', h); d=json.loads(m.group(1)); sys.exit(0 if sorted(d)==['s1','s2','s3'] and all(v.startswith('data:image/webp') for v in d.values()) else 1)\""
-  ffmpeg -loglevel error -f lavfi -i "sine=frequency=440:duration=60" -c:a aac "$TMP/bgm.m4a"
-  $PY "$SK/scripts/build.py" "$SK/templates/deck.html" --out "$TMP/v/index.html" --no-thumbs --logo none --bgm "$TMP/bgm.m4a" >/dev/null
-  run "動画: 3.1 から 3 秒・10fps で映像と音が 3 秒"  vid_with_sound
-  run "動画: --no-sfx --no-bgm なら音の流れが無い"   vid_silent
-  run "動画: --start が台本の外なら rc=2"          rc2 $PY "$SK/scripts/record.py" "$TMP/v/index.html" --start 9.1 --seconds 1
+  if command -v ffmpeg >/dev/null 2>&1; then   # 動画の試験は ffmpeg があるときだけ（Quick Slide の導入は ffmpeg を入れない）
+    ffmpeg -loglevel error -f lavfi -i "sine=frequency=440:duration=60" -c:a aac "$TMP/bgm.m4a"
+    $PY "$SK/scripts/build.py" "$SK/templates/deck.html" --out "$TMP/v/index.html" --no-thumbs --logo none --bgm "$TMP/bgm.m4a" >/dev/null
+    run "動画: 3.1 から 3 秒・10fps で映像と音が 3 秒"  vid_with_sound
+    run "動画: --no-sfx --no-bgm なら音の流れが無い"   vid_silent
+    run "動画: --start が台本の外なら rc=2"          rc2 $PY "$SK/scripts/record.py" "$TMP/v/index.html" --start 9.1 --seconds 1
+  else
+    echo "  - ffmpeg が無いので動画の試験は飛ばす"
+  fi
   run "雛形の全拍: NG 0・警告 0"                 bash -c "$PY '$SK/scripts/check.py' '$TMP/ok/index.html' --out '$TMP/ok/check' --wait 1600 | tail -1 | grep -q 'NG 0 ・ 警告 0'"
   run "inspect.md に拍ごとの文字と台本が入る"     bash -c "grep -q '## s3 値がマスへ飛ぶ' '$TMP/ok/check/inspect.md' && grep -q '話す台本: 値が飛んで' '$TMP/ok/check/inspect.md'"
 else

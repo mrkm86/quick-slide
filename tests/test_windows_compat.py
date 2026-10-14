@@ -392,3 +392,13 @@ class ReplaceTests(unittest.TestCase):
                     mock.patch.object(OS.os, "replace", flaky):
                 OS.replace(src, dst)
             self.assertEqual((len(calls), dst.read_text(encoding="utf-8")), (3, "new"))
+
+
+class FontUrlTests(unittest.TestCase):
+    def test_font_paths_come_back_from_windows_file_urls(self) -> None:
+        """`file:///C:/…` の字体の URL から、Windows でも開けるパスを取り出す（`/C:/…` にしない。N29）。"""
+        from quick_slide.render.workspace import font_path_of_url
+
+        self.assertEqual(font_path_of_url("/C:/Windows/Fonts/YuGothR.ttc"), "C:/Windows/Fonts/YuGothR.ttc")
+        self.assertEqual(font_path_of_url("/Applications/A%20B/YuGothR.ttc"), "/Applications/A B/YuGothR.ttc")
+        self.assertEqual(font_path_of_url("/c:/x/%E3%83%92.ttc"), "c:/x/ヒ.ttc")

@@ -254,6 +254,14 @@ def t_normalize():
         im, info = C.normalize(p, "#ffffff")
         check(im.size == (L.W, L.H), f"{size} → {im.size}")
         check(info["op"] == op, f"{size} は {op} のはずが {info['op']}")
+    # 透明を含む絵は、透明な所を地の色に合成する（黒にしない。N27）
+    p = root / "transparent.png"
+    rgba = Image.new("RGBA", (1672, 941), (0, 0, 0, 0))
+    rgba.paste((20, 40, 90, 255), (600, 300, 1000, 600))
+    rgba.save(p)
+    im, _ = C.normalize(p, "#f5f0e6")
+    check(im.mode == "RGB" and im.getpixel((10, 10)) == (0xf5, 0xf0, 0xe6), f"透明な所が地の色でない: {im.getpixel((10, 10))}")
+    check(im.getpixel((L.W // 2, L.H // 2)) == (20, 40, 90), f"絵の中身が変わった: {im.getpixel((L.W // 2, L.H // 2))}")
 
 
 def t_band_check():

@@ -57,7 +57,8 @@ PRESENT = "present"
 # 書き出しの部品（ページごとの PPTX の部品と、deck.pdf の何ページ目か）の置き場（回のフォルダの中）
 PARTS = "parts"
 PARTS_FILE = "parts.json"
-PRESENT_FONT_TYPES = frozenset({".ttf", ".otf", ".woff", ".woff2"})
+# 游ゴシック（mac は PowerPoint 同梱・Windows は OS）・ヒラギノ・メイリオは .ttc（TrueType Collection。N30）
+PRESENT_FONT_TYPES = frozenset({".ttf", ".ttc", ".otf", ".woff", ".woff2"})
 _FONT_URL = re.compile(r'url\("file://([^"]+)"\)')
 _ASSET_SRC = re.compile(r'\bsrc="assets/([^"/]+)"')
 
@@ -215,6 +216,12 @@ def snapshot(mode: str, work: Path, run_dir: Path, pages: list[dict[str, Any]]) 
     return out
 
 
+def font_path_of_url(captured: str) -> str:
+    """`url("file://…")` の `…` から字体ファイルのパス。Windows の `file:///C:/…` は `/C:/…` になるので、先頭の `/` を落とす（N29）。"""
+    path = unquote(captured)
+    return path[1:] if re.match(r"^/[A-Za-z]:/", path) else path
+
+
 def present_font_name(path: str) -> str:
     """字体ファイルの、発表の画面での名前（元のパスの sha256 の先頭 16 桁＋拡張子）。配る側も同じ式で引く。"""
     return hashlib.sha256(path.encode("utf-8")).hexdigest()[:16] + Path(path).suffix.lower()
@@ -240,7 +247,7 @@ def snapshot_present(work: Path, run_dir: Path) -> bool:
         if asset.is_file():
             _link(asset, dest / "assets" / m.group(1))
     for m in _FONT_URL.finditer(html):
-        path = unquote(m.group(1))
+        path = font_path_of_url(m.group(1))
         font = Path(path)
         if font.suffix.lower() in PRESENT_FONT_TYPES and font.is_file():
             _link(font, dest / "fonts" / present_font_name(path))

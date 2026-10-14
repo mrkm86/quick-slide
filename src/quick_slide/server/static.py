@@ -257,6 +257,7 @@ PRESENT_ASSET_TYPES: dict[str, str] = {
 }
 PRESENT_FONT_TYPES: dict[str, str] = {
     ".ttf": "font/ttf",
+    ".ttc": "font/collection",
     ".otf": "font/otf",
     ".woff": "font/woff",
     ".woff2": "font/woff2",
