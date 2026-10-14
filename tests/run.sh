@@ -20,6 +20,8 @@ unset QUICK_SLIDE_HOME QUICK_SLIDE_BROWSER
 REFUSE="$ROOT/tests/fakes/refuse.py"
 chmod +x "$ROOT"/tests/fakes/fake_*.py "$REFUSE" "$ROOT"/skills/*/tests/fake_codex.py 2>/dev/null
 export QUICK_SLIDE_CLAUDE="$REFUSE" QUICK_SLIDE_CODEX_TEXT="$REFUSE" HTML_SLIDE_CODEX="$REFUSE" IMAGE_SLIDE_CODEX="$REFUSE"
+# PATH の外のよくある置き場（npm のグローバル・Homebrew など）は探させない。そこにある本物の claude・codex を見つけてしまう
+export QUICK_SLIDE_CLI_DIRS=""
 # 雛形の XXXXXX は GNU の mktemp（Windows の Git Bash）が要る。`-t <名前>` は mac でしか通らない
 TMPBASE="${TMPDIR:-/tmp}"   # mac の TMPDIR は / で終わる。// が残ると、パスを見比べる試験がずれる
 SCRATCH="$(mktemp -d "${TMPBASE%/}/quick-slide-tests.XXXXXX")"

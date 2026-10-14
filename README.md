@@ -51,6 +51,10 @@ python3 <プラグイン>/skills/quick-slide/scripts/quick_slide_setup.py --setu
 Windows では `python3` を `py -3` に読み替える（`python3` は Microsoft Store のスタブで動かない）。診断は Windows では、
 置き場のアクセス権・OneDrive の同期先の中に無いか・長いパスも確かめる（`docs/adr/0012-windows-file-permissions.md`）。
 
+`node`・`codex`・`claude` は、PATH で見つからなければよくある置き場（npm のグローバルの置き場・Homebrew・nvm など）も探す
+（診断もサーバも同じ）。Codex の砂場の中で走った診断は、入っているものが見えないことがあるので、足りないと出ても入れる案内はせず、
+自分のターミナルで `--doctor` を流すよう言う（`docs/adr/0017-cli-outside-path.md`）。
+
 | 何 | `--setup` が入れるか | どこへ |
 |---|---|---|
 | Python 3.10 以上 | 入れない（python.org か Homebrew。Windows は python.org か `winget install -e --id Python.Python.3.13 --scope user`） | — |

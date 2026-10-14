@@ -63,6 +63,16 @@ python3 "${SKILL_DIR}/scripts/quick_slide_setup.py" --doctor
 
 `quick_slide_start.py --doctor`・`--setup [--yes]` でも同じものが走る。
 
+#### Codex から使うとき
+
+Codex は会話の中のコマンドを砂場（サンドボックス）で走らせる。砂場の中では PATH が利用者のターミナルと違い、**入っている
+`codex`・`claude`・Node が見えないことがある**。診断の JSON の `inside_codex` が真のとき:
+
+- Node・`codex`・台本を書く CLI が `ng` でも、**入れる案内（`npm install -g …`・`codex login`）をすぐに会話に書かない。**
+  まず利用者に、自分のターミナルで `--doctor` を走らせてもらう（コマンドは出力の `fix` にある）。そこでも足りないと出たら入れてもらう
+- 診断・サーバ・台本係・描き係は、PATH で見つからなければよくある置き場（npm のグローバルの置き場・Homebrew・nvm など）も探す。
+  砂場の中から起こしたサーバでも、ふつうの置き場に入っていれば見つかる
+
 ### 0. 最初の 1 冊の作り方を決める（2 つ）
 
 頼まれ方で、構成を見せてから描くか、見せずにそのまま描くかを決める。
@@ -271,6 +281,7 @@ PPTX・PDF は**画面の右上のボタン**で書き出す（画面に出て�
 | `code: wait_timeout` | まだ描いている。`url` を会話に書き、画面で進みを見てもらう（仕事は止まっていない） |
 | `status: revise_failed` / `result: failed` | `result_message`（サーバの 1 文）をそのまま伝える |
 | 「描くのに要るもの（Node・Chrome など）が足りません」・`dependency` | 上の「導入を確かめる」。`--doctor` → 利用者に聞いて `--setup --yes` |
+| Codex の中で `--doctor` が「`codex` CLI が見つかりません」「台本を書く CLI が見つかりません」と言う（`inside_codex: true`） | 入っているのに砂場から見えないだけのことがある。入れる案内をせず、利用者のターミナルで `--doctor` を走らせてもらう（上の「Codex から使うとき」） |
 | 画面に「ログインできていません」の帯 | 台本を書く CLI（`claude` は /login、`codex` は `codex login`）か、絵を描く Codex（`codex login`）のログインが切れている。帯の文のとおりに伝える |
 
 ## 秘匿

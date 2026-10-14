@@ -21,6 +21,11 @@
 
 Node・`codex` CLI・PowerPoint（字体）は入れない（入れ方を言う）。`codex login` もしない（コマンドを言う）。
 
+`node`・`npm`・`codex`・`claude` は、PATH で見つからなければよくある置き場（npm のグローバルの置き場など）も探す。
+サーバとその子も同じ探し方をする（同じ中身の `clidirs.py`）。**Codex の中で走らせたとき**（`CODEX_SANDBOX`・`CODEX_THREAD_ID`
+などの印がある）は、入っているものが見えないことがあるので、それらが見つからなくても入れる案内はせず、利用者のターミナルで
+`--doctor` を走らせて確かめてもらう（JSON の `inside_codex`）。
+
 出力: 日本語の行のあと、**stdout の最終行は JSON 1 行**。終了コードは 0=揃っている（入れ終えた）/ 2=入力の誤り /
 4=足りないものがある（入れられなかった）。標準ライブラリだけを使う（サーバ本体も import しない）。
 """
@@ -32,6 +37,7 @@ import errno
 import json
 import os
 import platform
+import runpy
 import shlex
 import shutil
 import socket
@@ -57,14 +63,21 @@ YU_FILES = ("YuGothR.ttc", "YuGothB.ttc")
 CHROME_SPEC = "chrome-headless-shell@stable"
 
 SKILLS_DIR = Path(__file__).resolve().parents[2]
+# CLI の探し方（サーバと同じ中身）。import せずに読む（配ったプラグインの中に __pycache__ を書かない）
+CLI = runpy.run_path(str(Path(__file__).resolve().with_name("clidirs.py")), run_name="clidirs")
 BROWSER_PY = SKILLS_DIR / "html-slide" / "scripts" / "browser.py"
 # 入れるときに打つコマンド。この診断を動かしている Python そのもので書く（Windows の python3 は Store のスタブで、
 # python と py -3 で版も site-packages も違うことがある。A1）
 SETUP_CMD = (subprocess.list2cmdline if os.name == "nt" else shlex.join)(
     [sys.executable, str(Path(__file__).resolve()), "--setup"])
+DOCTOR_CMD = (subprocess.list2cmdline if os.name == "nt" else shlex.join)(
+    [sys.executable, str(Path(__file__).resolve()), "--doctor"])
+# Codex が会話の中でコマンドを走らせるときに付く印。どれかがあれば「Codex の中」とみなす（Windows はサンドボックスの印が
+# 付かないことがあるので、会話の印も見る）
+CODEX_MARKERS = ("CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED", "CODEX_THREAD_ID", "CODEX_SESSION_ID")
 # 入れるコマンドに渡す環境。子の Python（pip・playwright）も UTF-8 で出させる（この出力に混ざるので）。
 # Playwright は入れるときに「使っていない版」の Chromium を消すが、ほかの道具が使っている版も消えるので消させない
-INSTALL_ENV = {**os.environ, "PYTHONUTF8": "1", "PLAYWRIGHT_SKIP_BROWSER_GC": "1"}
+INSTALL_ENV = {**CLI["with_search_path"](os.environ), "PYTHONUTF8": "1", "PLAYWRIGHT_SKIP_BROWSER_GC": "1"}
 PLAYWRIGHT_INSTALL_CMD = (subprocess.list2cmdline if os.name == "nt" else shlex.join)(
     [sys.executable, "-m", "playwright", "install", "chromium"])
 
@@ -75,6 +88,23 @@ def data_root(explicit: str | None) -> Path:
         if value:
             return Path(value).expanduser().resolve()
     return (Path.home() / ".quick-slide").resolve()
+
+
+def inside_codex() -> bool:
+    return any(os.environ.get(name) for name in CODEX_MARKERS)
+
+
+def which(command: str) -> str | None:
+    """PATH と、よくある置き場から探す（サーバと同じ探し方）。"""
+    return CLI["which"](command)
+
+
+def maybe_hidden(fix: str) -> str:
+    """見つからないときの直し方。Codex の中では、入れる前にターミナルで確かめてもらう（見えないだけのことがある）。"""
+    if not inside_codex():
+        return fix
+    return (f"Codex の中からは、入っているものが見えないことがあります。すぐに入れずに、利用者のターミナルで `{DOCTOR_CMD}` を"
+            f"走らせて確かめてください（そこでも見つからなければ: {fix}）")
 
 
 def say(line: str = "") -> None:
@@ -90,7 +120,8 @@ def emit(obj: dict[str, Any]) -> None:
 def run(cmd: list[str], *, env: dict[str, str] | None = None, timeout: float = 20.0) -> tuple[int | None, str]:
     """短いコマンドを走らせ、(終了コード, 標準出力＋標準エラー) を返す。起動できなければ (None, "")。"""
     # 子の Python も UTF-8 で出させる（Windows の既定は cp932）。ほかの道具の出力が UTF-8 でなくても落ちない
-    env = {**(os.environ if env is None else env), "PYTHONUTF8": "1"}
+    # PATH にはよくある置き場も足す（サーバが子を起こすときと同じ。npm の包みの codex は node を PATH で探す）
+    env = {**CLI["with_search_path"](os.environ if env is None else env), "PYTHONUTF8": "1"}
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env, stdin=subprocess.DEVNULL,
                            encoding="utf-8", errors="replace")
@@ -159,10 +190,10 @@ def check_python(rep: Report) -> list[str]:
 
 
 def check_node(rep: Report) -> dict[str, Any]:
-    node = shutil.which("node")
+    node = which("node")
     if not node:
         rep.add("node", "Node", "ng", "見つかりません",
-                fix=f"Node {NODE_MIN} 以上を入れてください（nodejs.org のインストーラか `brew install node`。管理者の権限が要ることがあるので、Quick Slide は入れません）",
+                fix=maybe_hidden(f"Node {NODE_MIN} 以上を入れてください（nodejs.org のインストーラか `brew install node`。管理者の権限が要ることがあるので、Quick Slide は入れません）"),
                 needed_for=("presentation",))
         rep.add("npm", "npm", "ng", "見つかりません（Node と一緒に入ります）", needed_for=())
         return {"node": None, "npm": None}
@@ -175,7 +206,7 @@ def check_node(rep: Report) -> dict[str, Any]:
     ok = major >= NODE_MIN
     rep.add("node", "Node", "ok" if ok else "ng", f"{version}（{node}）",
             fix=None if ok else f"Node {NODE_MIN} 以上に上げてください", needed_for=("presentation",))
-    npm = shutil.which("npm")
+    npm = which("npm")
     rep.add("npm", "npm", "ok" if npm else "warn", npm or "見つかりません（puppeteer-core と Chrome を入れるのに使います）")
     return {"node": node, "npm": npm}
 
@@ -278,18 +309,18 @@ def check_motion(rep: Report) -> dict[str, Any]:
 def codex_cli() -> str | None:
     value = os.environ.get("IMAGE_SLIDE_CODEX")
     if value:
-        return value if Path(value).is_file() else shutil.which(value)
-    return shutil.which("codex")
+        return value if Path(value).is_file() else which(value)
+    return which("codex")
 
 
 def check_codex(rep: Report) -> None:
     codex = codex_cli()
     if not codex:
         rep.add("codex", "codex CLI（絵を描く）", "ng", "見つかりません",
-                fix="`npm install -g @openai/codex` で入れてください（全体に入れるので Quick Slide は入れません）",
+                fix=maybe_hidden("`npm install -g @openai/codex` で入れてください（全体に入れるので Quick Slide は入れません）"),
                 needed_for=("pitch", "images"))
         rep.add("codex_login", "ChatGPT のログイン（codex）", "ng", "codex が無いので確かめられません",
-                fix="codex を入れたあと `codex login`（ChatGPT でログイン）", needed_for=("pitch", "images"))
+                fix=maybe_hidden("codex を入れたあと `codex login`（ChatGPT でログイン）"), needed_for=("pitch", "images"))
         return
     rep.add("codex", "codex CLI（絵を描く）", "ok", codex, needed_for=("pitch", "images"))
     rc, out = run([codex, "login", "status"])
@@ -307,12 +338,12 @@ def check_codex(rep: Report) -> None:
 
 
 def check_writers(rep: Report) -> None:
-    claude = os.environ.get("QUICK_SLIDE_CLAUDE") or shutil.which("claude")
-    codex = os.environ.get("QUICK_SLIDE_CODEX_TEXT") or shutil.which("codex")
+    claude = os.environ.get("QUICK_SLIDE_CLAUDE") or which("claude")
+    codex = os.environ.get("QUICK_SLIDE_CODEX_TEXT") or which("codex")
     found = [n for n, p in (("claude", claude), ("codex", codex)) if p]
     rep.add("writer", "台本を書く CLI（claude / codex）", "ok" if found else "ng",
             "・".join(found) + "（会話しているアプリと同じものを使います）" if found else "どちらも見つかりません",
-            fix=None if found else "Claude Code（`claude`）か Codex（`codex`）を入れて、ログインしてください",
+            fix=None if found else maybe_hidden("Claude Code（`claude`）か Codex（`codex`）を入れて、ログインしてください"),
             needed_for=("all",), found=found)
 
 
@@ -493,6 +524,8 @@ MARK = {"ok": "OK", "warn": "注意", "ng": "足りない"}
 
 def print_report(rep: Report, home: Path) -> None:
     say(f"Quick Slide の導入の確かめ（データの置き場: {home}・{platform.system()} {platform.machine()}）")
+    if inside_codex():
+        say("  ※ Codex の中で確かめています。Node・codex・claude が「足りない」と出ても、入っているのに見えないだけのことがあります")
     for i in rep.items:
         say(f"  [{MARK[i['level']]}] {i['label']}: {i['detail']}")
         if i["fix"] and i["level"] != "ok":
@@ -526,7 +559,7 @@ def plan_steps(rep: Report, facts: dict[str, Any], home: Path) -> tuple[list[dic
     nm = (found.get("node_modules") or {}) if found else {}
     ch = (found.get("chrome") or {}) if found else {}
     if not node_bin:
-        manual.append("Node: nodejs.org のインストーラか `brew install node` で入れてください（そのあと、もう一度 --setup）")
+        manual.append("Node: " + maybe_hidden("nodejs.org のインストーラか `brew install node` で入れてください（そのあと、もう一度 --setup）"))
     target_nm = engine / "node" / "node_modules"
     if node_bin and nm and not nm.get("ok"):
         if nm.get("source") in ("env", "config"):
@@ -571,7 +604,7 @@ def browsers_command(step: dict[str, Any], npm: str | None, node_bin: str | None
     for exe in (nm / ".bin" / n for n in names):
         if exe.is_file():
             return [str(exe), "install", CHROME_SPEC, "--path", step["path"]]
-    npx = shutil.which("npx") or (str(Path(npm).with_name("npx")) if npm else None)
+    npx = which("npx") or (str(Path(npm).with_name("npx")) if npm else None)
     if npx and Path(npx).exists():
         return [npx, "--yes", "@puppeteer/browsers", "install", CHROME_SPEC, "--path", step["path"]]
     return None
@@ -658,7 +691,7 @@ def main(argv: list[str] | None = None) -> int:
     ready = rep.ready()
     ok = all(i["level"] != "ng" for i in rep.items)
     emit({"status": "doctor", "ok": ok, "ready": ready, "home": str(home), "checks": rep.items,
-          "setup": None if ok else SETUP_CMD})
+          "setup": None if ok else SETUP_CMD, "inside_codex": inside_codex()})
     return EXIT_OK if ok else EXIT_FAILED
 
 

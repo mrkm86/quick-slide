@@ -6,6 +6,10 @@
 入れ子の印（会話から起こしたサーバが受け継いだ「いま Claude Code / Codex の中にいる」という印）も消す。
 残っていると、子の CLI が自分を入れ子の会話だと思い込む。
 
+PATH の後ろには、よくある置き場（npm のグローバルの置き場など。`clidirs.py`）のうち在るものを足す。Codex のサンドボックスの
+中から起こされたサーバは、利用者のシェルの PATH を受け継がないことがあり、そのままだと子が `claude`・`codex`・`node` を
+見失う（エンジンは `codex` と `node` を PATH で探す）。
+
 子の Python（エンジン）は UTF-8 モードで起こす（`PYTHONUTF8=1`）。Windows の既定の cp932 で stdout・stderr を書くと、
 サーバは UTF-8 で読むので化けて、エンジンの言う理由（「codex が見つからない」など）を読み違える。
 """
@@ -15,6 +19,8 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from pathlib import Path
+
+from . import clidirs
 
 # 従量課金に切り替わるキー。値は読まない・出さない・渡さない
 API_KEY_VARS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AZURE_OPENAI_API_KEY", "CODEX_API_KEY")
@@ -27,7 +33,7 @@ NESTED_SESSION_VARS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_ENTR
 
 def child_env(*, home: Path, extra: Mapping[str, str] | None = None,
               base: Mapping[str, str] | None = None) -> dict[str, str]:
-    """`base`（既定は今の環境）＋`extra` から、API キーと入れ子の印を**最後に**消した環境。
+    """`base`（既定は今の環境）＋`extra` から、API キーと入れ子の印を**最後に**消し、PATH によくある置き場を足した環境。
 
     `QUICK_SLIDE_HOME` はこのサーバの置き場に揃える（エンジンの設定・出力の既定がそこを見る）。
     """
@@ -38,4 +44,4 @@ def child_env(*, home: Path, extra: Mapping[str, str] | None = None,
     env["QUICK_SLIDE_HOME"] = str(home)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["PYTHONUTF8"] = "1"
-    return env
+    return clidirs.with_search_path(env)

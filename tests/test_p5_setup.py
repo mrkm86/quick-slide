@@ -59,6 +59,8 @@ class SetupBase(unittest.TestCase):
                "LANG": "ja_JP.UTF-8", "PYTHONDONTWRITEBYTECODE": "1", "TMPDIR": str(self.tmp),
                "IMAGE_SLIDE_CODEX": runnable(FAKE_CODEX), "FAKE_CODEX_LOG": str(self.tmp / "codex-log"),
                "QUICK_SLIDE_CLAUDE": runnable(FAKES / "fake_claude.py"),
+               # PATH の外のよくある置き場は探させない（そこにある本物の claude・codex・node を見つけてしまう）
+               "QUICK_SLIDE_CLI_DIRS": "",
                # 偽物の Playwright（モーションに要る。本物の Chromium を探さない・入れない）。既定は入っている。
                # 本物の pip も呼ばせない（no_pip）。HOME・USERPROFILE を差し替えても、この Python の利用者の場所の
                # パッケージは見えるようにする（PYTHONUSERBASE。見えないと診断が「無い」と言い、pip で入れに行く。N19）
@@ -132,6 +134,37 @@ class DoctorTests(SetupBase):
         self.assertEqual(c["codex_login"]["level"], "ng")
         self.assertIn("codex login", c["codex_login"]["fix"])
         self.assertEqual(c["writer"]["level"], "ng")
+
+    def test_inside_codex_it_does_not_tell_to_install_what_may_only_be_hidden(self) -> None:
+        """Codex の砂場の中では、入っている codex・claude が見えないことがある。入れる案内の前にターミナルで確かめてもらう。"""
+        for marker in ("CODEX_SANDBOX", "CODEX_THREAD_ID"):
+            with self.subTest(marker=marker):
+                rc, text, out = self.run_tool("--doctor", IMAGE_SLIDE_CODEX="", QUICK_SLIDE_CLAUDE="", **{marker: "1"})
+                c = self.checks(out)
+                self.assertTrue(out["inside_codex"])
+                self.assertEqual((c["codex"]["level"], c["writer"]["level"]), ("ng", "ng"))
+                for key in ("codex", "codex_login", "writer"):
+                    self.assertTrue(c[key]["fix"].startswith("Codex の中からは、入っているものが見えないことがあります"), c[key]["fix"])
+                    self.assertIn("--doctor", c[key]["fix"])
+                self.assertIn("Codex の中で確かめています", text)
+        # 外（利用者のターミナル）では、いままでどおり入れ方を言う
+        rc, text, out = self.run_tool("--doctor", IMAGE_SLIDE_CODEX="", QUICK_SLIDE_CLAUDE="")
+        c = self.checks(out)
+        self.assertFalse(out["inside_codex"])
+        self.assertTrue(c["codex"]["fix"].startswith("`npm install -g @openai/codex`"), c["codex"]["fix"])
+        self.assertNotIn("Codex の中で確かめています", text)
+
+    def test_it_finds_the_clis_outside_path_like_the_server_does(self) -> None:
+        extra = self.tmp / "npm-global"
+        extra.mkdir()
+        if os.name == "nt":
+            (extra / "claude.cmd").write_text("@exit /b 0\r\n", encoding="ascii", newline="")
+        else:
+            (extra / "claude").write_text("#!/bin/sh\nexit 0\n", encoding="ascii")
+            (extra / "claude").chmod(0o755)
+        rc, text, out = self.run_tool("--doctor", QUICK_SLIDE_CLAUDE="", QUICK_SLIDE_CLI_DIRS=str(extra))
+        c = self.checks(out)
+        self.assertEqual((c["writer"]["level"], c["writer"]["found"]), ("ok", ["claude"]))
 
     def test_the_start_script_runs_the_doctor_too(self) -> None:
         rc, text, out = self.run_tool("--doctor", script=START)
