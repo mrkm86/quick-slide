@@ -31,7 +31,14 @@ export HTML_SLIDE_CACHE="$SCRATCH/html-slide-cache" IMAGE_SLIDE_CACHE="$SCRATCH/
 export CODEX_HOME="$SCRATCH/no-codex-home"
 
 cd "$ROOT"
-"$PY" -m unittest discover -s tests -t tests "$@"
+# `python -m unittest` と同じ。ただし試験を回すこのプロセスの表示（-v の試験名・失敗の報告）だけは UTF-8 にする
+# （Windows の既定は cp932）。PYTHONIOENCODING や -X utf8 は使わない: 子のプロセスや本体の open() にも効いて、
+# 本体の文字コードの書き忘れを隠してしまう
+"$PY" -c 'import sys, unittest
+for stream in (sys.stdout, sys.stderr):
+    stream.reconfigure(encoding="utf-8")
+sys.argv[0] = "python -m unittest"
+unittest.main(module=None)' discover -s tests -t tests "$@"
 rc=$?
 # 念のため（PYTHONDONTWRITEBYTECODE を外して走らせた後でも残さない）
 find "$ROOT/src" "$ROOT/tests" "$ROOT/skills" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null   # エンジンを子で呼ぶ試験が skills にも残す

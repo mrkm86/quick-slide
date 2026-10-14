@@ -1,8 +1,8 @@
 """OS の差（mac・Linux と Windows）を吸収する 1 か所。標準ライブラリだけで書く。
 
-**同じ中身のファイルを 3 か所に置く**: `src/quick_slide/oscompat.py`（サーバ）と、`skills/html-slide/scripts/`・
-`skills/image-slide/scripts/`（エンジン。単体でも使うのでサーバを import しない）。片方を直したら全部に写す
-（試験がバイト単位で見比べる）。
+**同じ中身のファイルを 4 か所に置く**: `src/quick_slide/oscompat.py`（サーバ）と、`skills/html-slide/scripts/`・
+`skills/image-slide/scripts/`（エンジン。単体でも使うのでサーバを import しない）・`skills/illust/scripts/`（ほかの
+スキルを読み込まない）。motion-slide は html-slide のものを使う。片方を直したら全部に写す（試験がバイト単位で見比べる）。
 
 | やること | mac・Linux | Windows |
 |---|---|---|

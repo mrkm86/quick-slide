@@ -22,6 +22,9 @@ mac・Linux と Windows で書き方が変わるものを、`oscompat.py` に寄
 - **同じ中身のファイルを 3 か所に置く**: `src/quick_slide/oscompat.py`（サーバ）、`skills/html-slide/scripts/oscompat.py`、
   `skills/image-slide/scripts/oscompat.py`。エンジンは単体でも使うので、サーバを import させない
   （`places.py` と同じ扱い）。試験が 3 つをバイト単位で見比べる
+  - 追記（Issue #28）: `skills/illust/scripts/oscompat.py` を足して 4 か所にした（illust はほかのスキルを読み込まない）。
+    motion-slide は写しを持たず、もともと読み込んでいる html-slide の `scripts/` の `oscompat.py` を使う。
+    ファイルの置き換え（`os.replace`・`os.rename`）は、サーバとすべてのスキルで `oscompat.replace` を通す
 - 標準ライブラリだけで書く（Windows の呼び出しは `ctypes`）
 
 ### Windows で孫ごと止める
