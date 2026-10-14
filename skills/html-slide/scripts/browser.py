@@ -33,7 +33,7 @@ import places as PL  # noqa: E402
 
 SKILL = "html-slide"
 SETUP_HINT = ("入れ方はスキルの references/deploy.md（Quick Slide から使うなら "
-              "`python3 <プラグイン>/skills/quick-slide/scripts/quick_slide_setup.py --setup`）")
+              "`python3 <プラグイン>/skills/quick-slide/scripts/quick_slide_setup.py --setup`。Windows は python3 を py -3 に）")
 
 
 def _cfg(cfg: dict | None) -> dict:

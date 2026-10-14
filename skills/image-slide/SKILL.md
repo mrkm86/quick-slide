@@ -27,7 +27,7 @@ description: html-slide と同じ台本（資料用の JSON）から、画像生
 | 区画に置いた前の絵を、色・スタイルを替えた後でも描き直さずに使う（呼ぶ側が前の版の絵を置いて組み直すとき） | `deck --keep 3,5`（[ADR 0017](docs/adr/0017-keep-placed-pictures.md)。`--redo` が勝つ） |
 | 描いた1枚を指示で直す（「Hana を右へ」「黒板の手描きに」） | `revise --page 4 --note "…"`（既定は微修正＝今の絵を土台に渡す。テイストを変えるなら `--remake`＝渡さない。参考画像は `--attach`・ADR 0012） |
 
-すべて `python3 <このスキルのフォルダ>/scripts/image_slide.py <入口> …`（引数は `--help`）。
+すべて `python3 <このスキルのフォルダ>/scripts/image_slide.py <入口> …`（引数は `--help`）。Windows では `python3` を `py -3` に読み替える（`python3` は Microsoft Store のスタブで動かない）。
 終了コード: 0=成功 / 1=実行時エラー（描けなかったページがある）/ 2=台本・引数の誤り / 4=依存不足・認証。
 
 ## Workflow: deck（資料を作る）

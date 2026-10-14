@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import os
 import re
 import subprocess
@@ -319,3 +320,43 @@ class UrlTests(unittest.TestCase):
             self.assertTrue(looks_like_url(url), url)
         for path in ("C:\\Users\\a\\b.png", "C:/Users/a/b.png", "c:b.png", "images/a.png", "/abs/a.png", "~/a.png"):
             self.assertFalse(looks_like_url(path), path)
+
+
+def _setup_module():
+    import importlib.util
+
+    path = ROOT / "skills" / "quick-slide" / "scripts" / "quick_slide_setup.py"
+    spec = importlib.util.spec_from_file_location("quick_slide_setup_for_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@unittest.skipUnless(os.name == "nt", "Windows のアクセス権（ACL）")
+class WindowsHomeAccessTests(unittest.TestCase):
+    """診断が置き場のアクセス権を SID で読めること（ADR 0012）。"""
+
+    def test_a_folder_in_the_profile_is_not_readable_by_everyone(self) -> None:
+        setup = _setup_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            readers = setup.windows_wide_readers(Path(tmp))
+        self.assertIsNotNone(readers, "アクセス権を調べられない")
+        self.assertNotIn("Everyone", readers)
+
+    def test_a_folder_shared_with_everyone_is_found(self) -> None:
+        setup = _setup_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            shared = Path(tmp) / "shared"
+            shared.mkdir()
+            granted = subprocess.run(["icacls", str(shared), "/grant", "*S-1-1-0:(OI)(CI)R"], capture_output=True)
+            self.assertEqual(granted.returncode, 0, granted.stderr)
+            self.assertIn("Everyone", setup.windows_wide_readers(shared))
+            self.assertIn("Everyone", setup.windows_wide_readers(shared / "not-yet"), "まだ無い置き場は親を見る")
+
+    def test_doctor_reports_the_home_access(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {**os.environ, "QUICK_SLIDE_HOME": str(Path(tmp) / "home")}
+            r = subprocess.run([sys.executable, str(ROOT / "skills" / "quick-slide" / "scripts" / "quick_slide_setup.py"),
+                                "--doctor"], capture_output=True, text=True, encoding="utf-8", env=env, timeout=120)
+        checks = {c["id"]: c for c in json.loads(r.stdout.strip().splitlines()[-1])["checks"]}
+        self.assertEqual(checks["home_access"]["level"], "ok", checks["home_access"])

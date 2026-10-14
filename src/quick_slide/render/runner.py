@@ -22,6 +22,7 @@ motion-slide は全部の拍を Chrome で開いて検査する（1 拍あたり
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 from collections.abc import Callable
@@ -39,14 +40,16 @@ CHECK_TIMEOUT_SECONDS = 300.0
 
 # 導入の確かめと入れる口（skills/quick-slide/scripts/quick_slide_setup.py）。止まっている帯の文がこれを言う
 SETUP_SCRIPT = SKILLS_DIR / "quick-slide" / "scripts" / "quick_slide_setup.py"
-DOCTOR_HINT = f"足りないものは `python3 {SETUP_SCRIPT} --doctor` で分かります（会話で「Quick Slide の導入を確かめて」と頼んでも同じ）。"
+# 案内に書く Python の起こし方。Windows の python3 は Microsoft Store のスタブで動かないので py -3（A1）
+PY_CMD = "py -3" if os.name == "nt" else "python3"
+DOCTOR_HINT = f"足りないものは `{PY_CMD} {SETUP_SCRIPT} --doctor` で分かります（会話で「Quick Slide の導入を確かめて」と頼んでも同じ）。"
 CODEX_LOGIN_MESSAGE = ("画像を描く Codex にログインできていません（または見つかりません）。"
                        "ターミナルで `codex login`（ChatGPT でログイン）をしてから、もう一度頼んでください。" + DOCTOR_HINT)
 MOTION_DEPENDENCY_MESSAGE = ("モーションを組むのに要るもの（Playwright の Chromium・Pillow・PyYAML）が足りません。"
-                             f"`python3 {SETUP_SCRIPT} --doctor` で足りないものを確かめ、`--setup` で入れてから"
+                             f"`{PY_CMD} {SETUP_SCRIPT} --doctor` で足りないものを確かめ、`--setup` で入れてから"
                              "（会話で「Quick Slide の導入をして」と頼んでも入ります）、もう一度頼んでください。")
 DEPENDENCY_MESSAGE = ("描くのに要るもの（Node・puppeteer-core・Chrome など）が足りません。"
-                      f"`python3 {SETUP_SCRIPT} --doctor` で足りないものを確かめ、`--setup` で入れてから"
+                      f"`{PY_CMD} {SETUP_SCRIPT} --doctor` で足りないものを確かめ、`--setup` で入れてから"
                       "（会話で「Quick Slide の導入をして」と頼んでも入ります）、もう一度頼んでください。")
 AUTH_TIMEOUT_SECONDS = 120.0
 

@@ -12,6 +12,8 @@ description: 資料やスライドに置く挿絵（中身を表す動かない�
 
 ## 使い方
 
+Windows では `python3` を `py -3` に読み替える（`python3` は Microsoft Store のスタブで動かない）。
+
 ```bash
 python3 scripts/illust.py palette --primary "#006f83"          # ブランドの色から挿絵の配色（JSON）
 python3 scripts/illust.py check --svg 挿絵.svg                 # 確かめるだけ（NG: の行。rc=2）

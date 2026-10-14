@@ -27,7 +27,7 @@ description: クリックで「拍」が進む Web プレゼン（Motion Slide�
 | 自動再生の時刻表を見る（BGM を合わせるとき） | `scripts/timeline.py <deck.html>` |
 | BGM を付ける | [`references/sound.md`](references/sound.md) |
 
-すべて `python3 -E <このスキルのフォルダ>/scripts/<名前>.py …`（リンク越しに置いても動く）。終了コード: 0=成功 / 2=台本の誤り・検査の NG / 4=依存不足。
+すべて `python3 -E <このスキルのフォルダ>/scripts/<名前>.py …`（リンク越しに置いても動く）。Windows では `python3` を `py -3` に読み替える（`python3` は Microsoft Store のスタブで動かない）。終了コード: 0=成功 / 2=台本の誤り・検査の NG / 4=依存不足。
 出力は `<出力の根っこ>/<題材>/`（台本 `deck.html`・本体 `index.html`・検査 `check/`）。出力の根っこは設定の `out:`、無ければ `<QUICK_SLIDE_HOME>/engines/motion-slide/output`（既定は `~/.quick-slide`）で、`build.py --print-out-root` が出す（html-slide と同じ決め方）。
 
 ## Workflow: make
