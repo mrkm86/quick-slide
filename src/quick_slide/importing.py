@@ -143,3 +143,82 @@ def report_lines(rep: dict[str, Any], limit: int = 40) -> list[str]:
         n = it.get("count") or 1
         out.append(f"{where}: {it.get('what')} — {it.get('how')}" + (f"（{n} か所）" if n > 1 else ""))
     return out[:limit]
+
+
+# ---- 取り込んだページの文字を、見た目を保ったまま直す（docs/adr/0014-imported-text-edits.md）----
+# ページの HTML のタグの間の文字（見出し・各行・箇条書きの印）に番号を振って台本係に渡し、番号ごとの直した文字だけを
+# 受け取って差し替える。位置・色・書式・アニメーションは変えない。HTML はエンジンの import が書いたもの（スクリプトも
+# コメントも無い）なので、タグの間の文字はこの形で拾える
+_TEXT_NODE = re.compile(r">([^<>]*\S[^<>]*)<")
+# 箇条書きの印だけの文字（台本係に「直さない」と言う）
+_BULLETS = set("•・◦▪▫■□●○◆◇▶►‣⁃-–—*※✓✔")
+
+
+def text_segments(html: str) -> list[dict[str, Any]]:
+    """ページの文字の並び（{n, text, bullet}。n は 1 から）。"""
+    import html as htmllib
+
+    out = []
+    for i, m in enumerate(_TEXT_NODE.finditer(html or ""), 1):
+        text = htmllib.unescape(m.group(1)).strip()
+        out.append({"n": i, "text": text, "bullet": bool(text) and all(c in _BULLETS for c in text)})
+    return out
+
+
+def replace_texts(html: str, changes: dict[int, str]) -> str:
+    """番号の文字だけを差し替えた HTML（前後の空白は元のまま残す）。"""
+    import html as htmllib
+
+    count = 0
+
+    def sub(m: "re.Match[str]") -> str:
+        nonlocal count
+        count += 1
+        if count not in changes:
+            return m.group(0)
+        raw = m.group(1)
+        lead = raw[:len(raw) - len(raw.lstrip())]
+        tail = raw[len(raw.rstrip()):]
+        return ">" + lead + htmllib.escape(changes[count], quote=False) + tail + "<"
+
+    return _TEXT_NODE.sub(sub, html or "")
+
+
+# ---- 取り込んだページの画像（差し替える。docs/adr/0015-imported-images-and-diagrams.md）----
+_IMG = re.compile(r"<img\b[^>]*>")
+_SRC = re.compile(r'\bsrc="([^"]*)"')
+_PX = re.compile(r"(left|top|width|height)\s*:\s*(-?[\d.]+)px")
+
+
+def page_images(html: str) -> list[dict[str, Any]]:
+    """ページの中の画像（{n, src, x, y, w, h}。n は 1 から・ページ全体の背景の画像は除く）。位置はページの座標。
+
+    取り込みの HTML は、画像を外側の箱（left:0;top:0 の入れ物）の中に絶対配置で置くので、`<img>` の style の数がそのまま
+    ページの座標になる。"""
+    out = []
+    for m in _IMG.finditer(html or ""):
+        tag = m.group(0)
+        if 'data-name="背景"' in tag:
+            continue
+        src = _SRC.search(tag)
+        nums = {k: float(v) for k, v in _PX.findall(tag)}
+        out.append({"n": len(out) + 1, "src": src.group(1) if src else "", "x": round(nums.get("left", 0)),
+                    "y": round(nums.get("top", 0)), "w": round(nums.get("width", 0)), "h": round(nums.get("height", 0))})
+    return out
+
+
+def replace_image(html: str, n: int, src: str) -> str:
+    """n 番目の画像（背景を除く）の src だけを替えた HTML。位置・大きさ・切り抜き方は元のまま。"""
+    import html as htmllib
+
+    count = 0
+
+    def sub(m: "re.Match[str]") -> str:
+        nonlocal count
+        tag = m.group(0)
+        if 'data-name="背景"' in tag:
+            return tag
+        count += 1
+        return _SRC.sub(f'src="{htmllib.escape(src)}"', tag, count=1) if count == n else tag
+
+    return _IMG.sub(sub, html or "")

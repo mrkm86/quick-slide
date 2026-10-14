@@ -75,6 +75,7 @@ deck "未知の型は rc=2" unknown_type
 deck "未知のキーは rc=2" unknown_key
 deck "必須の欠け・数の範囲・値の型は rc=2" missing_required
 deck "写真の URL は rc=2" photo_url
+deck "photo の全面の hide_text は画像だけの扉絵（見出しはページの名前・出典は右下）・左右には使えない" photo_image_only
 deck "存在しない画像は rc=2" missing_image
 deck "2行に入らない見出しは rc=2" too_long
 deck "テーマ 3種が通る・読めない色と無い名前は rc=2" theme

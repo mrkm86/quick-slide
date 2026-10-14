@@ -149,9 +149,9 @@ class ImportEndToEndTests(unittest.TestCase):
         import zipfile
         with zipfile.ZipFile(out / "deck.pptx") as z:
             self.assertEqual(len([n for n in z.namelist() if n.startswith("ppt/slides/slide")]), 1, "PPTX に非表示のページを入れない")
-        # 取り込んだページの直しは、まだ受けない（理由を返す）
+        # 取り込んだページの直しは 1 ページずつ（docs/adr/0013〜0015）。選んだページをまとめて直すのは理由を返す
         r = fx.post(f"/api/decks/{body['deck_id']}/instructions",
-                    {"scope": "page", "slide_id": view["pages"][0]["slide_id"], "text": "見出しを短く"})
+                    {"scope": "pages", "slide_ids": [view["pages"][0]["slide_id"]], "text": "見出しを短く"})
         self.assertEqual((r.status, r.json()["error"]["code"]), (409, "imported_page"), r.body)
         # 複製しても取り込んだ画像を写す（台本の html が相対で指す）
         r = fx.post(f"/api/decks/{body['deck_id']}/duplicate", {})

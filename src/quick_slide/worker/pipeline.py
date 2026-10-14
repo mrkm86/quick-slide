@@ -35,6 +35,7 @@ from ..engines import RC_DEPENDENCY, Engine, engine_for, engine_marker
 from ..paths import DataRoot
 from ..pins import Pin
 from ..pins import resolve as resolve_pins
+from .. import page_images as PI
 from ..render import illustrations as ILL
 from ..render import look as LOOK
 from ..render import workspace as W
@@ -147,8 +148,10 @@ def engine_script_with_pictures(ctx: Context, deck_id: str, data: dict[str, Any]
     work = ctx.root.work_dir(deck_id)
     work.mkdir(parents=True, exist_ok=True)
     chrome = chrome_path(tools=ctx.tools, home=ctx.root.root, cwd=work, stop=ctx.stop)
-    return ILL.materialize(view, scripts_dir=ctx.root.scripts_dir(deck_id), tools=ctx.tools, home=ctx.root.root,
-                           chrome=chrome, stop=ctx.stop)
+    out, bad = ILL.materialize(view, scripts_dir=ctx.root.scripts_dir(deck_id), tools=ctx.tools, home=ctx.root.root,
+                               chrome=chrome, stop=ctx.stop)
+    # 取り込んだページに重ねる挿絵（PNG になったもの）は、ページの HTML の最後に足す（docs/adr/0013）
+    return ILL.apply_overlays(out), bad
 
 
 def lint_view(args: dict[str, Any], slides: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -613,6 +616,10 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
         "logo_position": (args.get("look") or {}).get("logo_position"),
     }})
 
+    # 依頼に書かれたページの本文の画像（頼まれたときだけ集める。使うかは台本係が依頼から決める。docs/adr/0016）
+    pictures = PI.collect(intake.get("request"), ctx.root.attachments_dir(deck_id)) if engine.mode == "presentation" else []
+    if pictures:
+        ctx.call(store.set_run_record, run_id, {"page_pictures": [{"rel": p["rel"], "page_url": p["page_url"]} for p in pictures]})
     previous: dict[str, Any] | str | None = None
     problems: list[str] | None = None
     for round_no in range(1, rounds + 1):
@@ -623,7 +630,7 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
         try:
             prompt = build_prompt(engine, args, manuscript=intake["manuscript"], title_hint=intake["title_hint"],
                                   skills_dir=ctx.tools.skills_dir, previous=previous, problems=problems,
-                                  request=intake.get("request"))
+                                  request=intake.get("request"), pictures=pictures)
         except ContractMissing as exc:
             return fail(f"エンジンの台本の決まり（{exc}）が見つかりません。導入をやり直してください。", "contract")
         try:

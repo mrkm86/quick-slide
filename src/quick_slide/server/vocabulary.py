@@ -162,7 +162,7 @@ INSTRUCTION_WORDS: dict[str, str] = {
 }
 
 # 書き出しで選べる形式の表示名
-EXPORT_FORMAT_LABELS: dict[str, str] = {"pdf": "PDF", "pptx": "PPTX", "html": "HTML（1枚）"}
+EXPORT_FORMAT_LABELS: dict[str, str] = {"pdf": "PDF", "pptx": "PPTX", "html": "HTML"}
 
 # 書き出しの待機・完了で出す固定文
 EXPORT_WORDS: dict[str, str] = {
