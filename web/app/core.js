@@ -458,6 +458,38 @@
   // ---- 共通の確認 ----
   SS.confirm = function (message) { return window.confirm(message); };
 
+  // 内蔵ブラウザでも表示できる、ページ内の確認。
+  SS.confirmModal = function (message) {
+    return new Promise(function (resolve) {
+      var previous = document.activeElement;
+      var cancel = SS.h("button", { class: "btn", type: "button", text: "やめる" });
+      var accept = SS.h("button", { class: "btn btn--danger", type: "button", text: "ごみ箱へ移動" });
+      var box = SS.h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "ごみ箱へ移動の確認" },
+        SS.h("h3", { text: "ごみ箱へ移動" }), SS.h("p", { text: message }),
+        SS.h("div", { class: "modal-actions" }, cancel, accept));
+      var backdrop = SS.h("div", { class: "modal-backdrop" }, box);
+      function close(yes) {
+        document.removeEventListener("keydown", keydown, true);
+        backdrop.remove();
+        if (previous && previous.isConnected) { previous.focus(); }
+        resolve(yes);
+      }
+      function keydown(e) {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(false); }
+        if (e.key === "Tab") {
+          e.preventDefault(); (document.activeElement === cancel ? accept : cancel).focus();
+        }
+      }
+      cancel.addEventListener("click", function () { close(false); });
+      accept.addEventListener("click", function () { close(true); });
+      backdrop.addEventListener("click", function (e) { if (e.target === backdrop) { close(false); } });
+      document.addEventListener("keydown", keydown, true);
+      document.body.appendChild(backdrop);
+      cancel.focus();
+    });
+  };
+
+
   // ---- 1 項目のモーダル（同じウィンドウ内。名前の入力に使う）----
   // opts: {title, label, value, submitLabel, maxlength, onSubmit(value) -> Promise}
   // 送信中は押せない。断られたときはモーダルを閉じず、サーバの日本語をその場に出す。

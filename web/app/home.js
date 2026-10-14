@@ -41,8 +41,8 @@
         }); } },
       "-",
       { label: "削除（ごみ箱へ移動）", danger: true,
-        onSelect: function () {
-          if (!SS.confirm("「" + card.title + "」をごみ箱へ移動します。画像は退避され、ごみ箱から元に戻せます。よろしいですか？")) { return; }
+        onSelect: async function () {
+          if (!(await SS.confirmModal("「" + card.title + "」をごみ箱へ移動します。画像は退避され、ごみ箱から元に戻せます。よろしいですか？"))) { return; }
           run(SS.api("/api/decks/" + id + "/delete", { method: "POST", body: {} }), function (res) {
             SS.toast(res.message || "ごみ箱へ移動しました。", { actionLabel: "元に戻す", onAction: function () {
               SS.api("/api/decks/" + id + "/restore", { method: "POST", body: {} }).then(function (r) {
@@ -510,10 +510,10 @@
     }
     selPin.addEventListener("click", function () { bulkPin(true); });
     selUnpin.addEventListener("click", function () { bulkPin(false); });
-    selTrash.addEventListener("click", function () {
+    selTrash.addEventListener("click", async function () {
       var cards = chosenCards();
       if (!cards.length) { return; }
-      if (!SS.confirm(cards.length + " 件のスライドをごみ箱へ移動します。画像は退避され、ごみ箱から元に戻せます。よろしいですか？")) { return; }
+      if (!(await SS.confirmModal(cards.length + " 件のスライドをごみ箱へ移動します。画像は退避され、ごみ箱から元に戻せます。よろしいですか？"))) { return; }
       runBulk(cards, function (c) { return SS.api("/api/decks/" + c.id + "/delete", { method: "POST", body: {} }); }, "ごみ箱へ移動", function (done) {
         SS.toast(done.length + " 件をごみ箱へ移動しました。", { actionLabel: "元に戻す", onAction: function () {
           eachDeck(done, function (c) { return SS.api("/api/decks/" + c.id + "/restore", { method: "POST", body: {} }); }).then(function (r) {

@@ -107,11 +107,20 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
         page.until("!!document.querySelector('.menu')", what="メニュー")
         page.eval("Array.from(document.querySelectorAll('.menu button')).find(b => b.textContent === '複製').click()")
         page.until("Array.from(document.querySelectorAll('.toast')).some(t => t.textContent.indexOf('複製しました') >= 0)", what="複製の知らせ")
-        # メニューからごみ箱へ（確認は通す）
-        page.eval("window.confirm = function () { return true; }")
+        # 内蔵ブラウザのようにネイティブ確認が使えなくても、ページ内で確認できる
+        page.eval("window.confirm = function () { throw new Error('native confirm unavailable'); }")
         page.eval("document.querySelector('.deck-actions .btn--icon').click()")
         page.until("!!document.querySelector('.menu')", what="メニュー")
         page.eval("Array.from(document.querySelectorAll('.menu button')).find(b => b.textContent.indexOf('削除') === 0).click()")
+        page.until("!!document.querySelector('.modal[role=dialog]')", what="ページ内の削除確認")
+        page.eval("document.querySelector('.modal-actions .btn:not(.btn--danger)').click()")
+        page.until("!document.querySelector('.modal')", what="取り消した確認が閉じること")
+        self.assertIn("名前を変えたプレゼン", [c["title"] for c in self.fx.get("/api/decks?limit=50").json()["items"]])
+        page.eval("document.querySelector('.deck-actions .btn--icon').click()")
+        page.until("!!document.querySelector('.menu')", what="メニュー")
+        page.eval("Array.from(document.querySelectorAll('.menu button')).find(b => b.textContent.indexOf('削除') === 0).click()")
+        page.until("!!document.querySelector('.modal[role=dialog]')", what="ページ内の削除確認")
+        page.eval("document.querySelector('.modal-actions .btn--danger').click()")
         page.until("location.pathname === '/' && document.querySelectorAll('#view .card').length >= 1", what="ホームへ戻ること")
         page.raise_if_broken()
         titles = [c["title"] for c in self.fx.get("/api/decks?limit=50").json()["items"]]
@@ -168,6 +177,8 @@ class ScreensOpenWithoutErrorsTest(unittest.TestCase):
         page.eval("window.confirm = function () { return true; }")
         page.eval(bar_button.format("すべて選ぶ") + ".click()")
         page.eval(bar_button.format("ごみ箱へ移動") + ".click()")
+        page.until("!!document.querySelector('.modal[role=dialog]')", what="まとめて移動の確認")
+        page.eval("document.querySelector('.modal-actions .btn--danger').click()")
         page.until("!!document.querySelector('.list .empty')", what="一覧が空になること")
         with self.fx.server.store_lock:
             self.assertEqual(len(self.fx.store.trashed_decks()), 3)
