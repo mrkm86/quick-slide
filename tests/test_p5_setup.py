@@ -147,12 +147,14 @@ class DoctorTests(SetupBase):
                     self.assertTrue(c[key]["fix"].startswith("Codex の中からは、入っているものが見えないことがあります"), c[key]["fix"])
                     self.assertIn("--doctor", c[key]["fix"])
                 self.assertIn("Codex の中で確かめています", text)
+                self.assertIn("Codex の中から見えたものだけでの判断です", text)
         # 外（利用者のターミナル）では、いままでどおり入れ方を言う
         rc, text, out = self.run_tool("--doctor", IMAGE_SLIDE_CODEX="", QUICK_SLIDE_CLAUDE="")
         c = self.checks(out)
         self.assertFalse(out["inside_codex"])
         self.assertTrue(c["codex"]["fix"].startswith("`npm install -g @openai/codex`"), c["codex"]["fix"])
         self.assertNotIn("Codex の中で確かめています", text)
+        self.assertNotIn("Codex の中から見えたものだけでの判断です", text)
 
     def test_it_finds_the_clis_outside_path_like_the_server_does(self) -> None:
         extra = self.tmp / "npm-global"
