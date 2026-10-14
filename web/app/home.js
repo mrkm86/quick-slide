@@ -114,25 +114,30 @@
 
   function homeHero() {
     // 装飾専用の自作 SVG。文字と説明は HTML で表示し、利用者の入力は SVG に入れない。
+    // 絵は「思いついたら、もう資料。」: 灯った電球（思いつき）から、スライドが重なって出てくる（もう資料）。
     var art = h("div", { class: "home-hero__art", "aria-hidden": "true", html:
       '<svg viewBox="0 0 560 340" focusable="false">' +
-      '<ellipse class="hero-halo" cx="302" cy="173" rx="210" ry="150"/>' +
-      '<g class="hero-guides"><path d="M30 242H516M82 56V291M479 58V274"/><circle cx="82" cy="242" r="5"/><circle cx="479" cy="58" r="5"/></g>' +
-      '<g transform="translate(178 34) rotate(9 144 81)"><rect class="hero-slide hero-slide--back" width="288" height="162" rx="12"/><path class="hero-lines" d="M26 34h88M26 48h54"/></g>' +
-      '<g transform="translate(84 115) rotate(-8 144 81)"><rect class="hero-slide hero-slide--middle" width="288" height="162" rx="12"/></g>' +
-      '<g transform="translate(132 92)"><rect class="hero-shadow" x="0" y="12" width="320" height="180" rx="12"/><rect class="hero-slide" width="320" height="180" rx="12"/>' +
-      '<rect class="hero-accent" x="24" y="25" width="28" height="5" rx="2.5"/>' +
+      '<ellipse class="hero-halo" cx="320" cy="170" rx="210" ry="150"/>' +
+      '<g class="hero-guides"><path d="M30 300H520M60 60h14m-7-7v14"/></g>' +
+      '<path class="hero-trail" d="M180 146C222 92 258 58 300 52M178 160C215 140 240 128 262 124M176 190C198 200 212 205 228 206"/>' +
+      '<g transform="translate(300 24) rotate(9 100 56)"><rect class="hero-slide hero-slide--back" width="200" height="112" rx="8"/><path class="hero-lines" d="M18 24h62M18 36h38"/></g>' +
+      '<g transform="translate(262 92) rotate(-3 108 61)"><rect class="hero-slide hero-slide--middle" width="216" height="121" rx="8"/><path class="hero-lines" d="M18 26h70M18 40h44"/></g>' +
+      '<g transform="translate(228 158)"><rect class="hero-shadow" y="8" width="240" height="135" rx="9"/><rect class="hero-slide" width="240" height="135" rx="9"/>' +
+      '<g transform="scale(.75)"><rect class="hero-accent" x="24" y="25" width="28" height="5" rx="2.5"/>' +
       '<path class="hero-lines hero-lines--strong" d="M24 52h128M24 66h89"/><path class="hero-lines" d="M24 93h102M24 106h80M24 119h95"/>' +
       '<rect class="hero-panel" x="187" y="26" width="109" height="128" rx="8"/>' +
-      '<rect class="hero-bar hero-bar--light" x="204" y="105" width="16" height="30" rx="4"/><rect class="hero-bar hero-bar--mid" x="231" y="82" width="16" height="53" rx="4"/><rect class="hero-accent" x="258" y="56" width="16" height="79" rx="4"/>' +
-      '<circle class="hero-dot" cx="27" cy="154" r="3"/><path class="hero-lines" d="M39 154h30"/></g>' +
-      '<g class="hero-guides"><path d="M465 294h20m-10-10v20M57 114h14m-7-7v14"/></g></svg>'
+      '<rect class="hero-bar hero-bar--light" x="204" y="105" width="16" height="30" rx="4"/><rect class="hero-bar hero-bar--mid" x="231" y="82" width="16" height="53" rx="4"/><rect class="hero-accent" x="258" y="56" width="16" height="79" rx="4"/></g></g>' +
+      '<path class="hero-bulb-rays" d="M128 112V100M85 132l-9-8M171 132l9-8"/>' +
+      '<path class="hero-bulb" d="M106 220C106 206 84 194 84 168A44 44 0 1 1 172 168C172 194 150 206 150 220Z"/>' +
+      '<path class="hero-bulb-filament" d="M118 220V192M138 220V192M118 192l5-10 5 10 5-10 5 10"/>' +
+      '<rect class="hero-bulb-base" x="108" y="222" width="40" height="9" rx="3"/><rect class="hero-bulb-base" x="110" y="234" width="36" height="9" rx="3"/>' +
+      '<path class="hero-accent" d="M117 246h22l-5 8h-12Z"/></svg>'
     });
     return h("section", { class: "home-hero", "aria-labelledby": "hero-title" },
       h("div", { class: "home-hero__copy" },
-        h("p", { class: "home-hero__eyebrow", text: "伝えたいことを、一枚ずつ。" }),
+        h("p", { class: "home-hero__eyebrow", text: "思いついたら、もう資料。" }),
         h("h1", { id: "hero-title", text: "Quick Slide" }),
-        h("p", { class: "home-hero__description", text: "会話や原稿から、日本語のスライドを作ります。" })), art);
+        h("p", { class: "home-hero__description" }, "頭の中にあることを", h("br"), "整えて、そのままスライドにします。")), art);
   }
 
   // 形式の違いの板（スマホの「？」から）。名前・説明・書き出せる形式はサーバの語彙（`deck_kinds`）のまま並べる
