@@ -32,6 +32,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .. import oscompat
 from .. import settings as S
 from ..clock import utcnow
 from ..errors import QuickSlideError, ValidationError
@@ -57,7 +58,7 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
         os.write(fd, json.dumps(data, ensure_ascii=False, indent=1).encode("utf-8"))
     finally:
         os.close(fd)
-    os.replace(tmp, path)
+    oscompat.replace(tmp, path)
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:

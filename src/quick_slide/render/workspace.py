@@ -43,6 +43,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
+from .. import oscompat
+
 # motion-slide は index.html（HTML 1枚）と check/（全拍の検査の画像と記録）も書く
 OUTPUT_FILES = ("deck.pptx", "deck.pdf", "build.json", "deck-info.json", "inspect.md", "deck.html", "index.html",
                 "parts.json")
@@ -77,7 +79,7 @@ def _link(src: Path, dst: Path) -> None:
         os.link(src, tmp)
     except OSError:
         shutil.copyfile(src, tmp)
-    os.replace(tmp, dst)
+    oscompat.replace(tmp, dst)
 
 
 def _copy(src: Path, dst: Path) -> None:
@@ -85,7 +87,7 @@ def _copy(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     tmp = dst.with_name(dst.name + ".tmp")
     shutil.copyfile(src, tmp)
-    os.replace(tmp, dst)
+    oscompat.replace(tmp, dst)
 
 
 def _link_tree(src: Path, dst: Path) -> None:
@@ -99,7 +101,7 @@ def write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    oscompat.replace(tmp, path)
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -117,7 +119,7 @@ def write_engine_script(path: Path, data: dict[str, Any]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_bytes(dumps(data))
-    os.replace(tmp, path)
+    oscompat.replace(tmp, path)
     return path
 
 
@@ -304,7 +306,7 @@ def arrange_pitch_cache(work: Path, keys: list[str], *, area: Path | None,
             for ext in (".png", ".json"):
                 f = area / f"slide-{m:02d}{ext}"
                 if f.is_file() and not (stage / f"{q}{ext}").exists():
-                    os.replace(f, stage / f"{q}{ext}")
+                    oscompat.replace(f, stage / f"{q}{ext}")
     for n, k in enumerate(keys, 1):
         dst_png, dst_json = area / f"slide-{n:02d}.png", area / f"slide-{n:02d}.json"
         src: tuple[Path, Path | None] | None = None

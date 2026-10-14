@@ -32,6 +32,7 @@ import errno
 import json
 import os
 import platform
+import shlex
 import shutil
 import socket
 import subprocess
@@ -57,7 +58,12 @@ CHROME_SPEC = "chrome-headless-shell@stable"
 
 SKILLS_DIR = Path(__file__).resolve().parents[2]
 BROWSER_PY = SKILLS_DIR / "html-slide" / "scripts" / "browser.py"
-SETUP_CMD = f"python3 {Path(__file__).resolve()} --setup"
+# 入れるときに打つコマンド。この診断を動かしている Python そのもので書く（Windows の python3 は Store のスタブで、
+# python と py -3 で版も site-packages も違うことがある。A1）
+SETUP_CMD = (subprocess.list2cmdline if os.name == "nt" else shlex.join)(
+    [sys.executable, str(Path(__file__).resolve()), "--setup"])
+PLAYWRIGHT_INSTALL_CMD = (subprocess.list2cmdline if os.name == "nt" else shlex.join)(
+    [sys.executable, "-m", "playwright", "install", "chromium"])
 
 
 def data_root(explicit: str | None) -> Path:
@@ -261,7 +267,7 @@ def check_motion(rep: Report) -> dict[str, Any]:
     chromium = chromium_path() if have else None
     rep.add("playwright-chromium", "Playwright の Chromium（モーションが全部の拍を開く）", "ok" if chromium else "ng",
             chromium or ("入っていません" if have else "Playwright が無いので確かめられません"),
-            fix=None if chromium else f"{SETUP_CMD}（`python3 -m playwright install chromium`。数百 MB）。モーションを使わないなら要りません",
+            fix=None if chromium else f"{SETUP_CMD}（`{PLAYWRIGHT_INSTALL_CMD}`。数百 MB）。モーションを使わないなら要りません",
             needed_for=("motion",))
     return {"playwright": have, "chromium": chromium}
 
@@ -325,6 +331,101 @@ def check_home(rep: Report, home: Path) -> dict[str, Any]:
     return {"exists": exists, "writable": writable, "free_bytes": free}
 
 
+
+# Windows で置き場を読めてはいけない広いグループ（名前は訳されるので SID で比べる。ADR 0012）
+WIDE_READERS = {"S-1-1-0": "Everyone", "S-1-5-32-545": "Users", "S-1-5-11": "Authenticated Users"}
+
+
+def windows_wide_readers(path: Path) -> list[str] | None:
+    """置き場（無ければ、在る一番近い親）を読める広いグループの名前。調べられなければ None。
+
+    DACL の「許す」の ACE のうち、読める権利（FILE_READ_DATA・GENERIC_READ・GENERIC_ALL）を持ち、継承用だけでないもの。
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    advapi.GetNamedSecurityInfoW.argtypes = (wintypes.LPCWSTR, ctypes.c_int, wintypes.DWORD,
+                                             ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p),
+                                             ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p),
+                                             ctypes.POINTER(ctypes.c_void_p))
+    advapi.GetAce.argtypes = (ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p))
+    advapi.ConvertSidToStringSidW.argtypes = (ctypes.c_void_p, ctypes.POINTER(wintypes.LPWSTR))
+    kernel.LocalFree.argtypes = (ctypes.c_void_p,)
+
+    class Acl(ctypes.Structure):
+        _fields_ = [("AclRevision", ctypes.c_ubyte), ("Sbz1", ctypes.c_ubyte), ("AclSize", ctypes.c_ushort),
+                    ("AceCount", ctypes.c_ushort), ("Sbz2", ctypes.c_ushort)]
+
+    target = path if path.exists() else next((q for q in path.parents if q.exists()), None)
+    if target is None:
+        return None
+    dacl, sd = ctypes.c_void_p(), ctypes.c_void_p()
+    if advapi.GetNamedSecurityInfoW(str(target), 1, 4, None, None, ctypes.byref(dacl), None, ctypes.byref(sd)) != 0:
+        return None   # SE_FILE_OBJECT・DACL_SECURITY_INFORMATION
+    try:
+        if not dacl.value:
+            return ["Everyone"]   # DACL が無い＝誰でも読める
+        found: list[str] = []
+        for i in range(ctypes.cast(dacl, ctypes.POINTER(Acl)).contents.AceCount):
+            ace = ctypes.c_void_p()
+            if not advapi.GetAce(dacl, i, ctypes.byref(ace)):
+                continue
+            ace_type, ace_flags = ctypes.cast(ace, ctypes.POINTER(ctypes.c_ubyte * 2)).contents
+            if ace_type != 0 or ace_flags & 0x08:   # ACCESS_ALLOWED_ACE_TYPE だけ・INHERIT_ONLY_ACE は除く
+                continue
+            mask = ctypes.cast(ace.value + 4, ctypes.POINTER(wintypes.DWORD)).contents.value
+            if not mask & (0x0001 | 0x80000000 | 0x10000000):
+                continue
+            text = wintypes.LPWSTR()
+            if advapi.ConvertSidToStringSidW(ctypes.c_void_p(ace.value + 8), ctypes.byref(text)):
+                sid = text.value
+                kernel.LocalFree(ctypes.cast(text, ctypes.c_void_p))
+                if sid in WIDE_READERS and WIDE_READERS[sid] not in found:
+                    found.append(WIDE_READERS[sid])
+        return found
+    finally:
+        kernel.LocalFree(sd)
+
+
+def windows_long_paths_enabled() -> bool | None:
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\FileSystem") as key:
+            return bool(winreg.QueryValueEx(key, "LongPathsEnabled")[0])
+    except OSError:
+        return None
+
+
+# 置き場の下に作る一番深いパスの長さの見積もり（decks/<id>/runs/<id>/present/assets/<名前>）
+DEEPEST_UNDER_HOME = 180
+
+
+def check_home_windows(rep: Report, home: Path) -> None:
+    """Windows で置き場を守れているか（ADR 0012）。どれも「注意」で、起動は止めない。"""
+    readers = windows_wide_readers(home)
+    if readers is None:
+        rep.add("home_access", "置き場のアクセス権", "warn", "調べられませんでした")
+    elif readers:
+        rep.add("home_access", "置き場のアクセス権", "warn",
+                f"{'・'.join(readers)} が読めます（原稿・画像・ログインの記録を、このパソコンのほかの利用者が読めます）",
+                fix=f"置き場をあなたのユーザーのフォルダ（{Path.home()}）の下に置くか、環境変数 {ENV_HOME} で指し直してください")
+    else:
+        rep.add("home_access", "置き場のアクセス権", "ok", "あなたと管理者だけが読めます")
+    clouds = [Path(v) for v in (os.environ.get(n) for n in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial")) if v]
+    synced = next((c for c in clouds if home == c or c in home.parents), None)
+    if synced is not None:
+        rep.add("home_cloud", "置き場のクラウド同期", "warn",
+                f"OneDrive の同期先（{synced}）の中にあります。原稿や画像がクラウドへ送られます",
+                fix=f"環境変数 {ENV_HOME} で、同期しないフォルダ（例: {Path.home() / '.quick-slide'}）を指してください")
+    long_paths = windows_long_paths_enabled()
+    if long_paths is False and len(str(home)) + DEEPEST_UNDER_HOME > 260:
+        rep.add("long_paths", "長いパス", "warn",
+                f"置き場のパスが長く（{len(str(home))} 文字）、Windows の長いパス（260 文字を超えるもの）が有効でありません",
+                fix=f"環境変数 {ENV_HOME} で短いパスを指すか、Windows の「長いパスを有効にする」（LongPathsEnabled）を有効にしてください")
+
 def settings_listen(home: Path) -> tuple[str, int]:
     try:
         raw = json.loads((home / "config" / "settings.json").read_text(encoding="utf-8"))
@@ -378,6 +479,8 @@ def doctor(home: Path) -> tuple[Report, dict[str, Any]]:
     check_codex(rep)
     check_writers(rep)
     facts["home"] = check_home(rep, home)
+    if os.name == "nt":
+        check_home_windows(rep, home)
     check_port(rep, home)
     return rep, facts
 
@@ -460,7 +563,9 @@ def plan_steps(rep: Report, facts: dict[str, Any], home: Path) -> tuple[list[dic
 def browsers_command(step: dict[str, Any], npm: str | None, node_bin: str | None) -> list[str] | None:
     """Chrome を入れるコマンド。puppeteer-core と一緒に入る @puppeteer/browsers を使う（無ければ npx で取る）。"""
     nm = Path(step["node_modules"])
-    for exe in (nm / ".bin" / "browsers", nm / ".bin" / "browsers.cmd"):
+    # Windows の npm は .bin に bash 用の browsers と browsers.cmd を両方置く。bash 用は Windows では起こせない
+    names = ("browsers.cmd", "browsers") if os.name == "nt" else ("browsers", "browsers.cmd")
+    for exe in (nm / ".bin" / n for n in names):
         if exe.is_file():
             return [str(exe), "install", CHROME_SPEC, "--path", step["path"]]
     npx = shutil.which("npx") or (str(Path(npm).with_name("npx")) if npm else None)

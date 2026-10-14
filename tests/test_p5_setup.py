@@ -149,6 +149,8 @@ class SetupTests(SetupBase):
             m = platform.machine().lower()
             if sys.platform == "darwin":
                 tag, pre = ("mac-arm64", "mac_arm") if m in ("arm64", "aarch64") else ("mac-x64", "mac")
+            elif sys.platform.startswith("win"):
+                tag, pre = ("win64", "win64")
             else:
                 tag, pre = ("linux64", "linux")
         ''')
@@ -159,12 +161,15 @@ class SetupTests(SetupBase):
             pathlib.Path(os.environ["FAKE_NPM_LOG"]).open("a").write(json.dumps(["browsers", *args]) + "\\n")
             assert args[:2] == ["install", "chrome-headless-shell@stable"], args
             root = pathlib.Path(args[args.index("--path") + 1])
-            exe = root / "chrome-headless-shell" / f"{pre}-150.0.1" / f"chrome-headless-shell-{tag}" / "chrome-headless-shell"
+            name = "chrome-headless-shell.exe" if sys.platform.startswith("win") else "chrome-headless-shell"
+            exe = root / "chrome-headless-shell" / f"{pre}-150.0.1" / f"chrome-headless-shell-{tag}" / name
             exe.parent.mkdir(parents=True, exist_ok=True)
             exe.write_text("")
             exe.chmod(0o755)
         '''), encoding="utf-8")
         browsers.chmod(0o755)
+        # Windows は shebang のスクリプトを起こせない。本物の npm と同じく .cmd の包みを置く（setup は Windows ではそちらを起こす）
+        browsers_cmd = f'@"{sys.executable}" -X utf8 "{browsers}" %*\r\n' if os.name == "nt" else ""
         npm = self.fakebin / "npm"
         npm.write_text("#!" + sys.executable + "\n" + textwrap.dedent(f'''
             import json, os, pathlib, sys
@@ -178,8 +183,12 @@ class SetupTests(SetupBase):
             link = nm / ".bin" / "browsers"
             link.write_bytes(pathlib.Path({str(browsers)!r}).read_bytes())
             link.chmod(0o755)
+            if {bool(browsers_cmd)!r}:
+                (nm / ".bin" / "browsers.cmd").write_text({browsers_cmd!r}, encoding="oem", newline="")
         '''), encoding="utf-8")
         npm.chmod(0o755)
+        if os.name == "nt":
+            (self.fakebin / "npm.cmd").write_text(f'@"{sys.executable}" -X utf8 "{npm}" %*\r\n', encoding="oem", newline="")
         return npm
 
     def test_setup_without_yes_only_shows_the_plan(self) -> None:
@@ -188,7 +197,7 @@ class SetupTests(SetupBase):
         self.assertEqual(rc, 4)
         self.assertEqual(out["installed"], [])
         self.assertEqual(out["planned"], ["puppeteer-core", "chrome"])
-        self.assertIn("npm install --prefix", text)
+        self.assertRegex(text, r"(?i)npm(\.cmd)? install --prefix")   # Windows は npm.cmd の包み
         self.assertFalse((self.tmp / "npm-log").exists(), "聞かずに入れない")
         self.assertFalse(self.qs.exists())
 

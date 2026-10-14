@@ -348,7 +348,7 @@ def generate(cli: str, snapshot: bytes, text: str, refs: list[pathlib.Path], des
         tmp = dest.with_suffix(".tmp")
         shutil.copyfile(pngs[-1], tmp)
         _verify_image(tmp)
-        os.replace(tmp, dest)
+        OS.replace(tmp, dest)
         refreshed = (home / "auth.json").read_bytes() != snapshot
         return {"seconds": round(time.monotonic() - started, 1), "worker_refreshed": refreshed,
                 "extra_images": len(pngs) - 1}

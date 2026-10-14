@@ -29,7 +29,7 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 | できた PPTX の、クリックとノートの照合 | `verify` |
 | 違う回のページを混ぜた PPTX・PDF を組む（呼ぶ側が、ページごとの部品を残しておく。`deck --parts <JSON>`） | `assemble --manifest <JSON> --out <フォルダ>`（[ADR 0024](docs/adr/0024-page-parts-and-assemble.md)） |
 
-すべて `python3 <このスキルのフォルダ>/scripts/html_slide.py <入口> …`（引数は `--help`）。
+すべて `python3 <このスキルのフォルダ>/scripts/html_slide.py <入口> …`（引数は `--help`）。Windows では `python3` を `py -3` に読み替える（`python3` は Microsoft Store のスタブで動かない）。
 終了コード: 0=成功 / 1=実行時エラー（描けなかった画像の枠がある・deck は仮の枠で組む）/ 2=台本・HTML の誤り（決まり違反・はみ出し・照合のずれ）/ 4=依存不足・Codex の認証。
 
 ## Workflow: deck（資料を作る）

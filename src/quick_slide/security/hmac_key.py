@@ -14,6 +14,7 @@ import secrets
 import stat
 from pathlib import Path
 
+from .. import oscompat
 from ..errors import StartupError
 
 KEY_BYTES = 32
@@ -49,7 +50,7 @@ def _create(path: Path) -> None:
             os.fsync(fd)
         finally:
             os.close(fd)
-        os.replace(tmp, path)
+        oscompat.replace(tmp, path)
         os.chmod(path, 0o600)
     except FileExistsError:
         # 同時起動で別プロセスが作成中。相手の完成を待たずに、出来上がった本体を読む側に回る

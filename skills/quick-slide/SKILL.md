@@ -21,6 +21,16 @@ description: Quick Slide で会話の続きからスライドを作り、会話�
 
 ## 手順
 
+### Windows で使うとき（Python の呼び方）
+
+- このファイルの `python3` は、Windows では **`py -3`** に読み替える（`python3` は Microsoft Store のスタブで、`Python` と
+  だけ出して終わる）。`py` が無ければ `python`
+- **Python が見つからないとき**: `py -3 --version`・`python --version` を順に試す。Store のスタブ（`Python` とだけ出て終了
+  コード 49）は「無い」とみなす。無ければ、利用者の同意を取ってから `winget install -e --id Python.Python.3.13 --scope user`
+  を流す（winget が無ければ python.org の入手先を案内する）。入れたらターミナルを開き直してもらう
+- 診断の「置き場のアクセス権」「置き場のクラウド同期（OneDrive）」「長いパス」は Windows だけの確かめ。「注意」が出たら
+  利用者に伝える（起動は止めない。直し方は出力の `fix`）
+
 ### 導入を確かめる（この機械で初めて使うとき・足りないと言われたとき）
 
 次のどれかのときは、投入の前に**導入の確かめ**を走らせる（何も書かない・数秒）:
@@ -46,7 +56,7 @@ python3 "${SKILL_DIR}/scripts/quick_slide_setup.py" --doctor
    ```
 
 3. **Quick Slide が入れないもの**（出力の `manual`）は、コマンドを会話に書いて利用者にしてもらう:
-   Node（nodejs.org か `brew install node`）・`codex` CLI（`npm install -g @openai/codex`）・ログイン（`codex login`。
+   Node（nodejs.org・mac は `brew install node`・Windows は `winget install -e --id OpenJS.NodeJS.LTS`）・`codex` CLI（`npm install -g @openai/codex`）・ログイン（`codex login`。
    ChatGPT で）・PowerPoint の游ゴシックが無い機体の字体（html-slide の設定の `fonts:`）。**ログインを代わりにしない**
 4. もう一度 `--doctor` を流し、使いたいモードの `ready` が真になったら投入に進む
 

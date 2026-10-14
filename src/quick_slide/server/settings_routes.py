@@ -18,6 +18,7 @@ from functools import wraps
 
 from PIL import Image, UnidentifiedImageError
 
+from .. import oscompat
 from .. import brand_package
 from .. import contenttypes
 from .. import logo as logo_rules
@@ -235,7 +236,7 @@ def store_image(app, data):
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(temp, destination)
+        oscompat.replace(temp, destination)
         with app.store.transaction():
             app.store.register_asset(relative_path=destination.relative_to(root).as_posix(), media_type=media,
                                      sha256=hashlib.sha256(data).hexdigest(), bytes_=len(data),
