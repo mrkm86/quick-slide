@@ -18,6 +18,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 SKILL = HERE.parent
 sys.path.insert(0, str(SKILL.parent / "html-slide" / "scripts"))
 import cache as C   # noqa: E402  置き場・上限の決め方（html-slide と同じ）
+import oscompat as OS  # noqa: E402  置き換えの再試行（Windows）
 import places as PL  # noqa: E402
 
 NAME = "motion-slide"
@@ -125,7 +126,7 @@ class Store:
             dst = self.path(key)
             if dst.exists():
                 shutil.rmtree(dst, ignore_errors=True)
-            os.rename(tmp, dst)
+            OS.replace(tmp, dst)   # Windows で拍の絵が一瞬つかまれて断られたら、待って試し直す
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
         self.used.add(key)
