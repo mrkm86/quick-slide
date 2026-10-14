@@ -3,7 +3,7 @@
 - `os.open` は `O_BINARY` を付ける。付けないと Windows ではテキストモードで開き、`os.write` が `\\n` を `\\r\\n` に
   変える（32 バイトの `hmac.key` が 0x0A を含むたびに長くなり、壊れた鍵が残ってサーバが起動しなくなる）
 - 試験の偽物（`.py`）は `runnable()` で包んで渡す。Windows は `.py` を直接起こせない
-- OS を見分ける呼び出し（ロック・PID・子を孫ごと止める）は `oscompat.py` に寄せ、3 つの写しを同じに保つ（ADR 0006）
+- OS を見分ける呼び出し（ロック・PID・子を孫ごと止める）は `oscompat.py` に寄せ、4 つの写しを同じに保つ（ADR 0006）
 """
 
 from __future__ import annotations
@@ -91,11 +91,12 @@ if __name__ == "__main__":
 POSIX_ONLY = re.compile(r"^\s*import fcntl|os\.killpg\(|os\.kill\([^)]*,\s*0\)|start_new_session\s*=|signal\.SIGKILL")
 OSCOMPAT_COPIES = [ROOT / "src" / "quick_slide" / "oscompat.py",
                    ROOT / "skills" / "html-slide" / "scripts" / "oscompat.py",
-                   ROOT / "skills" / "image-slide" / "scripts" / "oscompat.py"]
+                   ROOT / "skills" / "image-slide" / "scripts" / "oscompat.py",
+                   ROOT / "skills" / "illust" / "scripts" / "oscompat.py"]
 
 
 class OsCompatTests(unittest.TestCase):
-    def test_the_three_copies_are_the_same(self) -> None:
+    def test_the_copies_are_the_same(self) -> None:
         first = OSCOMPAT_COPIES[0].read_bytes()
         for path in OSCOMPAT_COPIES[1:]:
             self.assertEqual(path.read_bytes(), first, f"{path.relative_to(ROOT).as_posix()} がサーバの写しとずれた")
@@ -364,12 +365,12 @@ class WindowsHomeAccessTests(unittest.TestCase):
 
 class ReplaceTests(unittest.TestCase):
     def test_replace_goes_through_oscompat(self) -> None:
-        """サーバと html-slide・image-slide は os.replace でなく oscompat.replace を使う（Windows で一瞬つかまれて断られたら、
-        待って試し直す。C2）。"""
-        bases = [ROOT / "src", ROOT / "skills" / "html-slide" / "scripts", ROOT / "skills" / "image-slide" / "scripts"]
-        found = [f"{p.relative_to(ROOT).as_posix()}:{n}" for base in bases for p in sorted(base.rglob("*.py"))
-                 if p.name != "oscompat.py" and "vendor" not in p.parts and "__pycache__" not in p.parts
-                 for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1) if "os.replace(" in line]
+        """サーバとスキルは os.replace・os.rename でなく oscompat.replace を使う（Windows で一瞬つかまれて断られたら、
+        待って試し直す。C2・Issue #28）。motion-slide は html-slide の oscompat を使う。"""
+        found = [f"{p.relative_to(ROOT).as_posix()}:{n}" for p in python_files()
+                 if p.name != "oscompat.py" and "vendor" not in p.parts
+                 for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+                 if "os.replace(" in line or "os.rename(" in line]
         self.assertEqual(found, [])
 
     def test_replace_retries_when_windows_refuses(self) -> None:

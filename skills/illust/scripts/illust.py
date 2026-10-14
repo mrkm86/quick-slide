@@ -26,6 +26,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import oscompat as OS  # noqa: E402
 import svgclean  # noqa: E402
 
 RC_OK, RC_FAIL, RC_NG, RC_DEPENDENCY = 0, 1, 2, 4
@@ -86,7 +87,7 @@ def to_png(svg: str, width: float, height: float, out: Path, *, long: int, chrom
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp_out = out.with_suffix(".tmp.png")
         shutil.copyfile(shot, tmp_out)
-        os.replace(tmp_out, out)
+        OS.replace(tmp_out, out)   # Windows でできたばかりの PNG が一瞬つかまれて断られたら、待って試し直す
     return None
 
 
