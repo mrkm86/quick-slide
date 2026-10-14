@@ -45,9 +45,14 @@ def clean_filename(raw: str | None) -> str:
     return name[:MAX_FILENAME_CHARS] or "slides.pptx"
 
 
+# デッキの名前の上限（画面の名前を変える口と同じ `deck_routes.TITLE_MAX_LENGTH`）
+MAX_TITLE_CHARS = 200
+
+
 def title_of(filename: str) -> str:
-    stem = filename.rsplit(".", 1)[0] if "." in filename else filename
-    return stem.strip() or "取り込んだスライド"
+    """デッキの名前: 元のファイル名から拡張子（.pptx など）を外したもの（利用者と決めた・2026-10-14）。"""
+    stem = filename[: -len(filename.rsplit(".", 1)[1]) - 1] if filename.lower().endswith(PPTX_SUFFIXES) else filename
+    return stem.strip()[:MAX_TITLE_CHARS] or "取り込んだスライド"
 
 
 def check_upload(path: Path, filename: str) -> dict[str, Any]:

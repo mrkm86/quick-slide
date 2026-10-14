@@ -14,6 +14,7 @@ import io
 import json
 import sqlite3
 import unittest
+from unittest import mock
 
 from helpers import fake_tools, start_server, temp_dir, wait_until_idle
 from test_engines_e2e import html_slide_ready
@@ -67,6 +68,16 @@ class ImportRouteRefusalTests(unittest.TestCase):
             self.assertEqual(self.fx.store.conn.execute("SELECT COUNT(*) FROM decks WHERE deleted_at IS NULL").fetchone()[0],
                              len(self.fx.store.conn.execute("SELECT id FROM decks WHERE deleted_at IS NULL").fetchall()))
             self.assertEqual(self.fx.store.conn.execute("SELECT COUNT(*) FROM intakes WHERE origin_kind='file'").fetchone()[0], 0)
+
+    def test_screen_sends_the_name_in_the_query(self) -> None:
+        """画面は名前を問い合わせ（encodeURIComponent）で送る。日本語も「%」もそのまま、拡張子を外してデッキの名前になる。"""
+        from urllib.parse import quote
+        name = "【提案】会議を 50%20短く.pptx"   # 「%20」は二度戻すと空白に崩れる
+        with mock.patch.object(type(self.fx.server), "kind_refusals", return_value={}):
+            r = self.fx.request("POST", f"/api/imports?runtime=browser&name={quote(name)}",
+                                raw_body=pptx_bytes(temp_dir(self)), session=True)
+        self.assertEqual(r.status, 201, r.body)
+        self.assertEqual(r.json()["deck_title"], "【提案】会議を 50%20短く")
 
     def test_too_large_is_refused_before_reading(self) -> None:
         r = self.fx.request("POST", "/api/imports?name=big.pptx", raw_body=b"PK", session=True,
@@ -171,3 +182,7 @@ class ImportStoreTests(unittest.TestCase):
         self.assertIn('src="imported/media/s01-a.png"', out["slides"][0]["html"])
         self.assertEqual(out["theme"], "imported/theme.yaml")
         self.assertEqual(importing.clean_filename("../../x\x00/evil.pptx"), "evil.pptx")
+        # デッキの名前はファイル名から拡張子を外したもの（記号・途中の . はそのまま）
+        self.assertEqual(importing.title_of("【提案】研修 v1.2.pptx"), "【提案】研修 v1.2")
+        self.assertEqual(importing.title_of("a.PPTX"), "a")
+        self.assertEqual(len(importing.title_of("あ" * 300 + ".pptx")), importing.MAX_TITLE_CHARS)

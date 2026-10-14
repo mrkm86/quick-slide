@@ -26,7 +26,10 @@ def route_import(server: "QuickSlideServer", req: "Request") -> "Response":
     from .app import Response
 
     q = {k: v[-1] for k, v in parse_qs(req.query or "", keep_blank_values=True).items()}
-    filename = importing.clean_filename(unquote(req.header(FILENAME_HEADER) or q.get("name") or ""))
+    # 名前の見出しは URL エンコードで来る（HTTP の見出しは ASCII だけ）。問い合わせの name は parse_qs がもう戻している
+    # （二度戻すと「%」を含む名前が崩れる）
+    header = req.header(FILENAME_HEADER)
+    filename = importing.clean_filename(unquote(header) if header else q.get("name"))
     runtime = q.get("runtime") or "browser"
     if runtime not in ORIGIN_RUNTIMES:
         raise ApiError(400, "validation_error", f"runtime は {' / '.join(ORIGIN_RUNTIMES)} のどれかです。")
