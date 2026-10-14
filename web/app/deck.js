@@ -674,17 +674,23 @@
       if (old) { old.remove(); }
       var abs = location.origin + location.pathname;
       var save = h("a", { href: url, download: "slide-" + position + ".png", text: "画像を保存", onclick: function () { recordCopy("save", true, null); } });
+      // http を localhost 以外の名前で開くと、どのブラウザも Clipboard API を出さない（secure context でない）。
+      // 同じ URL を別のブラウザで開いても同じなので、そのときは 3 段のうち「外部ブラウザで開く」だけを案内しない（効かない手を出さない）
+      var insecure = window.isSecureContext === false;
+      var lead = insecure
+        ? "この画面は http（" + location.host + "）で開いているため、ブラウザがクリップボードへの直接コピーを許可しません。次のいずれかをお使いください。"
+        : "このブラウザではクリップボードへ直接コピーできませんでした。次のいずれかをお使いください。";
       var panel = h("div", { class: "notice notice--info copy-fallback", role: "status" },
-        h("p", { text: "このブラウザではクリップボードへ直接コピーできませんでした。次のいずれかをお使いください。" }),
+        h("p", { text: lead }),
         h("ol", null,
           h("li", { text: "ページ画像を右クリック（またはロングプレス）→「画像をコピー」" }),
-          h("li", null, "このURLを外部ブラウザで開いてコピー: ", h("code", { text: abs })),
+          insecure ? null : h("li", null, "このURLを外部ブラウザで開いてコピー: ", h("code", { text: abs })),
           h("li", null, save)),
         h("p", null, h("button", { class: "btn btn--small", type: "button", text: "閉じる", onclick: function () { panel.remove(); } })));
       article.querySelector(".frame").insertAdjacentElement("afterend", panel);
       recordCopy("context_menu_hint", true, null);
     };
-    if (!(navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== "undefined")) { fallback("unsupported"); return; }
+    if (!(navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== "undefined")) { fallback(window.isSecureContext === false ? "insecure_context" : "unsupported"); return; }
     fetch(url).then(function (r) { if (!r.ok) { throw new Error("fetch_" + r.status); } return r.blob(); }).then(function (blob) {
       var item = new ClipboardItem({ "image/png": blob });
       return navigator.clipboard.write([item]);
