@@ -21,7 +21,7 @@ from quick_slide import edit_kinds as E
 from quick_slide.server import image_fetch as F
 from quick_slide.server.errors import ApiError
 
-from test_p3_edit import EditBase
+from p3_edit_helpers import EditBase
 
 
 class OfferedTests(unittest.TestCase):
