@@ -1848,7 +1848,7 @@
       exportBtn.addEventListener("click", function () {
         var c = SS.cap(caps, "export");
         // 形式はサーバのデッキの答え `export_formats`（モードで決まる。モーションは PDF・PPTX を押せなくして理由を出し、
-        // HTML（1枚）を出す）。ページの有無は `capabilities.export`。無ければ（古い答え）PDF と PPTX
+        // HTML を出す）。ページの有無は `capabilities.export`。無ければ（古い答え）PDF と PPTX
         var formats = data.export_formats || [{ format: "pdf" }, { format: "pptx" }];
         SS.menu(exportBtn, formats.map(function (f) {
           var ok = c.available && f.available !== false;

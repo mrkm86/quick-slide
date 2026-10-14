@@ -284,9 +284,9 @@ def pending_inserts(store: Any, jobs: list[dict[str, Any]]) -> list[dict[str, An
 
 
 def export_formats(mode: str) -> list[dict[str, Any]]:
-    """書き出しのメニューに出す形式と、モードで決まる可否（理由つき）。PDF・PPTX はどのモードにも並べ、書き出せないモード
-    （モーション）は押せなくして理由を出す。HTML（1枚）はモーションだけに並べる。ページの有無による可否は
-    `capabilities.export`（ここはモードだけで決まるので、デッキの答えに 1 度だけ載せる）。"""
+    """書き出しのメニューに出す形式。**そのモードで書き出せる形式だけを並べる**（モーションは HTML だけ、プレゼン・
+    ピッチは PDF・PPTX。書き出せない形式は、押せなくして理由を出すのでなく、出さない。2026-10-14 利用者の指摘）。
+    口（`POST /exports`）は、これまでどおり書き出せない形式を理由つきで断る。ページの有無による可否は `capabilities.export`。"""
     from .export_routes import format_refusal
     from .vocabulary import EXPORT_FORMAT_LABELS
 
@@ -295,8 +295,9 @@ def export_formats(mode: str) -> list[dict[str, Any]]:
     for fmt in ("pdf", "pptx", "html"):
         if fmt == "html" and fmt not in engine.exports:
             continue
-        reason = format_refusal(mode, fmt)
-        out.append({"format": fmt, "label": EXPORT_FORMAT_LABELS[fmt], "available": reason is None, "reason": reason})
+        if format_refusal(mode, fmt) is not None:
+            continue
+        out.append({"format": fmt, "label": EXPORT_FORMAT_LABELS[fmt], "available": True, "reason": None})
     return out
 
 

@@ -120,7 +120,7 @@ class ReadApiTests(unittest.TestCase):
                     "instruction", "instruction_limits", "export_formats", "export", "purge", "insert", "deck_modes"):
             self.assertIn(key, v, key)
         self.assertEqual(v["deck_modes"], {"presentation": "プレゼン", "pitch": "ピッチ", "motion": "モーション"})
-        self.assertEqual(v["export_formats"], {"pdf": "PDF", "pptx": "PPTX", "html": "HTML（1枚）"})
+        self.assertEqual(v["export_formats"], {"pdf": "PDF", "pptx": "PPTX", "html": "HTML"})
         self.assertEqual(v["card_limits"], {"title": 200})
         for key in ("empty_reason", "remake_forced_reason", "text_too_long_reason", "too_many_attachments_reason"):
             self.assertTrue(v["instruction"][key])
