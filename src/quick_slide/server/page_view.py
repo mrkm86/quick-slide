@@ -91,7 +91,10 @@ def page_versions(rows: list[dict[str, Any]], shown_run_id: str | None, requests
         rep = g["newest"]
         made = requests.get(g["oldest"]["run_id"]) or {}
         if not _made_here(made, page_id, g["ordinal"] == 1):
-            made = {}
+            # 別のページの直しが同時に走ると、このページの直しが、ほかの直しの回で一緒に描かれることがある
+            # （docs/adr/0012）。同じ姿を描いた回のうち、このページを直した頼みごとを探す（古い回から）
+            made = next((m for rid in reversed(g["runs"]) if (m := requests.get(rid) or {})
+                         and m.get("op") in ("revise", "insert") and _made_here(m, page_id, False)), {})
         has_image = rep.get("asset_state") == "ready" and rep.get("asset_id") is not None
         mode = made.get("edit_mode") if made.get("op") == "revise" else None
         out.append({

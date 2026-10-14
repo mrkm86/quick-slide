@@ -163,9 +163,13 @@ class RunsMixin(StoreBase):
                             (deck_id,)) is not None
 
     def shown_run(self, deck_id: str) -> dict[str, Any] | None:
-        """画面に出す回: **出力を取り込み終えた（done）一番新しい回**。描いている途中・失敗した回は出さない
-        （進みと失敗の理由は帯の 1 文が言う）。"""
-        rid = self._scalar("SELECT id FROM runs WHERE deck_id=? AND state='done' ORDER BY number DESC LIMIT 1",
+        """画面に出す回: **出力を取り込み終えた（done）回のうち、一番新しい台本の版を描いた回**（同じ版なら番号の大きい回）。
+        描いている途中・失敗した回は出さない（進みと失敗の理由は帯の 1 文が言う）。
+
+        別のページの直しは同時に走るので（docs/adr/0012）、あとに始まった回が先に描き終わることがある。描いた版で選べば、
+        描き終わった順に関わらず、いまの台本に一番近い回が出る。"""
+        rid = self._scalar("SELECT r.id FROM runs r LEFT JOIN scripts s ON s.id=r.script_id"
+                           " WHERE r.deck_id=? AND r.state='done' ORDER BY COALESCE(s.version,-1) DESC,r.number DESC LIMIT 1",
                            (deck_id,))
         return None if rid is None else self.run(rid)
 
@@ -204,18 +208,64 @@ class RunsMixin(StoreBase):
         return {"page_count": len(pages), "ready_count": len(ready), "thumbnail_asset_id": thumb, "run_id": run["id"]}
 
     # --- ワーカー: 仕事を取る・終える ---
+    @staticmethod
+    def _page_local(job: dict[str, Any]) -> set[str] | None:
+        """ほかのページの直しと重ねてよい仕事なら、その仕事が触るページ（page_ids の id）。重ねられなければ None。
+
+        重ねてよいのは、ページを指定した直し（`revise` の page・pages。docs/adr/0012-parallel-edits.md）だけ。
+        デッキ全体の直し・足す・複製・並べ替え・非表示・版の切り替え・組み直し・1 冊を作る仕事は、ほかと重ねない。"""
+        req = job.get("request") or {}
+        if job.get("kind") != "edit" or req.get("op") != "revise" or req.get("scope") not in ("page", "pages"):
+            return None
+        pages = req.get("pages")
+        return set(pages) if isinstance(pages, list) and pages and all(isinstance(p, str) for p in pages) else None
+
+    def _can_overlap(self, a: dict[str, Any], b: dict[str, Any]) -> bool:
+        """同じデッキの 2 つの仕事を同時に走らせてよいか（どちらもページを指定した直しで、ページが重ならない）。"""
+        pa, pb = self._page_local(a), self._page_local(b)
+        return pa is not None and pb is not None and not (pa & pb)
+
+    def _claimable(self) -> dict[str, Any] | None:
+        """いま取れる、一番古い待ちの仕事（台帳の行）。
+
+        同じデッキで走っている仕事と、**それより前から待っている**同じデッキの仕事の全部と重ねてよいときだけ取れる
+        （前から待っている仕事を、あとから来た仕事が追い越して先にぶつからないように）。1 冊を全ページ 1 枚に描く
+        デッキ（infographic）は、直しも全ページに効くので重ねない。"""
+        rows = self._all("SELECT j.*,d.deleted_at FROM jobs j JOIN decks d ON d.id=j.deck_id"
+                         " WHERE j.state IN ('queued','running') ORDER BY j.created_at,j.rowid")
+        jobs = []
+        for r in rows:
+            r = dict(r)
+            r["request"] = load_json(r.get("request_json")) or {}
+            jobs.append(r)
+        one_page_decks: dict[str, bool] = {}
+        for i, row in enumerate(jobs):
+            if row["state"] != "queued":
+                continue
+            if row["deleted_at"] is not None:
+                return row
+            same = [o for o in jobs if o["deck_id"] == row["deck_id"] and o is not row
+                    and (o["state"] == "running" or jobs.index(o) < i)]
+            if not same:
+                return row
+            deck = row["deck_id"]
+            if deck not in one_page_decks:
+                args = self.deck_run_args(deck)   # type: ignore[attr-defined]
+                one_page_decks[deck] = args.get("mode") == "pitch" and args.get("style") == "infographic"
+            if not one_page_decks[deck] and all(self._can_overlap(row, o) for o in same):
+                return row
+        return None
+
     def claim_job(self, worker: str) -> dict[str, Any] | None:
         """待っている仕事を 1 つ取る（古い順）。**削除済みのデッキの仕事は取らずに失敗にする。**
 
-        **1 冊に走る仕事は 1 つだけ**（P3）: 同じデッキの仕事が走っている間は、そのデッキの次の仕事を取らない。
-        次の仕事は、前の仕事が終わったあとのいまの台本から始める（ページは id で指すので、前の直しの上に重なる）。
+        同じデッキの仕事は、基本は 1 つずつ（前の仕事が終わったあとのいまの台本から始める）。**別のページを指定した直し
+        どうしだけは同時に走る**（`_claimable`。台本に当てるのと描くのはワーカーの中でデッキごとに順番。
+        docs/adr/0012-parallel-edits.md）。
         """
         with self.transaction():
             while True:
-                row = self._one("SELECT j.*,d.deleted_at FROM jobs j JOIN decks d ON d.id=j.deck_id"
-                                " WHERE j.state='queued' AND NOT EXISTS (SELECT 1 FROM jobs k WHERE k.deck_id=j.deck_id"
-                                "  AND k.state='running')"
-                                " ORDER BY j.created_at,j.rowid LIMIT 1")
+                row = self._claimable()
                 if row is None:
                     return None
                 now = self.now()

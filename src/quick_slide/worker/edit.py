@@ -25,9 +25,11 @@ from __future__ import annotations
 import hashlib
 import logging
 import shutil
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterator
 
 from .. import edit_kinds, motion
 from ..childenv import child_env
@@ -91,6 +93,34 @@ class EditResult:
     suggestions: list[dict[str, str]] = field(default_factory=list)
     routes: dict[str, str] = field(default_factory=dict)
     candidate: dict[str, Any] | None = None   # 台本係が書いて検査を通った版（もう保存してある）
+    # ほかの台本の版に、この直しだけを当て直す（ページを指定した直し。ほかのページの直しが先に当たっていたとき）
+    rebase: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+
+
+# ---- 同じデッキの仕事の順番（docs/adr/0012-parallel-edits.md）----
+# 別のページの直しは同時に走る（台帳の `claim_job`）。台本に当てるのと描くのは、デッキごとに 1 つずつ。
+# サーバは 1 つの置き場に 1 つしか動かないので、鍵はこのプロセスの中だけで足りる
+_TURNS: dict[tuple[str, str], threading.Lock] = {}
+_TURNS_GUARD = threading.Lock()
+STOPPED_MESSAGE = "サーバを止めたので、直すのを中断しました。もう一度頼んでください。"
+
+
+class _Stopped(Exception):
+    pass
+
+
+@contextmanager
+def deck_turn(ctx: Context, deck_id: str, what: str) -> Iterator[None]:
+    """そのデッキの「当てる」か「描く」の番を待つ（サーバを止めたら待つのをやめる）。"""
+    with _TURNS_GUARD:
+        lock = _TURNS.setdefault((deck_id, what), threading.Lock())
+    while not lock.acquire(timeout=0.5):
+        if ctx.stop.is_set():
+            raise _Stopped()
+    try:
+        yield
+    finally:
+        lock.release()
 
 
 def edit(ctx: Context, job: dict[str, Any]) -> str:
@@ -114,7 +144,11 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
         return import_recorded(ctx, run)
     if resume == "render":
         script = ctx.call(store.script, run["script_id"])
-        return render_and_import(ctx, run, script, ctx.call(store.load_script, script), RenderPlan(), start=False)
+        try:
+            with deck_turn(ctx, deck_id, "render"):
+                return render_and_import(ctx, run, script, ctx.call(store.load_script, script), RenderPlan(), start=False)
+        except _Stopped:
+            return fail(STOPPED_MESSAGE, "stopped")
 
     if one_page(args) and op in ("duplicate", "visibility", "reorder", "insert"):
         return fail("台本の全ページを 1 枚に描くスタイル（infographic）では、ページの操作はできません。", "edit")
@@ -149,6 +183,46 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
         return fail(exc.message, exc.kind)
     if isinstance(result, str):
         return result
+    try:
+        with deck_turn(ctx, deck_id, "apply"):
+            script = _apply(ctx, run, req, head, data, result)
+        if isinstance(script, str):
+            return fail(script, "edit")
+        return _finish(ctx, run, op, script, result)
+    except _Stopped:
+        return fail(STOPPED_MESSAGE, "stopped")
+
+
+def _apply(ctx: Context, run: dict[str, Any], req: dict[str, Any], head: dict[str, Any], data: dict[str, Any],
+           result: EditResult) -> dict[str, Any] | str:
+    """直した台本をデッキのいまの版にする（デッキごとに 1 つずつ。`deck_turn(…, "apply")` の中で呼ぶ）。
+    戻り値はいまの版になった台本の行。断るときは文。
+
+    書き始めたあとで、ほかのページの直しが先に当たっていたら、この直しだけをいまの版に当て直し、もう一度検査する。"""
+    store = ctx.store
+    deck_id, run_id = run["deck_id"], run["id"]
+    now = ctx.call(store.head_script, deck_id)
+    if now is not None and now["id"] != head["id"]:
+        if result.rebase is None:   # ほかと重ねない直しは 1 つずつ走るので、ここへは来ない（来たら当てない）
+            return "ほかの直しが先に当たりました。画面を読み込み直してから、もう一度頼んでください。"
+        current = ctx.call(store.load_script, now)
+        merged = result.rebase(current)
+        result.data = merged
+        if dumps(merged) == dumps(current):
+            return now
+        script = ctx.call(store.save_script, deck_id, merged, written_by=result.written_by, writer_backend=result.backend,
+                          intake_id=None, run_id=run_id, instruction=_instruction_note(req))
+        checked = check_candidate(ctx, engine_for(run["mode"]), run, merged)
+        ctx.call(store.set_script_check, script["id"], -1 if checked.rc is None else checked.rc,
+                 checked.problems + checked.warnings)
+        if checked.stopped:
+            raise _Stopped()
+        if checked.rc != 0:
+            why = (checked.problems or [""])[0]
+            return "ほかのページの直しと合わせると、エンジンの決まりに合いませんでした。もう一度頼んでください。" + (
+                f"（{why}）" if why else "")
+        ctx.call(store.accept_script, script["id"], screen_pages(run["args"], merged))
+        return script
     if result.candidate is not None:
         script = result.candidate
     elif dumps(result.data) != dumps(data):
@@ -159,7 +233,14 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
     else:
         script = head
     if script["id"] != head["id"]:
-        ctx.call(store.accept_script, script["id"], screen_pages(args, result.data))
+        ctx.call(store.accept_script, script["id"], screen_pages(run["args"], result.data))
+    return script
+
+
+def _finish(ctx: Context, run: dict[str, Any], op: str, script: dict[str, Any], result: EditResult) -> str:
+    """直しの記録を書き、描く番を待って描く。描くのは、番が来たときのいまの版（あとから当たったほかの直しも一緒に描く）。"""
+    store = ctx.store
+    deck_id, run_id = run["deck_id"], run["id"]
     shown = _positions(result.data)
     suggestions = [{"id": s["id"], "position": shown.get(s["id"]), "text": s["text"]} for s in result.suggestions]
     ctx.call(store.set_run_record, run_id, {"edit": {"op": op, "summary": result.summary, "routes": result.routes,
@@ -168,7 +249,10 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
     if suggestions:
         message = "ほかのページへの提案（当てていません）: " + " ／ ".join(
             f"{s['position']}枚目: {s['text']}" for s in suggestions)
-    return render_and_import(ctx, run, script, result.data, result.plan, message=message)
+    with deck_turn(ctx, deck_id, "render"):
+        latest = ctx.call(store.head_script, deck_id) or script
+        data = result.data if latest["id"] == script["id"] else ctx.call(store.load_script, latest)
+        return render_and_import(ctx, run, latest, data, result.plan, message=message)
 
 
 # --- 小さな道具 ---------------------------------------------------------------------------------------------
@@ -390,9 +474,13 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
         patch = parse_revision(answer, script=data, targets=keys, pictures=pictures, attachments=rels, mode=engine.mode)
         if patch.problems:
             return None, patch.problems
-        new = apply_revision(data, patch) if patch.script_changes else data
-        # 絵だけ直すページも新しい姿になるので、前の版の印を外す（中身を直したページは apply_revision が外す）
-        new = without_pins(new, {pp.key for pp in patch.image_changes})
+        image_keys = {pp.key for pp in patch.image_changes}
+
+        def rebase(other: dict[str, Any]) -> dict[str, Any]:
+            # 絵だけ直すページも新しい姿になるので、前の版の印を外す（中身を直したページは apply_revision が外す）
+            return without_pins(apply_revision(other, patch) if patch.script_changes else other, image_keys)
+
+        new = rebase(data)
         plan = RenderPlan(deck=bool(patch.script_changes) or not patch.image_changes)
         for pp in patch.image_changes:
             plan.revise.append({"key": pp.key, "slot": (pp.image or {}).get("slot"),
@@ -401,8 +489,10 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
                                 "remake": remake, "attach": paths})
         if one_page(args) and plan.revise:
             plan.revise = [{**plan.revise[0], "key": "infographic"}]
+        page_local = req.get("scope") in ("page", "pages") and not one_page(args)
         return EditResult(data=new, plan=plan, summary=patch.summary, suggestions=patch.suggestions,
-                          routes={k: p.route for k, p in patch.pages.items()}), []
+                          routes={k: p.route for k, p in patch.pages.items()},
+                          rebase=rebase if page_local else None), []
 
     ctx.call(ctx.store.set_job_note, job["id"], {"keys": keys})
     return _writer_loop(ctx, job, run, req, data, build, parse_and_apply)
