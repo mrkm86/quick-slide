@@ -28,6 +28,8 @@
   --hero-bg: var(--color-primitive-blue-50);
   --hero-line: var(--color-primitive-blue-300);
   --hero-mid: var(--color-primitive-blue-400);
+  --hero-spark: var(--color-primitive-yellow-500);      /* ホームの絵の電球の光だけに使う */
+  --hero-spark-strong: var(--color-primitive-yellow-600);
   --color-bg: var(--canvas);
   --color-surface: var(--surface);
   --color-surface-muted: var(--color-neutral-solid-gray-50);
@@ -367,9 +369,14 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .hero-shadow { fill: var(--brand); opacity: .07; }
 .hero-lines { fill: none; stroke: var(--hero-line); stroke-width: 4; stroke-linecap: round; }
 .hero-lines--strong { stroke: var(--brand); stroke-width: 6; }
-.hero-accent, .hero-dot { fill: var(--brand); }
+.hero-accent { fill: var(--brand); }
 .hero-bar--light { fill: var(--hero-line); }
 .hero-bar--mid { fill: var(--hero-mid); }
+.hero-bulb { fill: var(--surface); stroke: var(--hero-line); stroke-width: 1.5; }
+.hero-bulb-base { fill: var(--hero-line); }
+.hero-bulb-rays { fill: none; stroke: var(--hero-spark); stroke-width: 3.5; stroke-linecap: round; }
+.hero-bulb-filament { fill: none; stroke: var(--hero-spark-strong); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.hero-trail { fill: none; stroke: var(--hero-spark-strong); stroke-width: 2; stroke-dasharray: 2 7; stroke-linecap: round; }
 
 /* ---- カード（ホーム・一覧）---- */
 .section { margin-bottom: var(--space-7); }
