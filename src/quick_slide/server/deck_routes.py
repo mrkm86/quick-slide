@@ -292,7 +292,8 @@ def planning_state(latest: dict[str, Any] | None) -> dict[str, Any]:
         return {"state": "done", "active": False, "message": latest.get("message")}
     progress = latest.get("progress") or {}
     # 下調べ（依頼から作る道）は回の状態では writing のまま。帯には段の名前で出す
-    state = "researching" if latest["state"] == "writing" and progress.get("phase") == "researching" else latest["state"]
+    phase = progress.get("phase")
+    state = phase if latest["state"] == "writing" and phase in ("researching", "importing") else latest["state"]
     return {"state": state, "active": True, "message": planning_message(latest["state"], progress)}
 
 

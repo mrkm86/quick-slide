@@ -66,6 +66,8 @@ access_log = logging.getLogger("quick_slide.server.access")
 
 SESSION_HEADER = "X-Quick-Slide-Session"
 MAX_BODY_BYTES = 16 * 1024 * 1024
+# 本文をディスクへ流して受ける口（PPTX の取り込み。上限は importing.MAX_PPTX_BYTES）
+IMPORT_PATH = "/api/imports"
 MAX_CLIENT_JSON_BYTES = 8 * 1024
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 # 形式ごとの「いま使えるか」を覚えておく秒数（`kind_refusals`）
@@ -106,6 +108,8 @@ class Request:
     headers: dict[str, str]
     body: bytes
     params: dict[str, str] = field(default_factory=dict)
+    # 本文をディスクへ流して受けた口（`POST /api/imports`）の一時ファイル。ハンドラが移さなければ、答えたあとで消す
+    upload: Path | None = None
 
     def header(self, name: str) -> str | None:
         return self.headers.get(name.lower())
@@ -501,15 +505,26 @@ class QuickSlideServer:
         method = h.command
         headers = {k.lower(): v for k, v in h.headers.items()}
         resp: Response
+        upload: Path | None = None
         try:
-            body = self._read_body(h, headers, method)
-            req = Request(method=method, path=path, query=query, headers=headers, body=body)
+            if method == "POST" and path == IMPORT_PATH:
+                # 大きな本文（PPTX）: 宛先・オリジン・セッションを読む前に確かめ、ディスクへ流して受ける
+                pre = Request(method=method, path=path, query=query, headers=headers, body=b"")
+                self._check_host(pre)
+                self._check_mutation(pre)
+                upload = self._read_upload(h, headers)
+                body = b""
+            else:
+                body = self._read_body(h, headers, method)
+            req = Request(method=method, path=path, query=query, headers=headers, body=body, upload=upload)
             self._check_host(req)
             resp = self._route(req)
         except ApiError as exc:
             # 「まだ使えない口」（later.py）は想定どおりの断りなので、相関 ID もエラーログも付けない
             unexpected = exc.status >= 500 and exc.code != NOT_READY_CODE
-            resp = Response.json(exc.status, exc.body(cid if unexpected else None), close=exc.status in (413, 411))
+            # 取り込みの口は本文を読む前に断ることがある（読まなかった本文が残るので、つなぎを閉じる）
+            resp = Response.json(exc.status, exc.body(cid if unexpected else None),
+                                 close=exc.status in (413, 411) or (path == IMPORT_PATH and upload is None))
             if unexpected:
                 log.error("[%s] %s %s -> %d %s", cid, method, path, exc.status, exc.code)
         except QuickSlideError as exc:
@@ -518,6 +533,8 @@ class QuickSlideServer:
         except Exception:  # noqa: BLE001 - 最外殻。トレースバックはログにだけ
             log.error("[%s] 予期しない例外 %s %s\n%s", cid, method, path, traceback.format_exc())
             resp = Response.json(500, ApiError(500, "internal_error", GENERIC_500_MESSAGE).body(cid))
+        if upload is not None and upload.exists():
+            upload.unlink(missing_ok=True)   # ハンドラが移さなかった（断った）一時ファイル
         self._send(h, method, resp)
         access_log.info("%s %s %d %d %.1fms cid=%s", method, path, resp.status, len(resp.body), (time.monotonic() - started) * 1000, cid)
 
@@ -543,13 +560,48 @@ class QuickSlideServer:
             raise ApiError(400, "short_body", "本文が Content-Length より短く終わりました。")
         return data
 
+    def _read_upload(self, h: _Handler, headers: dict[str, str]) -> Path:
+        """本文を `runtime/uploads/` の一時ファイルへ流して受ける（PPTX の取り込み。上限は `importing.MAX_PPTX_BYTES`）。"""
+        from ..importing import MAX_PPTX_BYTES
+
+        if "transfer-encoding" in headers:
+            raise ApiError(411, "length_required", "本文は Content-Length 付きで送ってください（chunked には対応していません）。")
+        raw = headers.get("content-length")
+        if raw is None:
+            raise ApiError(411, "length_required", "本文の長さ（Content-Length）が必要です。")
+        try:
+            n = int(raw)
+        except ValueError:
+            raise ApiError(400, "bad_content_length", "Content-Length が整数ではありません。") from None
+        if n <= 0:
+            raise ApiError(400, "validation_error", "取り込む PPTX を本文で送ってください。")
+        if n > MAX_PPTX_BYTES:
+            raise ApiError(413, "body_too_large", f"ファイルが大きすぎます（上限 {MAX_PPTX_BYTES // (1024 * 1024)} MB）。")
+        self.root.uploads_dir.mkdir(parents=True, exist_ok=True)
+        dest = self.root.uploads_dir / f"import-{secrets.token_hex(8)}.part"
+        left = n
+        try:
+            with dest.open("wb") as f:
+                while left > 0:
+                    chunk = h.rfile.read(min(left, 1024 * 1024))
+                    if not chunk:
+                        raise ApiError(400, "short_body", "本文が Content-Length より短く終わりました。")
+                    f.write(chunk)
+                    left -= len(chunk)
+        except BaseException:
+            dest.unlink(missing_ok=True)
+            raise
+        return dest
+
     def _send(self, h: _Handler, method: str, resp: Response) -> None:
         try:
             h.send_response(resp.status)
             h.send_header("Content-Type", resp.content_type)
             h.send_header("Content-Length", str(len(resp.body)))
+            own = {k.lower() for k, _ in resp.headers}
             for k, v in SECURITY_HEADERS:
-                h.send_header(k, v)
+                if k.lower() not in own:   # 答えが自分で決めた見出し（描いた回の控えの Cache-Control）を優先する
+                    h.send_header(k, v)
             for k, v in resp.headers:
                 h.send_header(k, v)
             if resp.close:
@@ -902,6 +954,7 @@ from . import intake_routes as _intake_routes  # noqa: E402
 from . import later as _later  # noqa: E402
 from . import present_routes as _present_routes  # noqa: E402
 from . import samples_routes as _samples_routes  # noqa: E402
+from . import import_routes as _import_routes  # noqa: E402
 from . import settings_routes as _settings_routes  # noqa: E402
 
 _not_ready = _later.not_ready
@@ -938,6 +991,8 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"POST"}), _exact("/api/server/restart"), QuickSlideServer._route_restart),
     # 会話からの投入
     (frozenset({"POST"}), _exact("/api/intakes"), _intake_routes.route_intake),
+    # 既存の PPTX の取り込み（本文は PPTX。docs/adr/0011-import-pptx.md）
+    (frozenset({"POST"}), _exact(IMPORT_PATH), _import_routes.route_import),
     (frozenset({"GET"}), _uuid_route("/api/launches/", "launch_id"), QuickSlideServer._route_launch_get),
     (frozenset({"POST"}), _uuid_route("/api/launches/", "launch_id", "/attach"), QuickSlideServer._route_attach),
     (frozenset({"POST"}), _exact("/api/events/clipboard-copy"), QuickSlideServer._route_clipboard_copy),

@@ -207,6 +207,22 @@ doc（書類・原稿）・list（一覧・手順）・checklist（決まり・�
 推奨の大きさ（`size_exact`）は枠と同じ縦横比で 16 の倍数（全面 2048×1152・半分 1024×1152・`cover` の右 944×1152 など）。定型（`size`）で頼むなら 1536×1024・1024×1536・1024×1024 のうち比が近いもの。
 **枠の 0.8 倍より小さい画像は警告**する（引き伸ばしてぼけるため）。
 
+## 取り込んだページ（`html`・台本を書く側は使わない）
+
+`html_slide.py import` が既存の PPTX から書くページ（[ADR 0025](../docs/adr/0025-import-pptx.md)）。型の一覧には載せない。
+
+| キー | 中身 |
+|---|---|
+| `html` | section の中身。[`contract.md`](contract.md) に沿った絶対配置の HTML。画像は `<img src="media/…">`（台本のフォルダからのパス） |
+| `background` | 地の色（`#rrggbb`・`rgba(…)`）か `linear-gradient(…)`。画像の地は `html` の一番奥の `img` |
+| `notes` | ノート（元の PPTX のもの）。`talk` の代わりで、［クリック］の数は照合しない |
+| `title` | 一覧・サムネイルに出す見出し |
+
+- 段は HTML の `data-step`・`data-fx`・`data-delay` のまま。`mode: handout` は段を外す
+- 書けないもの（rc=2）: `script`・`style`・`iframe`・`a` などの要素・`on…` の属性・`href`・style の `url()`・外の URL の画像
+- 文字のはみ出し・スライドの外へのはみ出しは警告（字体の違いで起きる）。回すだけの `transform: rotate()` は文字の箱にだけ使える
+- ページの `_hidden: true`（元の PPTX の非表示のスライド）は、呼ぶ側が抜く印。エンジンは読み飛ばす
+
 ## 画面をまたいで残すもの（data-keep）
 
 中身の型には、上の細い帯（`band`）・左下の文字（`footer`）・ページ番号（`pageno`・`page_numbers: true` のときだけ・中央下）を毎枚同じ位置に置く。

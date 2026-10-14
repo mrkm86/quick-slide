@@ -458,7 +458,7 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .thumbs__list { list-style: none; margin: 0; padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2); }
 .thumb {
   position: relative;   /* 番号の札を絵の左上に重ねる */
-  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2); align-items: center;
+  display: grid; grid-template-columns: minmax(0, 1fr); align-items: center;
   width: 100%; padding: var(--space-1); border-radius: var(--radius-2); border: 2px solid transparent;
   background: transparent; cursor: pointer; text-align: left;
   /* 掴んで並べ替える面は**サムネ全体**（取っ手の印は置かない）。指の縦スクロールは残す:
@@ -468,18 +468,20 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 }
 .thumb:hover { background: var(--brand-soft); }
 .thumb--current { border-color: var(--color-primary); background: var(--brand-soft); }
-/* 非表示のページ。薄くするだけだと文字のコントラストを割るので、濃淡は絵だけに掛け、番号の札は濃いまま残す */
+/* 非表示のページ。絵は灰色で薄く、番号の札も灰色にする（2026-10-14・利用者の指定）。札の灰色は白い数字と 4.5:1 の Gray-536 */
 .thumb--hidden .thumb__pic { opacity: .4; filter: grayscale(1); }
+.thumb--hidden .thumb__num { background: var(--color-neutral-solid-gray-536); }
 /* ページ番号は角丸・地を塗りつぶし・数字を白抜きの札（利用者の指定）。
-   **絵の上には重ねない**（2026-09-18）。サムネイルの仕事は「どのページか分かること」で、それを担っているのは
-   見出しなので、隠すものが悪すぎた。絵の左の欄へ出し、**絵は 1px も縮めず**にレールのほうを広げた。
-   14px は領域の制約があるときの例外（Dns-14B-130） */
+   **絵の左上に重ねる**（2026-10-14・利用者の指定）。前は絵の左の欄に出していたが（2026-09-18。見出しの頭を隠さないため）、
+   1〜9 と 10〜 で札の幅が違い、絵の左端がページごとにずれた。サムネイルなので、文字に被っても絵の位置がそろう方を採る。
+   絵の左端は全ページで同じ・札は数字の桁に合わせて右へ伸びるだけ。14px は領域の制約があるときの例外（Dns-14B-130） */
 .thumb__num {
-  min-width: 24px; padding: 2px 8px; border-radius: var(--border-radius-8);
-  background: var(--color-neutral-solid-gray-800); color: var(--color-neutral-white);
+  position: absolute; z-index: 2; top: calc(var(--space-1) + 4px); left: calc(var(--space-1) + 4px);
+  min-width: 24px; padding: 1px 6px; border-radius: var(--border-radius-8);
+  background: var(--color-neutral-solid-gray-800); color: var(--color-neutral-white); box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
   font-size: var(--font-size-14); line-height: var(--line-height-130); font-weight: var(--font-weight-700); text-align: center; font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
-.thumb__num { justify-self: start; }   /* 余った幅で札が横に伸びない（スマホのページ一覧の板で黒い帯になった） */
 .thumb__pic { aspect-ratio: 16 / 9; background: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: var(--border-radius-8); overflow: hidden; }
 .thumb__pic img { width: 100%; height: 100%; object-fit: cover; }
 /* 掴んで動かす間、文字が選ばれたり縮小画像が「画像をドラッグ」で持ち去られたりしないように */
@@ -533,6 +535,9 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .page__select-box:disabled { cursor: not-allowed; }
 .page__num { font-weight: var(--font-weight-700); color: var(--color-text-muted); min-width: 1.5em; }
 .page__title { font-weight: var(--font-weight-700); color: var(--color-text); }
+/* 非表示のページは番号と題も灰色にして、薄いと分かるようにする（2026-10-14・利用者の指定）。
+   灰色は白い地で 4.5:1 の Gray-536（読める薄さの下限）。太さはそのまま（並んだ題の高さをそろえる） */
+.page--hidden .page__title, .page--hidden .page__num { color: var(--color-neutral-solid-gray-536); }
 .page__hidden-mark { display: inline-flex; color: var(--color-text-muted); }
 .page__collapse { flex: 0 0 auto; }
 .page__head-spacer { flex: 1 1 auto; }
@@ -591,7 +596,7 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .edit-badge--edit_queued { background: var(--color-neutral-white); color: var(--ink); border: 1px solid var(--color-neutral-solid-gray-536); }
 .edit-badge--editing::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent;
   animation: gap-spin var(--motion-spin) linear infinite; }
-.thumb__pic .edit-badge { top: 4px; left: 4px; padding: 0 6px; font-size: 11px; }
+.thumb__pic .edit-badge { top: 4px; left: auto; right: 4px; padding: 0 6px; font-size: 11px; }   /* 左上は番号の札 */
 .thumb__pic .edit-badge::before { display: none; }
 @media (prefers-reduced-motion: reduce) { .edit-badge--editing::before { animation: none; } }
 .frame--queued_slot, .frame--queued_rate_limit, .frame--retry_backoff, .frame--paused, .frame--unstarted { border-style: dashed; background: var(--color-surface-muted); }
@@ -1298,6 +1303,21 @@ html.is-locked { overflow: hidden; }
 .thumbs__head { display: none; }
 .pages { grid-column: 2; width: 100%; max-width: 1200px; justify-self: center; gap: var(--space-5); }
 .deck-body[data-panel="closed"] .pages { max-width: 1280px; }
+/* 左の列（ページ一覧）の上の帯: 題と畳む・開くのボタン（PC の幅だけ）。列がスクロールしても上に残る */
+.thumbs__bar { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-1); padding: var(--space-1) var(--space-1) 0 var(--space-3); background: var(--color-surface); }
+.thumbs__bar-label { font-size: var(--font-size-14); font-weight: var(--font-weight-700); color: var(--color-text-muted); }
+.thumbs__toggle { flex: none; }
+/* 畳んだとき: 列はボタン 1 つぶんの細い帯になり、スライドの列が左へ広がる（同じ位置のボタンで開く） */
+.deck-body[data-thumbs="closed"] { grid-template-columns: calc(var(--tap) + 2 * var(--space-1) + 2px) minmax(0, 1fr) var(--panel-w); }
+.deck-body[data-thumbs="closed"][data-panel="closed"] { grid-template-columns: calc(var(--tap) + 2 * var(--space-1) + 2px) minmax(0, 1fr); }
+.deck-body[data-thumbs="closed"] .thumbs { overflow: hidden; }
+.deck-body[data-thumbs="closed"] .thumbs__bar { padding: var(--space-1); justify-content: center; }
+.deck-body[data-thumbs="closed"] .thumbs__bar-label,
+.deck-body[data-thumbs="closed"] .thumbs__list,
+.deck-body[data-thumbs="closed"] .thumbs__reorder { display: none; }
+.deck-body[data-thumbs="closed"] .pages { max-width: 1440px; }
+.deck-body[data-thumbs="closed"][data-panel="closed"] .pages { max-width: 1600px; }
 
 /* スライドの列。**スライドと 1 行だけ**（選ぶ・番号・題・直す・⋮） */
 .page { padding: 0; background: none; border: 0; border-radius: 0; scroll-margin-top: calc(var(--deckbar-h) + var(--space-3)); }
@@ -1305,11 +1325,16 @@ html.is-locked { overflow: hidden; }
 .page__stage { display: block; padding-left: var(--space-6); }
 @media (max-width: 599px) { .page__stage { padding-left: var(--space-3); } }
 .page__head { display: flex; align-items: center; gap: var(--space-2); min-height: 56px; padding-bottom: var(--space-1); }
+/* 畳んだページ（タイトル行だけ・v1 にあった）。確認し終えたページを畳んでスクロールを減らす */
+.page--folded .page__stage { display: none; }
+.page__fold { flex: none; color: var(--color-text-muted); }
+.page--folded .page__fold { color: var(--color-primary); }
 .page__select { margin: 0 -8px 0 -10px; }
 .page__select-box { border-color: var(--color-neutral-solid-gray-536); }
 .page__title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .page__head-spacer { display: none; }
-.page__hidden-mark { display: inline-flex; align-items: center; gap: var(--space-1); flex: none; color: var(--color-text-muted); }
+/* ▶（.btn--icon・指の大きさの正方形）と同じ枠に、アイコンを真ん中に置く（列がそろう） */
+.page__hidden-mark { display: inline-flex; align-items: center; justify-content: center; flex: none; width: var(--tap); height: var(--tap); color: var(--color-text-muted); }
 .page__edit { flex: none; }
 .page--hidden .page__stage { opacity: .4; }
 
@@ -1413,7 +1438,11 @@ html.is-locked { overflow: hidden; }
   .thumbs.is-open { transform: none; visibility: visible; transition-delay: 0s; }
   .thumbs__head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) var(--space-2) 0 var(--space-3); }
   .thumbs__head h2 { font-size: var(--font-size-20); }
-  .thumb { min-height: var(--tap); grid-template-columns: auto minmax(0, 1fr); }   /* 余りは絵の列へ（番号の札は伸ばさない） */
+  .thumb { min-height: var(--tap); grid-template-columns: minmax(0, 1fr); }   /* 番号の札は絵の左上に重ねる */
+  /* 畳む・開くの帯は PC の幅だけ。狭い画面のページ一覧は⋮メニューから開く板（畳んだ印は効かせない） */
+  .thumbs__bar { display: none; }
+  .deck-body[data-thumbs="closed"] .thumbs { overflow-y: auto; }
+  .deck-body[data-thumbs="closed"] .thumbs__list, .deck-body[data-thumbs="closed"] .thumbs__reorder { display: flex; }
   @media (prefers-reduced-motion: reduce) { .panel, .thumbs { transition: none; } }
 }
 
@@ -1573,7 +1602,14 @@ body[data-route="deck"] .topbar { padding: 0 var(--deck-pad); }
 .kind-card--off:hover { border-color: var(--color-neutral-solid-gray-300); }
 .kind-card__off { font-weight: var(--font-weight-700); color: var(--color-neutral-solid-gray-700); }
 .create__kind-off { margin: calc(-1 * var(--space-1)) 0 0; color: var(--ink); line-height: var(--line-height-150); }
-.create__actions { display: flex; justify-content: flex-end; }
+.create__actions { display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
+/* 既存の PPTX の取り込み（プレゼンを選んでいるときだけ出る）。ドロップの間は欄を点線で囲み、案内の語を出す */
+.create__import { margin-right: auto; }
+.create__import[hidden] { display: none; }
+.create { position: relative; }
+.create--drop { outline: 3px dashed var(--color-key-600, #0b5cad); outline-offset: -6px; }
+.create--drop::after { content: attr(data-drop); position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.86); font-weight: 700; color: var(--color-key-800, #003b7a); border-radius: inherit; pointer-events: none; }
 .create__go { min-width: 160px; }
 .create__kinds-head { display: none; }   /* PC はカードに説明が出ているので、見出しと「？」は出さない */
 @media (max-width: 767px) {

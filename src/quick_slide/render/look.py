@@ -29,6 +29,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -116,6 +117,17 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
     fmt = brand_cfg.get("format") or {}
     footer = ((brand_cfg.get("footer") or {}).get("text") or "").strip()
 
+    if args.get("imported"):
+        # 取り込んだデッキ（docs/adr/0011-import-pptx.md）: ロゴ・フッタ・ページ番号は元の PPTX にもう入っているので足さない。
+        # テーマは PPTX のテーマ（取り込みが書いて、エンジンのテーマにできたときだけ）。透かしはブランドのまま
+        logo_path = logo_sha = white_path = white_sha = None
+        footer = ""
+        fmt = {**fmt, "page_numbers": False}
+        imported_theme = root.imported_dir(run["deck_id"]) / "theme.yaml"
+        if imported_theme.is_file() and _imported_theme_ok(root, run["deck_id"]):
+            theme_path.write_text(imported_theme.read_text(encoding="utf-8") + font_yaml(font), encoding="utf-8")
+            notes.append("取り込んだ PPTX のテーマの色で組みます（ロゴ・フッタ・ページ番号は足しません）")
+
     allowed = contenttypes.allowed(style_cfg.get("allowed_layouts"))
     plan = {
         "theme": str(theme_path),
@@ -145,6 +157,15 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
         "allowed_types": allowed, "overrides": overrides or None, "notes": notes,
     }
     return update, record
+
+
+def _imported_theme_ok(root: DataRoot, deck_id: str) -> bool:
+    """取り込みがテーマを台本に書いた（＝エンジンのテーマにできた）か。"""
+    try:
+        raw = json.loads((root.imported_dir(deck_id) / "script.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return bool(raw.get("theme"))
 
 
 # エンジンの既定の字体（名前が同じブランドの字体は、渡さずに既定のまま組む）。html-slide は DADS の Noto Sans JP（ADR 0020）。

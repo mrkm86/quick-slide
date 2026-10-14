@@ -97,6 +97,15 @@ class DataRoot:
         """直しに添えた画像の写し（台本の `path` は台本のフォルダからの相対 `attachments/<名前>` で書く）。"""
         return self.scripts_dir(deck_id) / "attachments"
 
+    def imported_dir(self, deck_id: str) -> Path:
+        """PPTX から取り込んだページの中身（エンジンの `import` の出力: 台本の元・`media/`・テーマ・報告）。台本の `html` の画像は
+        台本のフォルダからの相対 `imported/media/<名前>` で書く（docs/adr/0011-import-pptx.md）。"""
+        return self.scripts_dir(deck_id) / "imported"
+
+    def import_source_path(self, deck_id: str) -> Path:
+        """取り込んだ元の PPTX（取り込み直す・調べる用。画面にも書き出しにも出さない）。"""
+        return self.deck_dir(deck_id) / "source" / "source.pptx"
+
     def page_asset_rel(self, deck_id: str, run_id: str, page_no: int) -> str:
         """描いた回のページの画像を資産として配る置き場（`assets/` の下・データ置き場からの相対）。
 

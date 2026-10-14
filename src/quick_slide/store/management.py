@@ -185,6 +185,8 @@ class DeckManagementMixin(StoreBase):
         _link_file(self.script_path(script), self.root.root / rel)
         if (src_scripts / "attachments").is_dir():
             _link_tree(src_scripts / "attachments", dst_scripts / "attachments")
+        if (src_scripts / "imported").is_dir():   # 取り込んだページの画像（台本の html が相対 imported/media/… で指す）
+            _link_tree(src_scripts / "imported", dst_scripts / "imported")
         sid = self.new_id()
         self._exec(
             "INSERT INTO scripts(id,deck_id,version,path,sha256,written_by,writer_backend,intake_id,instruction,round,"
@@ -228,6 +230,19 @@ class DeckManagementMixin(StoreBase):
                        (rid, rp["page_no"], page_of.get(rp["page_id"]) if rp["page_id"] else None, aid, state,
                         rp["warnings_json"], rp["content_sha256"], rp["picture_sha256"]))
             n += 1
+        # 非表示のページの下見の絵（docs/adr/0012-hidden-page-previews.md）も写す
+        for pv in self._all("SELECT * FROM page_previews WHERE deck_id=?", (deck_id,)):
+            new_pid = page_of.get(pv["page_id"])
+            a = self._get("assets", pv["asset_id"])
+            src_file = self.root.root / a["relative_path"]
+            if new_pid is None or a["state"] != "ready" or not src_file.is_file():
+                continue
+            arel = f"assets/decks/{new_id}/{rid}/hidden-{new_pid}.png"
+            _link_file(src_file, self.root.root / arel)
+            aid = self.register_asset(relative_path=arel, media_type=a["media_type"], sha256=a["sha256"],
+                                      bytes_=a["bytes"], width=a["width"], height=a["height"])["id"]
+            self._exec("INSERT INTO page_previews(deck_id,page_id,asset_id,run_id,content_sha256,created_at)"
+                       " VALUES(?,?,?,?,?,?)", (new_id, new_pid, aid, rid, pv["content_sha256"], now))
         return n
 
     # --- ごみ箱へ移動 ---
@@ -532,6 +547,7 @@ _PURGE_DELETES: tuple[str, ...] = (
     "DELETE FROM sample_decks WHERE deck_id=:d",
     "DELETE FROM exports WHERE deck_id=:d",
     "DELETE FROM deck_heads WHERE deck_id=:d",
+    "DELETE FROM page_previews WHERE deck_id=:d",
     "DELETE FROM run_pages WHERE run_id IN (SELECT id FROM runs WHERE deck_id=:d)",
     "DELETE FROM jobs WHERE deck_id=:d",
     "DELETE FROM runs WHERE deck_id=:d",

@@ -2624,6 +2624,109 @@ GROW_MAX = 0.92                        # 大きく組んだ結果がここまで
 
 # 型の棚: 名前 → (関数, 台本で使えるキー, 見出しの帯・下の文字・ページ番号を付けるか)
 HEAD_KEYS = {"kicker", "headline", "sub", "source"}
+# --- 取り込んだページ（html） --------------------------------------------------------------------
+# PPTX から取り込んだページ（pptx_import.py が書く）。中身は決まり（contract.md）に沿った絶対配置の HTML で、型は組まずに通す（ADR 0025）。
+# 書いてはいけないもの: スクリプト・スタイルの要素・外へつながる要素と属性・ほかのページに効くもの
+HTML_BANNED_TAGS = {"script", "style", "iframe", "frame", "frameset", "object", "embed", "applet", "link", "meta", "base",
+                    "form", "input", "button", "textarea", "select", "option", "foreignobject", "use", "image", "video",
+                    "audio", "source", "track", "canvas", "template", "noscript", "section", "aside", "html", "head",
+                    "body", "title", "a", "portal", "dialog"}
+HTML_BANNED_ATTRS = {"href", "xlink:href", "srcset", "action", "formaction", "srcdoc", "ping", "background", "poster"}
+HTML_STYLE_BAD = re.compile(r"url\s*\(|expression\s*\(|@import|javascript:|-moz-binding|behavior\s*:", re.I)
+HTML_BG_RE = re.compile(r"^(#[0-9a-fA-F]{3,8}|rgba?\([\d\s.,%]+\)|linear-gradient\([#\w\s.,%()-]+\))$")
+HTML_KEYS = {"html", "background", "notes", "title"}
+
+
+def html_problems(fragment: str) -> list[str]:
+    """取り込んだページの HTML で、使ってはいけないもの（要素・属性）。"""
+    from html.parser import HTMLParser
+
+    bad: list[str] = []
+
+    class P(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            t = tag.lower()
+            if t in HTML_BANNED_TAGS:
+                bad.append(f"<{t}> は書けない")
+            for k, v in attrs:
+                k = (k or "").lower()
+                v = v or ""
+                if k.startswith("on"):
+                    bad.append(f"<{t}> の {k}（スクリプト）は書けない")
+                elif k in HTML_BANNED_ATTRS:
+                    bad.append(f"<{t}> の {k} は書けない")
+                elif k == "style" and HTML_STYLE_BAD.search(v):
+                    bad.append(f"<{t}> の style に url()・@import などは書けない")
+                elif "javascript:" in v.lower().replace(" ", ""):
+                    bad.append(f"<{t}> の {k} に javascript: は書けない")
+                elif k == "src" and t != "img":
+                    bad.append(f"<{t}> の src は書けない（画像は <img>）")
+
+        handle_startendtag = handle_starttag
+
+    P(convert_charrefs=True).feed(fragment)
+    return sorted(set(bad))
+
+
+def t_html(s: Slide):
+    """取り込んだページ。HTML をそのまま置き、画像を assets/ に写す。段（data-step）は HTML のもの。"""
+    frag = s.spec.get("html")
+    if not isinstance(frag, str):
+        s.err("html は文字（ページの中身の HTML）で書く")
+    bad = html_problems(frag)
+    if bad:
+        s.err("html に書けないものがある: " + "・".join(bad[:5]))
+    bg = s.spec.get("background")
+    if bg is not None and (not isinstance(bg, str) or not HTML_BG_RE.match(bg.strip())):
+        s.err("background は色（#rrggbb・rgba(…)）か linear-gradient(…) で書く")
+    notes = s.spec.get("notes")
+    if notes is not None and not isinstance(notes, str):
+        s.err("notes は文字で書く")
+    import hashlib
+
+    def swap(m):
+        src = _html_unescape(m.group(2))
+        if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", src) and not re.match(r"^[a-zA-Z]:\\", src):
+            s.err(f"画像に URL は使えない（ローカルのファイルを置いてパスで書く）: {src[:80]}")
+        p = pathlib.Path(src).expanduser()
+        p = p if p.is_absolute() else s.script_dir / p
+        ext = p.suffix.lower()
+        if ext not in IMAGE_EXTS:
+            s.err(f"画像は {' / '.join(IMAGE_EXTS)} のどれか: {p.name}")
+        if not p.is_file():
+            s.err(f"画像が無い: {p}")
+        # 名前はファイルのパスだけで決める（ページの番号を入れない）。全ページに出るロゴなどを 1 つの画像にして、
+        # 発表の画面がページの数だけ同じ画像を読まないようにする
+        name = f"h-{hashlib.sha256(str(p).encode()).hexdigest()[:16]}{'.jpg' if ext == '.jpeg' else ext}"
+        if (p, name) not in s.assets:
+            s.assets.append((p, name))
+        return f'{m.group(1)}"assets/{name}"'
+
+    frag = re.sub(r'(<img\b[^>]*?\ssrc=)"([^"]*)"', swap, frag)
+    for m in re.finditer(r'data-step="(\d+)"', frag):
+        if int(m.group(1)) >= 1:
+            s.steps.add(int(m.group(1)))
+    if s.still:                                              # 配る資料: 動きを外す
+        frag = re.sub(r'\sdata-(step|fx|delay)="[^"]*"', "", frag)
+    elif s.flat:                                             # steps: false: 全部を自動で順に（段を遅れに）
+        def flat(m):
+            step = int(m.group(1))
+            rest = m.group(2)
+            dm = re.search(r'data-delay="(\d+)"', rest)
+            delay = step * STEP_GAP + (int(dm.group(1)) if dm else 0)
+            rest = re.sub(r'\sdata-delay="\d+"', "", rest)
+            return f'data-step="0"{rest} data-delay="{delay}"'
+        frag = re.sub(r'data-step="(\d+)"((?:\s+data-fx="[^"]*")?(?:\s+data-delay="\d+")?)', flat, frag)
+    s.section_style = f"background:{bg.strip()}" if bg else None
+    s.imported = True
+    return [frag]
+
+
+def _html_unescape(v: str) -> str:
+    import html as _h
+    return _h.unescape(v)
+
+
 TYPES = {
     "cover": (t_cover, {"label", "title", "subtitle", "meta", "image", "layout", "text_side", "tone", "motif"}, False),
     "agenda": (t_agenda, HEAD_KEYS | {"items", "highlight"}, True),
@@ -2667,12 +2770,16 @@ for _t in TAKEAWAY_TYPES:
     TYPES[_t] = (TYPES[_t][0], TYPES[_t][1] | {"takeaway", "takeaway_icon"}, TYPES[_t][2])
 
 
+# 取り込んだページの型（台本を書く側は使わない。PPTX の取り込みだけが書く・ADR 0025）。型の一覧・カタログには載せない
+IMPORTED_TYPES = {"html": (t_html, HTML_KEYS, False)}
+
+
 def build_slide(s: Slide) -> tuple[list[str], bool]:
     """chrome（上の帯・下の文字・ページ番号）は型の既定。置き方で型が s.chrome を変える。上の帯だけ外すときは s.no_band"""
     """1枚の部品と、帯・下の文字を付けるかを返す。未知の型・未知のキーは DeckError。"""
-    if s.type not in TYPES:
+    if s.type not in TYPES and s.type not in IMPORTED_TYPES:
         s.err(f"知らない型（使えるのは {', '.join(TYPES)}）")
-    fn, keys, chrome = TYPES[s.type]
+    fn, keys, chrome = TYPES[s.type] if s.type in TYPES else IMPORTED_TYPES[s.type]
     extra = sorted(k for k in set(s.spec) - keys - COMMON_KEYS if not k.startswith("_"))
     if extra:
         s.err(f"知らないキー: {', '.join(extra)}（この型で使えるのは {', '.join(sorted(keys))}）")

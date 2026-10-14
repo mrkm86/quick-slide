@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import subprocess
@@ -28,7 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .. import motion
+from .. import importing, motion
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, Engine, engine_for, engine_marker
 from ..paths import DataRoot
@@ -49,7 +50,10 @@ from ..render.runner import (
     render_deck,
 )
 from ..scriptdoc import (
+    content_sha,
     engine_view,
+    is_hidden,
+    slides_of,
     one_page,
     outline_headings,
     output_pages,
@@ -183,10 +187,15 @@ def make(ctx: Context, job: dict[str, Any]) -> str:
         ctx.call(store.set_run_record, run_id, {"prerequisites": {"checked": pre.rc is not None, "rc": pre.rc}})
         if not pre.ok:
             return fail(pre.message or "", pre.failure_kind or "engine", pre.rc)
-        # 依頼から作る取り込み（画面の入力欄）は、台本係の前に下調べ係が原稿を起こす（worker/research.py）
-        if research_manuscript(ctx, job, run) is not None:
-            return "failed"
-        accepted = write_script(ctx, job, run)
+        intake = ctx.call(store.intake, job["intake_id"]) if job.get("intake_id") else None
+        if importing.is_import(intake):
+            # 既存の PPTX の取り込み: 台本係の代わりにエンジンの import で台本を起こす（docs/adr/0011-import-pptx.md）
+            accepted = import_script(ctx, run, intake)
+        else:
+            # 依頼から作る取り込み（画面の入力欄）は、台本係の前に下調べ係が原稿を起こす（worker/research.py）
+            if research_manuscript(ctx, job, run) is not None:
+                return "failed"
+            accepted = write_script(ctx, job, run)
         if isinstance(accepted, str):
             return accepted
         script, data = accepted
@@ -198,6 +207,50 @@ def make(ctx: Context, job: dict[str, Any]) -> str:
     script = ctx.call(store.script, run["script_id"])
     log.info("run %s: 途中から続ける（%s）", run_id, resume)
     return render_and_import(ctx, run, script, ctx.call(store.load_script, script), RenderPlan(), start=False)
+
+
+def import_script(ctx: Context, run: dict[str, Any], intake: dict[str, Any]):
+    """エンジンの import で PPTX から台本を起こし、台本の版にする。(台本の行, 台本) か、失敗の "failed"。
+
+    検査（check）は描く段のエンジンがする（取り込んだページは型を組まないので、台本係の直しの回しは要らない）。"""
+    store = ctx.store
+    deck_id, run_id = run["deck_id"], run["id"]
+
+    def fail(message: str, kind: str, rc: int | None = None) -> str:
+        ctx.call(store.fail_run, run_id, message=message, failure_kind=kind, rc=rc)
+        return "failed"
+
+    source = ctx.root.import_source_path(deck_id)
+    if not source.is_file():
+        return fail("取り込む PPTX が見つかりません。もう一度取り込んでください。", "import")
+    ctx.call(store.set_run_state, run_id, "writing", progress={"phase": "importing"})
+    out = ctx.root.imported_dir(deck_id)
+    env = child_env(home=ctx.root.root, extra=ctx.tools.extra_env)
+    rc, tail = importing.run_engine(ctx.tools.python, ctx.tools.skills_dir, source, out, env=env,
+                                    log_path=ctx.root.run_dir(deck_id, run_id) / "import.log")
+    if ctx.stop.is_set():
+        return fail("サーバを止めたので、取り込みを中断しました。もう一度取り込んでください。", "stopped")
+    if rc == RC_DEPENDENCY:
+        return fail(dependency_message(engine_for(run["mode"])), "dependency", rc)
+    if rc != 0:
+        why = tail.replace("NG: ", "") if tail else "PPTX を読めませんでした。"
+        return fail(f"PPTX を取り込めませんでした: {why}", "import", rc)
+    try:
+        raw = json.loads((out / "script.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return fail("取り込んだ台本を読めませんでした。もう一度取り込んでください。", "import")
+    data = importing.to_script(raw)
+    if not data["slides"]:
+        return fail("PPTX にスライドがありませんでした。", "import")
+    script = ctx.call(store.save_script, deck_id, data, written_by="import", writer_backend=None,
+                      intake_id=intake["id"], run_id=run_id)
+    rep = importing.report_of(out)
+    lines = importing.report_lines(rep)
+    ctx.call(store.set_script_check, script["id"], 0, lines)
+    ctx.call(store.set_run_record, run_id, {"import": {
+        "source": (intake.get("payload") or {}).get("import"), "slides": rep.get("slides"), "size": rep.get("size"),
+        "notes": lines}})
+    return script, data
 
 
 def import_recorded(ctx: Context, run: dict[str, Any]) -> str:
@@ -364,7 +417,67 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
              failure_kind=outcome.failure_kind, pages=outcome.pages)
     log.info("run %s: %s rc=%s pages=%d", run_id, outcome.state, outcome.rc,
              sum(1 for p in outcome.pages.values() if p.get("file")))
+    if outcome.state == "done" and engine.mode == "presentation" and not one_page(args):
+        try:
+            draw_hidden_previews(ctx, engine, run, data)
+        except Exception:  # noqa: BLE001 - 下見の絵は描けなくても回は成り立つ（画面は「未生成」のまま）
+            log.exception("run %s: 非表示のページの下見の絵を描けませんでした", run_id)
     return outcome.state
+
+
+def draw_hidden_previews(ctx: Context, engine: Engine, run: dict[str, Any], data: dict[str, Any]) -> int:
+    """非表示のページだけを、絵（PNG）だけ描いて下見にする（docs/adr/0012-hidden-page-previews.md）。描いた枚数を返す。
+
+    非表示のページは描く回に入らない（発表・書き出し・枚数に入らない）。中身は見たいので、描き終えたあとに別に描く。
+    プレゼン（html-slide）だけ: 数秒で描ける。新しい絵は生成しない（`--no-fill`。描いてある生成の絵はキャッシュから使う）。
+    中身の sha256 が下見と同じページは描き直さない。"""
+    store = ctx.store
+    deck_id = run["deck_id"]
+    hidden = [s for s in slides_of(data) if is_hidden(s) and isinstance(s.get("id"), str)]
+    if not hidden:
+        return 0
+    have = ctx.call(store.page_previews, deck_id)
+    keys = {p["key"]: p["page_id"] for p in ctx.call(store.script_pages, ctx.call(store.head_script, deck_id)["id"])}
+    todo = []
+    for s in hidden:
+        sha = content_sha(s)
+        pv = have.get(keys.get(s["id"], ""))
+        if pv is None or pv["content_sha256"] != sha or pv["asset_state"] != "ready":
+            todo.append((s, sha))
+    if not todo:
+        return 0
+    args = run["args"]
+    view = engine_script_view({**data, "slides": [{k: v for k, v in s.items() if not k.startswith("_")} for s, _ in todo]},
+                              args)
+    script_path = W.write_engine_script(ctx.root.scripts_dir(deck_id) / "engine-hidden.json", view)
+    out = ctx.root.deck_dir(deck_id) / "work-hidden"
+    shutil.rmtree(out, ignore_errors=True)
+    out.mkdir(parents=True, exist_ok=True)
+    cmd = engine.deck_command(ctx.tools.python, ctx.tools.skills_dir, script_path, out, args)
+    i = cmd.index("--format")
+    cmd[i + 1] = "png"
+    if "--parts" in cmd:
+        j = cmd.index("--parts")
+        del cmd[j:j + 2]
+    cmd.append("--no-fill")
+    env = child_env(home=ctx.root.root, extra=ctx.tools.extra_env)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=ctx.settings.worker.render_timeout_seconds,
+                           env=env, cwd=str(out))
+    except subprocess.TimeoutExpired:
+        log.warning("run %s: 非表示のページの下見の絵が時間内に描けませんでした", run["id"])
+        return 0
+    (ctx.root.run_dir(deck_id, run["id"]) / "hidden-previews.log").write_text(r.stdout + "\n--- stderr ---\n" + r.stderr,
+                                                                              encoding="utf-8")
+    drawn = 0
+    for no, (s, sha) in enumerate(todo, 1):
+        png = out / "slides" / f"slide-{no:02d}.png"
+        if png.is_file():
+            ctx.call(store.save_page_preview, deck_id, run["id"], s["id"], sha, png)
+            drawn += 1
+    log.info("run %s: 非表示のページの下見の絵 %d/%d 枚（rc=%s）", run["id"], drawn, len(todo), r.returncode)
+    return drawn
 
 
 def adopt_pins(ctx: Context, engine: Engine, run_dir: Path, pages: list[dict[str, Any]], pins: dict[str, Pin],

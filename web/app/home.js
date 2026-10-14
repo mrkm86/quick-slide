@@ -167,6 +167,43 @@
     var saved = rememberedKind();
     kinds.forEach(function (k) { if (k.mode === saved && usable(k)) { chosen = saved; } });
 
+    // 既存の PPTX の取り込み: 取り込める形式（サーバの `deck_kinds[].importable`。いまはプレゼンだけ）を選んでいるときだけ出す。
+    // 語はサーバの語彙（`import`）。送るのは PPTX のバイト列そのまま（`POST /api/imports`。docs/adr/0011-import-pptx.md）
+    var iw = (SS.vocab && SS.vocab.import) || {};
+    var importMax = ((SS.vocab && SS.vocab.create_limits) || {}).import_bytes || 0;
+    function importable(mode) { return kinds.some(function (k) { return k.mode === mode && k.importable && usable(k); }); }
+    var fileInput = h("input", { type: "file", accept: iw.accept || ".pptx", class: "create__file", hidden: true,
+      "aria-hidden": "true", tabindex: "-1" });
+    var importBtn = h("button", { class: "btn create__import", type: "button", title: iw.hint || null },
+      SS.icon("upload"), h("span", { text: iw.button || "PPTX を取り込む" }));
+    var importing = false;
+    function syncImport() {
+      var on = importable(chosen);
+      importBtn.hidden = !on;
+      importBtn.disabled = importing || posting;
+    }
+    function sendImport(file) {
+      if (!file || importing || !importable(chosen)) { return; }
+      err.textContent = "";
+      if (!/\.(pptx|pptm|ppsx|potx)$/i.test(file.name || "")) { err.textContent = iw.wrong_type || ""; return; }
+      if (importMax && file.size > importMax) { err.textContent = iw.too_large || ""; return; }
+      importing = true;
+      importBtn.lastChild.textContent = iw.working || "取り込んでいます…";
+      importBtn.setAttribute("aria-busy", "true");
+      syncImport(); sync();
+      SS.postFile("/api/imports?runtime=browser&name=" + encodeURIComponent(file.name), file).then(function (r) {
+        SS.navigate(r.deck_url || ("/slides/" + r.deck_id));
+      }).catch(function (e) {
+        importing = false;
+        importBtn.lastChild.textContent = iw.button || "PPTX を取り込む";
+        importBtn.removeAttribute("aria-busy");
+        err.textContent = (e && e.message) || "取り込めませんでした。もう一度お試しください。";
+        syncImport(); sync();
+      });
+    }
+    importBtn.addEventListener("click", function () { fileInput.value = ""; fileInput.click(); });
+    fileInput.addEventListener("change", function () { sendImport(fileInput.files && fileInput.files[0]); });
+
     var ta = h("textarea", { id: "create-request", class: "create__text", rows: "3", placeholder: words.placeholder || "" });
     var counter = h("p", { class: "create__count small muted", "aria-live": "off" });
     var err = h("p", { class: "create__error", role: "alert" });
@@ -185,7 +222,7 @@
         var offId = off ? "create-kind-off-" + k.mode : null;
         var input = h("input", { type: "radio", name: "create-kind", value: k.mode, class: "create__radio", checked: k.mode === chosen,
           disabled: off, "aria-describedby": offId });
-        input.addEventListener("change", function () { chosen = k.mode; rememberKind(k.mode); });
+        input.addEventListener("change", function () { chosen = k.mode; rememberKind(k.mode); syncImport(); });
         // 書き出せる形式の名前はサーバが決める（`outputs[].label`）。文字列の並びで来ても読む
         var outs = (k.outputs || []).map(function (o) { return o && o.label ? o.label : o; }).join("・");
         group.appendChild(h("label", { class: "kind-card" + (off ? " kind-card--off" : ""), "data-tone": k.tone || "neutral",
@@ -223,7 +260,7 @@
       counter.textContent = maxChars ? n + " / " + maxChars : "";
       var over = !!maxChars && n > maxChars;
       counter.classList.toggle("create__count--over", over);
-      go.disabled = posting || !ta.value.trim() || over;
+      go.disabled = posting || importing || !ta.value.trim() || over;
       go.title = !ta.value.trim() ? (words.empty_reason || "") : over ? (words.too_long_reason || "") : "";
     }
     function submit() {
@@ -251,11 +288,28 @@
     ta.addEventListener("keydown", function (e) { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); submit(); } });
     go.addEventListener("click", submit);
     sync();
-    return h("section", { class: "create", "aria-labelledby": "create-h" },
+    syncImport();
+    var box = h("section", { class: "create", "aria-labelledby": "create-h" },
       h("h2", { id: "create-h" }, h("label", { for: "create-request", text: words.heading || "" })),
       ta, h("div", { class: "create__meta" }, err, counter),
       kindsHead, group, kindNotes, brandRow,
-      h("div", { class: "create__actions" }, go));
+      h("div", { class: "create__actions" }, importBtn, fileInput, go));
+    // ドロップでも取り込む（取り込める形式を選んでいるときだけ。ほかの形式のときはドロップを受けない）
+    function dragHasFile(e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") >= 0; }
+    box.addEventListener("dragover", function (e) {
+      if (!dragHasFile(e) || !importable(chosen) || importing) { return; }
+      e.preventDefault();
+      box.classList.add("create--drop");
+      box.setAttribute("data-drop", iw.drop || "");
+    });
+    box.addEventListener("dragleave", function (e) { if (!box.contains(e.relatedTarget)) { box.classList.remove("create--drop"); } });
+    box.addEventListener("drop", function (e) {
+      box.classList.remove("create--drop");
+      if (!dragHasFile(e) || !importable(chosen)) { return; }
+      e.preventDefault();
+      sendImport(e.dataTransfer.files && e.dataTransfer.files[0]);
+    });
+    return box;
   }
 
   // ---- ホーム ----

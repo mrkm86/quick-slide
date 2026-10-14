@@ -17,6 +17,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
+from pathlib import Path
 from typing import Any
 
 from ..enums import EDIT_OPS, EDIT_SOURCES, require
@@ -111,6 +114,43 @@ class EditsMixin(StoreBase):
             " FROM run_pages rp JOIN runs r ON r.id=rp.run_id LEFT JOIN assets a ON a.id=rp.asset_id"
             " WHERE r.deck_id=? AND r.state='done' AND rp.state='ready'"
             " ORDER BY r.number DESC,rp.page_no", (deck_id,))
+
+    # --- 非表示のページの下見の絵（docs/adr/0012-hidden-page-previews.md） ---
+    def page_previews(self, deck_id: str) -> dict[str, dict[str, Any]]:
+        """page_id → {asset_id, content_sha256, asset_state}。"""
+        rows = self._all(
+            "SELECT pp.page_id,pp.asset_id,pp.content_sha256,a.state AS asset_state FROM page_previews pp"
+            " JOIN assets a ON a.id=pp.asset_id WHERE pp.deck_id=?", (deck_id,))
+        return {r["page_id"]: r for r in rows}
+
+    def save_page_preview(self, deck_id: str, run_id: str, key: str, content_sha256: str, png: Path) -> str:
+        """非表示のページの下見の絵を資産にして、そのページの下見にする（前の下見は差し替える）。資産の id を返す。"""
+        import shutil
+
+        data = png.read_bytes()
+        sha = hashlib.sha256(data).hexdigest()
+        now = self.now()
+        with self.transaction():
+            pid = self._page_id(deck_id, key, now)
+            rel = f"assets/decks/{deck_id}/{run_id}/hidden-{pid}.png"
+            dst = self.root.root / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dst.with_name(dst.name + ".tmp")
+            tmp.unlink(missing_ok=True)
+            try:
+                os.link(png, tmp)
+            except OSError:
+                shutil.copyfile(png, tmp)
+            os.replace(tmp, dst)
+            w = int.from_bytes(data[16:20], "big") if data[:8] == b"\x89PNG\r\n\x1a\n" else None
+            h = int.from_bytes(data[20:24], "big") if w is not None else None
+            asset = self.register_asset(relative_path=rel, media_type="image/png", sha256=sha, bytes_=len(data),
+                                        width=w, height=h)
+            self._exec("INSERT INTO page_previews(deck_id,page_id,asset_id,run_id,content_sha256,created_at)"
+                       " VALUES(?,?,?,?,?,?) ON CONFLICT(deck_id,page_id) DO UPDATE SET asset_id=excluded.asset_id,"
+                       " run_id=excluded.run_id,content_sha256=excluded.content_sha256,created_at=excluded.created_at",
+                       (deck_id, pid, asset["id"], run_id, content_sha256, now))
+        return asset["id"]
 
     def conversation_deck(self, runtime: str, conversation_key: str) -> dict[str, Any] | None:
         """その会話から作った一番新しいデッキ（削除済みは除く）。識別子の生値は HMAC にしてから引く。"""

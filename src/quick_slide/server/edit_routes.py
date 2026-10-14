@@ -28,7 +28,7 @@ from ..enums import EDIT_SOURCES, ORIGIN_RUNTIMES
 from ..errors import NotFoundError, ValidationError
 from ..ids import PRESET_STYLE_STANDARD_ID, PRESET_STYLE_VISUAL_ID
 from ..pins import PinRefused, pin_source
-from ..scriptdoc import one_page, screen_pages, with_hidden, with_order, with_restored
+from ..scriptdoc import IMPORTED_TYPE, one_page, screen_pages, with_hidden, with_order, with_restored
 from ..security.secret_scan import find_secret_like
 from .deck_routes import NO_PAGES_REASON, _counts, _tidy, _deck_not_found, _json, _live_deck_row, card_public, deck_view
 from .errors import ApiError
@@ -98,6 +98,10 @@ def _attachments(store: Any, body: dict[str, Any], row: dict[str, Any] | None = 
             raise ApiError(400, "attachment_not_found", "添えた画像が見つかりません。添え直してください。")
         out.append(aid)
     return out
+
+
+IMPORTED_PAGE_REASON = ("PPTX から取り込んだページは、まだ直せません（見る・発表する・書き出す・並べ替え・非表示・複製はできます。"
+                        "ページを足すことはできます）。")
 
 
 def _head_pages(store: Any, deck_id: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -184,6 +188,9 @@ def route_instructions(server: "QuickSlideServer", req: "Request") -> "Response"
             confirm = body.get("confirm_pages")
             if confirm is not None and confirm != len(pages):
                 raise ApiError(409, "page_count_changed", STRUCTURE_CHANGED)
+        if any(p.get("type") == IMPORTED_TYPE for p in chosen):
+            # 取り込んだページ（PPTX から）を直す道はまだ無い（台本係は型のページしか書かない・docs/adr/0011-import-pptx.md）
+            raise ApiError(409, "imported_page", IMPORTED_PAGE_REASON)
         positions = [p["position"] for p in chosen]
         result = store.create_edit(deck_id, {
             "op": "revise", "scope": scope, "pages": [p["slide_id"] for p in chosen], "positions": positions,

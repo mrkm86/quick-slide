@@ -26,7 +26,7 @@ ATTACHED_VIA = ("integrated", "external", "unknown")
 ORIGIN_KINDS = ("conversation", "paste", "file", "headless", "request")
 ORIGIN_RUNTIMES = ("claude_code", "codex", "browser", "cli", "other")
 # 台本の版を誰が書いたか・どの LLM で書いたか
-SCRIPT_WRITTEN_BY = ("writer", "screen", "conversation")
+SCRIPT_WRITTEN_BY = ("writer", "screen", "conversation", "import")
 WRITER_BACKENDS = ("claude", "codex")
 # 描いた回の状態（書く → 確かめる → 描く → 終わり）。ページごとの結果
 RUN_STATES = ("queued", "writing", "checking", "rendering", "importing", "done", "failed")

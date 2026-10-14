@@ -149,9 +149,52 @@
 
   function rectOf(el) { return el.getBoundingClientRect(); }
 
+  // ---- 画像は見るページから読む ----
+  // サーバは画像の src を data-qs-src に書き換えて配る（全ページの画像を最初にまとめて読まないため・present_routes.frame_document）。
+  // 出すページと前後のページの画像をすぐ読み、残りは読み終えたあとで 1 ページずつ後ろで読む（めくるときに待たない）
+  var AHEAD = 2, BEHIND = 1;
+  var filled = [];
+  var backlog = null;
+  function fill(i) {
+    if (i < 0 || i >= sections.length || filled[i]) { return []; }
+    filled[i] = true;
+    var waits = [];
+    sections[i].el.querySelectorAll("img[data-qs-src]").forEach(function (img) {
+      var src = img.getAttribute("data-qs-src");
+      img.removeAttribute("data-qs-src");
+      waits.push(new Promise(function (resolve) {
+        img.addEventListener("load", resolve, { once: true });
+        img.addEventListener("error", resolve, { once: true });
+      }));
+      img.setAttribute("src", src);
+    });
+    return waits;
+  }
+  function fillAround(page) {
+    var waits = fill(page);
+    for (var d = 1; d <= AHEAD; d++) { waits = waits.concat(fill(page + d)); }
+    for (var b = 1; b <= BEHIND; b++) { waits = waits.concat(fill(page - b)); }
+    Promise.all(waits).then(function () { fillRest(page); });
+  }
+  function fillRest(from) {
+    if (backlog) { return; }
+    var order = [];
+    for (var d = 1; d < sections.length; d++) {
+      if (from + d < sections.length) { order.push(from + d); }
+      if (from - d >= 0) { order.push(from - d); }
+    }
+    backlog = order;
+    (function nextOne() {
+      while (backlog.length && filled[backlog[0]]) { backlog.shift(); }
+      if (!backlog.length) { return; }
+      Promise.all(fill(backlog.shift())).then(function () { setTimeout(nextOne, 0); });
+    })();
+  }
+
   function show(page, step, dir) {
     var next = sections[page];
     if (!next) { return; }
+    fillAround(page);
     step = Math.max(0, Math.min(step | 0, next.steps));
     settle();
     if (page === current) {

@@ -977,10 +977,25 @@
   // 中央の列に出すのは**スライドと 1 行だけ**（選ぶ・番号・題・直す・⋮）。直す指示の欄は
   // `article.__tools` に作り、パネルが「いま直しているページ」の分だけを出す（節点をそのまま移すので、
   // 書きかけの文・添えた画像は、パネルを閉じても別のページに替わっても消えない）。版と記録は ⋮ のダイアログ。
+  // ページを畳む（タイトル行だけにする。v1 にあった・2026-10-14）。確認し終えたページを畳んでスクロールを減らす使い方。
+  // 畳んだかはこのブラウザに覚える（localStorage。値は畳んだときの版）。**直して版が替わったら、また開いて出す**
+  // （確認し終えたのは前の姿なので）。読めなくても開いて出す
+  var FOLD_PREFIX = "qs.page-folded:";
+  function isFolded(page) {
+    try { return localStorage.getItem(FOLD_PREFIX + page.slide_id) === String(page.version); } catch (e) { return false; }
+  }
+  function setFolded(slideId, versionId, folded) {
+    try {
+      if (folded) { localStorage.setItem(FOLD_PREFIX + slideId, String(versionId)); }
+      else { localStorage.removeItem(FOLD_PREFIX + slideId); }
+    } catch (e) { /* 覚えられなくてもその場では畳む */ }
+  }
+
   function pageArticle(page, ctx) {
     var caps = ctx.caps;
     var d = page.display;
-    var article = h("article", { class: "page" + (page.hidden ? " page--hidden" : ""), id: "page-" + page.slide_id,
+    var folded = isFolded(page);
+    var article = h("article", { class: "page" + (page.hidden ? " page--hidden" : "") + (folded ? " page--folded" : ""), id: "page-" + page.slide_id,
       "aria-label": "ページ " + page.position + (page.title ? ": " + page.title : ""),
       dataset: { slide: page.slide_id, position: String(page.position), version: page.version_id } });
 
@@ -1041,6 +1056,22 @@
       playBtn.addEventListener("click", function () { ctx.openPlay(page.slide_id, playBtn); });
     }
 
+    var foldBtn = h("button", { class: "btn btn--icon btn--ghost page__fold", type: "button", "aria-controls": "stage-" + page.slide_id });
+    var paintFold = function () {
+      var label = "ページ " + page.position + (folded ? " を開く" : " を畳む");
+      SS.clear(foldBtn).appendChild(pageIcon(folded ? "panel-bottom-close" : "panel-top-close"));
+      foldBtn.setAttribute("aria-label", label);
+      foldBtn.setAttribute("title", folded ? "開く" : "畳む（タイトル行だけにする）");
+      foldBtn.setAttribute("aria-expanded", folded ? "false" : "true");
+      article.classList.toggle("page--folded", folded);
+    };
+    foldBtn.addEventListener("click", function () {
+      folded = !folded;
+      setFolded(page.slide_id, page.version, folded);
+      paintFold();
+    });
+    article.__fold = function (on) { folded = !!on; setFolded(page.slide_id, page.version, folded); paintFold(); };
+
     var frame = h("figure", { class: "frame frame--" + d.key, "aria-label": "ページ " + page.position + "（" + d.label + "）" });
     if (page.image_url) {
       frame.appendChild(h("img", { src: page.image_url, alt: "ページ " + page.position + ": " + (page.title || ""), loading: page.position <= 2 ? "eager" : "lazy" }));
@@ -1053,15 +1084,20 @@
       pickLabel,
       h("span", { class: "page__num", text: String(page.position) }),
       h("span", { class: "page__title", text: page.title || "" }),
-      page.hidden ? h("span", { class: "page__hidden-mark", title: "非表示" }, pageIcon("eye-off"), h("span", { text: "非表示" })) : null,
+
       page.source_kind !== "generated" ? h("span", { class: "chip page__origin", text: page.source_kind_label }) : null,
       h("span", { class: "page__state" }, mark(d), h("span", { class: "page__state-label", text: d.label })),
       h("span", { class: "page__ver muted small", text: "v" + page.version }),
       h("span", { class: "page__head-spacer" }),
-      playBtn,
+      // 非表示の印はアイコンだけ（題と番号が灰色なので語は要らない・2026-10-14）。語は読み上げと指を置いたときの名前に残す。
+      // 置き場は ▶ と同じ列（非表示のページには ▶ を出さないので、その枠に同じ大きさで置いてそろえる）
+      page.hidden ? h("span", { class: "page__hidden-mark", title: "非表示" }, pageIcon("eye-off"),
+        h("span", { class: "visually-hidden", text: "非表示" })) : playBtn,
       fixBtn,
-      menuWrap));
-    article.appendChild(h("div", { class: "page__stage" }, frame));
+      menuWrap,
+      foldBtn));
+    article.appendChild(h("div", { class: "page__stage", id: "stage-" + page.slide_id }, frame));
+    paintFold();
 
     // ---- パネルに出す分（直す欄だけ。版と記録はこのページの ⋮ のダイアログ）----
     var tools = h("div", { class: "page-tools" + (page.hidden ? " page-tools--hidden" : ""), dataset: { slide: page.slide_id } });
@@ -1346,8 +1382,8 @@
         title: canReorder.available ? null : (canReorder.reason || null),
         "aria-label": thumbLabel(p.position, p.title || "", p.display.label),
         onclick: function () { ctx.scrollTo(p.slide_id); } },
-        // 番号は絵の**左の欄**に置く（重ねない。重ねると見出しの頭を隠す。2026-09-18）。
-        // 振り直しは renumber() が同じ節点を書き換える。狭い画面では絵が消えて札だけが並ぶ（CSS が決める）
+        // 番号は絵の**左上に重ねる**（2026-10-14。桁が違っても絵の左端がそろう）。
+        // 振り直しは renumber() が同じ節点を書き換える
         h("span", { class: "thumb__num", text: String(p.position) }), pic);
       b.addEventListener("keydown", function (e) {
         if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) { return; }
@@ -1702,7 +1738,10 @@
       };
       ctx.duplicatePage = function (slideId) { mutate(SS.api("/api/decks/" + deckId + "/pages/" + slideId + "/duplicate", { method: "POST", body: { lock_version: lockVersion } })); };
       ctx.setPageHidden = function (slideId, hidden) {
-        if (hidden) { sessionStorage.setItem("slide-card-collapsed:" + slideId, "1"); }
+        if (hidden) {   // 非表示にしたページは畳む（開けば薄い絵で中身を見られる）
+          var art = document.getElementById("page-" + slideId);
+          if (art && art.__fold) { art.__fold(true); }
+        }
         mutate(SS.api("/api/decks/" + deckId + "/pages/" + slideId + "/visibility", { method: "POST", body: { hidden: hidden, lock_version: lockVersion } }).then(function (r) { if (r.message) { SS.toast(r.message); } }));
       };
       ctx.scrollTo = function (slideId) {
@@ -1851,6 +1890,26 @@
       // ---- 上の帯（1 行）: 戻る・題・進み具合の札・書き出し・⋮ ----
       // 「13 ページ・ブランド: 既定」「ピン留め」は ⋮ のメニューの頭へ畳んだ。大きな進みの箱は札へ畳んだ。
       var pband = data.pages.length ? progressBand(data.counts) : null;
+      // 左の列（ページ一覧）を畳む・開く（PC の幅だけ。畳むとスライドの列が広がる。v1 と同じ・2026-10-14）。ボタンは列の上（下で差し込む）。
+      // 畳んだかはこのブラウザに覚える（localStorage。読めなくても動く）
+      var THUMBS_KEY = "qs.deck.thumbs-collapsed";
+      var thumbsCollapsed = false;
+      try { thumbsCollapsed = localStorage.getItem(THUMBS_KEY) === "1"; } catch (e) { /* 覚えていなくても開いて出す */ }
+      var thumbsToggle = h("button", { class: "btn btn--icon btn--ghost thumbs__toggle", type: "button",
+        "aria-controls": "deck-thumbs-list" });
+      var paintThumbsToggle = function () {
+        var label = thumbsCollapsed ? "ページ一覧を開く" : "ページ一覧を畳む";
+        SS.clear(thumbsToggle).appendChild(SS.icon(thumbsCollapsed ? "left_panel_open" : "left_panel_close"));
+        thumbsToggle.setAttribute("aria-label", label);
+        thumbsToggle.setAttribute("title", label);
+        thumbsToggle.setAttribute("aria-expanded", thumbsCollapsed ? "false" : "true");
+        if (body) { body.dataset.thumbs = thumbsCollapsed ? "closed" : "open"; }
+      };
+      thumbsToggle.addEventListener("click", function () {
+        thumbsCollapsed = !thumbsCollapsed;
+        try { localStorage.setItem(THUMBS_KEY, thumbsCollapsed ? "1" : "0"); } catch (e) { /* 覚えられなくても動く */ }
+        paintThumbsToggle();
+      });
       var deckBar = h("header", { class: "deck-bar" },
         h("a", { class: "deck-bar__back", href: "/slides", "data-nav": true, "aria-label": "スライド一覧へ戻る" },
           SS.icon("arrow_back"), h("span", { class: "deck-bar__back-text", text: "一覧" })),
@@ -1946,7 +2005,15 @@
 
       var body = h("div", { class: "deck-body" });
       var aside = thumbsAside(data.pages, caps, ctx);
+      aside.id = "deck-thumbs";
+      // 畳む・開くのボタンは列のいちばん上（2026-10-14・利用者の指定。ヘッダの左端はデッキの題の場所なので分かりにくかった）。
+      // 畳んでもこの帯だけは細く残し、同じ位置から開ける
+      var thumbsList = aside.querySelector(".thumbs__list");
+      if (thumbsList) { thumbsList.id = "deck-thumbs-list"; }
+      aside.insertBefore(h("div", { class: "thumbs__bar" }, h("span", { class: "thumbs__bar-label", text: "ページ一覧" }), thumbsToggle),
+        aside.firstChild);
       body.appendChild(aside);
+      paintThumbsToggle();
       var deckBox = deckInstruction(caps, reasons.ids, { canMinor: deckCanMinor(data.pages), kinds: ctx.editKinds,
         onSubmit: function (box, btn) { ctx.submitDeck(box, btn); } });
       var pagesEl = h("section", { class: "pages", "aria-label": "ページ" });

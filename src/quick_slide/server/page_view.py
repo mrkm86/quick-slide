@@ -193,6 +193,7 @@ def pages_view(store: Any, deck_id: str, *, shown: dict[str, Any] | None, latest
     generated = _generated_pages(store, deck_id, shown) if mode == "presentation" else set()
     failed_last = latest is not None and latest["state"] == "failed"
     pins = head_pins(store, deck_id, head, head_pages)
+    previews = store.page_previews(deck_id)
     out = []
     for p in head_pages:
         pid = p["page_id"]
@@ -208,6 +209,11 @@ def pages_view(store: Any, deck_id: str, *, shown: dict[str, Any] | None, latest
                               or row["content_sha256"] == p["content_sha256"])
         if not has_image and versions:   # 非表示・まだ描いていないページは、前に描いた絵を出す
             image_url = next((v["image_url"] for v in versions if v["image_url"]), None)
+        if p["hidden"] and not image_url:
+            # 非表示のページの下見の絵（描く回の最後に別に描く。中身が同じときだけ・docs/adr/0012-hidden-page-previews.md）
+            pv = previews.get(pid)
+            if pv and pv["asset_state"] == "ready" and pv["content_sha256"] == p.get("content_sha256"):
+                image_url = asset_url(pv["asset_id"])
         if pid in targets:
             display = page_display("editing" if targets[pid] == "running" else "edit_queued")
         elif pin is not None:

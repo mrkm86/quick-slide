@@ -59,6 +59,28 @@ class DeckScreenShowsDrawnPagesTest(unittest.TestCase):
         self.assertEqual(page.errors, [])
         self.assertEqual(page.eval("Array.from(document.querySelectorAll('#view .notice--error')).length"), 0)
         self.assertEqual(page.eval("document.querySelectorAll('.thumb img').length"), 4)
+        # 左の列（ページ一覧）の上のボタンで畳むと、列はボタンだけの細い帯になり、スライドの列が広がる。同じボタンで開く（PC の幅だけ）
+        if page.eval("innerWidth") >= 1024:
+            narrow = page.eval("document.querySelector('.pages').getBoundingClientRect().width")
+            self.assertLess(page.eval("document.querySelector('.thumbs__toggle').getBoundingClientRect().top"),
+                            page.eval("document.querySelector('.thumb').getBoundingClientRect().top"), "ボタンはサムネイルの上")
+            page.eval("document.querySelector('.thumbs__toggle').click()")
+            self.assertEqual(page.eval("getComputedStyle(document.querySelector('.thumbs__list')).display"), "none")
+            self.assertEqual(page.eval("document.querySelector('.thumbs__toggle').getAttribute('aria-expanded')"), "false")
+            self.assertGreater(page.eval("document.querySelector('.pages').getBoundingClientRect().width"), narrow)
+            self.assertLess(page.eval("document.querySelector('.thumbs').getBoundingClientRect().width"), 80)
+            page.eval("document.querySelector('.thumbs__toggle').click()")
+            self.assertEqual(page.eval("getComputedStyle(document.querySelector('.thumbs__list')).display"), "flex")
+        # ページをタイトル行だけに畳む（確認し終えたページ）。読み直しても畳んだまま（同じ版のあいだ）
+        page.eval("document.querySelectorAll('.page__fold')[1].click()")
+        self.assertEqual(page.eval("getComputedStyle(document.querySelectorAll('.page__stage')[1]).display"), "none")
+        self.assertEqual(page.eval("document.querySelectorAll('.page__fold')[1].getAttribute('aria-expanded')"), "false")
+        page.eval("location.reload()")
+        page.until("document.querySelectorAll('.page__fold').length === 4", what="読み直したスライドの画面")
+        self.assertTrue(page.eval("document.querySelectorAll('article.page')[1].classList.contains('page--folded')"))
+        self.assertFalse(page.eval("document.querySelectorAll('article.page')[0].classList.contains('page--folded')"))
+        page.eval("document.querySelectorAll('.page__fold')[1].click()")
+        self.assertEqual(page.eval("getComputedStyle(document.querySelectorAll('.page__stage')[1]).display"), "block")
         titles = page.eval("Array.from(document.querySelectorAll('.page__title')).map(e => e.textContent)")
         self.assertEqual(titles[1], "会議の4割は何も決めずに終わっている")
         self.assertTrue(page.eval("document.querySelector('.planning-band').hidden"), "描き終えたら帯は畳む")

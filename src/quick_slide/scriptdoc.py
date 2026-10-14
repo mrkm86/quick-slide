@@ -25,6 +25,7 @@ HIDDEN_KEY = "_hidden"
 PIN_KEY = "_pin"
 _MARKS = (HIDDEN_KEY, PIN_KEY)   # 画面が持つ印（中身ではない。台本係は書かない・エンジンには渡さない）
 INFOGRAPHIC_KEY = "infographic"
+IMPORTED_TYPE = "html"     # 取り込んだページの型（エンジンの import が書く・docs/adr/0011-import-pptx.md）
 
 # 台本のページから「見出し」と「本文」を取り出すときに読み飛ばすキー（話す台本・動き・描き方の注文・画像の枠）
 _NOT_CONTENT = {"type", "talk", "transition", "steps", "fx", "id", "role", "image", "_visual", "_characters", "_layout",
@@ -91,6 +92,9 @@ def headline_of(spec: dict[str, Any]) -> str:
 
 def body_of(spec: dict[str, Any]) -> str:
     """画面の「このページの記録」に出す、そのページの文字（話す台本・画像の指示は入れない）。"""
+    if spec.get("type") == IMPORTED_TYPE:
+        # 取り込んだページ（PPTX から）: HTML の見える文字だけ（タグ・背景・ノートは出さない）
+        return "\n".join(motion.html_texts(spec.get("html")))[:4000]
     lines: list[str] = []
 
     def walk(value: Any, key: str | None = None) -> None:
