@@ -146,7 +146,8 @@ _MOTION_PROBE = (
 
 def motion_missing(*, tools: Tools, home: Path, cwd: Path, stop: threading.Event | None = None) -> list[str] | None:
     """モーションが組むのに要るもののうち足りないもの。聞けなければ None（描くときの rc=4 で分かる）。"""
-    cmd = tools.motion_probe or [tools.python, "-I", "-c", _MOTION_PROBE]
+    # -I でなく -E（PYTHON* の環境変数は無視するが、利用者の場所の site-packages は見る。setup は pip --user で入れる。N23）
+    cmd = tools.motion_probe or [tools.python, "-E", "-c", _MOTION_PROBE]
     r = run_process(cmd, cwd=cwd, env=child_env(home=home, extra=tools.extra_env),
                     timeout=AUTH_TIMEOUT_SECONDS, stop=stop)
     if r.launch_error or r.timed_out or r.stopped or r.rc not in (RC_OK, RC_DEPENDENCY):

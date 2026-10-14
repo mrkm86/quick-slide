@@ -570,8 +570,8 @@ def write(parts: dict, out_path, *, line_breaks: bool = False) -> dict:
 if __name__ == "__main__":
     import sys
 
-    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
-        _out.reconfigure(encoding="utf-8")
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932・\r\n）でなく UTF-8・\n で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8", newline="\n")
     import json
     import sys
     if len(sys.argv) != 3:

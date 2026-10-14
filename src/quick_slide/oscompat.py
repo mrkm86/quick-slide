@@ -13,6 +13,7 @@
 | 終わった子の後始末 | 何もしない | Job Object を閉じる（`end_group`） |
 | 待ち受けの口を自分だけにする | `SO_REUSEADDR`（TIME_WAIT の口を使い直すだけ） | `SO_REUSEADDR` を使わず `SO_EXCLUSIVEADDRUSE` |
 | 日本語の字体ファイル | 游ゴシックは PowerPoint for Mac 同梱、ほかはヒラギノ | `%WINDIR%\\Fonts` の游ゴシック・メイリオ・BIZ UDゴシック |
+| 台本のパスが URL か | スキーム（`https:` など）で始まるか | 同じ。ただしドライブ文字（`C:\\`・`C:/`）は URL でない |
 
 Windows で孫ごと止めるのに Job Object を使うのは、`codex.cmd` のような包みが cmd.exe → node → codex.exe と
 段を重ねるため。`taskkill /T` は親子の記録をたどるので、cmd.exe が先に終わると下の段にたどり着けない。
@@ -21,6 +22,7 @@ Windows で孫ごと止めるのに Job Object を使うのは、`codex.cmd` の
 from __future__ import annotations
 
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -92,6 +94,14 @@ def unlock(fd: int) -> None:
         msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
     else:
         fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+# --- 台本のパスが URL か ----------------------------------------------------------------------
+
+def looks_like_url(text: str) -> bool:
+    """`https:`・`data:`・`file:` などのスキームで始まるか。スキームは 2 文字以上に限る（1 文字だと Windows の
+    ドライブ文字の `C:\\…`・`C:/…` も URL と読み、台本の絶対パスを断ってしまう。N21）。"""
+    return re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]+:", text) is not None
 
 
 # --- 日本語の字体ファイル ------------------------------------------------------------------------

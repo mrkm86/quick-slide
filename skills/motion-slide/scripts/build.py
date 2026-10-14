@@ -1,8 +1,8 @@
 """台本の HTML に、エンジン・テーマの色・ロゴ・BGM を埋め込んで、HTML 1枚にする。
 
-    python3 -I build.py <台本.html> [--out <出力.html>] [--theme default|forest|warm|<YAML>]
+    python3 -E build.py <台本.html> [--out <出力.html>] [--theme default|forest|warm|<YAML>]
                         [--logo <PNG>|none] [--logo-alt <文字>] [--logo-height <px>] [--bgm <m4a|mp3>] [--no-thumbs]
-    python3 -I build.py --print-out-root
+    python3 -E build.py --print-out-root
 
 一覧（Esc / O）のサムネイルは、組んだあとに Chrome で場面ごとに撮って埋め込む（1場面 約 10KB・Playwright が要る）。
 
@@ -216,8 +216,8 @@ def build(src, out, theme, logo, logo_alt, logo_height, bgm, thumbs=True):
 
 
 if __name__ == "__main__":
-    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
-        _out.reconfigure(encoding="utf-8")
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932・\r\n）でなく UTF-8・\n で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8", newline="\n")
     ap = argparse.ArgumentParser()
     ap.add_argument("src", nargs="?")
     ap.add_argument("--print-out-root", action="store_true", help="出力の根っこ（設定の out:・無ければ既定）を出して終わる")

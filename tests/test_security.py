@@ -7,7 +7,7 @@ import os
 import unittest
 import uuid
 
-from helpers import capture_logs, make_static_root, start_server, temp_dir
+from helpers import can_symlink, capture_logs, make_static_root, start_server, temp_dir
 
 from quick_slide.errors import StartupError
 from quick_slide.paths import DataRoot
@@ -233,16 +233,17 @@ class SecretsNeverServedTests(unittest.TestCase):
         r = self.fx.get(f"/api/assets/{key_row}/file")
         self.assertEqual(r.status, 404)
         self.assertNotIn(self.key, r.body)
-        link_dir = root.assets_dir / str(uuid.uuid4())
-        link_dir.mkdir()
-        os.symlink(root.hmac_key_path, link_dir / "original.png")
-        link_row = self._register(f"assets/{link_dir.name}/original.png", bytes_=32)
-        r = self.fx.get(f"/api/assets/{link_row}/file")
-        self.assertEqual(r.status, 404)
-        self.assertNotIn(self.key, r.body)
-        os.symlink(root.config_dir, root.assets_dir / "cfg")
-        r = self.fx.get(f"/api/assets/{self._register('assets/cfg/hmac.key', media_type='image/png', bytes_=32)}/file")
-        self.assertEqual(r.status, 404)
+        if can_symlink():
+            link_dir = root.assets_dir / str(uuid.uuid4())
+            link_dir.mkdir()
+            os.symlink(root.hmac_key_path, link_dir / "original.png")
+            link_row = self._register(f"assets/{link_dir.name}/original.png", bytes_=32)
+            r = self.fx.get(f"/api/assets/{link_row}/file")
+            self.assertEqual(r.status, 404)
+            self.assertNotIn(self.key, r.body)
+            os.symlink(root.config_dir, root.assets_dir / "cfg")
+            r = self.fx.get(f"/api/assets/{self._register('assets/cfg/hmac.key', media_type='image/png', bytes_=32)}/file")
+            self.assertEqual(r.status, 404)
 
         def copy_of(name: str) -> str:
             d = root.assets_dir / str(uuid.uuid4())

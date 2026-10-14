@@ -1,6 +1,6 @@
 """組んだ HTML 1枚を Chrome で開き、全部の拍を順に進めて、崩れを数える。拍ごとの画像と、場面ごとの一覧画像も出す。
 
-    python3 -I check.py <index.html> [--out <フォルダ>] [--wait <ms>] [--only s3,s5] [--reuse <report.json>] [--strict]
+    python3 -E check.py <index.html> [--out <フォルダ>] [--wait <ms>] [--only s3,s5] [--reuse <report.json>] [--strict]
 
 見るもの:
   NG（rc=2）  JS のエラー ／ 見えている要素が舞台（1920×1080）の外にはみ出す ／ 文字が箱からあふれて切れる
@@ -185,8 +185,8 @@ def sheets(out, report):
 
 
 if __name__ == "__main__":
-    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
-        _out.reconfigure(encoding="utf-8")
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932・\r\n）でなく UTF-8・\n で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8", newline="\n")
     ap = argparse.ArgumentParser()
     ap.add_argument("html")
     ap.add_argument("--out")

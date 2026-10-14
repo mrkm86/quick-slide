@@ -19,6 +19,8 @@ import unittest
 
 from helpers import FAKES, REPO, SKILLS_DIR, fake_codex_home, intake_payload, runnable, temp_dir
 
+from quick_slide.oscompat import pid_alive
+
 
 class KillAndRestartTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -77,8 +79,8 @@ class KillAndRestartTests(unittest.TestCase):
         self.wait("描く段にならない", lambda: self.http("GET", progress)[1]["planning"]["state"] == "rendering")
         self.assertEqual(self.http("GET", progress)[1]["pages"], [], "取り込む前の回は画面に出さない")
         pid = self.record()["pid"]
-        os.kill(pid, signal.SIGKILL)
-        self.wait("サーバが落ちない", lambda: subprocess.run(["kill", "-0", str(pid)], capture_output=True).returncode != 0)
+        os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))   # Windows の SIGTERM は TerminateProcess（強制終了）
+        self.wait("サーバが落ちない", lambda: not pid_alive(pid))
         # 置き去りのエンジン（別のセッションで動いている）は、出力の口が切れたところで止まる。少し待ってから起こし直す
         time.sleep(4)
 

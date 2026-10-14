@@ -1,6 +1,6 @@
 """今の台本 HTML（templates/deck.html の形）→ 場面ごとの台本（JSON）に分ける。
 
-    python3 -I split.py <deck.html> --out <script.json>
+    python3 -E split.py <deck.html> --out <script.json>
 
 台本係が書く形（references/deck-format.md）の手本にもなる。分けて motion_slide.py で組み直すと、同じ index.html の見た目・動きになる
 （見本2本で確かめている。tests/run.sh）。分け方:
@@ -246,6 +246,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
-        _out.reconfigure(encoding="utf-8")
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932・\r\n）でなく UTF-8・\n で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8", newline="\n")
     sys.exit(main())
