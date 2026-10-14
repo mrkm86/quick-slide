@@ -334,19 +334,15 @@ def _place_files(sample: Sample, run_dir: Path, values: dict[str, str | None]) -
         shutil.copyfile(run_dir / _safe_rel(same), dst)
 
 
-def _link_present_fonts(run_dir: Path) -> None:
-    """発表の画面の字体: deck.html が読む字体ファイルが入れる機械にあれば、回の控えへ張る（無ければ OS の字体で出る）。"""
+def _link_present_fonts(run_dir: Path, fonts_dir: Path) -> None:
+    """見本の字体があればデッキの共有の控えへ写す（無ければ OS の字体で出る）。"""
     html_path = run_dir / W.PRESENT / "deck.html"
     if not html_path.is_file():
         return
-    for m in W._FONT_URL.finditer(html_path.read_text(encoding="utf-8")):
-        path = W.font_path_of_url(m.group(1))
-        font = Path(path)
-        if font.suffix.lower() in W.PRESENT_FONT_TYPES and font.is_file():
-            try:
-                W._link(font, run_dir / W.PRESENT / "fonts" / W.present_font_name(path))
-            except OSError:
-                continue
+    try:
+        W.snapshot_present_fonts(html_path.read_text(encoding="utf-8"), run_dir, fonts_dir)
+    except OSError:
+        return
 
 
 def import_sample(store: Any, root: DataRoot, sample: Sample, *, extra_env: dict[str, str] | None = None,
@@ -413,7 +409,7 @@ def import_sample(store: Any, root: DataRoot, sample: Sample, *, extra_env: dict
                 forget_duplicate_cache(root, deck_id)
             except Exception:  # noqa: BLE001
                 pass
-        _link_present_fonts(run_dir)
+        _link_present_fonts(run_dir, root.present_fonts_dir(deck_id))
     return store.deck(deck_id)
 
 

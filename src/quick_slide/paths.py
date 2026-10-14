@@ -74,6 +74,10 @@ class DataRoot:
     def deck_dir(self, deck_id: str) -> Path:
         return self.decks_dir / deck_id
 
+    def present_fonts_dir(self, deck_id: str) -> Path:
+        """発表の字体の控え。同じデッキの回が、中身ごとに共有する。"""
+        return self.deck_dir(deck_id) / "present-fonts"
+
     def scripts_dir(self, deck_id: str) -> Path:
         """台本の版（`<版>.json`）。"""
         return self.deck_dir(deck_id) / "scripts"

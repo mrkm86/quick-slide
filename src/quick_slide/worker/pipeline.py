@@ -397,7 +397,7 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
     snap = W.snapshot(engine.mode, work, run_dir, pages) if outcome.state == "done" else {}
     if outcome.state == "done" and engine.mode == "presentation":
         try:
-            W.snapshot_present(work, run_dir)   # 発表の画面の段ごとの再生用（無くても描いた回は成り立つ。ページの PNG で出す）
+            W.snapshot_present(work, run_dir, ctx.root.present_fonts_dir(run["deck_id"]))   # 発表の画面の段ごとの再生用
         except OSError as exc:
             log.warning("run %s: 発表の画面用の HTML を控えられませんでした: %s", run_id, exc)
     elif outcome.state == "done" and engine.mode == "motion":

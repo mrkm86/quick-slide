@@ -116,7 +116,9 @@ class PresentTtcFontTests(PresentBase):
         deck, run = self.make_presentation()
         name = W.present_font_name(str(self.font))
         self.assertTrue(name.endswith(".ttc"), name)
-        self.assertTrue((self.fx.root.run_dir(deck, run["id"]) / W.PRESENT / "fonts" / name).is_file())
+        folder = self.fx.root.run_dir(deck, run["id"]) / W.PRESENT
+        stored = W.read_json(folder / W.PRESENT_FONTS_INDEX)[name]
+        self.assertTrue((self.fx.root.present_fonts_dir(deck) / stored).is_file())
         body = self.fx.get(f"/present/{deck}/{run['id']}/deck.html").body.decode()
         self.assertIn(f'url("/present/{deck}/{run["id"]}/fonts/{name}")', body)
         r = self.fx.get(f"/present/{deck}/{run['id']}/fonts/{name}")
@@ -132,9 +134,11 @@ class PresentRunHtmlTests(PresentBase):
         folder = self.fx.root.run_dir(deck, run["id"]) / W.PRESENT
         self.assertTrue((folder / "deck.html").is_file())
         self.assertTrue((folder / "assets" / "s01-image.png").is_file())
-        fonts = list((folder / "fonts").iterdir())
+        fonts = list(self.fx.root.present_fonts_dir(deck).iterdir())
         self.assertEqual([f.read_bytes() for f in fonts], [FAKE_FONT])
-        self.assertEqual(fonts[0].name, W.present_font_name(str(self.font)))
+        self.assertEqual(W.read_json(folder / W.PRESENT_FONTS_INDEX),
+                         {W.present_font_name(str(self.font)): fonts[0].name})
+        self.assertFalse((folder / "fonts").exists())
 
     def test_each_run_keeps_its_own_copy(self) -> None:
         """次の回でエンジンが作業フォルダの出力を作り直しても、前の回の控えは変わらない。"""
@@ -150,6 +154,20 @@ class PresentRunHtmlTests(PresentBase):
         new = (self.fx.root.run_dir(deck, second["id"]) / W.PRESENT / "deck.html").read_text(encoding="utf-8")
         self.assertEqual(new.count("<section"), 3)
         self.assertEqual(before.decode().count("<section"), 4)
+
+    def test_duplicate_keeps_shared_fonts_after_original_is_purged(self) -> None:
+        deck, _ = self.make_presentation()
+        with self.fx.server.store_lock:
+            duplicate = self.fx.store.duplicate_deck(deck)
+            run = self.fx.store.shown_run(duplicate["id"])
+            self.fx.store.delete_deck_to_trash(deck)
+            self.fx.store.purge_deck_from_trash(deck)
+        self.assertFalse(self.fx.root.present_fonts_dir(deck).exists())
+        base = f"/present/{duplicate['id']}/{run['id']}"
+        self.assertEqual(self.fx.get(f"{base}/fonts/{W.present_font_name(str(self.font))}").body, FAKE_FONT)
+        body = self.fx.get(f"{base}/deck.html").body.decode()
+        self.assertIn(f'{base}/fonts/', body)
+        self.assertNotIn('local("sans-serif")', body)
 
     def test_old_runs_without_html_fall_back_to_page_images(self) -> None:
         import shutil

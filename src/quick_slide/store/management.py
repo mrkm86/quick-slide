@@ -36,6 +36,7 @@ from typing import Any
 
 from .. import oscompat
 from ..errors import NotFoundError, StateError, ValidationError
+from ..render import workspace as W
 from .base import StoreBase
 
 MANIFEST_SCHEMA_VERSION = 1
@@ -206,6 +207,11 @@ class DeckManagementMixin(StoreBase):
         # 描いた回（番号 1・描き終えた）。控えのフォルダはハードリンクで写す（書き出しの PPTX・PDF もここから配る）
         rid = self.new_id()
         _link_tree(self.root.run_dir(deck_id, run["id"]), self.root.run_dir(new_id, rid))
+        font_names = W.read_json(self.root.run_dir(deck_id, run["id"]) / W.PRESENT / W.PRESENT_FONTS_INDEX)
+        for name in set(v for v in font_names.values() if W.shared_font_name(v)):
+            font = self.root.present_fonts_dir(deck_id) / name
+            if font.is_file() and not font.is_symlink():
+                _link_file(font, self.root.present_fonts_dir(new_id) / name)
         self._exec(
             "INSERT INTO runs(id,deck_id,number,script_id,mode,engine,args_json,state,progress_json,engine_result_json,"
             " record_json,rc,message,failure_kind,out_dir,created_at,started_at,ended_at,updated_at)"

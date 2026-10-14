@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from ..engines import engine_for
 from ..errors import NotFoundError
@@ -110,16 +110,17 @@ RUN_FILE_CACHE = "private, max-age=604800, immutable"
 _IMG_SRC = re.compile(r"(<img\b[^>]*?\s)src=", re.I)
 
 
-def frame_document(html: str, base: str, fonts_dir: Path) -> str:
+def frame_document(html: str, base: str, fonts_dir: Path, *, font_exists: Callable[[str], bool] | None = None) -> str:
     """回の HTML を仕切りの中で開く形にする: `file://` の字体を配信のパスへ書き換え・再生スクリプトを足す。
 
-    字体は控え（`present/fonts/`）にあるものだけを書き換える。無いものは `src` ごと消す（元のパスを残さない・
+    字体は配信できる控えがあるものだけを書き換える。無いものは `src` ごと消す（元のパスを残さない・
     外へ取りに行かせない）。`base` は `/present/<デッキ>/<回>`。
     """
     def font(m: re.Match[str]) -> str:
         path = W.font_path_of_url(m.group(1))
         name = W.present_font_name(path)
-        if (fonts_dir / name).is_file():
+        exists = font_exists(name) if font_exists is not None else (fonts_dir / name).is_file()
+        if exists:
             return f'url("{base}/fonts/{name}")'
         return 'local("sans-serif")'
 
@@ -296,7 +297,8 @@ def route_present_file(server: "QuickSlideServer", req: "Request") -> "Response"
         host = (req.header("host") or "").strip().lower()    # 検査済み（app._check_host）
         base = f"/present/{deck_id}/{run_id}"
         fonts = server.root.run_dir(deck_id, run_id) / W.PRESENT / "fonts"
-        body = frame_document(data.decode("utf-8", errors="replace"), base, fonts).encode("utf-8")
+        body = frame_document(data.decode("utf-8", errors="replace"), base, fonts,
+                              font_exists=lambda name: server.present_files.resolve(deck_id, run_id, f"fonts/{name}") is not None).encode("utf-8")
         return Response(200, body, content_type=resolved.content_type,
                         headers=(("Content-Security-Policy", frame_csp(host)),))
     # 回の控えは描き終えたら変わらない（回の id ごとの置き場）。画像と字体はブラウザに覚えさせ、開き直すたびに読み直さない。
