@@ -1346,8 +1346,8 @@
         title: canReorder.available ? null : (canReorder.reason || null),
         "aria-label": thumbLabel(p.position, p.title || "", p.display.label),
         onclick: function () { ctx.scrollTo(p.slide_id); } },
-        // 番号は絵の**左の欄**に置く（重ねない。重ねると見出しの頭を隠す。2026-09-18）。
-        // 振り直しは renumber() が同じ節点を書き換える。狭い画面では絵が消えて札だけが並ぶ（CSS が決める）
+        // 番号は絵の**左上に重ねる**（2026-10-14。桁が違っても絵の左端がそろう）。
+        // 振り直しは renumber() が同じ節点を書き換える
         h("span", { class: "thumb__num", text: String(p.position) }), pic);
       b.addEventListener("keydown", function (e) {
         if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) { return; }

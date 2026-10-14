@@ -458,7 +458,7 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .thumbs__list { list-style: none; margin: 0; padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2); }
 .thumb {
   position: relative;   /* 番号の札を絵の左上に重ねる */
-  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2); align-items: center;
+  display: grid; grid-template-columns: minmax(0, 1fr); align-items: center;
   width: 100%; padding: var(--space-1); border-radius: var(--radius-2); border: 2px solid transparent;
   background: transparent; cursor: pointer; text-align: left;
   /* 掴んで並べ替える面は**サムネ全体**（取っ手の印は置かない）。指の縦スクロールは残す:
@@ -468,18 +468,20 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 }
 .thumb:hover { background: var(--brand-soft); }
 .thumb--current { border-color: var(--color-primary); background: var(--brand-soft); }
-/* 非表示のページ。薄くするだけだと文字のコントラストを割るので、濃淡は絵だけに掛け、番号の札は濃いまま残す */
+/* 非表示のページ。絵は灰色で薄く、番号の札も灰色にする（2026-10-14・利用者の指定）。札の灰色は白い数字と 4.5:1 の Gray-536 */
 .thumb--hidden .thumb__pic { opacity: .4; filter: grayscale(1); }
+.thumb--hidden .thumb__num { background: var(--color-neutral-solid-gray-536); }
 /* ページ番号は角丸・地を塗りつぶし・数字を白抜きの札（利用者の指定）。
-   **絵の上には重ねない**（2026-09-18）。サムネイルの仕事は「どのページか分かること」で、それを担っているのは
-   見出しなので、隠すものが悪すぎた。絵の左の欄へ出し、**絵は 1px も縮めず**にレールのほうを広げた。
-   14px は領域の制約があるときの例外（Dns-14B-130） */
+   **絵の左上に重ねる**（2026-10-14・利用者の指定）。前は絵の左の欄に出していたが（2026-09-18。見出しの頭を隠さないため）、
+   1〜9 と 10〜 で札の幅が違い、絵の左端がページごとにずれた。サムネイルなので、文字に被っても絵の位置がそろう方を採る。
+   絵の左端は全ページで同じ・札は数字の桁に合わせて右へ伸びるだけ。14px は領域の制約があるときの例外（Dns-14B-130） */
 .thumb__num {
-  min-width: 24px; padding: 2px 8px; border-radius: var(--border-radius-8);
-  background: var(--color-neutral-solid-gray-800); color: var(--color-neutral-white);
+  position: absolute; z-index: 2; top: calc(var(--space-1) + 4px); left: calc(var(--space-1) + 4px);
+  min-width: 24px; padding: 1px 6px; border-radius: var(--border-radius-8);
+  background: var(--color-neutral-solid-gray-800); color: var(--color-neutral-white); box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
   font-size: var(--font-size-14); line-height: var(--line-height-130); font-weight: var(--font-weight-700); text-align: center; font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
-.thumb__num { justify-self: start; }   /* 余った幅で札が横に伸びない（スマホのページ一覧の板で黒い帯になった） */
 .thumb__pic { aspect-ratio: 16 / 9; background: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: var(--border-radius-8); overflow: hidden; }
 .thumb__pic img { width: 100%; height: 100%; object-fit: cover; }
 /* 掴んで動かす間、文字が選ばれたり縮小画像が「画像をドラッグ」で持ち去られたりしないように */
@@ -591,7 +593,7 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .edit-badge--edit_queued { background: var(--color-neutral-white); color: var(--ink); border: 1px solid var(--color-neutral-solid-gray-536); }
 .edit-badge--editing::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent;
   animation: gap-spin var(--motion-spin) linear infinite; }
-.thumb__pic .edit-badge { top: 4px; left: 4px; padding: 0 6px; font-size: 11px; }
+.thumb__pic .edit-badge { top: 4px; left: auto; right: 4px; padding: 0 6px; font-size: 11px; }   /* 左上は番号の札 */
 .thumb__pic .edit-badge::before { display: none; }
 @media (prefers-reduced-motion: reduce) { .edit-badge--editing::before { animation: none; } }
 .frame--queued_slot, .frame--queued_rate_limit, .frame--retry_backoff, .frame--paused, .frame--unstarted { border-style: dashed; background: var(--color-surface-muted); }
@@ -1413,7 +1415,7 @@ html.is-locked { overflow: hidden; }
   .thumbs.is-open { transform: none; visibility: visible; transition-delay: 0s; }
   .thumbs__head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) var(--space-2) 0 var(--space-3); }
   .thumbs__head h2 { font-size: var(--font-size-20); }
-  .thumb { min-height: var(--tap); grid-template-columns: auto minmax(0, 1fr); }   /* 余りは絵の列へ（番号の札は伸ばさない） */
+  .thumb { min-height: var(--tap); grid-template-columns: minmax(0, 1fr); }   /* 番号の札は絵の左上に重ねる */
   @media (prefers-reduced-motion: reduce) { .panel, .thumbs { transition: none; } }
 }
 
