@@ -535,6 +535,9 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .page__select-box:disabled { cursor: not-allowed; }
 .page__num { font-weight: var(--font-weight-700); color: var(--color-text-muted); min-width: 1.5em; }
 .page__title { font-weight: var(--font-weight-700); color: var(--color-text); }
+/* 非表示のページは番号と題も灰色にして、薄いと分かるようにする（2026-10-14・利用者の指定）。
+   灰色は白い地で 4.5:1 の Gray-536（読める薄さの下限）。太さはそのまま（並んだ題の高さをそろえる） */
+.page--hidden .page__title, .page--hidden .page__num { color: var(--color-neutral-solid-gray-536); }
 .page__hidden-mark { display: inline-flex; color: var(--color-text-muted); }
 .page__collapse { flex: 0 0 auto; }
 .page__head-spacer { flex: 1 1 auto; }
