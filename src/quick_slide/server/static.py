@@ -22,6 +22,7 @@ asset 配信は `assets` 行の `relative_path` を同じ手順でデータ置�
 from __future__ import annotations
 
 import os
+import json
 import re
 import stat
 from dataclasses import dataclass
@@ -30,6 +31,8 @@ from typing import Any
 from urllib.parse import unquote_to_bytes
 
 from ..ids import is_uuid
+from ..paths import DataRoot
+from ..render import workspace as W
 
 # 同梱 UI の許可リスト（拡張子 → Content-Type）。ここに無いものは配信しない。
 STATIC_TYPES: dict[str, str] = {
@@ -265,11 +268,11 @@ PRESENT_FONT_TYPES: dict[str, str] = {
 
 
 class PresentFiles:
-    """`decks/<デッキ>/runs/<回>/present/` の中だけを配る。
+    """回の `present/` の控えと、目録が指すそのデッキの共有字体だけを配る。
 
     開けるのは `deck.html`（html-slide）か `index.html`（motion-slide の HTML 1枚。画像・字体・音は全部中に入っている）と、
     `assets/<画像>`・`fonts/<字体>`（拡張子の許可リスト）だけ。字体は控えるときに
-    手元のファイルから `present/fonts/` へ張った**控え**を配るので、元のパス（設定の fonts）は配信に出ない。
+    `present/fonts.json` が指す共有の控え（以前の回は `present/fonts/`）を配る。元のパスは配信に出ない。
     降り方は `AssetFiles` と同じ（1 段ずつ文字列一致・symlink 拒否・最後に realpath で閉じ込める）。
     """
 
@@ -293,6 +296,23 @@ class PresentFiles:
             return None
         base = self.data_root / "decks" / deck_id / "runs" / run_id / "present"
         path = walk_no_symlinks(self.data_root, ["decks", deck_id, "runs", run_id, "present", *parts])
-        if path is None:
+        if path is not None:
+            return _resolved(path, base, content_type)
+        if parts[0] != "fonts":
             return None
-        return _resolved(path, base, content_type)
+        # 旧形式の回は上で読む。新しい回は検査済みの目録が指す、このデッキの共有字体だけを読む。
+        index = walk_no_symlinks(self.data_root, ["decks", deck_id, "runs", run_id, "present", W.PRESENT_FONTS_INDEX])
+        resolved = _resolved(index, base, "application/json") if index is not None else None
+        data = resolved.read() if resolved is not None else None
+        if data is None:
+            return None
+        try:
+            names = json.loads(data)
+        except (ValueError, UnicodeError):
+            return None
+        name = names.get(parts[1]) if isinstance(names, dict) else None
+        if not W.shared_font_name(name) or Path(name).suffix != Path(parts[1]).suffix:
+            return None
+        fonts = DataRoot(self.data_root).present_fonts_dir(deck_id)
+        path = walk_no_symlinks(self.data_root, [*fonts.relative_to(self.data_root).parts, name])
+        return _resolved(path, fonts, content_type) if path is not None else None

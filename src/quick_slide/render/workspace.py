@@ -38,6 +38,7 @@ import json
 import os
 import re
 import shutil
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,7 @@ LAYOUT = "layout.json"
 STAGE = ".quick-slide-stage"
 # 発表の画面（html-slide の段ごとの再生）が読む、回ごとの HTML と画像・字体の置き場（回のフォルダの中）
 PRESENT = "present"
+PRESENT_FONTS_INDEX = "fonts.json"
 # 書き出しの部品（ページごとの PPTX の部品と、deck.pdf の何ページ目か）の置き場（回のフォルダの中）
 PARTS = "parts"
 PARTS_FILE = "parts.json"
@@ -227,12 +229,48 @@ def present_font_name(path: str) -> str:
     return hashlib.sha256(path.encode("utf-8")).hexdigest()[:16] + Path(path).suffix.lower()
 
 
-def snapshot_present(work: Path, run_dir: Path) -> bool:
+def shared_font_name(name: Any) -> bool:
+    """共有字体の名前は中身の sha256 と許可した拡張子だけ。"""
+    return isinstance(name, str) and bool(re.fullmatch(r"[0-9a-f]{64}\.(ttf|ttc|otf|woff|woff2)", name))
+
+
+def snapshot_present_fonts(html: str, run_dir: Path, fonts_dir: Path) -> None:
+    """字体をデッキに一度だけ写し、回には URL の名前 → 中身の名前の参照を控える。
+
+    元の字体にハードリンクを張らない。OS の字体が同じファイル内で更新されても、過去の回の中身を保つ。
+    同じ中身の控えがあれば写さない。別の回が並行して保存しても、書きかけのファイルを読ませない。
+    """
+    names: dict[str, str] = {}
+    for m in _FONT_URL.finditer(html):
+        path = font_path_of_url(m.group(1))
+        font = Path(path)
+        if font.suffix.lower() not in PRESENT_FONT_TYPES or not font.is_file():
+            continue
+        name = file_sha(font) + font.suffix.lower()
+        if not (fonts_dir / name).is_file():
+            fonts_dir.mkdir(parents=True, exist_ok=True)
+            fd, tmp_name = tempfile.mkstemp(prefix=".font-", suffix=".tmp", dir=fonts_dir)
+            os.close(fd)
+            tmp = Path(tmp_name)
+            try:
+                shutil.copyfile(font, tmp)
+                # 読み取り中に元の字体が変わっても、保存した中身の名前にする。
+                name = file_sha(tmp) + font.suffix.lower()
+                if not (fonts_dir / name).is_file():
+                    oscompat.replace(tmp, fonts_dir / name)
+            finally:
+                tmp.unlink(missing_ok=True)
+        names[present_font_name(path)] = name
+    write_json(run_dir / PRESENT / PRESENT_FONTS_INDEX, names)
+
+
+def snapshot_present(work: Path, run_dir: Path, fonts_dir: Path) -> bool:
     """発表の画面（html-slide の段ごとの再生）のために、deck.html とそれが読む画像・字体を回のフォルダへ控える。
 
     - `deck.html` は写す（小さい。エンジンは次の回の前に作業フォルダの出力を消す）
-    - 画像（`assets/`）と字体は**ハードリンク**（別のボリュームなら写す）。エンジンは `assets/` に書く前に
+    - 画像（`assets/`）は**ハードリンク**（別のボリュームなら写す）。エンジンは `assets/` に書く前に
       同じ名前を消す（deck.py）ので、控えの側の中身は変わらない
+    - 字体はデッキの共有の控えへ写し、回には参照だけを保存する
     - 控えるのは deck.html が読むものだけ。字体は拡張子が許可リストのものだけ（元のパスは名前の式に使うだけで、配信には出さない）
     deck.html が無い（エンジンが書かなかった）ときは何もせず False。
     """
@@ -246,11 +284,7 @@ def snapshot_present(work: Path, run_dir: Path) -> bool:
         asset = work / "assets" / m.group(1)
         if asset.is_file():
             _link(asset, dest / "assets" / m.group(1))
-    for m in _FONT_URL.finditer(html):
-        path = font_path_of_url(m.group(1))
-        font = Path(path)
-        if font.suffix.lower() in PRESENT_FONT_TYPES and font.is_file():
-            _link(font, dest / "fonts" / present_font_name(path))
+    snapshot_present_fonts(html, run_dir, fonts_dir)
     return True
 
 

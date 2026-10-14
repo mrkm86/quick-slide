@@ -117,10 +117,11 @@ class TokenTests(unittest.TestCase):
         present.mkdir()
         (present / "deck.html").write_text(f'src: url("{font.as_uri()}");', encoding="utf-8")
         with mock.patch.object(W, "font_path_of_url", wraps=W.font_path_of_url) as decode:
-            S._link_present_fonts(folder)
+            S._link_present_fonts(folder, folder / "shared-fonts")
         decode.assert_called_once()
         path = W.font_path_of_url(font.as_uri()[len("file://"):])
-        self.assertEqual((present / "fonts" / W.present_font_name(path)).read_bytes(), b"font")
+        name = W.read_json(present / W.PRESENT_FONTS_INDEX)[W.present_font_name(path)]
+        self.assertEqual((folder / "shared-fonts" / name).read_bytes(), b"font")
 
     def test_fill_keeps_json_valid_for_windows_paths(self) -> None:
         values = {"HOME": "C:\\Users\\someone\\.quick-slide", "CACHE": None, "RUN_ID": "r1"}
