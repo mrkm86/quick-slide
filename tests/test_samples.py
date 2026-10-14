@@ -96,9 +96,10 @@ class TokenTests(unittest.TestCase):
         from pathlib import PureWindowsPath
 
         template = 'src: url("file://{{HOME}}/fonts/a.ttf");'
+        native_home = str(temp_dir(self, "sample-url-") / "日本語 # font")
         for home, path_type in (("C:/data/日本語 # font", PureWindowsPath),
                                 ("C:\\data\\日本語 # font", PureWindowsPath),
-                                ("/srv/data/日本語 # font", Path)):
+                                (native_home, Path)):
             with self.subTest(home=home):
                 expected = (path_type(home) / "fonts/a.ttf").as_uri()
                 filled = S.fill_text(template, {"HOME": home}, escape=False)
@@ -118,7 +119,8 @@ class TokenTests(unittest.TestCase):
         with mock.patch.object(W, "font_path_of_url", wraps=W.font_path_of_url) as decode:
             S._link_present_fonts(folder)
         decode.assert_called_once()
-        self.assertEqual((present / "fonts" / W.present_font_name(str(font))).read_bytes(), b"font")
+        path = W.font_path_of_url(font.as_uri()[len("file://"):])
+        self.assertEqual((present / "fonts" / W.present_font_name(path)).read_bytes(), b"font")
 
     def test_fill_keeps_json_valid_for_windows_paths(self) -> None:
         values = {"HOME": "C:\\Users\\someone\\.quick-slide", "CACHE": None, "RUN_ID": "r1"}
