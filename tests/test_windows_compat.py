@@ -300,12 +300,12 @@ class EncodingTests(unittest.TestCase):
         self.assertEqual(text_io_without_encoding(ast.parse(source)), [1, 2, 3, 5, 7])
 
     def test_entry_scripts_write_utf8(self) -> None:
-        """スクリプトの入口は stdout・stderr を UTF-8 にする（読むのはエージェントとサーバ。Windows の既定は cp932）。"""
+        """スクリプトの入口は stdout・stderr を UTF-8・改行 \\n にする（読むのはエージェントとサーバ。Windows の既定は cp932・\\r\\n）。"""
         entries = [p for base in [*sorted((ROOT / "skills").glob("*/scripts"))] for p in sorted(base.glob("*.py"))
                    if "dads" not in p.parts and 'if __name__ == "__main__":' in p.read_text(encoding="utf-8")]
         entries.append(ROOT / "src" / "quick_slide" / "server" / "__main__.py")
         missing = [p.relative_to(ROOT).as_posix() for p in entries
-                   if '.reconfigure(encoding="utf-8")' not in p.read_text(encoding="utf-8")]
+                   if '.reconfigure(encoding="utf-8", newline="\\n")' not in p.read_text(encoding="utf-8")]
         self.assertGreater(len(entries), 10)
         self.assertEqual(missing, [])
 

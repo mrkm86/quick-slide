@@ -191,8 +191,8 @@ def from_video(project: str | Path, script_path: str | Path, build_path: str | P
 if __name__ == "__main__":
     import sys
 
-    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932）でなく UTF-8 で出す。読むのはエージェントとサーバ
-        _out.reconfigure(encoding="utf-8")
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932・\r\n）でなく UTF-8・\n で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8", newline="\n")
     import sys
     if len(sys.argv) != 5:
         sys.exit("使い方: python3 from_video.py <project> <script.json> <build.json> <out.parts.json>")

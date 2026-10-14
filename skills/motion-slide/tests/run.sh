@@ -134,7 +134,7 @@ assert list(code) == ['s3'] and 'x.fly(' in code['s3']['hook'] and 'MS.hook' not
 PYEOF
 }
 # Codex のレビューで出た抜け道（tests/repro.py）。検査で NG になる／組み立てても HTML の境界・他の場面に影響しない
-for c in $($PY "$SK/tests/repro.py"); do
+for c in $($PY "$SK/tests/repro.py" | tr -d '\r'); do   # Windows の Python は \r\n で書く
   run "抜け道 $c: NG になる"  $PY "$SK/tests/repro.py" "$TMP/j/ok.json" "$c"
 done
 for c in hook-breakout script-breakout style-end-scene style-end-shared html-upper-script stage-script; do
