@@ -118,7 +118,7 @@ def run_engine(python: str, skills_dir: Path, source: Path, out: Path, *, env: d
     out.mkdir(parents=True, exist_ok=True)
     try:
         r = subprocess.run([python, str(entry), "import", "--pptx", str(source), "--out", str(out)],
-                           capture_output=True, text=True, timeout=timeout, env=env)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, env=env)
     except subprocess.TimeoutExpired:
         return 1, "取り込みが時間内に終わりませんでした。"
     if log_path is not None:

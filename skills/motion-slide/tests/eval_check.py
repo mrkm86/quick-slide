@@ -1,6 +1,6 @@
 """組んだ HTML を Chrome で開き、式の値を確かめる。
 
-    python3 -I eval_check.py <index.html> <式> <期待する値>   # 0=一致（MS.go(2, 1) まで進めてから評価する）
+    python3 -E eval_check.py <index.html> <式> <期待する値>   # 0=一致（MS.go(2, 1) まで進めてから評価する）
 """
 import asyncio
 import pathlib

@@ -366,7 +366,7 @@ def node_syntax(js, label):
     with tempfile.TemporaryDirectory(prefix="motion-slide-js-") as tmp:
         p = Path(tmp) / "x.js"
         p.write_text(js, encoding="utf-8")
-        r = subprocess.run([node, "--check", str(p)], capture_output=True, text=True, timeout=30)
+        r = subprocess.run([node, "--check", str(p)], capture_output=True, text=True, timeout=30, encoding="utf-8")
     if r.returncode == 0:
         return None
     err = next((ln for ln in r.stderr.splitlines() if ln.startswith(("SyntaxError", "ReferenceError"))), "文法の誤り")
@@ -387,7 +387,7 @@ def node_function(args, body):
         p.write_text(json.dumps({"args": args, "body": body}), encoding="utf-8")
         r = subprocess.run([node, "-e", 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));'
                             'try{new Function(...c.args,c.body)}catch(e){console.error(e.name+": "+e.message);process.exit(1)}', str(p)],
-                           capture_output=True, text=True, timeout=30)
+                           capture_output=True, text=True, timeout=30, encoding="utf-8")
     return None if r.returncode == 0 else (r.stderr.strip().splitlines() or ["SyntaxError"])[0]
 
 

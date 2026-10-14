@@ -69,12 +69,12 @@ def extract(html_path, mode: str = "contract", out_json=None) -> dict:
         out = Path(out_json) if out_json else Path(tmp) / "parts.json"
         try:
             r = subprocess.run([node, str(EXTRACT), "--mode", mode, str(html), str(out)],
-                               capture_output=True, text=True, timeout=TIMEOUT, env=B.child_env())
+                               capture_output=True, text=True, timeout=TIMEOUT, env=B.child_env(), encoding="utf-8")
         except subprocess.TimeoutExpired:
             raise RenderError(f"extract.mjs が {TIMEOUT} 秒で終わらない", 1)
         if r.returncode != 0:
             raise RenderError((r.stderr.strip() or r.stdout.strip() or f"extract.mjs rc={r.returncode}"), 4 if r.returncode == 4 else 1)
-        return json.loads(out.read_text())
+        return json.loads(out.read_text(encoding="utf-8"))
 
 
 def check(html_path) -> list[dict]:
@@ -95,7 +95,7 @@ def default_report_path(out_pptx: Path) -> Path:
     p = out_pptx.parent / "build.json"
     if p.exists():
         try:
-            if json.loads(p.read_text()).get("renderer") != "html-slide":
+            if json.loads(p.read_text(encoding="utf-8")).get("renderer") != "html-slide":
                 return out_pptx.with_suffix(".build.json")
         except (json.JSONDecodeError, AttributeError):
             return out_pptx.with_suffix(".build.json")
@@ -122,19 +122,19 @@ def render(html_path, out_pptx, mode: str = "contract", *, script=None, build=No
         build = build or (project.parent / "build.json")
         parts = extract(project, "hyperframes")
         try:
-            from_video.convert(parts, json.loads(Path(script).read_text()),
-                               json.loads(Path(build).read_text()) if Path(build).exists() else None)
+            from_video.convert(parts, json.loads(Path(script).read_text(encoding="utf-8")),
+                               json.loads(Path(build).read_text(encoding="utf-8")) if Path(build).exists() else None)
         except ValueError as e:
             raise RenderError(str(e), 2)
     else:
         raise RenderError(f"mode は contract / hyperframes（{mode!r}）", 2)
     if parts_path:
-        Path(parts_path).write_text(json.dumps(parts, ensure_ascii=False))
+        Path(parts_path).write_text(json.dumps(parts, ensure_ascii=False), encoding="utf-8")
     report = pptx_writer.write(parts, out_pptx, line_breaks=line_breaks)
     report["violations"] = parts.get("violations") or []
     rp = Path(report_path) if report_path else default_report_path(out_pptx)
     report["report_path"] = str(rp)
-    rp.write_text(json.dumps(report, ensure_ascii=False, indent=1) + "\n")
+    rp.write_text(json.dumps(report, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     if report["mismatch"] and not force:
         raise RenderError(f"段の数とノートの［クリック］が合わないスライド: {report['mismatch']}", 2, report["violations"])
     return report
@@ -180,4 +180,6 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932・\r\n）でなく UTF-8・\n で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8", newline="\n")
     sys.exit(main())

@@ -80,8 +80,11 @@ def emit(obj: dict[str, Any]) -> None:
 
 def run(cmd: list[str], *, env: dict[str, str] | None = None, timeout: float = 20.0) -> tuple[int | None, str]:
     """短いコマンドを走らせ、(終了コード, 標準出力＋標準エラー) を返す。起動できなければ (None, "")。"""
+    # 子の Python も UTF-8 で出させる（Windows の既定は cp932）。ほかの道具の出力が UTF-8 でなくても落ちない
+    env = {**(os.environ if env is None else env), "PYTHONUTF8": "1"}
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env, stdin=subprocess.DEVNULL)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env, stdin=subprocess.DEVNULL,
+                           encoding="utf-8", errors="replace")
     except (OSError, subprocess.SubprocessError):
         return None, ""
     return r.returncode, (r.stdout or "") + (r.stderr or "")
@@ -552,4 +555,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932・\r\n）でなく UTF-8・\n で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8", newline="\n")
     raise SystemExit(main())

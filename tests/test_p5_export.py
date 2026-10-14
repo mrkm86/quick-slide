@@ -288,7 +288,7 @@ class BrandFontTests(unittest.TestCase):
         env = {**os.environ, "QUICK_SLIDE_HOME": str(self.root.root), "PYTHONDONTWRITEBYTECODE": "1"}
         r = subprocess.run([sys.executable, str(SKILLS_DIR / "html-slide" / "scripts" / "html_slide.py"), "check",
                             "--script", str(SKILLS_DIR / "html-slide" / "examples" / "sample-deck.json"),
-                            "--theme", str(theme)], capture_output=True, text=True, env=env, timeout=300)
+                            "--theme", str(theme)], capture_output=True, text=True, env=env, timeout=300, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stderr[-1500:])
 
 

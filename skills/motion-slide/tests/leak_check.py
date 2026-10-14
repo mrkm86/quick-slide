@@ -1,6 +1,6 @@
 """検査を通らない台本を組み立てて Chrome で開き、場面の hook・script が他の場面・共通部へ抜け出さないことを確かめる。
 
-    python3 -I leak_check.py <index.html>   # 0=抜けない（document.body.dataset.leaked が無い・他の場面は動く・エラーはその場面だけ）
+    python3 -E leak_check.py <index.html>   # 0=抜けない（document.body.dataset.leaked が無い・他の場面は動く・エラーはその場面だけ）
 """
 import asyncio
 import pathlib

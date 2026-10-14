@@ -73,11 +73,11 @@ class RestartButtonTest(unittest.TestCase):
 
     def cli(self, *args: str) -> dict:
         r = subprocess.run([sys.executable, "-m", "quick_slide.server", "--home", str(self.home), *args],
-                           env=self.env, capture_output=True, text=True, timeout=60, cwd=str(REPO))
+                           env=self.env, capture_output=True, text=True, timeout=60, cwd=str(REPO), encoding="utf-8")
         return json.loads(r.stdout.strip().splitlines()[-1])
 
     def record(self) -> dict:
-        return json.loads((self.home / "runtime" / "server.json").read_text())
+        return json.loads((self.home / "runtime" / "server.json").read_text(encoding="utf-8"))
 
     def open_server_screen(self) -> browser.Page:
         page = self.br.open(f"http://127.0.0.1:{self.port}/settings/server")

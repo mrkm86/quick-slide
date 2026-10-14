@@ -35,12 +35,15 @@ from ..engines import RC_DEPENDENCY, Engine, engine_for, engine_marker
 from ..paths import DataRoot
 from ..pins import Pin
 from ..pins import resolve as resolve_pins
+from ..render import illustrations as ILL
 from ..render import look as LOOK
 from ..render import workspace as W
 from ..render.runner import (
     DOCTOR_HINT,
     CHECK_TIMEOUT_SECONDS,
+    CheckResult,
     RenderOutcome,
+    chrome_path,
     check_prerequisites,
     check_script,
     dependency_message,
@@ -131,6 +134,21 @@ def engine_script_view(data: dict[str, Any], args: dict[str, Any]) -> dict[str, 
     if motion.is_motion(args):
         return motion.engine_view(engine_view(data))
     return LOOK.apply_format(engine_view(data), args.get("look"))
+
+
+def engine_script_with_pictures(ctx: Context, deck_id: str, data: dict[str, Any], args: dict[str, Any]
+                                ) -> tuple[dict[str, Any], list[str]]:
+    """エンジンに渡す台本（`engine_script_view`）の挿絵（`image.svg`）を PNG の `path` に替える（プレゼンだけ。
+    docs/adr/0011-svg-illustrations.md）。戻り値の 2 つ目は、台本係に書き直させる `NG:` の行。
+    Chrome が無いなどで描けなければ `ILL.IllustrationFailed`。"""
+    view = engine_script_view(data, args)
+    if args.get("mode") != "presentation" or not ILL.has_illustrations(view):
+        return view, []
+    work = ctx.root.work_dir(deck_id)
+    work.mkdir(parents=True, exist_ok=True)
+    chrome = chrome_path(tools=ctx.tools, home=ctx.root.root, cwd=work, stop=ctx.stop)
+    return ILL.materialize(view, scripts_dir=ctx.root.scripts_dir(deck_id), tools=ctx.tools, home=ctx.root.root,
+                           chrome=chrome, stop=ctx.stop)
 
 
 def lint_view(args: dict[str, Any], slides: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -300,7 +318,15 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
         ctx.call(store.start_rendering, run_id, script["id"], pages, first)
     else:
         ctx.call(store.set_run_state, run_id, "rendering", progress=first)
-    script_path = W.write_engine_script(ctx.root.engine_script_path(deck_id), engine_script_view(data, args))
+    try:
+        view, bad = engine_script_with_pictures(ctx, deck_id, data, args)
+    except ILL.IllustrationFailed as exc:
+        ctx.call(store.fail_run, run_id, message=str(exc), failure_kind="dependency", rc=None)
+        return "failed"
+    if bad:   # 検査を通った台本なので、ここで NG が出るのは挿絵の描き方が変わったときだけ
+        ctx.call(store.fail_run, run_id, message="挿絵を描けませんでした。" + bad[0], failure_kind="script", rc=None)
+        return "failed"
+    script_path = W.write_engine_script(ctx.root.engine_script_path(deck_id), view)
     pins: dict[str, Pin] = {} if one_page(args) else ctx.call(resolve_pins, store, deck_id, pins_of(data), pages)
 
     placed: dict[str, str] = {}
@@ -436,7 +462,8 @@ def draw_hidden_previews(ctx: Context, engine: Engine, run: dict[str, Any], data
     cmd.append("--no-fill")
     env = child_env(home=ctx.root.root, extra=ctx.tools.extra_env)
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=ctx.settings.worker.render_timeout_seconds,
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=ctx.settings.worker.render_timeout_seconds,
                            env=env, cwd=str(out))
     except subprocess.TimeoutExpired:
         log.warning("run %s: 非表示のページの下見の絵が時間内に描けませんでした", run["id"])
@@ -504,7 +531,7 @@ def _assemble(ctx: Context, engine: Engine, run_dir: Path, pages: list[dict[str,
     cmd = engine.assemble_command(ctx.tools.python, ctx.tools.skills_dir, manifest, cmd_dir)
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=ASSEMBLE_TIMEOUT_SECONDS,
-                           env=child_env(home=ctx.root.root, extra=ctx.tools.extra_env), cwd=str(run_dir))
+                           env=child_env(home=ctx.root.root, extra=ctx.tools.extra_env), cwd=str(run_dir), encoding="utf-8")
         ok = r.returncode == 0 and (cmd_dir / "deck.pptx").is_file() and (cmd_dir / "deck.pdf").is_file()
         if not ok:
             log.warning("書き出しを部品から組めませんでした（rc=%s）: %s", r.returncode, (r.stderr or "").strip()[:300])
@@ -524,7 +551,13 @@ def check_candidate(ctx: Context, engine: Engine, run: dict[str, Any], data: dic
 
     形だけを先に見られるエンジン（モーション）は、先に `--quick`（Chrome を使わず数秒）で形の NG を返し、
     形が通ったときだけ全部の拍の検査（拍の数に比例して時間がかかる）を回す。書き直しのたびに全拍を回さない。"""
-    path = W.write_engine_script(ctx.root.engine_script_path(run["deck_id"]), engine_script_view(data, run["args"]))
+    try:
+        view, bad = engine_script_with_pictures(ctx, run["deck_id"], data, run["args"])
+    except ILL.IllustrationFailed as exc:
+        return CheckResult(RC_DEPENDENCY, [f"NG: {exc}"], [])
+    if bad:
+        return CheckResult(2, bad, [])   # 挿絵を直させる（台本係に返す）
+    path = W.write_engine_script(ctx.root.engine_script_path(run["deck_id"]), view)
     timeout = motion.check_timeout(data) if motion.is_motion(run["args"]) else CHECK_TIMEOUT_SECONDS
     if engine.quick_check:
         quick = check_script(engine, tools=ctx.tools, home=ctx.root.root, script=path, args=run["args"], stop=ctx.stop,

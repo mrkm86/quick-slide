@@ -11,4 +11,4 @@ if log:
 target = os.environ.get("FAKE_PLAYWRIGHT_INSTALLS")
 if target:
     pathlib.Path(target).parent.mkdir(parents=True, exist_ok=True)
-    pathlib.Path(target).write_text("")
+    pathlib.Path(target).write_text("", encoding="utf-8")

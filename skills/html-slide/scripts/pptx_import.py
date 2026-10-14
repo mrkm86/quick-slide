@@ -321,14 +321,14 @@ class Media:
                 w, h = ops.get("size", (100, 100))
                 k = min(IMAGE_DENSITY, 4096 / max(w, h, 1))
                 jobs.append({"svg": str(src), "png": str(pathlib.Path(tmp) / f"{i}.png"), "w": max(1, w * k), "h": max(1, h * k)})
-            (pathlib.Path(tmp) / "jobs.json").write_text(json.dumps(jobs))
+            (pathlib.Path(tmp) / "jobs.json").write_text(json.dumps(jobs), encoding="utf-8")
             ok = False
             try:
                 import browser as B
                 node, _ = B.node()
                 if node and not B.missing():
                     r = subprocess.run([node, str(pathlib.Path(__file__).resolve().parent / "svg_raster.mjs"),
-                                        str(pathlib.Path(tmp) / "jobs.json")], capture_output=True, text=True,
+                                        str(pathlib.Path(tmp) / "jobs.json")], capture_output=True, text=True, encoding="utf-8", errors="replace",
                                        timeout=600, env=B.child_env())
                     ok = r.returncode == 0
             except (OSError, subprocess.SubprocessError):

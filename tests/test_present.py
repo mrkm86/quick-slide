@@ -10,6 +10,7 @@ import re
 import unittest
 import uuid
 
+from helpers import can_symlink
 from test_p4_settings import Base
 
 from quick_slide.render import workspace as W
@@ -206,10 +207,11 @@ class PresentDocumentTests(PresentBase):
         self.assertEqual(self.fx.get(f"/present/{other}/{self.run['id']}/deck.html").status, 404)
         self.assertEqual(self.fx.get(f"/present/{self.deck}/{uuid.uuid4()}/deck.html").status, 404)
         folder = self.fx.root.run_dir(self.deck, self.run["id"]) / W.PRESENT
-        secret = self.fx.root.root / "outside.png"
-        secret.write_bytes(b"SECRET")
-        (folder / "assets" / "link.png").symlink_to(secret)
-        self.assertEqual(self.fx.get(f"{self.base}/assets/link.png").status, 404)
+        if can_symlink():
+            secret = self.fx.root.root / "outside.png"
+            secret.write_bytes(b"SECRET")
+            (folder / "assets" / "link.png").symlink_to(secret)
+            self.assertEqual(self.fx.get(f"{self.base}/assets/link.png").status, 404)
 
     def test_editor_screen_csp_is_unchanged(self) -> None:
         r = self.fx.get(f"/slides/{self.deck}")

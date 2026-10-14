@@ -175,7 +175,7 @@ class Cli(unittest.TestCase):
     SCRIPT = str(DADS / "scripts" / "keycolors.py")
 
     def run_cli(self, *args):
-        return subprocess.run([sys.executable, "-I", self.SCRIPT, *args], capture_output=True, text=True)
+        return subprocess.run([sys.executable, "-I", self.SCRIPT, *args], capture_output=True, text=True, encoding="utf-8")
 
     def test_json_output_for_brand(self):
         p = self.run_cli("#0db4f2")

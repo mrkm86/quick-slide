@@ -16,12 +16,12 @@
 
 ### 作り方
 
-1. 時刻表を出す: `python3 -I scripts/timeline.py <deck.html>` → 拍ごとの開始の秒・終わりの秒
+1. 時刻表を出す: `python3 -E scripts/timeline.py <deck.html>` → 拍ごとの開始の秒・終わりの秒
 2. `<出力先>/bgm/compose.py` を書く（Claude が作曲する。`scripts/bgm/midi.py` の `Song` を使う）
    - 山・抜け・アクセントを、時刻表の秒に置く（例: 結論の拍でティンパニ、数え上げの拍で細かい音、まとめで主題）
    - 楽器は General MIDI の番号（0 ピアノ・8 セレスタ・89 パッド・35 ベース・46 ハープ・47 ティンパニ・55 オーケストラヒット・ch9 は打楽器）
    - 書き方の見本は `scripts/bgm/midi.py` の `Song` の使い方（`tests/run.sh` の MIDI の試験に最小の例がある）
-3. `python3 -I <出力先>/bgm/compose.py <出力先>/bgm` → `events.json` と `song.mid`
+3. `python3 -E <出力先>/bgm/compose.py <出力先>/bgm` → `events.json` と `song.mid`
 4. `bash scripts/bgm/render.sh <出力先>/bgm` → `bgm.m4a`（音量 -20〜-18 LUFS が目安。小さければ第2引数で上げ幅 dB を足す）
 5. `build.py <deck.html> --bgm <出力先>/bgm/bgm.m4a`
 

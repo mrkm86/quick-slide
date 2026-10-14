@@ -167,20 +167,20 @@ class WorkspaceTests(unittest.TestCase):
         work.mkdir()
         area.mkdir()
         for n, k in enumerate(["a", "b", "c"], 1):
-            (area / f"slide-{n:02d}.png").write_text(k)
-            (area / f"slide-{n:02d}.json").write_text(json.dumps({"key": k}))
+            (area / f"slide-{n:02d}.png").write_text(k, encoding="utf-8")
+            (area / f"slide-{n:02d}.json").write_text(json.dumps({"key": k}), encoding="utf-8")
         W.write_layout(work, ["a", "b", "c"], str(area))
         seed = tmp / "seed.png"
-        seed.write_text("old-b")
+        seed.write_text("old-b", encoding="utf-8")
         snap = tmp / "snap-d.png"
-        snap.write_text("d")
+        snap.write_text("d", encoding="utf-8")
         placed = W.arrange_pitch_cache(work, ["c", "a", "a2", "b", "d", "e"], area=area,
                                        seeds={"b": (seed, None)}, aliases={"a2": "a"},
                                        fallback=lambda k: (snap, None) if k == "d" else None)
-        self.assertEqual([(area / f"slide-{n:02d}.png").read_text() if (area / f"slide-{n:02d}.png").exists() else None
+        self.assertEqual([(area / f"slide-{n:02d}.png").read_text(encoding="utf-8") if (area / f"slide-{n:02d}.png").exists() else None
                           for n in range(1, 7)], ["c", "a", "a", "old-b", "d", None])
         self.assertEqual(placed, {"c": "moved", "a": "moved", "a2": "alias", "b": "seed", "d": "snapshot"})
-        self.assertEqual(json.loads((area / "slide-03.json").read_text())["key"], "a")
+        self.assertEqual(json.loads((area / "slide-03.json").read_text(encoding="utf-8"))["key"], "a")
         self.assertFalse((area / W.STAGE).exists())
         self.assertEqual(W.read_layout(work)["ids"], ["c", "a", "a2", "b", "d", "e"])
 

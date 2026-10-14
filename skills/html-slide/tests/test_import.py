@@ -149,7 +149,7 @@ def imported(wide=True):
         src = build(TMP / f"in-{key}.pptx", wide)
         out = TMP / f"out-{key}"
         rep = PI.import_pptx(src, out)
-        _cache[key] = (out, rep, json.loads((out / "script.json").read_text()))
+        _cache[key] = (out, rep, json.loads((out / "script.json").read_text(encoding="utf-8")))
     return _cache[key]
 
 
@@ -164,7 +164,7 @@ def t_structure():
     check(sl[0]["notes"] == "最初に結論を話します。", f"ノート: {sl[0]['notes']!r}")
     check(sl[2]["title"] == "段1" or sl[2]["title"], "題の無いページも見出しを持つ")
     check(sc.get("theme") == "theme.yaml" and (out / "theme.yaml").is_file(), "テーマ")
-    th = (out / "theme.yaml").read_text()
+    th = (out / "theme.yaml").read_text(encoding="utf-8")
     check('primary: "#4f81bd"' in th, f"テーマの accent1 が primary: {th}")
     imgs = re.findall(r'src="(media/[^"]+)"', sl[3]["html"])
     check(len(imgs) == 2 and all((out / p).is_file() for p in imgs), f"画像: {imgs}")
@@ -215,27 +215,27 @@ def t_engine_html_type():
     """エンジンの html 型: 画像を assets/ に写す・段を数える・handout は段を外す・書けないもの（script・on*・url()）は rc=2。"""
     out, _, sc = imported()
     html, info = D.build_html(out / "script.json", TMP / "built")
-    text = html.read_text()
+    text = html.read_text(encoding="utf-8")
     check(text.count("data-imported") == 6, "取り込んだページの印")
     check('src="assets/h-' in text and not re.search(r'src="media/', text), "画像は assets/ へ")
     # 同じ画像を何ページで使っても、assets/ には 1 つ（発表の画面がページの数だけ読まない）
     img = next((out / "media").iterdir())
     two = TMP / "two.json"
     two.write_text(json.dumps({"slides": [{"type": "html", "html": f'<img src="{img}">'},
-                                          {"type": "html", "html": f'<img src="{img}">'}]}))
+                                          {"type": "html", "html": f'<img src="{img}">'}]}), encoding="utf-8")
     html3, _ = D.build_html(two, TMP / "built-two")
-    names = re.findall(r'src="assets/(h-[^"]+)"', html3.read_text())
+    names = re.findall(r'src="assets/(h-[^"]+)"', html3.read_text(encoding="utf-8"))
     check(len(names) == 2 and len(set(names)) == 1, f"同じ画像の名前: {names}")
     check(len(list((TMP / "built-two" / "assets").iterdir())) == 1, "assets/ に 1 つ")
     check([s["clicks"] for s in info["slides"]][:3] == [0, 3, 2], f"段の数: {[s['clicks'] for s in info['slides']]}")
     html2, info2 = D.build_html(out / "script.json", TMP / "built-h", mode="handout")
-    check("data-step" not in html2.read_text().split("<body>")[-1], "handout は段を外す")
+    check("data-step" not in html2.read_text(encoding="utf-8").split("<body>")[-1], "handout は段を外す")
     for bad, what in (('<script>alert(1)</script>', "script"), ('<div onclick="x()"></div>', "onclick"),
                       ('<div style="background:url(x.png)"></div>', "url"), ('<a href="http://x">x</a>', "a"),
                       ('<img src="http://example.com/x.png">', "URL の画像")):
         sc2 = {"slides": [{"type": "html", "html": bad}]}
         p = TMP / f"bad-{what}.json"
-        p.write_text(json.dumps(sc2))
+        p.write_text(json.dumps(sc2), encoding="utf-8")
         try:
             D.build_html(p, TMP / "bad")
         except T.DeckError:
@@ -243,7 +243,7 @@ def t_engine_html_type():
         raise AssertionError(f"書けないものを通した: {what}")
     try:
         p = TMP / "bad-bg.json"
-        p.write_text(json.dumps({"slides": [{"type": "html", "html": "", "background": "url(x.png)"}]}))
+        p.write_text(json.dumps({"slides": [{"type": "html", "html": "", "background": "url(x.png)"}]}), encoding="utf-8")
         D.build_html(p, TMP / "bad")
         raise AssertionError("背景に url() を通した")
     except T.DeckError:
@@ -257,7 +257,7 @@ def t_deck_end_to_end():
                         "--out", str(TMP / "deck"), "--no-fill", "--format", "pptx,png"], capture_output=True, text=True, timeout=600)
     check(r.returncode == 0, f"deck が rc={r.returncode}: {r.stderr[-800:]}")
     check("verify=OK" in r.stdout, f"照合: {r.stdout[-300:]}")
-    rep = json.loads((TMP / "deck" / "build.json").read_text())
+    rep = json.loads((TMP / "deck" / "build.json").read_text(encoding="utf-8"))
     check([s["steps"] for s in rep["slides"]][:3] == [0, 3, 2], f"クリック: {[s['steps'] for s in rep['slides']]}")
     check(all(s.get("imported") for s in rep["slides"]), "build.json に取り込みの印")
     check(len(list((TMP / "deck" / "slides").glob("slide-*.png"))) == 6, "ページの画像")

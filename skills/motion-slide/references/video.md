@@ -5,8 +5,8 @@
 同じ `index.html` から、自動再生をそのまま mp4 にする。台本は変えない。
 
 ```bash
-python3 -I <このスキルのフォルダ>/scripts/record.py <出力先>/index.html            # → <出力先>/video.mp4
-python3 -I …/record.py <index.html> --start 3.1 --seconds 45 --out s3.mp4             # 一部だけ（場面.拍 は 1 始まり）
+python3 -E <このスキルのフォルダ>/scripts/record.py <出力先>/index.html            # → <出力先>/video.mp4
+python3 -E …/record.py <index.html> --start 3.1 --seconds 45 --out s3.mp4             # 一部だけ（場面.拍 は 1 始まり）
 ```
 
 | | |

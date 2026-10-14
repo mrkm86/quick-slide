@@ -376,7 +376,7 @@ class Slide:
         置いた絵。.jpg・.webp も見る）・generated（prompt だけの枠。置き場は images/gen-<鍵>.png で、img が決める）。"""
         path = im.get("path")
         if path:
-            if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", path) and not re.match(r"^[a-zA-Z]:\\", path):
+            if OS.looks_like_url(path):
                 self.err(f"{key} に URL は使えない（ローカルのファイルを置いてパスで書く）: {path}")
             p = pathlib.Path(path).expanduser()
             p = p if p.is_absolute() else self.script_dir / p

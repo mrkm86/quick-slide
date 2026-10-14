@@ -168,6 +168,7 @@ def _product_env(repo: Path) -> dict[str, str]:
     src = str(repo / "src")
     env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["PYTHONUTF8"] = "1"   # サーバとその子を UTF-8 モードで（Windows の既定の cp932 で読み書きしない）
     return env
 
 
@@ -193,7 +194,7 @@ def ensure_server(repo: Path, home: Path, timeout: float) -> dict[str, Any]:
     cmd = [sys.executable, "-m", "quick_slide.server", "--home", str(home), "--timeout", str(timeout), "start", "--quiet"]
     try:
         proc = subprocess.run(cmd, cwd=str(repo), env=_product_env(repo), stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True, timeout=timeout + 20.0)
+                              capture_output=True, text=True, timeout=timeout + 20.0, encoding="utf-8")
     except subprocess.TimeoutExpired:
         raise Failure("server_start_timeout", "Quick Slide のサーバを起動できませんでした（応答がありません）。", EXIT_STARTUP) from None
     except OSError:
@@ -461,7 +462,7 @@ def cmd_ensure_launch(repo: Path, home: Path, args: argparse.Namespace) -> int:
         cmd += ["--mode", args.browser_mode]
     try:
         proc = subprocess.run(cmd, cwd=str(repo), env=_product_env(repo), stdin=subprocess.DEVNULL, capture_output=True,
-                              text=True, timeout=args.server_timeout + 120.0)
+                              text=True, timeout=args.server_timeout + 120.0, encoding="utf-8")
     except (subprocess.TimeoutExpired, OSError):
         raise Failure("launch_ensure_failed", "ブラウザで開けたか確認できませんでした。この URL をブラウザで開いてください。",
                       EXIT_STARTUP) from None
@@ -733,4 +734,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932・\r\n）でなく UTF-8・\n で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8", newline="\n")
     raise SystemExit(main())

@@ -34,7 +34,8 @@ class ServerRecordAndStatusTests(unittest.TestCase):
         self.assertEqual((rec.pid, rec.instance_id, rec.port, rec.host), (os.getpid(), fx.server.instance_id, fx.port, "127.0.0.1"))
         self.assertEqual(rec.started_at, fx.server.started_at)
         self.assertEqual(rec.url, f"http://127.0.0.1:{fx.port}")
-        self.assertEqual(fx.root.server_json_path.stat().st_mode & 0o777, 0o600)
+        if os.name != "nt":   # Windows は 0600 でなく置き場のアクセス権で守る（ADR 0012）
+            self.assertEqual(fx.root.server_json_path.stat().st_mode & 0o777, 0o600)
         self.assertEqual(rec.session_token, fx.session())
         st = status(fx.root)
         self.assertTrue(st["running"], st)
@@ -179,7 +180,7 @@ class RealProcessLifecycleTests(unittest.TestCase):
 
     def _cli(self, *args: str, timeout: float = 30) -> tuple[int, dict]:
         proc = subprocess.run([sys.executable, "-m", "quick_slide.server", *args], env=self.env, cwd=str(REPO),
-                              capture_output=True, text=True, timeout=timeout)
+                              capture_output=True, text=True, timeout=timeout, encoding="utf-8")
         last = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else "{}"
         return proc.returncode, json.loads(last)
 
@@ -268,7 +269,8 @@ class RealProcessLifecycleTests(unittest.TestCase):
         self.assertIn(f"GET /slides/{deck['id']} 200", log, "アクセスログはパスだけ（クエリ無し）")
         self.assertNotIn("token=", log)
         for p in (self.home / "runtime" / "server.out", self.home / "runtime" / "server.log"):
-            self.assertEqual(p.stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":   # Windows は 0600 でなく置き場のアクセス権で守る（ADR 0012）
+                self.assertEqual(p.stat().st_mode & 0o777, 0o600)
         # エンジンの置き場はサーバが作らない
         self.assertFalse((self.home / "engines").exists())
 
@@ -289,7 +291,7 @@ class UptimeCountsTheTimeTheMachineWasAsleepTests(unittest.TestCase):
 
         if sys.platform != "darwin":
             self.skipTest("起動時刻の読み方は macOS だけ")
-        out = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True).stdout
+        out = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True, encoding="utf-8").stdout
         m = re.search(r"sec = (\d+)", out)
         if m is None:
             self.skipTest("起動時刻を読めない")

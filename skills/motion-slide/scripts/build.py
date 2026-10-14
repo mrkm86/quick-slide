@@ -1,8 +1,8 @@
 """台本の HTML に、エンジン・テーマの色・ロゴ・BGM を埋め込んで、HTML 1枚にする。
 
-    python3 -I build.py <台本.html> [--out <出力.html>] [--theme default|forest|warm|<YAML>]
+    python3 -E build.py <台本.html> [--out <出力.html>] [--theme default|forest|warm|<YAML>]
                         [--logo <PNG>|none] [--logo-alt <文字>] [--logo-height <px>] [--bgm <m4a|mp3>] [--no-thumbs]
-    python3 -I build.py --print-out-root
+    python3 -E build.py --print-out-root
 
 一覧（Esc / O）のサムネイルは、組んだあとに Chrome で場面ごとに撮って埋め込む（1場面 約 10KB・Playwright が要る）。
 
@@ -70,7 +70,7 @@ def load_theme(name):
         p = THEMES / f"{name}.yaml"
     if not p.exists():
         fail(f"テーマが無い: {p}")
-    t = yaml.safe_load(p.read_text())
+    t = yaml.safe_load(p.read_text(encoding="utf-8"))
     for k in ("background", "ink", "primary"):
         if k not in t:
             fail(f"テーマに {k} が無い: {p}")
@@ -126,7 +126,7 @@ def embed_thumbs(out, shots):
     if shots:
         tag = f'<script type="application/json" id="ms-thumbs">{json.dumps(shots)}</script>\n'
         html = html.replace("</head>", tag + "</head>", 1)
-    out.write_text(html)
+    out.write_text(html, encoding="utf-8")
 
 
 def shoot_thumbs(out):
@@ -158,7 +158,7 @@ def shoot_thumbs(out):
 
 
 def build(src, out, theme, logo, logo_alt, logo_height, bgm, thumbs=True):
-    html = pathlib.Path(src).read_text()
+    html = pathlib.Path(src).read_text(encoding="utf-8")
     if 'id="ms-config"' not in html:
         fail('台本に <script type="application/json" id="ms-config"> が無い')
     m = re.search(r'<script type="application/json" id="ms-config">(.*?)</script>', html, re.S)
@@ -188,8 +188,8 @@ def build(src, out, theme, logo, logo_alt, logo_height, bgm, thumbs=True):
     for h in re.findall(r'MS\.hook\("([^"]+)"', html):
         if h not in ids:
             fail(f'MS.hook("{h}") の場面が無い')
-    css = (SKILL / "engine/engine.css").read_text()
-    js = (SKILL / "engine/engine.js").read_text()
+    css = (SKILL / "engine/engine.css").read_text(encoding="utf-8")
+    js = (SKILL / "engine/engine.js").read_text(encoding="utf-8")
     head = f"<style>{theme_css(theme)}\n{css}</style>\n"
     if logo:
         head += f'<script type="application/json" id="ms-logo">{json.dumps(logo_json(logo, logo_alt, logo_height))}</script>\n'
@@ -206,7 +206,7 @@ def build(src, out, theme, logo, logo_alt, logo_height, bgm, thumbs=True):
     if re.search(r'(src|href)="https?://', html):
         print("警告: 外の URL を読みに行く src/href がある（1枚で完結しない）", file=sys.stderr)
     out = pathlib.Path(out); out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(html)
+    out.write_text(html, encoding="utf-8")
     if thumbs:
         shots = shoot_thumbs(out)
         if shots:
@@ -216,6 +216,8 @@ def build(src, out, theme, logo, logo_alt, logo_height, bgm, thumbs=True):
 
 
 if __name__ == "__main__":
+    for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932・\r\n）でなく UTF-8・\n で出す。読むのはエージェントとサーバ
+        _out.reconfigure(encoding="utf-8", newline="\n")
     ap = argparse.ArgumentParser()
     ap.add_argument("src", nargs="?")
     ap.add_argument("--print-out-root", action="store_true", help="出力の根っこ（設定の out:・無ければ既定）を出して終わる")

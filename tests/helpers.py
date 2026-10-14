@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import functools
 import http.client
 import json
 import logging
@@ -256,6 +257,20 @@ def png_bytes(width: int = 400, height: int = 120, color: tuple[int, int, int, i
     return buf.getvalue()
 
 
+SYMLINK_REASON = "symlink を作れない（Windows は開発者モードか管理者の特権が要る）"
+
+
+@functools.lru_cache(maxsize=1)
+def can_symlink() -> bool:
+    """この機械で symlink を作れるか（Windows は特権が無いと WinError 1314。N3）。symlink を断る守りの試験は、作れる機械でだけ走る。"""
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.symlink(Path(tmp) / "target", Path(tmp) / "link")
+        except OSError:
+            return False
+    return True
+
+
 def make_static_root(base: Path) -> tuple[Path, Path]:
     """静的配信の検査用ルート。外側に秘密らしいファイルを置き、内側から symlink で指す。戻り値 (root, outside)。"""
     root = base / "web-app"
@@ -277,9 +292,10 @@ def make_static_root(base: Path) -> tuple[Path, Path]:
     (root / "café.html").write_text("INSIDE-NFC", encoding="utf-8")  # NFC。NFD で要求しても出ない
     (outside / "secret.html").write_text("OUTSIDE-SECRET-HTML", encoding="utf-8")
     (outside / "hmac.key").write_bytes(b"OUTSIDE-KEY-BYTES")
-    os.symlink(outside / "secret.html", root / "link.html")
-    os.symlink(outside, root / "linkdir")
-    os.symlink(root / "index.html", root / "inside-link.html")  # 内側を指す symlink も拒否
+    if can_symlink():
+        os.symlink(outside / "secret.html", root / "link.html")
+        os.symlink(outside, root / "linkdir")
+        os.symlink(root / "index.html", root / "inside-link.html")  # 内側を指す symlink も拒否
     return root, outside
 
 
@@ -318,7 +334,7 @@ def fake_codex_home(base: Path) -> Path:
     (home / "auth.json").write_text(json.dumps({
         "auth_mode": "chatgpt", "OPENAI_API_KEY": None, "last_refresh": last,
         "tokens": {"id_token": "x", "access_token": fake_jwt(time.time() + 5 * 86400), "refresh_token": "r",
-                   "account_id": "a"}}))
+                   "account_id": "a"}}), encoding="utf-8")
     return home
 
 

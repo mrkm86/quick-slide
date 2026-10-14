@@ -44,7 +44,7 @@ def nth_call(page):
     d = LOG / "counts"
     d.mkdir(parents=True, exist_ok=True)
     p = d / f"p{page}"
-    with open(p, "a") as f:
+    with open(p, "a", encoding="utf-8") as f:
         f.write("x")
     return p.stat().st_size
 
@@ -77,12 +77,12 @@ def main():
     from PIL import Image
     ref_modes = [Image.open(r).mode for r in refs]   # 透過が白に合成されて届いたか（_flat_refs）
     if "Reply with the single word" in text:          # check_auth の更新の一打ち（実ホームで走る）
-        a = json.loads((home / "auth.json").read_text())
+        a = json.loads((home / "auth.json").read_text(encoding="utf-8"))
         if not os.environ.get("FAKE_CODEX_NO_REFRESH"):   # 本物は期限の5分前まで更新しない。その形を真似るときは何も書き換えない
             enc = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip("=")  # noqa: E731
             a["last_refresh"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             a["tokens"]["access_token"] = f"{enc({'alg': 'none'})}.{enc({'exp': int(time.time()) + 10 * 86400})}.sig"
-        (home / "auth.json").write_text(json.dumps(a))
+        (home / "auth.json").write_text(json.dumps(a), encoding="utf-8")
         record(cmd="refresh", home=str(home))
         print("ok")
         return 0
@@ -94,7 +94,7 @@ def main():
                 retry_notice="【やり直しの理由】" in text, prompt_len=len(text))
     record(**base, phase="start")                      # 殺されても始まったことは残る
     if os.environ.get("FAKE_CODEX_LEAK_EARLY"):        # 止められる前に、トークンらしき文字を出しておく
-        print("debug: refresh token " + json.loads((home / "auth.json").read_text())["tokens"]["refresh_token"],
+        print("debug: refresh token " + json.loads((home / "auth.json").read_text(encoding="utf-8"))["tokens"]["refresh_token"],
               file=sys.stderr, flush=True)
     sleep = float(os.environ.get("FAKE_CODEX_SLEEP", "0.4"))
     if MODE == "auth_page1":
@@ -107,7 +107,7 @@ def main():
         return 1
     if MODE == "leak":
         print("ERROR: request failed with header Authorization: Bearer eyJhbGciOiJub25lIn0.eyJleHAiOjF9abcdefgh.sig123", file=sys.stderr)
-        print("ERROR: refresh token " + json.loads((home / "auth.json").read_text())["tokens"]["refresh_token"], file=sys.stderr)
+        print("ERROR: refresh token " + json.loads((home / "auth.json").read_text(encoding="utf-8"))["tokens"]["refresh_token"], file=sys.stderr)
         return 1
     if MODE == "auth_with_image":
         draw(home / "generated_images" / str(uuid.uuid4()) / "exec-1.png")
@@ -132,7 +132,7 @@ def main():
         print('{"type":"turn.completed"}')
         return 0
     if MODE == "refresh":
-        (home / "auth.json").write_text((home / "auth.json").read_text() + " ")
+        (home / "auth.json").write_text((home / "auth.json").read_text(encoding="utf-8") + " ", encoding="utf-8")
     draw(home / "generated_images" / str(uuid.uuid4()) / "exec-1.png", band_dark=(MODE in ("band_first", "band_then_fail") and n == 1))
     print('{"type":"thread.started","thread_id":"%s"}' % uuid.uuid4())
     print('{"type":"turn.completed"}')

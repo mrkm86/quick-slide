@@ -1,13 +1,16 @@
 """台本（または組んだ HTML）の data-dur から、自動再生の時刻表を出す。BGM の山・抜けを拍に合わせるときに使う。
 
-    python3 -I timeline.py <deck.html> [--json]
+    python3 -E timeline.py <deck.html> [--json]
 
 出力: 拍ごとに「開始の秒  場面:拍  場面の題」。最後の行は終わりの秒。--json なら {"s3:2": 33.6, …, "end": 123.6}
 data-dur が無い拍は、ms-config の dur（既定 4200ms）で数える（エンジンと同じ）
 """
 import json, re, sys, pathlib
 
-src = pathlib.Path(sys.argv[1]).read_text()
+for _out in (sys.stdout, sys.stderr):   # Windows の既定（cp932・\r\n）でなく UTF-8・\n で出す。読むのはエージェントとサーバ
+    _out.reconfigure(encoding="utf-8", newline="\n")
+
+src = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 m = re.search(r'<script type="application/json" id="ms-config">(.*?)</script>', src, re.S)
 default = json.loads(m.group(1)).get("dur", 4200) if m else 4200
 t, out = 0.0, {}

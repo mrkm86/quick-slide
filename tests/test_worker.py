@@ -39,8 +39,10 @@ def fake_skills_dir(testcase) -> Path:
             f"sys.argv = [{str(fake)!r}, {kind!r}, *sys.argv[1:]]\n"
             f"runpy.run_path({str(fake)!r}, run_name='__main__')\n", encoding="utf-8")
         (root / skill / "references").mkdir()
+    (root / "illust" / "references").mkdir(parents=True)   # 挿絵の書き方（プレゼンの台本の決まりに入る。ADR 0011）
     for rel in ("html-slide/references/deck-format.md", "image-slide/references/intake.md",
-                "motion-slide/references/deck-format.md", "motion-slide/references/authoring.md"):
+                "motion-slide/references/deck-format.md", "motion-slide/references/authoring.md",
+                "illust/references/authoring.md"):
         shutil.copyfile(SKILLS_DIR / rel, root / rel)
     return root
 
@@ -87,7 +89,7 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertTrue(calls[0]["has_contract"] and calls[0]["has_manuscript"] and not calls[0]["has_pitch_contract"])
         self.assertEqual(calls[0]["keys"], [])
-        self.assertTrue(calls[0]["cwd"].endswith(f"runs/{run['id']}/writer/round-1"))
+        self.assertEqual(Path(calls[0]["cwd"]).parts[-4:], ("runs", run["id"], "writer", "round-1"))
         with fx.server.store_lock:
             script = fx.store.script(run["script_id"])
             self.assertEqual((script["version"], script["check_rc"], script["written_by"], script["writer_backend"]),
@@ -212,7 +214,7 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(rec["settings"]["writer"], "claude")
         self.assertEqual((rec["settings"]["style"], rec["settings"]["image_look"]), ("visual", "photo"))
         # ブランドから作ったテーマの YAML は回の控え（settings/theme.yaml）に残り、エンジンにはそのファイルを渡す（P4）
-        self.assertTrue(rec["settings"]["theme"].endswith("/settings/theme.yaml"), rec["settings"]["theme"])
+        self.assertEqual(Path(rec["settings"]["theme"]).parts[-2:], ("settings", "theme.yaml"), rec["settings"]["theme"])
         self.assertEqual(rec["look"]["theme_file"], rec["settings"]["theme"])
         self.assertEqual(rec["look"]["theme"], {"background": "#FFFFFF", "ink": "#333333", "primary": "#0DB4F2"})
         with fx.server.store_lock:
@@ -448,7 +450,7 @@ class WriterPartsTests(unittest.TestCase):
         pitch = build_prompt(ENGINES["pitch"], {**args, "mode": "pitch", "images": False}, manuscript="m", title_hint=None,
                              skills_dir=SKILLS_DIR, previous={"slides": []}, problems=["NG: 1枚目: 知らない型"])
         self.assertIn(intake_md.strip()[:500], pitch)
-        self.assertIn("画像の枠を使わない", pitch)
+        self.assertIn("生成の画像の枠（image の prompt）を使わない", pitch)
         self.assertIn("- NG: 1枚目: 知らない型", pitch)
         self.assertIn("# 前の台本は検査で止まりました", pitch)
 

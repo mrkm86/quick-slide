@@ -3,7 +3,7 @@
 台本は JSON 1枚。**場面ごとの部品**（場面の HTML・見た目・拍ごとの動き・話す台本）と、デッキ全体の設定を持つ。
 `scripts/motion_slide.py` が場面を並べて [`../templates/deck.html`](../templates/deck.html) の形の台本 HTML にし、`build.py` → `check.py` に通す。
 **型は持たない。** 場面の中身は HTML・CSS・JS で自由に書く（図と動きは場面ごとに違う）。HTML の決まり（`data-in`・`.x`・`MS.hook` の `x.` など）は [`authoring.md`](authoring.md) がそのまま効く。
-手本は `scripts/split.py` が見本の台本 HTML から作った JSON（`python3 -I scripts/split.py <deck.html> --out <script.json>`）。
+手本は `scripts/split.py` が見本の台本 HTML から作った JSON（`python3 -E scripts/split.py <deck.html> --out <script.json>`）。
 
 ## 書く前に（台本係が読む）
 

@@ -1,7 +1,7 @@
 """台本 JSON の抜け道の再現（Codex のレビューで出た6件）。引数なしで名前の一覧、名前を渡すとその再現を試す。
 
-    python3 -I repro.py <台本.json> <名前>   # 形の検査が期待どおり NG にするか（0=NG にした）
-    python3 -I repro.py <台本.json> --assemble <名前>   # 検査を通らなくても組み立てて、他の場面・共通部に影響しない形か（0=影響しない）
+    python3 -E repro.py <台本.json> <名前>   # 形の検査が期待どおり NG にするか（0=NG にした）
+    python3 -E repro.py <台本.json> --assemble <名前>   # 検査を通らなくても組み立てて、他の場面・共通部に影響しない形か（0=影響しない）
 """
 import json
 import pathlib
@@ -60,7 +60,7 @@ def main(argv):
         return 0
     asm = "--assemble" in argv
     path, name = argv[0], [a for a in argv[1:] if not a.startswith("--")][0]
-    d = json.load(open(path))
+    d = json.load(open(path, encoding="utf-8"))
     PREP(d)
     CASES[name][0](d)
     if asm:

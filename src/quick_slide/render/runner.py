@@ -94,9 +94,8 @@ class Prerequisites:
     failure_kind: str | None = None
 
 
-def browser_missing(*, tools: Tools, home: Path, cwd: Path, stop: threading.Event | None = None) -> list[str] | None:
-    """プレゼン（html-slide）が Chrome で組むのに要るもの（Node・puppeteer-core・Chrome）のうち足りないもの。
-    エンジンの `browser.py`（在りかの探し方の正本）に聞く。聞けなければ None（描くときの rc=4 で分かる）。"""
+def _browser_probe(*, tools: Tools, home: Path, cwd: Path, stop: threading.Event | None = None) -> dict[str, Any] | None:
+    """html-slide の `browser.py`（Node・puppeteer-core・Chrome の在りかの探し方の正本）の答え。聞けなければ None。"""
     probe = tools.skills_dir / "html-slide" / "scripts" / "browser.py"
     if not probe.is_file():
         return None
@@ -108,9 +107,23 @@ def browser_missing(*, tools: Tools, home: Path, cwd: Path, stop: threading.Even
         data = json.loads(r.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError, TypeError):
         return None
-    if not isinstance(data, dict):
+    return data if isinstance(data, dict) else None
+
+
+def browser_missing(*, tools: Tools, home: Path, cwd: Path, stop: threading.Event | None = None) -> list[str] | None:
+    """プレゼン（html-slide）が Chrome で組むのに要るもの（Node・puppeteer-core・Chrome）のうち足りないもの。
+    エンジンの `browser.py`（在りかの探し方の正本）に聞く。聞けなければ None（描くときの rc=4 で分かる）。"""
+    data = _browser_probe(tools=tools, home=home, cwd=cwd, stop=stop)
+    if data is None:
         return None
     return [k for k in ("node", "node_modules", "chrome") if not (data.get(k) or {}).get("ok")]
+
+
+def chrome_path(*, tools: Tools, home: Path, cwd: Path, stop: threading.Event | None = None) -> str | None:
+    """html-slide が使う Chrome の在りか（挿絵を PNG にするのにも使う）。分からなければ None。"""
+    data = _browser_probe(tools=tools, home=home, cwd=cwd, stop=stop)
+    chrome = (data or {}).get("chrome") or {}
+    return chrome.get("path") if chrome.get("ok") and isinstance(chrome.get("path"), str) else None
 
 
 # motion-slide が組むのに要るもの（Playwright・Pillow・PyYAML のモジュールと、Playwright の Chromium の本体）を 1 回で確かめる。
@@ -133,7 +146,8 @@ _MOTION_PROBE = (
 
 def motion_missing(*, tools: Tools, home: Path, cwd: Path, stop: threading.Event | None = None) -> list[str] | None:
     """モーションが組むのに要るもののうち足りないもの。聞けなければ None（描くときの rc=4 で分かる）。"""
-    cmd = tools.motion_probe or [tools.python, "-I", "-c", _MOTION_PROBE]
+    # -I でなく -E（PYTHON* の環境変数は無視するが、利用者の場所の site-packages は見る。setup は pip --user で入れる。N23）
+    cmd = tools.motion_probe or [tools.python, "-E", "-c", _MOTION_PROBE]
     r = run_process(cmd, cwd=cwd, env=child_env(home=home, extra=tools.extra_env),
                     timeout=AUTH_TIMEOUT_SECONDS, stop=stop)
     if r.launch_error or r.timed_out or r.stopped or r.rc not in (RC_OK, RC_DEPENDENCY):

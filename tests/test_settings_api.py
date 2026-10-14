@@ -14,7 +14,7 @@ import re
 import unittest
 from unittest.mock import patch
 
-from helpers import REPO, start_server
+from helpers import REPO, SYMLINK_REASON, can_symlink, start_server
 
 from PIL import Image
 
@@ -143,6 +143,7 @@ class SettingsApiTests(unittest.TestCase):
             self.assertEqual(r.headers["content-type"], routes.IMAGE_TYPES[kind][1])
             self.assertEqual(r.body, png(kind=kind))
 
+    @unittest.skipUnless(can_symlink(), SYMLINK_REASON)
     def test_symlink_upload_parent_refused(self):
         root = self.fx.root.root
         (root / "runtime" / "uploads").rmdir()

@@ -65,7 +65,7 @@ def fake_chrome(folder: pathlib.Path, version: str) -> pathlib.Path:
               "win64": "win64", "win32": "win32"}[tag]
     exe = folder / "chrome-headless-shell" / f"{prefix}-{version}" / f"chrome-headless-shell-{tag}" / "chrome-headless-shell"
     exe.parent.mkdir(parents=True, exist_ok=True)
-    exe.write_text("")
+    exe.write_text("", encoding="utf-8")
     exe.chmod(0o755)
     return exe
 
@@ -144,7 +144,7 @@ def case_cli_json():
     home.mkdir(parents=True)
     e = {k: v for k, v in os.environ.items() if k not in KEYS}
     e.update(HOME=str(home), USERPROFILE=str(home), QUICK_SLIDE_HOME=str(TMP / "cli" / "qs"), PYTHONDONTWRITEBYTECODE="1")
-    r = subprocess.run([sys.executable, str(SKILL / "scripts" / "browser.py")], capture_output=True, text=True, env=e)
+    r = subprocess.run([sys.executable, str(SKILL / "scripts" / "browser.py")], capture_output=True, text=True, env=e, encoding="utf-8")
     check(r.returncode == 0, r.stderr)
     data = json.loads(r.stdout.strip().splitlines()[-1])
     check(set(data) == {"node", "node_modules", "chrome"}, data)
