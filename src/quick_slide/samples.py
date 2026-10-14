@@ -27,7 +27,7 @@ import re
 import shutil
 import tempfile
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Callable
 
 from . import oscompat
@@ -245,6 +245,16 @@ def fill_text(text: str, values: dict[str, str | None], *, escape: bool) -> str:
         if v is None:
             return "" if m.group(1) in values else m.group(0)
         return json.dumps(v, ensure_ascii=False)[1:-1] if escape else v
+    if not escape:
+        def file_url(m: re.Match[str]) -> str:
+            value = values.get(m.group(1))
+            if value is None:
+                return m.group(0)
+            path = value + m.group(2)
+            p = Path(path)
+            return (p if p.is_absolute() else PureWindowsPath(path)).as_uri()
+
+        text = re.sub(r'file://\{\{([A-Z_]+)\}\}([^"\'<>]*)', file_url, text)
     return _TOKEN_RE.sub(one, text)
 
 
@@ -268,6 +278,11 @@ def tokenizer(paths: dict[str, list[str]], ids: dict[str, str]) -> Callable[[str
         for r in roots:
             for v in _variants(str(r)):
                 pairs.append((v, "{{" + name + "}}"))
+                p = Path(v)
+                if not p.is_absolute() and PureWindowsPath(v).is_absolute():
+                    p = PureWindowsPath(v)
+                if p.is_absolute():
+                    pairs.append((p.as_uri(), "file://{{" + name + "}}"))
     pairs.sort(key=lambda p: len(p[0]), reverse=True)
     id_pairs = [(v, "{{" + k + "}}") for k, v in ids.items() if v]
 
@@ -324,10 +339,8 @@ def _link_present_fonts(run_dir: Path) -> None:
     html_path = run_dir / W.PRESENT / "deck.html"
     if not html_path.is_file():
         return
-    from urllib.parse import unquote
-
     for m in W._FONT_URL.finditer(html_path.read_text(encoding="utf-8")):
-        path = unquote(m.group(1))
+        path = W.font_path_of_url(m.group(1))
         font = Path(path)
         if font.suffix.lower() in W.PRESENT_FONT_TYPES and font.is_file():
             try:
