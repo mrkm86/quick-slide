@@ -114,6 +114,17 @@ def _options(pairs: tuple[tuple[str, str], ...]) -> list[dict[str, Any]]:
     return [{"value": v, "label": label} for v, label in pairs]
 
 
+IMPORTED_LEAD = "このページの空いている所に、挿絵を重ねます。元の文字・図形・画像はそのままです。"
+
+
+def offered_for_imported(mode: str) -> list[dict[str, Any]]:
+    """取り込んだページ（PPTX から）の修正の欄に出す種類。いまは挿絵を重ねることだけ（docs/adr/0013）。"""
+    if mode != "presentation":
+        return []
+    return [{"kind": "illustration", "label": LABELS["illustration"], "icon": ICONS["illustration"], "lead": IMPORTED_LEAD,
+             "options": [], "many": False, "empty_reason": None}]
+
+
 def parse(mode: str, raw_kind: Any, raw_options: Any, *, can_generate: bool) -> tuple[str | None, list[str]]:
     """送られた種類と選択肢を確かめる。種類を選ばない（None）ならそのまま。誤りは ValueError（画面向けの文）。"""
     if raw_kind is None:

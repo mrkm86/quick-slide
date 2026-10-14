@@ -199,6 +199,8 @@ def invalid_script() -> dict:
 
 
 def prompt_kind(prompt: str) -> str:
+    if "挿絵を 1 つ重ねます" in prompt:   # 取り込んだページに挿絵を重ねる（docs/adr/0013）
+        return "overlay"
     if "# 直すページ" in prompt:
         return "revise"
     if "ページを足します" in prompt:
@@ -236,6 +238,13 @@ def answer_for(kind: str, prompt: str) -> tuple[str | None, str | None]:
         return None, "rate"
     if MODE == "slow":
         time.sleep(float(os.environ.get("FAKE_WRITER_SLEEP", "2")))
+    if what == "overlay":
+        # overlay_bad_first: 1 回目は文字の箱に重ねる（書き直させる）。2 回目からは右の空いた所
+        box = {"x": 100, "y": 300, "w": 600, "h": 400} if MODE == "overlay_bad_first" and n_what == 0 else \
+            {"x": 1450, "y": 300, "w": 400, "h": 500}
+        svg = (f'<svg viewBox="0 0 {box["w"]} {box["h"]}"><rect width="{box["w"]}" height="{box["h"]}" rx="40" fill="#e6f1f3"/>'
+               '<icon name="users" x="40" y="60" size="320" fill="#006f83"/></svg>')
+        return json.dumps({**box, "svg": svg, "summary": "右の空いた所に人の挿絵を重ねた（架空）"}, ensure_ascii=False), None
     if what == "revise":
         return json.dumps(revision_answer(prompt, n_what), ensure_ascii=False), None
     if what == "insert":

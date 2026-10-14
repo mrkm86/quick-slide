@@ -35,10 +35,12 @@ from .. import edit_kinds, motion
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, engine_for
 from ..pins import PinRefused, pin_source
+from ..render import illustrations as ILL
 from ..render import look as LOOK
 from ..render import workspace as W
 from ..render.runner import DOCTOR_HINT, check_prerequisites, dependency_message
 from ..scriptdoc import (
+    IMPORTED_TYPE,
     HIDDEN_KEY,
     PIN_KEY,
     deep,
@@ -57,9 +59,9 @@ from ..scriptdoc import (
     without_pins,
 )
 from ..writer import jlint as JLINT
-from ..writer.backends import WriterFailed, ask, choose_backend
+from ..writer.backends import WriterFailed, ask, choose_backend, extract_json
 from ..writer.patch import apply_revision, insert_after, parse_insert, parse_revision
-from ..writer.prompt import ContractMissing, build_insert_prompt, build_revision_prompt
+from ..writer.prompt import ContractMissing, build_insert_prompt, build_overlay_prompt, build_revision_prompt
 from .pipeline import (
     Context,
     RenderPlan,
@@ -455,6 +457,12 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
             keys.append(k)
     if not keys:
         raise EditRefused("直すページがありません。")
+    # 取り込んだページ（PPTX から）への「挿絵」は、元のページに挿絵を重ねる（docs/adr/0013-overlay-illustrations.md）
+    page_types = {str(s.get("id")): s.get("type") for s in slides_of(data)}
+    if req.get("kind") == "illustration" and keys and all(page_types.get(k) == IMPORTED_TYPE for k in keys):
+        if len(keys) != 1:
+            raise EditRefused("取り込んだページに挿絵を重ねるのは、1 ページずつです。")
+        return _overlay(ctx, job, run, req, data, keys[0], positions[keys[0]])
     rels, paths = _attachments(ctx, deck_id, req.get("attachments") or [])
     pictures = _pictures(ctx, deck_id, engine.mode, keys) if not one_page(args) else {}
     by_key = {str(s.get("id")): s for s in slides_of(data)}
@@ -495,6 +503,74 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
                           rebase=rebase if page_local else None), []
 
     ctx.call(ctx.store.set_job_note, job["id"], {"keys": keys})
+    return _writer_loop(ctx, job, run, req, data, build, parse_and_apply)
+
+
+OVERLAY_MIN_SIDE = 160
+OVERLAY_TEXT_OVERLAP = 0.1   # 文字の箱との重なりは、挿絵の面積の 1 割まで
+
+
+def _overlap(a: dict[str, float], b: dict[str, Any]) -> float:
+    w = min(a["x"] + a["w"], b["x"] + b["w"]) - max(a["x"], b["x"])
+    h = min(a["y"] + a["h"], b["y"] + b["h"]) - max(a["y"], b["y"])
+    return max(0.0, w) * max(0.0, h)
+
+
+def _overlay(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[str, Any], data: dict[str, Any],
+             key: str, position: int):
+    """取り込んだページに挿絵を 1 つ重ねる。台本係が空いている場所・大きさ・SVG を決め、ページの `illustrations` に足す
+    （描く前にサーバが PNG にしてページの HTML に重ねる。元の文字・図形・画像は変えない）。"""
+    page = next(s for s in slides_of(data) if str(s.get("id")) == key)
+    boxes = ILL.page_boxes(page.get("html") or "")
+    texts = [b for b in boxes if b["kind"] == "文字"]
+    instruction = req.get("text") or ""
+    target = {"id": key, "position": position, "title": headline_of(page)}
+
+    def build(previous, problems):
+        return build_overlay_prompt(run["args"], page=target, boxes=boxes, instruction=instruction,
+                                    skills_dir=ctx.tools.skills_dir, previous=previous, problems=problems)
+
+    def add(other: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
+        out = deep(other)
+        for s in slides_of(out):
+            if str(s.get("id")) == key:
+                s[ILL.OVERLAY_KEY] = [*(s.get(ILL.OVERLAY_KEY) or []), item]
+        return without_pins(out, {key})
+
+    def parse_and_apply(answer):
+        try:
+            got = answer if isinstance(answer, dict) else extract_json(str(answer))   # ask は JSON を読んで返す
+        except WriterFailed:
+            return None, ["NG: 返したものが JSON のオブジェクト 1 つではなかった。決まった形の JSON オブジェクトだけを返す"]
+        if isinstance(got.get("skip"), str) and got["skip"].strip():
+            raise EditRefused(f"{position}ページに挿絵を置ける場所がありませんでした（{got['skip'].strip()[:200]}）。"
+                              "補足に置き場所を書いて、もう一度頼んでください。")
+        problems = []
+        try:
+            box = {k: float(got[k]) for k in ("x", "y", "w", "h")}
+        except (KeyError, TypeError, ValueError):
+            return None, ["NG: x・y・w・h を数で書く"]
+        svg = got.get("svg")
+        if not isinstance(svg, str) or "<svg" not in svg:
+            problems.append("NG: svg に挿絵の SVG（<svg viewBox=…>…</svg>）を書く")
+        if box["w"] < OVERLAY_MIN_SIDE or box["h"] < OVERLAY_MIN_SIDE:
+            problems.append(f"NG: 挿絵の幅・高さは {OVERLAY_MIN_SIDE} 以上")
+        if box["x"] < 0 or box["y"] < 0 or box["x"] + box["w"] > ILL.PAGE_W + 1 or box["y"] + box["h"] > ILL.PAGE_H + 1:
+            problems.append(f"NG: 挿絵の箱がページ（{ILL.PAGE_W}×{ILL.PAGE_H}）からはみ出している")
+        area = max(1.0, box["w"] * box["h"])
+        for b in texts:
+            if _overlap(box, b) / area > OVERLAY_TEXT_OVERLAP:
+                problems.append(f"NG: 挿絵が文字の箱（x={b['x']} y={b['y']} 幅={b['w']} 高さ={b['h']}「{b['text'][:20]}」）に"
+                                "重なりすぎ。空いている場所へ動かすか小さくする")
+                break
+        if problems:
+            return None, problems
+        item = {"image": {"svg": svg}, **{k: round(v) for k, v in box.items()}}
+        summary = str(got.get("summary") or "挿絵を重ねた")[:200]
+        return EditResult(data=add(data, item), plan=RenderPlan(), summary=summary, routes={key: "script"},
+                          rebase=lambda other: add(other, item)), []
+
+    ctx.call(ctx.store.set_job_note, job["id"], {"keys": [key]})
     return _writer_loop(ctx, job, run, req, data, build, parse_and_apply)
 
 

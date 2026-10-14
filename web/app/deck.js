@@ -467,8 +467,10 @@
       row.appendChild(b);
     });
     picker.read = function () { return { kind: state.kind, options: state.options.slice() }; };
-    picker.reset = function () { state.kind = null; state.options = []; paint(); };
-    paint();
+    // 出せる種類が 1 つだけ（取り込んだページの「挿絵」）なら、はじめから選んでおく（選ばずに書いても送れない欄なので）
+    var only = kinds.length === 1 ? kinds[0].kind : null;
+    picker.reset = function () { state.kind = only; state.options = []; paint(); };
+    picker.reset();
     return picker;
   }
 
@@ -1103,7 +1105,9 @@
     var tools = h("div", { class: "page-tools" + (page.hidden ? " page-tools--hidden" : ""), dataset: { slide: page.slide_id } });
     tools.appendChild(editbox(caps, "ページ " + page.position,
       { reasonId: ctx.reasonIds && ctx.reasonIds.page_instruction,
-        canMinor: page.can_minor, currentImage: page.image_url, kinds: ctx.editKinds,
+        canMinor: page.can_minor, currentImage: page.image_url,
+        // 取り込んだページ（PPTX から。型 html）は、出せる種類が違う（いまは挿絵を重ねるだけ。docs/adr/0013）
+        kinds: page.type === "html" ? ctx.importedKinds : ctx.editKinds,
         onSubmit: function (box, btn) { ctx.submit(page.slide_id, box, btn); } }));
     article.__tools = tools;
     article.__open = function () { ctx.openTools(page.slide_id, fixBtn); };
@@ -1688,7 +1692,8 @@
       var caps = data.capabilities || {};
       var deck = data.deck;
       var reasons = screenReasons(caps);
-      var ctx = { caps: caps, pages: data.pages, reasonIds: reasons.ids, editKinds: data.edit_kinds || [] };
+      var ctx = { caps: caps, pages: data.pages, reasonIds: reasons.ids, editKinds: data.edit_kinds || [],
+                  importedKinds: data.imported_edit_kinds || [] };
       var reload = function () { if (guard()) { SS.views.deck(root, route, guard); } };
       // 並べ替えが握る 4 つ。答えが返るたびに握り直す（握りっぱなしにすると 2 回目が必ず断られる）
       var order = data.pages.map(function (p) { return p.slide_id; });  // いま画面に出ている並び

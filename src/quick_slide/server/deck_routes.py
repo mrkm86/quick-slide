@@ -450,6 +450,8 @@ def route_deck(server: "QuickSlideServer", req: "Request") -> "Response":
         "export_formats": _export_formats(view["row"]["mode"]),
         # 修正の欄の「何を直しますか？」に出す種類と選択肢（モードと機械で決まる。docs/adr/0008-edit-kinds.md）
         "edit_kinds": edit_kinds.offered(view["row"]["mode"], can_generate=can_generate),
+        # 取り込んだページ（PPTX から。ページの type が html）の修正の欄に出す種類（docs/adr/0013）
+        "imported_edit_kinds": edit_kinds.offered_for_imported(view["row"]["mode"]),
     })
 
 

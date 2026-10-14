@@ -147,8 +147,10 @@ def engine_script_with_pictures(ctx: Context, deck_id: str, data: dict[str, Any]
     work = ctx.root.work_dir(deck_id)
     work.mkdir(parents=True, exist_ok=True)
     chrome = chrome_path(tools=ctx.tools, home=ctx.root.root, cwd=work, stop=ctx.stop)
-    return ILL.materialize(view, scripts_dir=ctx.root.scripts_dir(deck_id), tools=ctx.tools, home=ctx.root.root,
-                           chrome=chrome, stop=ctx.stop)
+    out, bad = ILL.materialize(view, scripts_dir=ctx.root.scripts_dir(deck_id), tools=ctx.tools, home=ctx.root.root,
+                               chrome=chrome, stop=ctx.stop)
+    # 取り込んだページに重ねる挿絵（PNG になったもの）は、ページの HTML の最後に足す（docs/adr/0013）
+    return ILL.apply_overlays(out), bad
 
 
 def lint_view(args: dict[str, Any], slides: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -436,6 +436,73 @@ def build_revision_prompt(engine: Engine, args: dict[str, Any], *, script: dict[
     return "\n".join(out) + "\n"
 
 
+def _guide(skills_dir: Path, rel: str) -> str:
+    try:
+        return (skills_dir / rel).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise ContractMissing(rel) from exc
+
+
+def build_overlay_prompt(args: dict[str, Any], *, page: dict[str, Any], boxes: list[dict[str, Any]],
+                         instruction: str, skills_dir: Path, previous: dict[str, Any] | str | None = None,
+                         problems: list[str] | None = None) -> str:
+    """取り込んだページ（PPTX から）に挿絵を重ねる（docs/adr/0013-overlay-illustrations.md）。
+
+    `page` は {"id", "position", "title"}、`boxes` はページの中の箱（{x, y, w, h, kind, text}・1920×1080 の座標）。
+    台本係は、空いている場所と大きさを決めて挿絵の SVG を書く。元の文字・図形・画像には触らない。"""
+    box_lines = [f"- {b['kind']}: x={b['x']} y={b['y']} 幅={b['w']} 高さ={b['h']}"
+                 + (f"「{b['text']}」" if b.get("text") else "") for b in boxes] or ["- （箱はありません）"]
+    out = [
+        "# あなたの仕事",
+        "",
+        "あなたは資料の「台本係」です。PowerPoint から取り込んだページに、**挿絵を 1 つ重ねます**。",
+        "元のページの文字・図形・画像は動かさず、変えません。空いている場所に、ページの中身を表す挿絵を置きます。",
+        "",
+        "# 守ること",
+        "",
+        "- 返すのは JSON オブジェクト 1 つだけ。前後に説明・見出し・コードフェンスを付けない",
+        "- 道具を使わない。ファイルを読まない・書かない。コマンドを実行しない。調べものをしない",
+        "- ページは 1920×1080。挿絵の箱（x・y・w・h）はページの中に収め、**文字の箱に重ねない**（重なりは挿絵の面積の 1 割まで）。"
+        "画像・図形の箱にもなるべく重ねない",
+        "- 文字の箱は、中の文字より大きいことがある。文字が少ない箱の空いた側を使うしかないときだけ、重なりを 1 割までに抑えて置く",
+        "- 挿絵の幅・高さは 160 以上。置ける場所が無ければ、無理に置かずに skip に理由を書く",
+        "- svg の viewBox は \"0 0 w h\"（w・h は挿絵の箱と同じ数）にする。書き方は「挿絵の書き方」に従う",
+        f"- {illust_rule(args).split('。viewBox')[0]}。色はこの配色だけを使う: "
+        + "・".join(f"{k} {v}" for k, v in illust_palette(args).items()),
+        "",
+        "# ページ",
+        "",
+        f"id={page['id']}（{page['position']}枚目）: {page.get('title') or ''}",
+        "",
+        "ページの中の箱（左上が 0,0）:",
+        "",
+        *box_lines,
+        "",
+        "# 指示",
+        "",
+        "<<<指示ここから",
+        instruction.strip() or "（文の指示は無い。ページの中身を表す挿絵を、空いている場所に重ねる）",
+        "指示ここまで>>>",
+        "",
+        "# 挿絵の書き方",
+        "",
+        _guide(skills_dir, "illust/references/authoring.md"),
+        "",
+        "# 返す形",
+        "",
+        "```json",
+        json.dumps({"x": 1300, "y": 260, "w": 520, "h": 600, "svg": "<svg viewBox=\"0 0 520 600\">…</svg>",
+                    "summary": "（何を描いてどこに置いたかを 1 文で）"}, ensure_ascii=False, indent=1),
+        "```",
+        "",
+        "- 置けないときは {\"skip\": \"（理由）\"} だけを返す",
+    ]
+    out += _retry_part(previous, problems)
+    if previous is None:
+        out += ["", "JSON オブジェクト 1 つだけを返してください。"]
+    return "\n".join(out) + "\n"
+
+
 def build_insert_prompt(engine: Engine, args: dict[str, Any], *, script: dict[str, Any], after: dict[str, Any] | None,
                         instruction: str, attachments: list[str], skills_dir: Path,
                         previous: dict[str, Any] | str | None = None, problems: list[str] | None = None) -> str:

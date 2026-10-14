@@ -100,8 +100,8 @@ def _attachments(store: Any, body: dict[str, Any], row: dict[str, Any] | None = 
     return out
 
 
-IMPORTED_PAGE_REASON = ("PPTX から取り込んだページは、まだ直せません（見る・発表する・書き出す・並べ替え・非表示・複製はできます。"
-                        "ページを足すことはできます）。")
+IMPORTED_PAGE_REASON = ("PPTX から取り込んだページで直せるのは、挿絵を重ねることだけです（直す → 挿絵。1 ページずつ）。"
+                        "見る・発表する・書き出す・並べ替え・非表示・複製・ページを足すこともできます。")
 
 
 def _head_pages(store: Any, deck_id: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -188,8 +188,10 @@ def route_instructions(server: "QuickSlideServer", req: "Request") -> "Response"
             confirm = body.get("confirm_pages")
             if confirm is not None and confirm != len(pages):
                 raise ApiError(409, "page_count_changed", STRUCTURE_CHANGED)
-        if any(p.get("type") == IMPORTED_TYPE for p in chosen):
-            # 取り込んだページ（PPTX から）を直す道はまだ無い（台本係は型のページしか書かない・docs/adr/0011-import-pptx.md）
+        if any(p.get("type") == IMPORTED_TYPE for p in chosen) and not (
+                scope == "page" and kind == "illustration"):
+            # 取り込んだページ（PPTX から）で直せるのは、挿絵を重ねることだけ（台本係は型のページしか書かない・
+            # docs/adr/0011-import-pptx.md・docs/adr/0013-overlay-illustrations.md）
             raise ApiError(409, "imported_page", IMPORTED_PAGE_REASON)
         positions = [p["position"] for p in chosen]
         result = store.create_edit(deck_id, {

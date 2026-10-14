@@ -12,8 +12,11 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import html as htmllib
+import re
 import tempfile
 import threading
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -30,8 +33,90 @@ class IllustrationFailed(Exception):
     """挿絵を PNG にできなかった（Chrome が無い・動かない）。台本の直しでは直らない。"""
 
 
+# 取り込んだページ（型 html）に重ねる挿絵（ページの `illustrations`。docs/adr/0013-overlay-illustrations.md）。
+# 1 つは {"image": {"svg": …}, "x", "y", "w", "h"}（1920×1080 の座標）。エンジンに渡す前に、PNG にしてページの HTML の最後に
+# `<img>` として足し、キーは消す（エンジンは知らないキー）
+OVERLAY_KEY = "illustrations"
+PAGE_W, PAGE_H = 1920, 1080
+
+
 def has_illustrations(data: dict[str, Any]) -> bool:
-    return bool(_slots(data))
+    return bool(_slots(data)) or any(isinstance(s, dict) and s.get(OVERLAY_KEY) for s in data.get("slides") or [])
+
+
+def apply_overlays(data: dict[str, Any]) -> dict[str, Any]:
+    """取り込んだページの重ねる挿絵（PNG の path になったもの）を、ページの HTML の最後に足す。キーは消す。"""
+    out = copy.deepcopy(data)
+    for s in out.get("slides") or []:
+        items = s.pop(OVERLAY_KEY, None) if isinstance(s, dict) else None
+        if not items or not isinstance(s.get("html"), str):
+            continue
+        tags = []
+        for it in items:
+            path = ((it or {}).get("image") or {}).get("path")
+            if not isinstance(path, str):
+                continue
+            x, y, w, h = (float(it.get(k) or 0) for k in ("x", "y", "w", "h"))
+            tags.append(f'<img src="{htmllib.escape(path)}" alt="" style="position:absolute;left:{x:g}px;top:{y:g}px;'
+                        f'width:{w:g}px;height:{h:g}px;object-fit:contain" />')
+        if tags:
+            s["html"] += ('\n<div style="position:absolute;left:0;top:0;width:0;height:0" data-name="挿絵">'
+                          + "".join(tags) + "</div>")
+    return out
+
+
+class _Boxes(HTMLParser):
+    """取り込んだページの HTML から、絶対配置の箱（位置・大きさ・中の文字）を拾う。座標は外側の箱からの足し算。"""
+
+    _NUM = re.compile(r"(left|top|width|height)\s*:\s*(-?[\d.]+)px")
+    _VOID = {"img", "br", "hr", "input", "meta", "link"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[tuple[str, float, float, dict[str, Any] | None]] = []
+        self.boxes: list[dict[str, Any]] = []
+
+    def _origin(self) -> tuple[float, float]:
+        return (self.stack[-1][1], self.stack[-1][2]) if self.stack else (0.0, 0.0)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        style = dict(attrs).get("style") or ""
+        ox, oy = self._origin()
+        box = None
+        if "position:absolute" in style.replace(" ", ""):
+            got = {k: float(v) for k, v in self._NUM.findall(style)}
+            x, y = ox + got.get("left", 0.0), oy + got.get("top", 0.0)
+            w, h = got.get("width", 0.0), got.get("height", 0.0)
+            if w > 1 and h > 1:
+                box = {"x": round(x), "y": round(y), "w": round(w), "h": round(h), "kind": "画像" if tag == "img" else "図形",
+                       "text": ""}
+                self.boxes.append(box)
+            ox, oy = x, y
+        if tag not in self._VOID:
+            self.stack.append((tag, ox, oy, box))
+
+    def handle_endtag(self, tag: str) -> None:
+        for i in range(len(self.stack) - 1, -1, -1):
+            if self.stack[i][0] == tag:
+                del self.stack[i:]
+                break
+
+    def handle_data(self, data: str) -> None:
+        text = data.strip()
+        if not text:
+            return
+        for _, _, _, box in reversed(self.stack):
+            if box is not None:
+                box["text"] = (box["text"] + text)[:80]
+                box["kind"] = "文字"
+                break
+
+
+def page_boxes(html: str) -> list[dict[str, Any]]:
+    """取り込んだページの箱（{x, y, w, h, kind: 文字・画像・図形, text}）。ページ全体を覆う背景は除く。"""
+    p = _Boxes()
+    p.feed(html or "")
+    return [b for b in p.boxes if not (b["w"] >= PAGE_W * 0.95 and b["h"] >= PAGE_H * 0.95 and b["kind"] != "文字")]
 
 
 def _slots(data: dict[str, Any]) -> list[tuple[str, dict[str, Any], str]]:
