@@ -977,10 +977,25 @@
   // 中央の列に出すのは**スライドと 1 行だけ**（選ぶ・番号・題・直す・⋮）。直す指示の欄は
   // `article.__tools` に作り、パネルが「いま直しているページ」の分だけを出す（節点をそのまま移すので、
   // 書きかけの文・添えた画像は、パネルを閉じても別のページに替わっても消えない）。版と記録は ⋮ のダイアログ。
+  // ページを畳む（タイトル行だけにする。v1 にあった・2026-10-14）。確認し終えたページを畳んでスクロールを減らす使い方。
+  // 畳んだかはこのブラウザに覚える（localStorage。値は畳んだときの版）。**直して版が替わったら、また開いて出す**
+  // （確認し終えたのは前の姿なので）。読めなくても開いて出す
+  var FOLD_PREFIX = "qs.page-folded:";
+  function isFolded(page) {
+    try { return localStorage.getItem(FOLD_PREFIX + page.slide_id) === String(page.version); } catch (e) { return false; }
+  }
+  function setFolded(slideId, versionId, folded) {
+    try {
+      if (folded) { localStorage.setItem(FOLD_PREFIX + slideId, String(versionId)); }
+      else { localStorage.removeItem(FOLD_PREFIX + slideId); }
+    } catch (e) { /* 覚えられなくてもその場では畳む */ }
+  }
+
   function pageArticle(page, ctx) {
     var caps = ctx.caps;
     var d = page.display;
-    var article = h("article", { class: "page" + (page.hidden ? " page--hidden" : ""), id: "page-" + page.slide_id,
+    var folded = isFolded(page);
+    var article = h("article", { class: "page" + (page.hidden ? " page--hidden" : "") + (folded ? " page--folded" : ""), id: "page-" + page.slide_id,
       "aria-label": "ページ " + page.position + (page.title ? ": " + page.title : ""),
       dataset: { slide: page.slide_id, position: String(page.position), version: page.version_id } });
 
@@ -1041,6 +1056,22 @@
       playBtn.addEventListener("click", function () { ctx.openPlay(page.slide_id, playBtn); });
     }
 
+    var foldBtn = h("button", { class: "btn btn--icon btn--ghost page__fold", type: "button", "aria-controls": "stage-" + page.slide_id });
+    var paintFold = function () {
+      var label = "ページ " + page.position + (folded ? " を開く" : " を畳む");
+      SS.clear(foldBtn).appendChild(pageIcon(folded ? "panel-bottom-close" : "panel-top-close"));
+      foldBtn.setAttribute("aria-label", label);
+      foldBtn.setAttribute("title", folded ? "開く" : "畳む（タイトル行だけにする）");
+      foldBtn.setAttribute("aria-expanded", folded ? "false" : "true");
+      article.classList.toggle("page--folded", folded);
+    };
+    foldBtn.addEventListener("click", function () {
+      folded = !folded;
+      setFolded(page.slide_id, page.version, folded);
+      paintFold();
+    });
+    article.__fold = function (on) { folded = !!on; setFolded(page.slide_id, page.version, folded); paintFold(); };
+
     var frame = h("figure", { class: "frame frame--" + d.key, "aria-label": "ページ " + page.position + "（" + d.label + "）" });
     if (page.image_url) {
       frame.appendChild(h("img", { src: page.image_url, alt: "ページ " + page.position + ": " + (page.title || ""), loading: page.position <= 2 ? "eager" : "lazy" }));
@@ -1060,8 +1091,10 @@
       h("span", { class: "page__head-spacer" }),
       playBtn,
       fixBtn,
-      menuWrap));
-    article.appendChild(h("div", { class: "page__stage" }, frame));
+      menuWrap,
+      foldBtn));
+    article.appendChild(h("div", { class: "page__stage", id: "stage-" + page.slide_id }, frame));
+    paintFold();
 
     // ---- パネルに出す分（直す欄だけ。版と記録はこのページの ⋮ のダイアログ）----
     var tools = h("div", { class: "page-tools" + (page.hidden ? " page-tools--hidden" : ""), dataset: { slide: page.slide_id } });
@@ -1702,7 +1735,10 @@
       };
       ctx.duplicatePage = function (slideId) { mutate(SS.api("/api/decks/" + deckId + "/pages/" + slideId + "/duplicate", { method: "POST", body: { lock_version: lockVersion } })); };
       ctx.setPageHidden = function (slideId, hidden) {
-        if (hidden) { sessionStorage.setItem("slide-card-collapsed:" + slideId, "1"); }
+        if (hidden) {   // 非表示にしたページは畳む（開けば薄い絵で中身を見られる）
+          var art = document.getElementById("page-" + slideId);
+          if (art && art.__fold) { art.__fold(true); }
+        }
         mutate(SS.api("/api/decks/" + deckId + "/pages/" + slideId + "/visibility", { method: "POST", body: { hidden: hidden, lock_version: lockVersion } }).then(function (r) { if (r.message) { SS.toast(r.message); } }));
       };
       ctx.scrollTo = function (slideId) {

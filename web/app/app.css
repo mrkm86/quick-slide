@@ -1315,6 +1315,10 @@ html.is-locked { overflow: hidden; }
 .page__stage { display: block; padding-left: var(--space-6); }
 @media (max-width: 599px) { .page__stage { padding-left: var(--space-3); } }
 .page__head { display: flex; align-items: center; gap: var(--space-2); min-height: 56px; padding-bottom: var(--space-1); }
+/* 畳んだページ（タイトル行だけ・v1 にあった）。確認し終えたページを畳んでスクロールを減らす */
+.page--folded .page__stage { display: none; }
+.page__fold { flex: none; color: var(--color-text-muted); }
+.page--folded .page__fold { color: var(--color-primary); }
 .page__select { margin: 0 -8px 0 -10px; }
 .page__select-box { border-color: var(--color-neutral-solid-gray-536); }
 .page__title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
