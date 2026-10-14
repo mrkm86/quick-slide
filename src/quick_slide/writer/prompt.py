@@ -190,9 +190,29 @@ def _attributes(engine: Engine, args: dict[str, Any], title_hint: str | None) ->
     return lines
 
 
+# 依頼・指示に書かれたページの画像（docs/adr/0016-page-images.md）。使うのは頼まれたときだけ・出典を必ず書く
+PAGE_PICTURE_RULES = [
+    "下の「使ってよい画像」は、依頼・指示に書かれたページの本文の画像。**依頼・指示がそのページの画像を使うよう求めているときだけ**、"
+    "合うページに image: {\"path\": \"…\"} で置く（求めていなければ使わない）。中身に合わない画像は使わない",
+    "使った画像のページには、必ず出典を書く: photo・figure・gallery・quote なら caption（写真の出典の欄）、ほかの型はページの source に、"
+    "「出典: <ページの名前> <URL>」（画像の行の出典をそのまま）",
+]
+
+
+def _page_picture_section(pictures: list[dict[str, Any]] | None) -> list[str]:
+    from ..page_images import describe
+
+    return ["# 使ってよい画像（依頼・指示に書かれたページの本文の画像）", "", *describe(pictures or []), ""] if pictures else []
+
+
 def build_prompt(engine: Engine, args: dict[str, Any], *, manuscript: str, title_hint: str | None,
                  skills_dir: Path, previous: dict[str, Any] | str | None = None,
-                 problems: list[str] | None = None, request: str | None = None) -> str:
+                 problems: list[str] | None = None, request: str | None = None,
+                 pictures: list[dict[str, Any]] | None = None) -> str:
+    rules = _rules(engine, args)
+    if pictures:
+        rules = [r.replace("画像の path は書かない（手元にある画像は無い）", "画像の path は「使ってよい画像」のものだけ書いてよい")
+                 for r in rules] + PAGE_PICTURE_RULES
     out = [
         "# あなたの仕事",
         "",
@@ -201,7 +221,7 @@ def build_prompt(engine: Engine, args: dict[str, Any], *, manuscript: str, title
         "",
         "# 守ること",
         "",
-        *[f"- {r}" for r in _rules(engine, args)],
+        *[f"- {r}" for r in rules],
         "",
         "# 資料の属性",
         "",
@@ -212,6 +232,7 @@ def build_prompt(engine: Engine, args: dict[str, Any], *, manuscript: str, title
         contract_text(engine, skills_dir),
         "",
         *(_request_section(request) if request else []),
+        *_page_picture_section(pictures),
         "# 原稿",
         "",
         "<<<原稿ここから",
@@ -349,9 +370,9 @@ def _example_pages(engine: Engine, ids: list[str]) -> list[dict[str, Any]]:
 
 def build_revision_prompt(engine: Engine, args: dict[str, Any], *, script: dict[str, Any], targets: list[dict[str, Any]],
                           instruction: str, attachments: list[str], skills_dir: Path, scope: str = "pages",
-                          direction: list[str] | None = None,
+                          direction: list[str] | None = None, pictures: list[dict[str, Any]] | None = None,
                           previous: dict[str, Any] | str | None = None, problems: list[str] | None = None) -> str:
-    """ページを指定した直し。`targets` は [{"id", "position", "title", "picture": "あり"|枠の名前の並び|None}]。
+    """ページを指定した直し。`pictures` は指示に書かれたページの本文の画像（docs/adr/0016）。`targets` は [{"id", "position", "title", "picture": "あり"|枠の名前の並び|None}]。
     `direction` は利用者が「何を直しますか？」で選んだ方針の行（`edit_kinds.direction`。選ばなければ空）。
 
     台本係には 1 冊全体を見せる（流れを読むため）が、書いてよいのは指定したページだけで、返すのもその中身だけ。
@@ -418,6 +439,8 @@ def build_revision_prompt(engine: Engine, args: dict[str, Any], *, script: dict[
         *([f"- {a}（台本の path に書ける。route が image・both のときは絵を直す参考にも渡る）" for a in attachments]
           or ["- なし"]),
         "",
+        *(["# 使ってよい画像の決まり", "", *[f"- {r}" for r in PAGE_PICTURE_RULES], ""] if pictures else []),
+        *_page_picture_section(pictures),
         "# 返す形",
         "",
         "```json",
@@ -686,6 +709,7 @@ def build_imported_text_prompt(*, page: dict[str, Any], segments: list[dict[str,
 
 def build_insert_prompt(engine: Engine, args: dict[str, Any], *, script: dict[str, Any], after: dict[str, Any] | None,
                         instruction: str, attachments: list[str], skills_dir: Path,
+                        pictures: list[dict[str, Any]] | None = None,
                         previous: dict[str, Any] | str | None = None, problems: list[str] | None = None) -> str:
     """差し込み: `after`（{"id", "position", "title"}。None なら先頭）の後ろに、指示に合うページを書く。"""
     where = (f"id={after['id']}（{after['position']}枚目「{after['title']}」）の後ろ" if after else "先頭（1枚目の前）")
@@ -727,6 +751,8 @@ def build_insert_prompt(engine: Engine, args: dict[str, Any], *, script: dict[st
         "",
         *([f"- {a}（台本の path に書ける）" for a in attachments] or ["- なし"]),
         "",
+        *(["# 使ってよい画像の決まり", "", *[f"- {r}" for r in PAGE_PICTURE_RULES], ""] if pictures else []),
+        *_page_picture_section(pictures),
         "# 返す形",
         "",
         "```json",

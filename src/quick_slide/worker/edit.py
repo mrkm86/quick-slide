@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from .. import edit_kinds, importing, motion
+from .. import page_images as PI
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, engine_for
 from ..pins import PinRefused, pin_source
@@ -316,6 +317,16 @@ def _attachments(ctx: Context, deck_id: str, asset_ids: list[str]) -> tuple[list
     return rels, paths
 
 
+def _page_pictures(ctx: Context, deck_id: str, engine: Any, req: dict[str, Any]) -> list[dict[str, Any]]:
+    """直し・足すの指示に書かれたページの本文の画像（頼まれたときだけ・プレゼンだけ。docs/adr/0016）。"""
+    if engine.mode != "presentation" or not PI.wanted_urls(req.get("text")):
+        return []
+    pics = PI.collect(req.get("text"), ctx.root.attachments_dir(deck_id))
+    if not pics:
+        log.info("ページの画像: 指示のページから取り込める画像がなかった")
+    return pics
+
+
 def _writer(ctx: Context, run: dict[str, Any], req: dict[str, Any]) -> tuple[str, str, dict[str, str]]:
     available = {"claude": ctx.tools.claude_path(), "codex": ctx.tools.codex_path()}
     origin = req.get("origin_runtime") or run["args"].get("origin_runtime")
@@ -492,6 +503,8 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
             return _rebuild_imported(ctx, job, run, req, data, key, positions[key], what=kind)
         return _imported_text(ctx, job, run, req, data, key, positions[key])
     rels, paths = _attachments(ctx, deck_id, req.get("attachments") or [])
+    # 指示に書かれたページの本文の画像（頼まれたときだけ。台本の path に書ける。docs/adr/0016）
+    page_pics = _page_pictures(ctx, deck_id, engine, req)
     pictures = _pictures(ctx, deck_id, engine.mode, keys) if not one_page(args) else {}
     by_key = {str(s.get("id")): s for s in slides_of(data)}
     targets = [{"id": k, "position": positions[k], "title": headline_of(by_key[k]), "picture": pictures.get(k)}
@@ -504,10 +517,11 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
     def build(previous, problems):
         return build_revision_prompt(engine, args, script=data, targets=targets, instruction=instruction,
                                      attachments=rels, skills_dir=ctx.tools.skills_dir, scope=req.get("scope") or "pages",
-                                     direction=direction, previous=previous, problems=problems)
+                                     direction=direction, pictures=page_pics, previous=previous, problems=problems)
 
     def parse_and_apply(answer):
-        patch = parse_revision(answer, script=data, targets=keys, pictures=pictures, attachments=rels, mode=engine.mode)
+        patch = parse_revision(answer, script=data, targets=keys, pictures=pictures,
+                               attachments=rels + [p["rel"] for p in page_pics], mode=engine.mode)
         if patch.problems:
             return None, patch.problems
         image_keys = {pp.key for pp in patch.image_changes}
@@ -891,14 +905,17 @@ def _insert(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
         page = next(s for s in slides_of(data) if s.get("id") == anchor)
         after = {"id": anchor, "position": _positions(data)[anchor], "title": headline_of(page)}
     rels, _ = _attachments(ctx, deck_id, req.get("attachments") or [])
+    page_pics = _page_pictures(ctx, deck_id, engine, req)
     instruction = req.get("text") or ""
 
     def build(previous, problems):
         return build_insert_prompt(engine, args, script=data, after=after, instruction=instruction, attachments=rels,
+                                   pictures=page_pics,
                                    skills_dir=ctx.tools.skills_dir, previous=previous, problems=problems)
 
     def parse_and_apply(answer):
-        pages, summary, problems = parse_insert(answer, script=data, attachments=rels, mode=engine.mode)
+        pages, summary, problems = parse_insert(answer, script=data, attachments=rels + [p["rel"] for p in page_pics],
+                                                mode=engine.mode)
         if problems:
             return None, problems
         return EditResult(data=insert_after(data, anchor, pages), plan=RenderPlan(), summary=summary,

@@ -133,6 +133,10 @@ def _current_script(prompt: str) -> dict:
     return json.loads(block)
 
 
+def headline_of_page(page: dict) -> str:
+    return str(page.get("headline") or page.get("title") or "ページ")
+
+
 def revision_answer(prompt: str, n_before: int) -> dict:
     script = _current_script(prompt)
     targets = [t.strip() for t in _between(prompt, "対象の id: ", "\n").split(",") if t.strip()]
@@ -147,6 +151,13 @@ def revision_answer(prompt: str, n_before: int) -> dict:
             pages.append({"id": other, "route": "script", "slides": [by_id[other]]})
             continue
         item = {"id": t, "route": route}
+        page_pic = re.search(r"^- (attachments/page-[^（\s]+)（.*?出典: (.+?)）$", prompt, re.M)
+        if route == "script" and page_pic and not motion:
+            # 指示に書かれたページの画像を使う（docs/adr/0016）: 写真の型にして path と出典を書く
+            item["slides"] = [{"id": t, "type": "photo", "layout": "right", "headline": headline_of_page(by_id[t]),
+                               "image": {"path": page_pic.group(1)}, "caption": "出典: " + page_pic.group(2)}]
+            pages.append(item)
+            continue
         if route in ("script", "both"):
             page = dict(by_id[t])
             for k in ("headline", "title"):
