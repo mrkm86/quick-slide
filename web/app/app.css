@@ -541,14 +541,16 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 .page__hidden-mark { display: inline-flex; color: var(--color-text-muted); }
 .page__collapse { flex: 0 0 auto; }
 .page__head-spacer { flex: 1 1 auto; }
-.page__origin, .page__state, .page__ver { display: none; }
+.page__origin, .page__state { display: none; }
 /* 状態の印と状態名はヘッダに常設（絵が出ても消えない） */
 .page__state { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
 .page__state-label { font-size: var(--font-size-16); color: var(--color-text-muted); }
-.page__ver { white-space: nowrap; }
+/* 版の札（直したページだけ）。直し終えて版が上がったら「更新」と添え、主役の色で目立たせる */
+.page__ver { white-space: nowrap; min-height: 26px; padding: 2px 8px; font-size: var(--font-size-14); color: var(--color-text-muted); }
+.page__ver[hidden] { display: none; }
+.page__ver--new { color: var(--color-neutral-white); background: var(--color-primary); border-color: var(--color-primary); font-weight: var(--font-weight-700); }
 .page__origin,
-.page__state,
-.page__ver { display: none; }
+.page__state { display: none; }
 /* 版の一覧（「版を選ぶ…」のダイアログ）。**絵で見分けるのが本命**なので、押せない間も絵は薄くしない
    （押せないことは cursor と理由の文で伝える） */
 .version {

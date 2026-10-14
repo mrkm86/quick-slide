@@ -1104,7 +1104,9 @@
 
       page.source_kind !== "generated" ? h("span", { class: "chip page__origin", text: page.source_kind_label }) : null,
       h("span", { class: "page__state" }, mark(d), h("span", { class: "page__state-label", text: d.label })),
-      h("span", { class: "page__ver muted small", text: "v" + page.version }),
+      // 版の札（直したページだけ。v1 は出さない）。直し終えて版が上がったら「更新」と添えて目立たせる
+      h("span", { class: "chip page__ver", hidden: !(page.version > 1), text: "v" + page.version,
+        title: "いまの版（" + page.version + " つ目の姿）" }),
       h("span", { class: "page__head-spacer" }),
       // 非表示の印はアイコンだけ（題と番号が灰色なので語は要らない・2026-10-14）。語は読み上げと指を置いたときの名前に残す。
       // 置き場は ▶ と同じ列（非表示のページには ▶ を出さないので、その枠に同じ大きさで置いてそろえる）
@@ -2155,7 +2157,10 @@
       paintPanel = function () {
         var ids = targetIds();
         var target = "";
-        if (mode === "page" && ids.length) { target = ctx.positionOf(ids[0]) + " / " + order.length + "　" + nodes[ids[0]].title; }
+        if (mode === "page" && ids.length) {
+          var pv = (nodes[ids[0]].page || {}).version || 1;
+          target = ctx.positionOf(ids[0]) + " / " + order.length + "　" + nodes[ids[0]].title + (pv > 1 ? "（v" + pv + "）" : "");
+        }
         else if (mode === "pages") {
           var pos = ids.map(function (sid) { return ctx.positionOf(sid); }).sort(function (a, b) { return a - b; });
           target = pos.join("・") + " ページ（" + ids.length + " ページ）";
@@ -2475,7 +2480,22 @@
           else if (!dialog.shell.body.querySelector("details[open]")) { SS.clear(dialog.shell.body).appendChild(detailsBlock(page)); }
         }
         var ver = n.article.querySelector(".page__ver");
-        if (ver) { ver.textContent = "v" + page.version; }
+        if (ver) {
+          var was = parseInt(ver.dataset.version || "0", 10) || n.shownVersion || 0;
+          ver.hidden = !(page.version > 1);
+          ver.title = "いまの版（" + page.version + " つ目の姿）";
+          // 版が上がった（直しが描き終わった）ら「更新」と添える。次にそのページを直すか、版を選ぶまで残す
+          if (was && page.version > was) {
+            ver.classList.add("page__ver--new");
+            ver.textContent = "v" + page.version + " 更新";
+          } else if (!ver.classList.contains("page__ver--new") || page.version < was) {
+            ver.classList.remove("page__ver--new");
+            ver.textContent = "v" + page.version;
+          }
+          ver.dataset.version = String(page.version);
+          n.shownVersion = page.version;
+          if (mode === "page" && activeSlide === page.slide_id) { paintPanel(); }
+        }
         // 土台にする版は「いま映している版」。採用で動くので、ここで握り直す（送信の照合に使う）
         n.article.dataset.version = page.version_id;
       };
@@ -2838,6 +2858,9 @@
       };
       ctx.submit = function (slideId, box, btn) {
         var read = readBox(box);
+        // 直しを頼んだら、前の「更新」の印は外す（次に版が上がったら、また付く）
+        var verEl = nodes[slideId] && nodes[slideId].article.querySelector(".page__ver--new");
+        if (verEl) { verEl.classList.remove("page__ver--new"); verEl.textContent = "v" + verEl.dataset.version; }
         var sure = box.__confirm ? box.__confirm() : "";
         if (sure && !SS.confirm(sure)) { return; }
         var n = nodes[slideId];
