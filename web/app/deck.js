@@ -1084,14 +1084,15 @@
       pickLabel,
       h("span", { class: "page__num", text: String(page.position) }),
       h("span", { class: "page__title", text: page.title || "" }),
-      // 非表示の印はアイコンだけ（題と番号が灰色なので語は要らない・2026-10-14）。語は読み上げと指を置いたときの名前に残す
-      page.hidden ? h("span", { class: "page__hidden-mark", title: "非表示" }, pageIcon("eye-off"),
-        h("span", { class: "visually-hidden", text: "非表示" })) : null,
+
       page.source_kind !== "generated" ? h("span", { class: "chip page__origin", text: page.source_kind_label }) : null,
       h("span", { class: "page__state" }, mark(d), h("span", { class: "page__state-label", text: d.label })),
       h("span", { class: "page__ver muted small", text: "v" + page.version }),
       h("span", { class: "page__head-spacer" }),
-      playBtn,
+      // 非表示の印はアイコンだけ（題と番号が灰色なので語は要らない・2026-10-14）。語は読み上げと指を置いたときの名前に残す。
+      // 置き場は ▶ と同じ列（非表示のページには ▶ を出さないので、その枠に同じ大きさで置いてそろえる）
+      page.hidden ? h("span", { class: "page__hidden-mark", title: "非表示" }, pageIcon("eye-off"),
+        h("span", { class: "visually-hidden", text: "非表示" })) : playBtn,
       fixBtn,
       menuWrap,
       foldBtn));

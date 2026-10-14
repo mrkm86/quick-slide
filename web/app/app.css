@@ -1326,7 +1326,8 @@ html.is-locked { overflow: hidden; }
 .page__select-box { border-color: var(--color-neutral-solid-gray-536); }
 .page__title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .page__head-spacer { display: none; }
-.page__hidden-mark { display: inline-flex; align-items: center; gap: var(--space-1); flex: none; color: var(--color-text-muted); }
+/* ▶（.btn--icon・指の大きさの正方形）と同じ枠に、アイコンを真ん中に置く（列がそろう） */
+.page__hidden-mark { display: inline-flex; align-items: center; justify-content: center; flex: none; width: var(--tap); height: var(--tap); color: var(--color-text-muted); }
 .page__edit { flex: none; }
 .page--hidden .page__stage { opacity: .4; }
 
