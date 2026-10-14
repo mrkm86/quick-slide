@@ -27,6 +27,11 @@ P3:
 
 P5: `--doctor`（導入の確かめ）・`--setup [--yes]`（足りないものを入れる）は `quick_slide_setup.py` に任せる。
 
+サーバを起こすだけ: `--start-server`（投入しない。動いていればそのまま）。**Codex から使うときは、利用者がターミナルで先に
+これを流しておく。** Codex の砂場は作業場の外（データの置き場・`~/.codex`・`~/.claude`）に書けないので、砂場の中からは
+サーバを起こせない。砂場の中（`CODEX_SANDBOX`・`CODEX_THREAD_ID` などの印がある）で起こせなかったときは、回り道をさせずに
+`code: start_in_terminal` と、ターミナルで流すコマンド（`command`）を返す（docs/adr/0017-cli-outside-path.md）。
+
 **実体（サーバのコード）の探し方**: `--repo` → 環境変数 `QUICK_SLIDE_REPO` → このスキルを載せたプラグインの根
 （`skills/quick-slide/scripts/` から 3 つ上）。指されているのに実体が無ければ、黙って次へ落ちずにその場で止まる。
 
@@ -44,6 +49,7 @@ import argparse
 import http.client
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -81,6 +87,18 @@ RUNTIME_HINT_ENV: tuple[tuple[str, str], ...] = (
 
 WAIT_POLL_SECONDS = 1.5
 NOT_YET_MESSAGE = "{what}は、この版の Quick Slide ではまだできません。スライドの画面か、新しいスライドとして頼んでください。"
+# サーバが要る Python（SQLite の接続の `autocommit=` が 3.12 から）。古い Python ではサーバが起きる前に落ちる
+SERVER_PYTHON_MIN = (3, 12)
+PYTHON_TOO_OLD_MESSAGE = (
+    "この Python（{version}・{exe}）は古く、Quick Slide のサーバを起こせません（3.12 以上が要ります）。"
+    "Windows は `py -3` で、無ければ 3.12 以上の python.exe（利用者ごとに入れたものは %LOCALAPPDATA%\\Programs\\Python\\Python3*\\python.exe）で起こし直してください。"
+)
+# Codex が会話の中でコマンドを走らせるときに付く印（quick_slide_setup.py と同じ）。どれかがあれば「Codex の中」とみなす
+CODEX_MARKERS = ("CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED", "CODEX_THREAD_ID", "CODEX_SESSION_ID")
+START_IN_TERMINAL_MESSAGE = (
+    "Codex の砂場の中からは、Quick Slide のサーバを起こせません（データの置き場など、作業場の外に書けないため）。"
+    "利用者のターミナルで次のコマンドを流してサーバを起こしてから、もう一度頼んでください: {command}"
+)
 SANDBOX_BLOCKED_MESSAGE = (
     "Quick Slide のサーバに接続できません。いま動いている環境が、手元（127.0.0.1）への通信を塞いでいます。"
     "Codex から使うときは、砂場の設定でネットワークを開けてください（`-c sandbox_workspace_write.network_access=true`）。"
@@ -189,6 +207,27 @@ def _blocked_by_sandbox(home: Path) -> bool:
         return exc.errno in (errno.EPERM, errno.EACCES)
 
 
+def inside_codex() -> bool:
+    return any(os.environ.get(name) for name in CODEX_MARKERS)
+
+
+def terminal_start_command(home: Path) -> str:
+    """利用者のターミナルでサーバを起こすコマンド。砂場の中の Python は古い別物のことがあるので、`py -3`・`python3` で書く。"""
+    cmd = ["py", "-3"] if os.name == "nt" else ["python3"]
+    cmd += [str(Path(__file__).resolve()), "--start-server"]
+    if home != (Path.home() / ".quick-slide").resolve():
+        cmd += ["--home", str(home)]
+    return (subprocess.list2cmdline if os.name == "nt" else shlex.join)(cmd)
+
+
+def _start_failed(home: Path, code: str, message: str) -> Failure:
+    """サーバを起こせなかった。Codex の砂場の中なら、回り道させずに、ターミナルで起こすコマンドを返す。"""
+    if inside_codex():
+        command = terminal_start_command(home)
+        return Failure("start_in_terminal", START_IN_TERMINAL_MESSAGE.format(command=command), EXIT_STARTUP, command=command)
+    return Failure(code, message, EXIT_STARTUP)
+
+
 def ensure_server(repo: Path, home: Path, timeout: float) -> dict[str, Any]:
     """製品の `start` を呼ぶ。既に動いていれば `already_running` で即返る。"""
     cmd = [sys.executable, "-m", "quick_slide.server", "--home", str(home), "--timeout", str(timeout), "start", "--quiet"]
@@ -196,18 +235,23 @@ def ensure_server(repo: Path, home: Path, timeout: float) -> dict[str, Any]:
         proc = subprocess.run(cmd, cwd=str(repo), env=_product_env(repo), stdin=subprocess.DEVNULL,
                               capture_output=True, text=True, timeout=timeout + 20.0, encoding="utf-8")
     except subprocess.TimeoutExpired:
-        raise Failure("server_start_timeout", "Quick Slide のサーバを起動できませんでした（応答がありません）。", EXIT_STARTUP) from None
+        raise _start_failed(home, "server_start_timeout", "Quick Slide のサーバを起動できませんでした（応答がありません）。") from None
     except OSError:
-        raise Failure("server_start_failed", "Quick Slide のサーバを起動できませんでした。Python の場所とアクセス権を確認してください。",
-                      EXIT_STARTUP) from None
+        raise _start_failed(home, "server_start_failed",
+                            "Quick Slide のサーバを起動できませんでした。Python の場所とアクセス権を確認してください。") from None
     result = _last_json_line(proc.stdout)   # 子の stderr は読まない・出さない
     if proc.returncode != 0 or result is None or not result.get("ok"):
         if _blocked_by_sandbox(home):
             raise Failure("server_unreachable", SANDBOX_BLOCKED_MESSAGE, EXIT_STARTUP)
+        # Codex の中なら、ターミナルで起こしてもらうのが先（砂場の中の Python は、古い別物のことがある）
+        if sys.version_info[:2] < SERVER_PYTHON_MIN and not inside_codex():
+            v = sys.version_info
+            raise Failure("python_too_old", PYTHON_TOO_OLD_MESSAGE.format(version=f"{v.major}.{v.minor}.{v.micro}", exe=sys.executable),
+                          EXIT_STARTUP)
         message = "Quick Slide のサーバを起動できませんでした。"
         if isinstance(result, dict) and isinstance(result.get("message"), str):
             message = result["message"]
-        raise Failure("server_unavailable", message, EXIT_STARTUP)
+        raise _start_failed(home, "server_unavailable", message)
     return result
 
 
@@ -477,6 +521,16 @@ def cmd_ensure_launch(repo: Path, home: Path, args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_start_server(repo: Path, home: Path, args: argparse.Namespace) -> int:
+    """サーバを起こすだけ（投入しない）。Codex から使う前に、利用者がターミナルで流す。"""
+    started = ensure_server(repo, home, args.server_timeout)
+    record = read_record(home)
+    emit({"status": "server", "url": record.get("url"), "pid": started.get("pid"),
+          "already_running": bool(started.get("already_running")), "home": str(home),
+          "message": "Quick Slide のサーバが動いています。会話に戻って、もう一度頼んでください。"})
+    return EXIT_OK
+
+
 def cmd_where(args: argparse.Namespace, home: Path) -> int:
     r = resolve_repo(args.repo)
     emit({"status": "where", "home": str(home), "repo": r["repo"], "source": r["source"], "candidates": r["candidates"],
@@ -618,6 +672,8 @@ def run(args: argparse.Namespace) -> int:
         return cmd_where(args, home)
     if args.doctor or args.setup:
         return cmd_setup(args)
+    if args.start_server:
+        return cmd_start_server(repo_root(args.repo), home, args)
     for flag, what in ((args.append_to_deck, "既存のスライドへの追加（--append-to-deck）"),
                        (args.attach and not args.revise, "新しく作るときの画像の添付（--attach。--revise と一緒なら使える）"),
                        (args.transcript_file, "会話抜粋（--transcript-file）")):
@@ -711,6 +767,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--open", dest="open_browser", action="store_true", help="外部ブラウザでも URL を開く")
     p.add_argument("--no-open", action="store_true", help="自動で開かない（既定の挙動を明示するとき）")
     p.add_argument("--dry-run", action="store_true", help="投入せず、サーバの起動と payload の要約だけ出す")
+    p.add_argument("--start-server", action="store_true",
+                   help="サーバを起こすだけ（投入しない）。Codex から使うときは、利用者のターミナルで先にこれを流しておく")
     p.add_argument("--where", action="store_true", help="どこを実体（src/quick_slide）として見ているかを出す（サーバは起こさない）")
     p.add_argument("--doctor", action="store_true", help="導入の確かめ（何が揃っていて何が足りないか。quick_slide_setup.py --doctor と同じ）")
     p.add_argument("--setup", action="store_true", help="足りないものを Quick Slide の置き場に入れる（入れる前に何をするかを出す）")

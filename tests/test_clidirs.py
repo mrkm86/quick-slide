@@ -46,11 +46,16 @@ class SearchPathTest(unittest.TestCase):
 
     def test_the_override_replaces_the_common_places_and_empty_means_none(self) -> None:
         a, b = self.tmp / "a", self.tmp / "b"
+        a.mkdir()
+        b.mkdir()
+        self.assertEqual(clidirs.common_dirs({clidirs.ENV_DIRS: str(self.tmp / "missing")}), [], "無い置き場は足さない")
         self.assertEqual(clidirs.common_dirs({clidirs.ENV_DIRS: os.pathsep.join([str(a), str(b)])}), [str(a), str(b)])
         self.assertEqual(clidirs.common_dirs({clidirs.ENV_DIRS: ""}), [])
 
     def test_common_places_go_after_the_users_path_without_duplicates(self) -> None:
         mine, extra = self.tmp / "mine", self.tmp / "extra"
+        mine.mkdir()
+        extra.mkdir()
         env = {"PATH": str(mine), clidirs.ENV_DIRS: os.pathsep.join([str(mine), str(extra)])}
         self.assertEqual(clidirs.search_path(env["PATH"], env), os.pathsep.join([str(mine), str(extra)]))
         self.assertEqual(clidirs.with_search_path(env)["PATH"], os.pathsep.join([str(mine), str(extra)]))
@@ -86,6 +91,30 @@ class SearchPathTest(unittest.TestCase):
             (home / ".nvm" / "versions" / "node" / v / "bin").mkdir(parents=True)
         found = [d for d in clidirs.common_dirs({"HOME": str(home)}) if ".nvm" in d]
         self.assertEqual([Path(d).parent.name for d in found], ["v20.11.1", "v18.19.0", "v9.0.0"])
+
+    def test_an_unreadable_place_is_skipped_not_raised(self) -> None:
+        """Windows の Codex の砂場では、別の利用者のフォルダを指す symlink が `WinError 5` になる。全体を落とさない（N31）。"""
+        locked, ok = self.tmp / "locked", self.tmp / "ok"
+        locked.mkdir()
+        ok.mkdir()
+        real = Path.is_dir
+
+        def is_dir(path: Path, *args, **kwargs) -> bool:
+            if path == locked:
+                raise PermissionError(13, "アクセスが拒否されました", str(path))
+            return real(path, *args, **kwargs)
+
+        home = self.tmp / "home"
+        (home / ".local" / "bin").mkdir(parents=True)
+        with mock.patch.object(Path, "is_dir", is_dir):
+            self.assertEqual(clidirs.common_dirs({clidirs.ENV_DIRS: os.pathsep.join([str(locked), str(ok)])}), [str(ok)])
+            # 既定の置き場を探すときも同じ（読めない置き場は飛ばして、ほかは見つける）
+            with mock.patch.object(clidirs, "_npm_prefix_bins", return_value=[locked]):
+                found = clidirs.common_dirs({"HOME": str(home), "USERPROFILE": str(home)})
+            self.assertNotIn(str(locked), found)
+            self.assertIn(str(home / ".local" / "bin"), found)
+            env = child_env(home=self.tmp / "qs", base={"PATH": "/usr/bin", clidirs.ENV_DIRS: str(locked)})
+            self.assertEqual(env["PATH"], "/usr/bin")
 
     def test_which_looks_at_the_common_places_after_path(self) -> None:
         extra = self.tmp / "npm-global"

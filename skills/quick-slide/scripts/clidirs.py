@@ -44,15 +44,24 @@ def _npm_prefix_bins(env: Mapping[str, str], home: Path | None) -> list[Path]:
     return out
 
 
+def _is_dir(path: Path) -> bool:
+    """在るフォルダか。読めない置き場は無いものとみなす（`Path.is_dir` は `PermissionError` を投げることがある。
+    Windows の Codex の砂場では、別の利用者のフォルダを指す symlink（nvm の置き場など）が `WinError 5` になる）。"""
+    try:
+        return path.is_dir()
+    except OSError:
+        return False
+
+
 def _version_key(path: Path) -> tuple[int, ...]:
     return tuple(int(n) for n in re.findall(r"\d+", path.parent.name)[:3])
 
 
 def common_dirs(env: Mapping[str, str] | None = None) -> list[str]:
-    """よくある置き場のうち、在るもの（`QUICK_SLIDE_CLI_DIRS` があればそれ）。"""
+    """よくある置き場のうち、在るもの（`QUICK_SLIDE_CLI_DIRS` があれば、その中の在るもの）。"""
     env = os.environ if env is None else env
     if ENV_DIRS in env:
-        return [d for d in env[ENV_DIRS].split(os.pathsep) if d]
+        return [d for d in env[ENV_DIRS].split(os.pathsep) if d and _is_dir(Path(d))]
     home_value = env.get("USERPROFILE" if WINDOWS else "HOME")
     home = Path(home_value) if home_value else None
     candidates: list[Path] = _npm_prefix_bins(env, home)
@@ -78,7 +87,7 @@ def common_dirs(env: Mapping[str, str] | None = None) -> list[str]:
         candidates += [Path("/opt/homebrew/bin"), Path("/usr/local/bin")]
     out: list[str] = []
     for c in candidates:
-        if str(c) not in out and c.is_dir():
+        if str(c) not in out and _is_dir(c):
             out.append(str(c))
     return out
 

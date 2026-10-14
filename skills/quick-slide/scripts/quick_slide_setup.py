@@ -53,7 +53,7 @@ EXIT_FAILED = 4
 
 ENV_HOME = "QUICK_SLIDE_HOME"
 DEFAULT_PORT = 7801
-PYTHON_MIN = (3, 10)
+PYTHON_MIN = (3, 12)   # サーバの SQLite の接続（`autocommit=`）が 3.12 から
 NODE_MIN = 18
 PACKAGES = (("python-pptx", "pptx"), ("lxml", "lxml"), ("Pillow", "PIL"), ("PyYAML", "yaml"))
 # 游ゴシックの在りか。mac は PowerPoint for Mac 同梱、Windows は OS の字体（エンジンの oscompat.yu_gothic_files と同じ決め方）
@@ -166,7 +166,8 @@ def check_python(rep: Report) -> list[str]:
     v = sys.version_info
     ok = (v.major, v.minor) >= PYTHON_MIN
     rep.add("python", "Python", "ok" if ok else "ng", f"{v.major}.{v.minor}.{v.micro}（{sys.executable}）",
-            fix=None if ok else f"Python {PYTHON_MIN[0]}.{PYTHON_MIN[1]} 以上を入れてください（python.org か Homebrew）",
+            fix=None if ok else (f"Python {PYTHON_MIN[0]}.{PYTHON_MIN[1]} 以上で走らせてください（Windows は `py -3`。"
+                                 "入っていなければ python.org か Homebrew で入れる）"),
             needed_for=("all",))
     import importlib.util
     try:

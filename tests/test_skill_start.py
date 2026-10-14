@@ -18,7 +18,7 @@ from helpers import FAKES, MANUSCRIPT, REPO, SKILLS_DIR, fake_codex_home, runnab
 SCRIPT = REPO / "skills" / "quick-slide" / "scripts" / "quick_slide_start.py"
 # 会話の印（この試験を走らせている会話の値を拾わない）
 CONVERSATION_VARS = ("CLAUDE_CODE_SESSION_ID", "CLAUDECODE", "CODEX_THREAD_ID", "CODEX_SESSION_ID", "CODEX_HOME",
-                     "CODEX_SANDBOX", "QUICK_SLIDE_REPO", "PYTHONPATH")
+                     "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED", "QUICK_SLIDE_REPO", "PYTHONPATH")
 
 
 class SkillStartTests(unittest.TestCase):
@@ -177,6 +177,33 @@ class SkillStartTests(unittest.TestCase):
         rc, rev, _, _ = self.start("--revise", "--deck", out["deck_id"], "--pages", "11", "--note", "x", env=env)
         self.assertEqual((rc, rev["code"]), (2, "pages_invalid"))
         self.assertIn("/slides/", rev["url"])
+
+    def test_start_server_only_starts_the_server(self) -> None:
+        """Codex から使う前に、利用者がターミナルで流す。投入はしない。2 回目は起こし直さない。"""
+        rc, out, stdout, stderr = self.start("--start-server")
+        self.assertEqual(rc, 0, (out, stderr))
+        self.assertEqual((out["status"], out["already_running"]), ("server", False))
+        self.assertTrue(out["url"].startswith("http://127.0.0.1:"), out["url"])
+        self.assertFalse((self.tmp / "writer-calls").exists(), "台本係を呼ばない（投入しない）")
+        rc, out, _, _ = self.start("--start-server")
+        self.assertEqual((rc, out["status"], out["already_running"]), (0, "server", True))
+
+    def test_inside_codex_a_failed_start_says_to_start_it_in_the_terminal(self) -> None:
+        """Codex の砂場は置き場に書けない。起こせなければ回り道させず、ターミナルで流すコマンドを返す。"""
+        blocker = self.tmp / "not-a-folder"
+        blocker.write_text("", encoding="utf-8")
+        home = blocker / "home"   # ファイルの下には置き場を作れない（砂場が書かせないのと同じく、起動が失敗する）
+        env = {**self.env, "QUICK_SLIDE_HOME": str(home)}
+        rc, out, _, _ = self.start("--manuscript-file", str(self.manuscript), env=env)
+        self.assertEqual((rc, out["code"]), (3, "server_unavailable"), "Codex の外では、いままでどおり")
+        for marker in ("CODEX_SANDBOX", "CODEX_THREAD_ID"):
+            with self.subTest(marker=marker):
+                rc, out, _, _ = self.start("--manuscript-file", str(self.manuscript), env={**env, marker: "1"})
+                self.assertEqual((rc, out["code"]), (3, "start_in_terminal"))
+                self.assertIn("--start-server", out["command"])
+                self.assertIn(str(home), out["command"], "既定でない置き場はコマンドに書く")
+                self.assertTrue(out["command"].startswith("py -3 " if os.name == "nt" else "python3 "), out["command"])
+                self.assertIn(out["command"], out["message"])
 
     def test_where_and_repo_override(self) -> None:
         rc, out, _, _ = self.start("--where")
