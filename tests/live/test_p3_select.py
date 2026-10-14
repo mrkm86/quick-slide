@@ -78,8 +78,8 @@ class SelectPagesAndInstructTest(unittest.TestCase):
         # 版の一覧は「版を選ぶ…」のダイアログにある。ページの頭の版の番号（v2）で、新しい版が積まれたことを見る
         page.until("(function(){ var a = document.querySelectorAll('.pages article.page');"
                    " var v = function (i) { return a[i].querySelector('.page__ver').textContent; };"
-                   " return v(6) === 'v2' && v(7) === 'v2'; })()", seconds=60,
-                   what="7・8 枚目に新しい版")
+                   " return v(6) === 'v2 更新' && v(7) === 'v2 更新'; })()", seconds=60,
+                   what="7・8 枚目に新しい版（版が上がったページの札に「更新」）")
         page.until("(function(){ var i = " + IMAGES + "; return i[6] !== " + repr(before_imgs[6]) +
                    " && i[7] !== " + repr(before_imgs[7]) + "; })()", seconds=60, what="7・8 枚目の絵が替わる")
         after_imgs = page.eval(IMAGES)
@@ -90,6 +90,9 @@ class SelectPagesAndInstructTest(unittest.TestCase):
             self.assertEqual(after_imgs[i], before_imgs[i], f"{i + 1} 枚目の絵は替わらない")
             self.assertEqual(after_titles[i], before_titles[i])
         self.assertEqual(page.eval("document.querySelectorAll('.pages article.page')[0].querySelector('.page__ver').textContent"), "v1")
+        self.assertTrue(page.eval("document.querySelectorAll('.pages article.page')[0].querySelector('.page__ver').hidden"),
+                        "直していないページには版の札を出さない")
+        self.assertFalse(page.eval("document.querySelectorAll('.pages article.page')[6].querySelector('.page__ver').hidden"))
         self.assertEqual(page.eval("document.querySelectorAll('.live-notice').length"), 0,
                          "自分の直しを「ほかの場所で変わった」と言わない")
         time.sleep(1.0)

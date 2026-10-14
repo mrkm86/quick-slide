@@ -22,6 +22,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .. import oscompat
 from ..enums import EDIT_OPS, EDIT_SOURCES, require
 from ..errors import NotFoundError
 from .base import StoreBase, dump_json, load_json
@@ -146,7 +147,7 @@ class EditsMixin(StoreBase):
                 os.link(png, tmp)
             except OSError:
                 shutil.copyfile(png, tmp)
-            os.replace(tmp, dst)
+            oscompat.replace(tmp, dst)   # Windows で一瞬つかまれても待って試し直す
             w = int.from_bytes(data[16:20], "big") if data[:8] == b"\x89PNG\r\n\x1a\n" else None
             h = int.from_bytes(data[20:24], "big") if w is not None else None
             asset = self.register_asset(relative_path=rel, media_type="image/png", sha256=sha, bytes_=len(data),

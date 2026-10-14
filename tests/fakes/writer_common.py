@@ -133,6 +133,10 @@ def _current_script(prompt: str) -> dict:
     return json.loads(block)
 
 
+def headline_of_page(page: dict) -> str:
+    return str(page.get("headline") or page.get("title") or "ページ")
+
+
 def revision_answer(prompt: str, n_before: int) -> dict:
     script = _current_script(prompt)
     targets = [t.strip() for t in _between(prompt, "対象の id: ", "\n").split(",") if t.strip()]
@@ -147,6 +151,13 @@ def revision_answer(prompt: str, n_before: int) -> dict:
             pages.append({"id": other, "route": "script", "slides": [by_id[other]]})
             continue
         item = {"id": t, "route": route}
+        page_pic = re.search(r"^- (attachments/page-[^（\s]+)（.*?出典: (.+?)）$", prompt, re.M)
+        if route == "script" and page_pic and not motion:
+            # 指示に書かれたページの画像を使う（docs/adr/0016）: 写真の型にして path と出典を書く
+            item["slides"] = [{"id": t, "type": "photo", "layout": "right", "headline": headline_of_page(by_id[t]),
+                               "image": {"path": page_pic.group(1)}, "caption": "出典: " + page_pic.group(2)}]
+            pages.append(item)
+            continue
         if route in ("script", "both"):
             page = dict(by_id[t])
             for k in ("headline", "title"):
@@ -199,6 +210,14 @@ def invalid_script() -> dict:
 
 
 def prompt_kind(prompt: str) -> str:
+    if re.search(r"(挿絵|図解|画像)を 1 つ重ねます", prompt):   # 取り込んだページに重ねる（docs/adr/0013・0015）
+        return "overlay"
+    if "画像を 1 つ差し替えます" in prompt:
+        return "replace"
+    if "型のページ 1 枚に組み直します" in prompt:
+        return "rebuild"
+    if "取り込んだページの**文字だけ**" in prompt:   # 取り込んだページの文字を直す（docs/adr/0014）
+        return "imported_text"
     if "# 直すページ" in prompt:
         return "revise"
     if "ページを足します" in prompt:
@@ -236,6 +255,38 @@ def answer_for(kind: str, prompt: str) -> tuple[str | None, str | None]:
         return None, "rate"
     if MODE == "slow":
         time.sleep(float(os.environ.get("FAKE_WRITER_SLEEP", "2")))
+    if what == "overlay":
+        # overlay_bad_first: 1 回目は文字の箱に重ねる（書き直させる）。2 回目からは右の空いた所
+        laid = prompt.count("- 重ねた絵")   # 前に重ねた絵の数だけ下にずらす（重ならないように）
+        box = {"x": 100, "y": 300, "w": 600, "h": 400} if MODE == "overlay_bad_first" and n_what == 0 else \
+            {"x": 1450, "y": 60 + laid * 240, "w": 220, "h": 220}
+        svg = (f'<svg viewBox="0 0 {box["w"]} {box["h"]}"><rect width="{box["w"]}" height="{box["h"]}" rx="40" fill="#e6f1f3"/>'
+               '<icon name="users" x="40" y="60" size="320" fill="#006f83"/></svg>')
+        extra = {"prompt": "明るい会議室の机の上の時計（架空）"} if "prompt に何を描くか" in prompt else {}
+        return json.dumps({**box, "svg": svg, **extra, "summary": "右の空いた所に重ねた（架空）"}, ensure_ascii=False), None
+    if what == "replace":
+        extra = {"prompt": "夕方の会議室（架空）"} if "prompt に何を描くか" in prompt else {}
+        return json.dumps({"n": 1, **extra, "summary": "1 番の画像を替えた（架空）"}, ensure_ascii=False), None
+    if what == "rebuild":
+        pid = re.search(r'page の id は "([^"]+)"', prompt).group(1)
+        path = re.search(r'image: \{"path": "([^"]+)"\}', prompt)
+        if "画像を主役にする型" in prompt:
+            image = {"path": path.group(1)} if path else {"prompt": "会議室の机（架空）"}
+            page = {"id": pid, "type": "photo", "headline": "組み直した見出し（架空）", "image": image}
+        else:
+            page = {"id": pid, "type": "flow", "headline": "組み直した流れ（架空）",
+                    "items": [{"label": "課題"}, {"label": "原因"}, {"label": "解決"}]}
+        return json.dumps({"page": page, "summary": "型のページに組み直した（架空）"}, ensure_ascii=False), None
+    if what == "imported_text":
+        # 番号の行（- n: 文字）を読み、印でない行の頭 2 つに「（直し）」を付ける。long_first は 1 回目だけ長すぎる
+        segs = [(int(m.group(1)), m.group(2)) for m in re.finditer(r"^- (\d+): (.*?)(（箇条書きの印。直さない）)?$",
+                                                                 prompt, re.M) if not m.group(3)]
+        long_first = MODE == "imported_text_long_first" and n_what == 0
+        # overflow_first: 1 回目は字数の決まりには収まるが、見出しの箱からはみ出す長さにする
+        wide_first = MODE == "imported_text_overflow_first" and n_what == 0
+        changes = [{"n": n, "text": (t * 5 if long_first else t + "を長くして箱からはみ出させる続き"
+                                      if wide_first and i == 0 else t + "（直し）")} for i, (n, t) in enumerate(segs[:2])]
+        return json.dumps({"changes": changes, "summary": "見出しと要点を直した（架空）"}, ensure_ascii=False), None
     if what == "revise":
         return json.dumps(revision_answer(prompt, n_what), ensure_ascii=False), None
     if what == "insert":

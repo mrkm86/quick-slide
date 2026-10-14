@@ -96,6 +96,11 @@ class _PinnedHTTP(http.client.HTTPConnection):
 
 def download(raw_url: Any, *, max_bytes: int, resolve: Resolver = _resolve) -> bytes:
     """URL の中身を `max_bytes` まで読む。行き先の決まりは冒頭のとおり。"""
+    return fetch(raw_url, max_bytes=max_bytes, resolve=resolve)[0]
+
+
+def fetch(raw_url: Any, *, max_bytes: int, accept: str = "image/*", resolve: Resolver = _resolve) -> tuple[bytes, str]:
+    """URL の中身と、転送を追ったあとの URL（ページの中の相対の URL を解くのに使う）。行き先の決まりは `download` と同じ。"""
     parts = _check_url(raw_url)
     for _ in range(MAX_REDIRECTS + 1):
         port = parts.port or (443 if parts.scheme == "https" else 80)
@@ -104,7 +109,7 @@ def download(raw_url: Any, *, max_bytes: int, resolve: Resolver = _resolve) -> b
         conn = cls(parts.hostname or "", address, port, TIMEOUT_SECONDS)
         path = urllib.parse.urlunsplit(("", "", parts.path or "/", parts.query, ""))
         try:
-            conn.request("GET", path, headers={"User-Agent": USER_AGENT, "Accept": "image/*"})
+            conn.request("GET", path, headers={"User-Agent": USER_AGENT, "Accept": accept})
             res = conn.getresponse()
             if res.status in (301, 302, 303, 307, 308):
                 location = res.getheader("Location")
@@ -117,7 +122,7 @@ def download(raw_url: Any, *, max_bytes: int, resolve: Resolver = _resolve) -> b
             data = res.read(max_bytes + 1)
             if len(data) > max_bytes:
                 raise ApiError(413, "image_size_limit", URL_TOO_LARGE)
-            return data
+            return data, urllib.parse.urlunsplit(parts)
         except (OSError, http.client.HTTPException, ssl.SSLError):
             raise ApiError(400, "image_url_unreachable", URL_UNREACHABLE) from None
         finally:

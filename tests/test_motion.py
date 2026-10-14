@@ -602,18 +602,19 @@ class ExportTests(MotionBase):
         self.body, self.run = self.make_motion(title="動く: 会議/半分")
         self.deck = self.body["deck_id"]
 
-    def test_the_menu_offers_html_and_refuses_pdf_and_pptx_with_a_reason(self) -> None:
+    def test_the_menu_offers_only_html(self) -> None:
+        """モーションの書き出しのメニューは HTML だけ。書き出せない PDF・PPTX は並べない（口は理由つきで断る）。"""
         view = self.view(self.deck)
         formats = {f["format"]: f for f in view["export_formats"]}
-        self.assertEqual(list(formats), ["pdf", "pptx", "html"])
-        self.assertEqual(formats["html"]["label"], "HTML（1枚）")
+        self.assertEqual(list(formats), ["html"])
+        self.assertEqual(formats["html"]["label"], "HTML")
         self.assertTrue(formats["html"]["available"])
         for fmt in ("pdf", "pptx"):
-            self.assertFalse(formats[fmt]["available"])
-            self.assertIn("モーション", formats[fmt]["reason"])
-            self.assertIn("HTML（1枚）", formats[fmt]["reason"])
+            r = self.fx.post(f"/api/decks/{self.deck}/exports", {"format": fmt})
+            self.assertEqual(r.status, 409, r.body)
+            self.assertIn("「HTML」", r.json()["error"]["message"])
         self.assertTrue(view["capabilities"]["export"]["available"])
-        # プレゼン・ピッチには HTML（1枚）を出さない（PDF・PPTX は書き出せる）
+        # プレゼン・ピッチには HTML を出さない（PDF・PPTX は書き出せる）
         body, _ = self.make(mode="presentation", title="普通のスライド")
         other = {f["format"]: f for f in self.view(body["deck_id"])["export_formats"]}
         self.assertEqual(list(other), ["pdf", "pptx"])
@@ -636,7 +637,7 @@ class ExportTests(MotionBase):
         for fmt in ("pdf", "pptx"):
             r = self.fx.post(f"/api/decks/{self.deck}/exports", {"format": fmt})
             self.assertEqual((r.status, r.error_code), (409, "export_unsupported"), r.body)
-            self.assertIn("HTML（1枚）", r.json()["error"]["message"])
+            self.assertIn("「HTML」", r.json()["error"]["message"])
         body, _ = self.make(mode="presentation", title="普通")
         r = self.fx.post(f"/api/decks/{body['deck_id']}/exports", {"format": "html"})
         self.assertEqual((r.status, r.error_code), (409, "export_unsupported"), r.body)

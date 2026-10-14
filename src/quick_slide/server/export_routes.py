@@ -49,7 +49,7 @@ MEDIA_TYPES = {
     "images": "application/zip",
     "html": "text/html; charset=utf-8",
 }
-FORMAT_REASON = "書き出しの形式は PDF・PPTX・HTML（1枚）・ページの画像（ZIP）のどれかです。"
+FORMAT_REASON = "書き出しの形式は PDF・PPTX・HTML・ページの画像（ZIP）のどれかです。"
 FORMAT_UNSUPPORTED = "このスライド（{mode}）は {fmt} に書き出せません。書き出せるのは「{ok}」です。"
 BUILDING_MESSAGE = "書き出すファイルを作っています。少し待ってから、もう一度押してください。"
 FAILED_MESSAGE = "書き出すファイルを作れませんでした。"

@@ -100,8 +100,8 @@ def _attachments(store: Any, body: dict[str, Any], row: dict[str, Any] | None = 
     return out
 
 
-IMPORTED_PAGE_REASON = ("PPTX から取り込んだページは、まだ直せません（見る・発表する・書き出す・並べ替え・非表示・複製はできます。"
-                        "ページを足すことはできます）。")
+IMPORTED_PAGE_REASON = ("PPTX から取り込んだページで直せるのは、文字・挿絵・画像・図解です（1 ページずつ）。"
+                        "見る・発表する・書き出す・並べ替え・非表示・複製・ページを足すこともできます。")
 
 
 def _head_pages(store: Any, deck_id: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -161,15 +161,6 @@ def route_instructions(server: "QuickSlideServer", req: "Request") -> "Response"
         store = server.store
         row = _live_deck_row(store, deck_id)
         atts = _attachments(store, body, row)
-        try:
-            kind, options = edit_kinds.parse(row["mode"], body.get("kind"), body.get("options"), can_generate=can_generate)
-        except ValueError as exc:
-            raise ApiError(400, "edit_kind_invalid", str(exc)) from None
-        if kind is None and not text and not atts:
-            raise ApiError(400, "text_required", TEXT_REQUIRED_REASON)
-        lack = edit_kinds.missing(kind, options, text=text, attachments=len(atts))
-        if lack:
-            raise ApiError(400, "text_required" if kind == "text" else "attachment_required", lack)
         pages, _ = _head_pages(store, deck_id)
         if scope == "page":
             chosen = [_page(pages, body.get("slide_id"))]
@@ -188,9 +179,23 @@ def route_instructions(server: "QuickSlideServer", req: "Request") -> "Response"
             confirm = body.get("confirm_pages")
             if confirm is not None and confirm != len(pages):
                 raise ApiError(409, "page_count_changed", STRUCTURE_CHANGED)
-        if any(p.get("type") == IMPORTED_TYPE for p in chosen):
-            # 取り込んだページ（PPTX から）を直す道はまだ無い（台本係は型のページしか書かない・docs/adr/0011-import-pptx.md）
+        # 取り込んだページ（PPTX から）は、選べる直し方が違う（文字・挿絵・画像・図解を 1 ページずつ。
+        # docs/adr/0013・0014・0015）。種類と選び方の確かめは、どのページを直すか決まってから
+        imported = any(p.get("type") == IMPORTED_TYPE for p in chosen)
+        if imported and scope != "page":
             raise ApiError(409, "imported_page", IMPORTED_PAGE_REASON)
+        try:
+            kind, options = edit_kinds.parse(row["mode"], body.get("kind"), body.get("options"), can_generate=can_generate,
+                                             imported=imported)
+        except ValueError as exc:
+            raise ApiError(409 if imported else 400, "imported_page" if imported else "edit_kind_invalid",
+                           IMPORTED_PAGE_REASON if imported else str(exc)) from None
+        if kind is None and not text and not atts:
+            raise ApiError(400, "text_required", TEXT_REQUIRED_REASON)
+        lack = edit_kinds.missing(kind, options, text=text, attachments=len(atts), imported=imported,
+                                  can_generate=can_generate)
+        if lack:
+            raise ApiError(400, "text_required" if kind == "text" else "attachment_required", lack)
         positions = [p["position"] for p in chosen]
         result = store.create_edit(deck_id, {
             "op": "revise", "scope": scope, "pages": [p["slide_id"] for p in chosen], "positions": positions,
