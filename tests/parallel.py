@@ -85,7 +85,8 @@ def main() -> int:
     started = time.monotonic()
 
     def run(names):
-        with tempfile.TemporaryDirectory(prefix="qs-test-process-") as folder:
+        # 消せないものが残っても、ほかの組の結果を捨てない（Windows では握られたファイルを消せない。残りは run.sh が最後に消す）
+        with tempfile.TemporaryDirectory(prefix="qs-test-process-", ignore_cleanup_errors=True) as folder:
             root = Path(folder)
             env = os.environ.copy()
             for key, directory in (("TMPDIR", "tmp"), ("CODEX_HOME", "no-codex-home"),

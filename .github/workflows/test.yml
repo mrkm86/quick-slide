@@ -32,6 +32,9 @@ jobs:
         shell: bash
     env:
       PYTHONDONTWRITEBYTECODE: "1"
+      # 標準入出力の文字コードを日本語の Windows（cp932）にそろえる。ランナーは英語の Windows（cp1252）で、
+      # 日本語を print しただけで落ちる。UTF-8 にはしない（本体の文字コードの書き忘れを隠してしまう。tests/run.sh の注）
+      PYTHONIOENCODING: cp932
     steps:
       - uses: actions/checkout@v5
 
@@ -64,8 +67,11 @@ jobs:
           engine="$RUNNER_TEMP/html-slide"
           npm install --prefix "$engine/node" --no-audit --no-fund puppeteer-core
           "$engine/node/node_modules/.bin/browsers" install chrome-headless-shell@stable --path "$engine/chrome"
+          # HTML_SLIDE_CHROME は実行ファイルを指す（フォルダは受けない）
+          chrome="$(find "$engine/chrome" -name chrome-headless-shell.exe | head -1)"
+          [ -n "$chrome" ] || { echo "chrome-headless-shell.exe が見つからない"; exit 1; }
           echo "HTML_SLIDE_NODE_MODULES=$engine/node/node_modules" >> "$GITHUB_ENV"
-          echo "HTML_SLIDE_CHROME=$engine/chrome" >> "$GITHUB_ENV"
+          echo "HTML_SLIDE_CHROME=$chrome" >> "$GITHUB_ENV"
 
       - name: サーバと画面
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}

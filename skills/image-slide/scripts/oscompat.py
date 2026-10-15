@@ -48,12 +48,21 @@ if WINDOWS:
     _k32.SetInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD)
     _k32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
     _k32.TerminateJobObject.argtypes = (wintypes.HANDLE, wintypes.UINT)
+    _k32.QueryInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD,
+                                               ctypes.POINTER(wintypes.DWORD))
 
     _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
     _STILL_ACTIVE = 259
     _ERROR_ACCESS_DENIED = 5
+    _JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1
     _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
     _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+
+    class _BasicAccounting(ctypes.Structure):
+        _fields_ = [("TotalUserTime", ctypes.c_int64), ("TotalKernelTime", ctypes.c_int64),
+                    ("ThisPeriodTotalUserTime", ctypes.c_int64), ("ThisPeriodTotalKernelTime", ctypes.c_int64),
+                    ("TotalPageFaultCount", wintypes.DWORD), ("TotalProcesses", wintypes.DWORD),
+                    ("ActiveProcesses", wintypes.DWORD), ("TotalTerminatedProcesses", wintypes.DWORD)]
 
     class _BasicLimit(ctypes.Structure):
         _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
@@ -219,11 +228,18 @@ def popen_group(cmd: list[str], **kwargs: Any) -> subprocess.Popen:
 
 def kill_group(proc: subprocess.Popen, *, grace: float = 5.0) -> None:
     """子を孫ごと止める。mac・Linux は組に SIGTERM を送って `grace` 秒待ち、残っていれば SIGKILL。子が先に
-    終わっていても、組に残った孫（出力の口を握ったままのもの）を止める。"""
+    終わっていても、組に残った孫（出力の口を握ったままのもの）を止める。
+
+    Windows は Job の中が全部終わるまで待つ（`TerminateJobObject` は止めるのを頼むだけで、終わりを待たない）。
+    子の `.cmd` の包み（cmd.exe）が終わっても、孫がまだファイルを握っていると、すぐあとのフォルダの削除が通らない。
+    """
     if WINDOWS:
         job = getattr(proc, "_oscompat_job", None)
         if job:
             _k32.TerminateJobObject(job, 1)
+            deadline = time.monotonic() + grace
+            while _job_active(job) and time.monotonic() < deadline:
+                time.sleep(0.05)
             end_group(proc)
         else:
             subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], stdin=subprocess.DEVNULL,
@@ -254,6 +270,15 @@ def end_group(proc: subprocess.Popen) -> None:
     if job:
         proc._oscompat_job = None  # type: ignore[attr-defined]
         _k32.CloseHandle(job)
+
+
+def _job_active(job: int) -> int:
+    """Job の中でまだ動いているプロセスの数（読めなければ 0 として待たない）。"""
+    info = _BasicAccounting()
+    if not _k32.QueryInformationJobObject(job, _JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION, ctypes.byref(info),
+                                          ctypes.sizeof(info), None):
+        return 0
+    return info.ActiveProcesses
 
 
 def _job_for(proc: subprocess.Popen) -> int | None:

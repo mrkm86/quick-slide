@@ -24,6 +24,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from quick_slide import oscompat
+
 CHROME_PATHS = (
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
@@ -201,13 +203,15 @@ class Browser:
         if exe is None:
             raise RuntimeError("Chrome が無い")
         self.profile = Path(tempfile.mkdtemp(prefix="quick-slide-chrome-"))
-        self.proc = subprocess.Popen(
+        # 孫（描画・GPU などの子の Chrome）ごと止められるように起こす。Windows で親だけ止めると、孫が
+        # プロフィールのフォルダを握ったまま残り、後片付けで消せない
+        self.proc = oscompat.popen_group(
             [exe, "--headless=new", "--remote-debugging-port=0", f"--user-data-dir={self.profile}",
              "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--hide-scrollbars",
              "--disable-extensions", "--disable-background-timer-throttling",
              "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
              f"--window-size={width},{height}", "about:blank"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.port = self._wait_for_port()
         self.pages: list[Page] = []
 
@@ -241,9 +245,6 @@ class Browser:
                 p.close()
             except OSError:
                 pass
-        self.proc.terminate()
-        try:
-            self.proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
+        oscompat.kill_group(self.proc, grace=10)
+        oscompat.end_group(self.proc)
         shutil.rmtree(self.profile, ignore_errors=True)
