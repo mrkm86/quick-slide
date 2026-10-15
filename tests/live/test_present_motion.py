@@ -24,6 +24,9 @@ from .test_present import PresentLiveBase, count, press  # noqa: E402
 
 class MotionKeysTest(PresentLiveBase):
     def click(self, page, x: float, y: float) -> None:
+        # JavaScript の ready だけでは、別プロセスの iframe の描画がまだ終わっていないことがある。
+        # 表示面の取得が終わるまで待ってから、実際のクリックを 1 回だけ送る。
+        page.call("Page.captureScreenshot", {"format": "png", "fromSurface": True})
         page.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y})
         for t in ("mousePressed", "mouseReleased"):
             page.call("Input.dispatchMouseEvent", {"type": t, "x": x, "y": y, "button": "left", "clickCount": 1})
