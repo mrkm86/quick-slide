@@ -1911,4 +1911,8 @@ def main(argv):
 
 
 if __name__ == "__main__":
+    # 試験の表示（失敗の報告・skip の理由・同じプロセスで呼んだエンジンの表示）だけは UTF-8 にする。英語の Windows（cp1252）
+    # では日本語を print しただけで落ちる。PYTHONIOENCODING は使わない: 子の出力にも効いて、文字コードの書き忘れを隠す
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8")
     sys.exit(main(sys.argv[1:]))

@@ -13,7 +13,14 @@ on:
   pull_request:
   push:
     branches: [main]
+  # 手で起こすときは、回す 1 行を渡せる（Windows でだけ起きる失敗を、全部を回さずに確かめる。全部だと 20 分あまり）
+  #   gh workflow run test.yml --ref <ブランチ> -f only='python3 skills/html-slide/tests/test_outputs.py deck_formats'
   workflow_dispatch:
+    inputs:
+      only:
+        description: "この 1 行だけ回す（空なら全部）"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -71,21 +78,27 @@ jobs:
           echo "HTML_SLIDE_CHROME=$chrome" >> "$GITHUB_ENV"
 
       - name: サーバと画面
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !inputs.only }}
         run: bash tests/run.sh
 
       - name: image-slide
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !inputs.only }}
         run: bash skills/image-slide/tests/run.sh
 
       - name: html-slide
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !inputs.only }}
         run: bash skills/html-slide/tests/run.sh
 
       - name: illust
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !inputs.only }}
         run: bash skills/illust/tests/run.sh
 
       - name: motion-slide
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !inputs.only }}
         run: bash skills/motion-slide/tests/run.sh
+
+      - name: 指定した 1 行だけ
+        if: ${{ steps.deps.outcome == 'success' && inputs.only }}
+        env:
+          ONLY: ${{ inputs.only }}
+        run: eval "$ONLY"
