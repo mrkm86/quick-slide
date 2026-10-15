@@ -39,6 +39,7 @@ jobs:
         shell: bash
     env:
       PYTHONDONTWRITEBYTECODE: "1"
+      ONLY: ${{ inputs.only }}
     steps:
       - uses: actions/checkout@v5
 
@@ -78,27 +79,25 @@ jobs:
           echo "HTML_SLIDE_CHROME=$chrome" >> "$GITHUB_ENV"
 
       - name: サーバと画面
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !inputs.only }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !env.ONLY }}
         run: bash tests/run.sh
 
       - name: image-slide
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !inputs.only }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !env.ONLY }}
         run: bash skills/image-slide/tests/run.sh
 
       - name: html-slide
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !inputs.only }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !env.ONLY }}
         run: bash skills/html-slide/tests/run.sh
 
       - name: illust
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !inputs.only }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !env.ONLY }}
         run: bash skills/illust/tests/run.sh
 
       - name: motion-slide
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !inputs.only }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !env.ONLY }}
         run: bash skills/motion-slide/tests/run.sh
 
       - name: 指定した 1 行だけ
-        if: ${{ steps.deps.outcome == 'success' && inputs.only }}
-        env:
-          ONLY: ${{ inputs.only }}
+        if: ${{ steps.deps.outcome == 'success' && env.ONLY }}
         run: eval "$ONLY"
