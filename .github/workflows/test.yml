@@ -1,8 +1,11 @@
 # PR のときに、Windows でテストを回す（docs/adr/0023-ci-windows-first.md）。
 #
 # - main への push では回さない（PR で回したのと同じ中身。1 回 25 分あまりで、Windows は 2 倍で数える）
-# - 試験が読まない文書（docs/・README.md・AGENTS.md・LICENSE）だけの変更では回さない。CHANGELOG.md は版の試験が読むので回す。
-#   公開前の検査は文書だけの変更でも要るので、別の workflow（public-check.yml）で必ず回す
+# - 試験が読まない文書（docs/・README.md・AGENTS.md・LICENSE）だけの変更では回さない。公開前の検査は文書だけの変更でも
+#   要るので、別の workflow（public-check.yml）で必ず回す
+# - リリースの PR（tools/release.py prepare が書く CHANGELOG.md と版の置き場 3 か所だけの変更）でも回さない。
+#   この 4 つを読む試験は版の試験だけで、OS に依らない。形は public-check.yml の release.py check が見る。
+#   ほかのファイルが 1 つでも混ざれば回る
 # - 当面は Windows だけ。macOS は手元でいつも回していて、非公開のあいだは Actions の分数が 10 倍で減るため。
 #   公開したら macOS も足す
 # - 本物の Codex・Claude は呼ばない（テストが偽物を差す）。ログインは要らない
@@ -17,6 +20,10 @@ on:
       - "README.md"
       - "AGENTS.md"
       - "LICENSE"
+      - "CHANGELOG.md"
+      - "src/quick_slide/__init__.py"
+      - ".claude-plugin/plugin.json"
+      - ".codex-plugin/plugin.json"
   # 手で起こすときは、回す 1 行を渡せる（Windows でだけ起きる失敗を、全部を回さずに確かめる。全部だと 20 分あまり）
   #   gh workflow run test.yml --ref <ブランチ> -f only='python3 skills/html-slide/tests/test_outputs.py deck_formats'
   workflow_dispatch:

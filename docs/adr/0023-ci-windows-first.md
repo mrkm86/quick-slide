@@ -10,6 +10,11 @@ GitHub Actions（`.github/workflows/test.yml`）で、PR のときに Windows �
 - **試験が読まない文書（`docs/`・`README.md`・`AGENTS.md`・`LICENSE`）だけの変更では回さない。** `CHANGELOG.md` は
   版の試験（`test_version`）が形を見るので回す。公開前の検査は文書こそ要るので、分けて必ず回す。
   必須のチェックにするときは、文書だけの PR で Windows の回が始まらず「待ち」のままになることに気をつける
+- **リリースの PR でも回さない。** `tools/release.py prepare` が書くのは `CHANGELOG.md` と版の置き場 3 か所
+  （`src/quick_slide/__init__.py`・マニフェスト 2 つ）だけで、これらを読む試験は版の試験だけ（OS に依らない）。
+  1.0.0 の PR では見出し 1 行のために 25 分待った。形は `public-check.yml` の `release.py check` が Linux で毎回見る。
+  ほかのファイルが混ざった PR は今までどおり回る（GitHub は、変わったファイルが全部 `paths-ignore` に当たるときだけ飛ばす）。
+  そのため、ふだんの PR で `CHANGELOG.md` に 1 行足しても、コードの変更と一緒なら回る
 
 - **macOS はリポジトリを公開したあとに足す。** 非公開のあいだは Actions の無料枠（月 2,000 分）を使い、
   macOS は 10 倍、Windows は 2 倍で減る。決めたときの見込みは、両方だと 1 回およそ 100 分ぶんで月 20 回ほど、
