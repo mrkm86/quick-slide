@@ -122,9 +122,9 @@ class CreateFlowTests(unittest.TestCase):
             self.assertEqual(Path(c["cwd"]).parts[-2:], ("research", "round-1"))
         self.assertEqual([c["form"][0].split("（")[0] for c in calls], ["プレゼン", "ピッチ", "モーション"])
         writes = script_calls(log)
-        self.assertEqual(len(writes), 3)
+        self.assertEqual(len(writes), 8, "通常の2資料と、モーションの共通設計＋5場面")
         self.assertTrue(all(c["has_manuscript"] for c in writes))
-        self.assertEqual([c["request"] for c in writes], [REQUEST] * 3, "台本係に利用者の依頼を渡す")
+        self.assertEqual([c["request"] for c in writes], [REQUEST] * 8, "台本係に利用者の依頼を渡す")
 
     def test_manuscript_path_is_unchanged(self) -> None:
         from helpers import intake_payload

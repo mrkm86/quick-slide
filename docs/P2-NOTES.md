@@ -78,7 +78,7 @@
 ## 確かめていないこと（本物の CLI を呼ばないため）
 
 - `claude -p` の旗: `--output-format json`・`--tools ""`・`--safe-mode`・`--strict-mcp-config`・`--disable-slash-commands`・
-  `--no-session-persistence`。手元の `claude --help` に載っている旗だけを付ける（`--help` を読んで決める）。標準入力で指示文を渡す
+  `--no-session-persistence`。出力は ADR 0024 で `--output-format stream-json --verbose --include-partial-messages` に変更し、途中経過を保存するようにした。手元の `claude --help` に載っている旗だけを付ける（`--help` を読んで決める）。標準入力で指示文を渡す
 - `codex exec` の旗: `-c features.plugins=false -c features.hooks=false -c features.apps=false -c forced_login_method="chatgpt"
   -a never exec --ignore-user-config --ephemeral --skip-git-repo-check -s read-only -C <作業の根> --color never --json -o <最後の答え> -`
 - 応答が失敗のときの読み分け（ログイン・利用枠）は文言の正規表現で、本物の文言では確かめていない

@@ -291,6 +291,10 @@ def planning_message(run_state: str, progress: dict[str, Any]) -> str | None:
         return PLANNING_MESSAGES["queued"]
     if run_state == "writing" and progress.get("phase") in ("researching", "importing"):
         return PLANNING_MESSAGES[progress["phase"]]
+    if run_state == "writing" and progress.get("phase") == "motion_planning":
+        return "場面の構成と共通の見た目を決めています。"
+    if run_state == "writing" and progress.get("phase") == "motion_scenes":
+        return f"場面を書いています。{int(progress.get('total') or 0)} 場面中 {int(progress.get('done') or 0)} 場面を保存しました。"
     if run_state == "writing":
         rnd = int(progress.get("round") or 1)
         return PLANNING_MESSAGES["writing"] if rnd <= 1 else PLANNING_MESSAGES["rewriting"].format(round=rnd)

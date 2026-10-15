@@ -63,6 +63,7 @@ from ..scriptdoc import (
     screen_pages,
 )
 from ..settings import Settings
+from ..writer import motion as MOTION_WRITER
 from ..writer import jlint as JLINT
 from ..writer.backends import WriterFailed, ask, choose_backend
 from ..writer.prompt import ContractMissing, build_prompt
@@ -629,15 +630,32 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
                  args_update={"writer": backend, "writer_reason": why})
         try:
             prompt = build_prompt(engine, args, manuscript=intake["manuscript"], title_hint=intake["title_hint"],
-                                  skills_dir=ctx.tools.skills_dir, previous=previous, problems=problems,
+                                  skills_dir=ctx.tools.skills_dir,
+                                  previous=None if motion.is_motion(args) else previous,
+                                  problems=None if motion.is_motion(args) else problems,
                                   request=intake.get("request"), pictures=pictures)
         except ContractMissing as exc:
             return fail(f"エンジンの台本の決まり（{exc}）が見つかりません。導入をやり直してください。", "contract")
         try:
-            data = ask(backend, exe, prompt, job_dir=run_dir / "writer" / f"round-{round_no}", env=env,
-                       timeout=ctx.settings.worker.writer_timeout_seconds, stop=ctx.stop)
+            if motion.is_motion(args):
+                def scene_progress(phase, done, total):
+                    ctx.call(store.set_run_state, run_id, "writing", progress={
+                        **_writer_progress(round_no, rounds, backend, phase), "done": done, "total": total})
+                data = MOTION_WRITER.write(
+                    prompt=prompt, backend=backend, exe=exe, env=env,
+                    job_dir=run_dir / "writer" / f"round-{round_no}",
+                    checkpoint_dir=ctx.root.motion_draft_dir(deck_id, intake["id"]),
+                    timeout=ctx.settings.worker.writer_timeout_seconds, stop=ctx.stop,
+                    parallel=MOTION_WRITER.MAX_PARALLEL, page_count=args.get("page_count"),
+                    previous=previous, problems=problems, progress=scene_progress)
+            else:
+                data = ask(backend, exe, prompt, job_dir=run_dir / "writer" / f"round-{round_no}", env=env,
+                           timeout=ctx.settings.worker.writer_timeout_seconds, stop=ctx.stop)
         except WriterFailed as exc:
             if exc.kind == "format":
+                if motion.is_motion(args) and isinstance(previous, dict):
+                    # 場面の修正が壊れても、元の検査結果と直す対象を失わない。
+                    continue
                 previous, problems = "（前の答えは JSON として読めませんでした）", [
                     "NG: 返したものが JSON のオブジェクト 1 つではなかった。台本の JSON オブジェクトだけを返す"]
                 continue

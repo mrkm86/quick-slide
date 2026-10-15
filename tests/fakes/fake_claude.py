@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""偽物の `claude`（`claude -p --output-format json` の形だけ真似る）。本物の LLM は呼ばない。
+"""偽物の `claude`（`claude -p --output-format stream-json` の形だけ真似る）。本物の LLM は呼ばない。
 
 道具が空（`--tools ""`）なら台本係、Web の 2 つだけ（`--tools WebSearch,WebFetch` と同じものを `--allowedTools`）なら
 下調べ係として答える（`research_common.py`）。ほかの道具の渡し方は断る。"""
@@ -16,6 +16,7 @@ WEB_TOOLS = "WebSearch,WebFetch"
 
 HELP = """Usage: claude [options] [command] [prompt]
   -p, --print  --output-format <format>  --tools <tools...>  --strict-mcp-config
+  --verbose --include-partial-messages
   --disable-slash-commands  --no-session-persistence  --safe-mode
   --allowedTools, --allowed-tools <tools...>
   --permission-mode <mode>  (choices: "acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
@@ -27,9 +28,12 @@ def main() -> int:
     if argv[:1] == ["--help"]:
         print(HELP)
         return 0
-    if "-p" not in argv or argv[argv.index("--output-format") + 1] != "json":
-        print("fake claude: -p --output-format json だけ受ける", file=sys.stderr)
+    if "-p" not in argv or argv[argv.index("--output-format") + 1] != "stream-json":
+        print("fake claude: -p --output-format stream-json だけ受ける", file=sys.stderr)
         return 2
+    if not {"--verbose", "--include-partial-messages"} <= set(argv):
+        return 2
+    print(json.dumps({"type": "system", "subtype": "init"}), flush=True)
     tools = argv[argv.index("--tools") + 1]
     prompt = sys.stdin.buffer.read().decode("utf-8")   # 本物と同じく UTF-8 で読む（Windows の既定は cp932）
     if tools == WEB_TOOLS:

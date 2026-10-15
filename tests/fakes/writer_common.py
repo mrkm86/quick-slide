@@ -210,6 +210,10 @@ def invalid_script() -> dict:
 
 
 def prompt_kind(prompt: str) -> str:
+    if "# 今回の仕事: モーションの共通設計" in prompt:
+        return "motion_plan"
+    if "# 今回の仕事: モーションの場面1つ" in prompt:
+        return "motion_scene"
     if re.search(r"(挿絵|図解|画像)を 1 つ重ねます", prompt):   # 取り込んだページに重ねる（docs/adr/0013・0015）
         return "overlay"
     if "画像を 1 つ差し替えます" in prompt:
@@ -255,6 +259,40 @@ def answer_for(kind: str, prompt: str) -> tuple[str | None, str | None]:
         return None, "rate"
     if MODE == "slow":
         time.sleep(float(os.environ.get("FAKE_WRITER_SLEEP", "2")))
+    if what in ("motion_plan", "motion_scene"):
+        fixed = os.environ.get("FAKE_WRITER_MOTION_FILE")
+        deck = json.loads(pathlib.Path(fixed).read_text(encoding="utf-8")) if fixed else (
+            outline_script(prompt, n_what) if "合意した「構成」" in prompt else motion_script())
+        scenes = deck.get("slides", deck.get("scenes", []))
+        count = re.search(r'場面数: (\d+) 場面', prompt)
+        if count and not fixed:
+            n_scenes = int(count.group(1))
+            scenes = (scenes + [motion_scene(f'extra-{i}', f'追加{i}（架空）', 2)
+                                for i in range(len(scenes), n_scenes)])[:n_scenes]
+        if what == "motion_plan":
+            plan = {k: v for k, v in deck.items() if k not in ("slides", "scenes")}
+            plan.update(design="試験の共通設計（架空）", scenes=[
+                {"id": v["id"], "title": v["title"], "beats": v["beats"], "brief": v["title"]} for v in scenes])
+            return json.dumps(plan, ensure_ascii=False), None
+        spec = json.JSONDecoder().raw_decode(prompt.split("# 対象場面\n", 1)[1])[0]
+        scene = next((dict(v) for v in scenes if v['id'] == spec['id']),
+                     motion_scene(spec['id'], spec['title'], spec['beats']))
+        if os.environ.get('FAKE_MOTION_SLEEP_SCENE') == scene['id']:
+            time.sleep(5)
+        retry = "# 前の台本は検査で止まりました" in prompt
+        if MODE == "always_invalid" or (MODE in ("invalid_first", "invalid_repair_garbage") and not retry):
+            if scene['id'] == scenes[0]['id']:
+                scene['html'] = '<p data-fake-invalid="true">形の試験（架空）</p>'
+        if MODE == "invalid_repair_garbage" and retry:
+            n_scene = sum(1 for p in LOG.glob('*.json')
+                          if (v := json.loads(p.read_text(encoding='utf-8'))).get('what') == 'motion_scene'
+                          and pathlib.Path(v['cwd']).name == scene['id'])
+            if n_scene == 2:
+                return 'broken JSON', None
+        if MODE == "always_emoji" or (MODE == "emoji_first" and not retry):
+            if scene['id'] == 'rules':
+                scene['html'] = '<p>✅ 25分を基本にする</p>'
+        return json.dumps(scene, ensure_ascii=False), None
     if what == "overlay":
         # overlay_bad_first: 1 回目は文字の箱に重ねる（書き直させる）。2 回目からは右の空いた所
         laid = prompt.count("- 重ねた絵")   # 前に重ねた絵の数だけ下にずらす（重ならないように）

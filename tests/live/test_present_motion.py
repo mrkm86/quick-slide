@@ -25,8 +25,20 @@ from .test_present import PresentLiveBase, count, press  # noqa: E402
 class MotionKeysTest(PresentLiveBase):
     def click(self, page, x: float, y: float) -> None:
         page.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y})
-        for t in ("mousePressed", "mouseReleased"):
-            page.call("Input.dispatchMouseEvent", {"type": t, "x": x, "y": y, "button": "left", "clickCount": 1})
+        self.click_info = page.eval(f"""(() => {{
+          const rect = el => {{ const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; }};
+          return {{ viewport: [innerWidth, innerHeight, devicePixelRatio],
+            frame: rect(document.querySelector('#slide iframe')), bar: rect(document.getElementById('bar')),
+            hit: document.elementFromPoint({x}, {y}).outerHTML.slice(0, 500) }};
+        }})()""")
+        event = {"x": x, "y": y, "button": "left", "clickCount": 1}
+        page.call("Input.dispatchMouseEvent", {"type": "mousePressed", **event})
+        try:
+            # 別プロセスの iframe が押下を受けて焦点を得てから離す。クリックの再送はしない。
+            page.until("document.activeElement === document.querySelector('#slide iframe')",
+                       what=f"押下で iframe に焦点が移る: {self.click_info}")
+        finally:
+            page.call("Input.dispatchMouseEvent", {"type": "mouseReleased", **event})
 
     def test_keys_in_editable_and_controls_do_not_turn_pages(self) -> None:
         deck = self.make("motion", "claude_code")
@@ -57,14 +69,21 @@ class MotionKeysTest(PresentLiveBase):
         return r[0], r[1], r[2] / 1920
 
     # 本物のブラウザの別プロセスの iframe には、続けて 2 回クリックを送ると 2 回目が届かないことがある（CDP の送り方の都合）。
-    # だから 1 つの試験に 1 回のクリックだけ置く
+    # だから 1 つの画面に 1 回のクリックだけ送る
 
     def test_click_on_a_role_button_inside_live_zone_reaches_its_handler(self) -> None:
         deck = self.make("motion", "claude_code")
-        page = self.open(deck)
-        x0, y0, k = self.geometry(page)
-        self.click(page, x0 + (1200 + 150) * k, y0 + (800 + 40) * k)
-        page.until("document.getElementById('count').textContent.replace(/\\n/g, '') === '4 / 4拍 1 / 2'", what="LIVE の部品のハンドラー")
+        # 初期化直後の入力を、毎回新しい画面で確かめる。失敗したクリックはやり直さない。
+        for attempt in range(5):
+            with self.subTest(attempt=attempt):
+                page = self.open(deck)
+                x0, y0, k = self.geometry(page)
+                self.click(page, x0 + (1200 + 150) * k, y0 + (800 + 40) * k)
+                try:
+                    page.until("document.getElementById('count').textContent.replace(/\\n/g, '') === '4 / 4拍 1 / 2'", what="LIVE の部品のハンドラー")
+                except AssertionError as exc:
+                    hit = page.eval(f"document.elementFromPoint({x0 + 1350 * k}, {y0 + 840 * k}).outerHTML.slice(0, 500)")
+                    raise AssertionError(f"{exc}\n発表位置: {count(page)!r}\nクリック時: {self.click_info}\nクリック位置の要素: {hit}") from exc
 
     def test_click_on_an_editable_runs_its_handler_and_only_the_stage_advance_is_stopped(self) -> None:
         deck = self.make("motion", "claude_code")

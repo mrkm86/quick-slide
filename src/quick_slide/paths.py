@@ -87,6 +87,10 @@ class DataRoot:
         （回は不変の控え。画面と書き出しはここを読む）。台本係の控え（`writer/`）とエンジンのログもここに置く。"""
         return self.deck_dir(deck_id) / "runs" / run_id
 
+    def motion_draft_dir(self, deck_id: str, intake_id: str) -> Path:
+        """モーションの場面別の途中結果。同じ取り込みを再開した回で共有する。"""
+        return self.deck_dir(deck_id) / "motion-drafts" / intake_id
+
     def work_dir(self, deck_id: str) -> Path:
         """エンジンの `--out`（デッキごとに 1 つで動かない）。image-slide は描いた絵のキャッシュの区画を `--out` で
         引くので、回ごとに新しいフォルダへ描くと毎回全ページを描き直す（P3 で直した）。"""
