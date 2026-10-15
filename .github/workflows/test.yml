@@ -1,0 +1,88 @@
+# PR と main への push のときに、Windows でテストを回す（docs/adr/0023-ci-windows-first.md）。
+#
+# - 当面は Windows だけ。macOS は手元でいつも回していて、非公開のあいだは Actions の分数が 10 倍で減るため。
+#   公開したら macOS も足す
+# - 本物の Codex・Claude は呼ばない（テストが偽物を差す）。ログインは要らない
+# - push のあとに動くので、出してはいけないものを止めるのは push 前の hooks（tools/public_check.py）の役目。
+#   ここはすぐ気づくための最後の砦で、名前の一覧は渡さない（見るのはメールアドレスと、この機械のもの）
+# - 試験の段は、前の段が落ちても続けて回す（どの組が落ちたかを 1 回で見る）。依存ソフトを入れられなければ回さない
+
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同じ PR に続けて push したら、前の回は止める（分数を減らさない）
+concurrency:
+  group: test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      # 試験とエンジンは `python3` の名で呼ぶ。Windows の Python には python.exe しか無いので、同じフォルダに写しを置く
+      - name: python3 の名前でも呼べるようにする
+        run: |
+          dir="$(dirname "$(command -v python)")"
+          [ -e "$dir/python3.exe" ] || cp "$dir/python.exe" "$dir/python3.exe"
+          python3 -c 'import sys; print(sys.version, sys.executable)'
+
+      # 依存ソフトは要らない（標準ライブラリだけ）。入れるのに失敗しても見る
+      - name: 公開してはいけないもの（追跡しているファイル全体）
+        run: python3 tools/public_check.py tree
+
+      # 入れるものは quick_slide_setup.py --setup と同じ（Python のパッケージ・puppeteer-core・Chrome の headless shell・
+      # モーション用の Playwright の Chromium）。置き場は使い捨てで、エンジンには環境変数で教える
+      - name: 依存ソフトを入れる
+        id: deps
+        run: |
+          python -m pip install --disable-pip-version-check python-pptx lxml Pillow PyYAML playwright
+          python -m playwright install chromium
+          engine="$RUNNER_TEMP/html-slide"
+          npm install --prefix "$engine/node" --no-audit --no-fund puppeteer-core
+          "$engine/node/node_modules/.bin/browsers" install chrome-headless-shell@stable --path "$engine/chrome"
+          echo "HTML_SLIDE_NODE_MODULES=$engine/node/node_modules" >> "$GITHUB_ENV"
+          echo "HTML_SLIDE_CHROME=$engine/chrome" >> "$GITHUB_ENV"
+
+      - name: サーバと画面
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash tests/run.sh
+
+      - name: image-slide
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash skills/image-slide/tests/run.sh
+
+      - name: html-slide
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash skills/html-slide/tests/run.sh
+
+      - name: illust
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash skills/illust/tests/run.sh
+
+      - name: motion-slide
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash skills/motion-slide/tests/run.sh

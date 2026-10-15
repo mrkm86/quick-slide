@@ -29,6 +29,8 @@ CHROME_PATHS = (
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
     "/usr/bin/google-chrome",
     "/usr/bin/chromium",
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
 )
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"  # RFC 6455
