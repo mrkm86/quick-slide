@@ -28,6 +28,12 @@ class MotionKeysTest(PresentLiveBase):
         # 表示面の取得が終わるまで待ってから、実際のクリックを 1 回だけ送る。
         page.call("Page.captureScreenshot", {"format": "png", "fromSurface": True})
         page.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y})
+        self.click_info = page.eval(f"""(() => {{
+          const rect = el => {{ const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; }};
+          return {{ viewport: [innerWidth, innerHeight, devicePixelRatio],
+            frame: rect(document.querySelector('#slide iframe')), bar: rect(document.getElementById('bar')),
+            hit: document.elementFromPoint({x}, {y}).outerHTML.slice(0, 500) }};
+        }})()""")
         for t in ("mousePressed", "mouseReleased"):
             page.call("Input.dispatchMouseEvent", {"type": t, "x": x, "y": y, "button": "left", "clickCount": 1})
 
@@ -71,7 +77,7 @@ class MotionKeysTest(PresentLiveBase):
             page.until("document.getElementById('count').textContent.replace(/\\n/g, '') === '4 / 4拍 1 / 2'", what="LIVE の部品のハンドラー")
         except AssertionError as exc:
             hit = page.eval(f"document.elementFromPoint({x0 + 1350 * k}, {y0 + 840 * k}).outerHTML.slice(0, 500)")
-            raise AssertionError(f"{exc}\n発表位置: {count(page)!r}\nクリック位置の要素: {hit}") from exc
+            raise AssertionError(f"{exc}\n発表位置: {count(page)!r}\nクリック時: {self.click_info}\nクリック位置の要素: {hit}") from exc
 
     def test_click_on_an_editable_runs_its_handler_and_only_the_stage_advance_is_stopped(self) -> None:
         deck = self.make("motion", "claude_code")
