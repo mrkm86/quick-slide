@@ -39,8 +39,7 @@ jobs:
         shell: bash
     env:
       PYTHONDONTWRITEBYTECODE: "1"
-      # 一時: 落ちた 3 件だけを 5 回（混み具合のせいかを見る。確かめたら戻す）
-      ONLY: ${{ inputs.only || 'rc=0; for i in 1 2 3 4 5; do echo "=== $i 回目"; bash tests/run.sh -v -k test_brand_export_saves_as_qs_brand_name_zip -k test_insert_duplicate_hide_and_reorder -k test_keys_in_editable_and_controls_do_not_turn_pages || rc=1; done; exit $rc' }}
+      ONLY: ${{ inputs.only }}
     steps:
       - uses: actions/checkout@v5
 
