@@ -40,6 +40,9 @@ jobs:
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       ONLY: ${{ inputs.only }}
+      # 混みに弱い組: 本物の Chrome やサーバのプロセスを起こして時間を待つ試験。4 並列で全部を回すと、回ごとに
+      # 違う試験が遅れて落ちた（単独なら通る）。この組だけ 2 並列で先に回す。落ちなくなれば 4 並列に上げる
+      TIMING_GROUP: "live.* test_p4_restart.* test_p3_pitch_pages.* test_fast_page_ops.*"
     steps:
       - uses: actions/checkout@v5
 
@@ -78,9 +81,19 @@ jobs:
           echo "HTML_SLIDE_NODE_MODULES=$engine/node/node_modules" >> "$GITHUB_ENV"
           echo "HTML_SLIDE_CHROME=$chrome" >> "$GITHUB_ENV"
 
-      - name: サーバと画面
+      - name: サーバと画面（混みに弱い組・2 並列）
         if: ${{ !cancelled() && steps.deps.outcome == 'success' && !env.ONLY }}
-        run: bash tests/run.sh
+        run: |
+          set -f   # * をファイル名に展開しない
+          args=(); for k in $TIMING_GROUP; do args+=(-k "$k"); done
+          bash tests/run.sh -j 2 "${args[@]}"
+
+      - name: サーバと画面（ほか・4 並列）
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && !env.ONLY }}
+        run: |
+          set -f
+          args=(); for k in $TIMING_GROUP; do args+=(-x "$k"); done
+          bash tests/run.sh -j 4 "${args[@]}"
 
       - name: image-slide
         if: ${{ !cancelled() && steps.deps.outcome == 'success' && !env.ONLY }}

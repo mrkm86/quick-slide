@@ -14,6 +14,11 @@ GitHub Actions（`.github/workflows/test.yml`）で、PR と main への push �
 - 依存ソフトは `quick_slide_setup.py --setup` と同じもの（Python のパッケージ・puppeteer-core・Chrome の headless shell・
   Playwright の Chromium）を使い捨ての置き場に入れ、エンジンには環境変数（`HTML_SLIDE_NODE_MODULES`・`HTML_SLIDE_CHROME`）で教える。
   画面の試験（`tests/live`）は、ランナーに入っている Chrome を使う
+- サーバと画面の試験は 2 つに分ける。本物の Chrome やサーバのプロセスを起こして時間を待つ試験（`tests/live`・再起動・
+  ページの操作）は 2 並列で先に回し、ほかは 4 並列。4 並列で全部を回すと、回ごとに違う試験が遅れて落ちた
+  （落ちた試験を単独で 5 回回すと通る）。2 並列で落ちなくなれば 4 並列に上げる。組は workflow の `TIMING_GROUP`、
+  分けるのは `tests/run.sh` の `-k`（選ぶ）と `-x`（除く）
+- 手で起こすときは、回す 1 行（`only`）を渡せる。Windows だけで落ちる試験を、全部を回さずに確かめる
 - 公開前の検査には名前の一覧を渡さない（一覧は公開できない）。見るのはメールアドレスと、その機械のもの。
   push のあとに動くので、止めるのは push 前の hooks の役目で、ここはすぐ気づくための最後の砦
 
