@@ -53,7 +53,7 @@ jobs:
       ONLY: ${{ inputs.only }}
       # 混みに弱い組: 本物の Chrome やサーバのプロセスを起こして時間を待つ試験。4 並列で全部を回すと、回ごとに
       # 違う試験が遅れて落ちた（単独なら通る）。この組だけ 2 並列で先に回す。落ちなくなれば 4 並列に上げる
-      TIMING_GROUP: "live.* test_p4_restart.* test_p3_pitch_pages.* test_fast_page_ops.*"
+      TIMING_GROUP: "live.* test_restart.* test_p4_restart.* test_p3_pitch_pages.* test_fast_page_ops.*"
     steps:
       - uses: actions/checkout@v5
 
