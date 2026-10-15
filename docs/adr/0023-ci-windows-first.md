@@ -12,8 +12,9 @@ GitHub Actions（`.github/workflows/test.yml`）で、PR のときに Windows �
   必須のチェックにするときは、文書だけの PR で Windows の回が始まらず「待ち」のままになることに気をつける
 
 - **macOS はリポジトリを公開したあとに足す。** 非公開のあいだは Actions の無料枠（月 2,000 分）を使い、
-  macOS は 10 倍、Windows は 2 倍で減る。両方だと 1 回およそ 100 分ぶんで月 20 回ほどしか回せないが、
-  Windows だけなら 1 回 16〜24 分ぶんで月 80〜120 回ほど回せる。macOS は手元でいつも回している。
+  macOS は 10 倍、Windows は 2 倍で減る。決めたときの見込みは、両方だと 1 回およそ 100 分ぶんで月 20 回ほど、
+  Windows だけなら 1 回 16〜24 分ぶんで月 80〜120 回ほど。実際の Windows は 1 回 25 分あまり（2 倍で 50 分ほど）で、
+  月 40 回ほど。macOS は手元でいつも回している。
   使用料の上限は既定で 0 ドルなので、使い切っても請求は来ず、回らなくなるだけ
 - **最初は必須のチェックにしない。** Windows で通るのを確かめてから、main の保護で必須にする
 - 依存ソフトは `quick_slide_setup.py --setup` と同じもの（Python のパッケージ・puppeteer-core・Chrome の headless shell・
