@@ -81,6 +81,7 @@ run "帯が空いていなければ理由を添えて描き直す・直らなけ
 run "ワーカーの中のトークンの更新を数えて警告する" worker_refresh_is_reported
 echo "--- Codex レビュー r1 の指摘の再発防止"
 run "並びの中の role・side は中身として残す／配置の指定は別に渡し、鍵にも入る" content_keeps_nested_and_layout
+run "photo の全面の hide_text: html-slide と同じ所で止める・両方で通る・出典のほかは描かせない・false は鍵を変えない" photo_image_only
 run "画像の枠の名前が html-slide と同じ（gallery は image1…）" image_slots_match_html_slide
 run "描き直しに失敗しても、前の絵と鍵の組は崩れない" failed_redo_keeps_old_pair
 run "準備の途中で落ちても、隔離ホーム（auth.json のコピー）を残さない" private_home_cleanup

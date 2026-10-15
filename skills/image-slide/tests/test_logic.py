@@ -931,6 +931,44 @@ def t_content_keeps_nested_and_layout():
     check('"layout": "right"' in texts[1] and "配置の指定" in texts[1], "配置の指定が描く指示に入っていない")
 
 
+def t_photo_image_only():
+    """photo の全面の hide_text（画像だけの扉絵・ADR 0018）: html-slide と同じ所で止め、同じ台本が両方で通る。
+    見出しはページの名前として持つだけで描く文字に入れない・出典だけ描く・false は書かないのと同じ鍵。"""
+    from PIL import Image
+    root = tmpdir()
+    Image.new("RGB", (64, 36), "navy").save(root / "sea.png")
+    for bad, want in (({"hide_text": "yes"}, "true か false"), ({"hide_text": True, "layout": "left"}, "layout: full のときだけ")):
+        p = write_script(root, {"slides": [{"type": "photo", "headline": "扉の題", "image": "sea.png", **bad}]})
+        rc, _, err, calls = run(["check", "--script", str(p)], root)
+        check(rc == 2 and want in err and not calls, f"{bad} → rc={rc} err={err!r}（{want} を期待）")
+    data = {"slides": [{"type": "photo", "headline": "扉の題", "kicker": "第1章", "body": "補足", "image": "sea.png",
+                        "hide_text": True, "caption": "出典: 記事の題"}]}
+    p = write_script(root, data)
+    rc, _, err, _ = run(["check", "--script", str(p)], root)
+    check(rc == 0, f"image-slide の check が落ちた: {err}")
+    if (HTML_SLIDE / "scripts" / "html_slide.py").is_file():
+        r = subprocess.run([sys.executable, str(HTML_SLIDE / "scripts" / "html_slide.py"), "check", "--script", str(p)],
+                           capture_output=True, text=True, encoding="utf-8")
+        check(r.returncode == 0, f"同じ台本が html-slide で通らない: {r.stderr}")
+    deck = S.load(p)
+    theme = S.load_theme(None, root, {})
+    page = deck["slides"][0]
+    c = S.content_of(page["spec"], S.images_of(page["spec"], root, 1))
+    check(set(c) == {"image", "caption"}, f"画像だけのページの描く文字に、出典のほかの文字が入った: {c}")
+    t = P.build(deck, page, theme)["text"]
+    check(P.IMAGE_ONLY in t and "出典: 記事の題" in t, "画像だけの指示か出典が描く指示に無い")
+    check(S.headline_of(page["spec"]) == "扉の題", "ページの名前（見出し）を持っていない")
+    one = P.build_one_page(deck, theme, style=ST.load(None))
+    check(P.IMAGE_ONLY_SECTION in one["text"] and '"第1章"' not in one["text"], "1枚に凝縮するときも区画の文字を外していない")
+    keys = []
+    for extra in ({}, {"hide_text": False}):
+        p = write_script(root, {"slides": [{"type": "photo", "headline": "扉の題", "image": "sea.png", **extra}]})
+        deck = S.load(p)
+        keys.append(P.page_key(P.build(deck, deck["slides"][0], theme)["key_text"], []))
+        check(P.IMAGE_ONLY not in P.build(deck, deck["slides"][0], theme)["text"], f"{extra} で画像だけの指示が入った")
+    check(keys[0] == keys[1], "hide_text: false を書いただけで鍵が変わった（描き直しになる）")
+
+
 def t_image_slots_match_html_slide():
     if not (HTML_SLIDE / "examples" / "image-deck.json").is_file():
         print("html-slide が無いので飛ばす")

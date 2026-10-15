@@ -17,6 +17,7 @@
 | `slides[].transition`・`steps`・`fx`・`id` | 読むが使わない |
 | `slides[]` のそのほかのキー | 「描く文字」として、そのまま描く指示に入れる |
 | `slides[]` の配置の指定（型ごと: `layout`・`split`・`side`・`text_side`・`tone`・`fit`・`widths`・`min`・`max`・`value_labels`・`arrow`） | 「描く文字」から外し、**配置の指定**として別に渡す（鍵にも入る）。外すのは一番外だけで、並びの中の `role`（体制の肩書き）や `big-number` の `side`（脇の数字）は中身として描く（`script_io.LAYOUT_KEYS`） |
+| `photo` の `hide_text: true`（`layout: full` だけ） | 画像だけの扉絵。`kicker`・`headline`・`body` を「描く文字」から外し、文字・幕を描かせない（`caption` だけ出典として右下に小さく）。`headline` はページの名前として文脈の一覧と代替テキストに使う（[ADR 0018](../docs/adr/0018-image-only-photo.md)） |
 | `slides[]._layout` | image-slide だけが読む、持ち込みのレイアウトの名前（`--layout` で渡したもの）。`{name, parts}` で部品の文字も渡せる（[ADR 0006](../docs/adr/0006-bring-your-own-layout.md)） |
 | `slides[]._visual` | image-slide だけが読む、そのページの描き方の注文。html-slide は `_` で始まるキーを読み飛ばす |
 | `slides[]._characters` | image-slide だけが読む、そのページに出すキャラ `[{name, image, pose}]`。並べた順が参照画像の順。`name`・`image` は必須で、絵が無い・知らないキーは rc=2（[ADR 0011](../docs/adr/0011-characters-per-page.md)） |
