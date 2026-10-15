@@ -37,12 +37,18 @@ class MotionKeysTest(PresentLiveBase):
         session = page.call("Target.attachToTarget", {"targetId": frame, "flatten": True})["sessionId"]
         try:
             page.call("Runtime.enable", session_id=session)
-            box = page.eval("(() => { const r = document.querySelector('#slide iframe').getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })()")
-            # 外枠の ready と、中の resize による舞台の拡縮は別。実際の表示領域に合うまで待つ。
-            page.until(f"""Math.abs(innerWidth - {box[2]}) <= 1 && Math.abs(innerHeight - {box[3]}) <= 1 &&
-                Math.abs(document.getElementById('stage').getBoundingClientRect().width -
-                         1920 * Math.min(innerWidth / 1920, innerHeight / 1080)) < 1""",
-                       session_id=session, what="iframe の表示領域と舞台の拡縮が合う")
+            # 外枠の ready と、中の resize による舞台の拡縮は別。双方の現在の寸法を読む。
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                box = page.eval("(() => { const r = document.querySelector('#slide iframe').getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })()")
+                fitted = page.eval(f"""Math.abs(innerWidth - {box[2]}) <= 1 && Math.abs(innerHeight - {box[3]}) <= 1 &&
+                    Math.abs(document.getElementById('stage').getBoundingClientRect().width -
+                             1920 * Math.min(innerWidth / 1920, innerHeight / 1080)) < 1""", session_id=session)
+                if fitted:
+                    break
+                time.sleep(0.05)
+            else:
+                self.fail(f"iframe の表示領域と舞台の拡縮が合わなかった: {box}")
             target = json.dumps(selector)
             point = page.until(f"""(() => {{
               const el = document.querySelector({target});
@@ -55,10 +61,23 @@ class MotionKeysTest(PresentLiveBase):
             self.click_info = {"selector": selector, "frame": box, "point": [x, y]}
             page.until(f"document.elementFromPoint({x}, {y}) === document.querySelector('#slide iframe')",
                        what=f"外枠の部品がクリック対象を覆っていない: {self.click_info}")
-            page.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y})
+            # 表示直後の別プロセスへの最初の移動は届かないことがある。対象上に移せたことを
+            # 確かめるまでポインターだけを動かす。押下・クリックはやり直さない。
+            deadline = time.monotonic() + 20
+            move = 0
+            while time.monotonic() < deadline:
+                page.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x + move % 2, "y": y})
+                if page.eval(f"document.querySelector({target}).matches(':hover')", session_id=session):
+                    break
+                move += 1
+                time.sleep(0.05)
+            else:
+                self.fail(f"iframe 内の対象にポインターが届かなかった: {self.click_info}")
             event = {"x": x, "y": y, "button": "left", "clickCount": 1}
             page.call("Input.dispatchMouseEvent", {"type": "mousePressed", **event})
             try:
+                page.until(f"document.querySelector({target}).matches(':active')", session_id=session,
+                           what="iframe 内のクリック対象が押下を受け取る")
                 page.until("document.activeElement === document.querySelector('#slide iframe')",
                            what=f"押下で iframe に焦点が移る: {self.click_info}")
             finally:
