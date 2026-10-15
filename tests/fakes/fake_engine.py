@@ -94,7 +94,7 @@ def main_motion(argv: list) -> int:
         return 5
     scenes = data["scenes"]
     if cmd == "check":
-        bad = [i for i, s in enumerate(scenes, 1) if s.get("id") == "bad-scene"]
+        bad = [i for i, s in enumerate(scenes, 1) if s.get("id") == "bad-scene" or 'data-fake-invalid="true"' in str(s.get("html"))]
         quick = "--quick" in argv
         if os.environ.get("FAKE_ENGINE_FULL_NG") and not quick:
             bad = bad or [1]

@@ -22,6 +22,7 @@ from quick_slide import motion
 from quick_slide.db.migrate import LATEST_VERSION, load_migrations, user_version
 from quick_slide.db.migrate import migrate as run_migrate
 from quick_slide.engines import ENGINES, MOTION_FORMATS
+from quick_slide.settings import Settings, WorkerSettings
 from quick_slide.paths import SKILLS_DIR
 from quick_slide.render import workspace as W
 from quick_slide.server.present_routes import MOTION_PLAYER_PATH, motion_csp, motion_document
@@ -315,13 +316,13 @@ class MakeTests(MotionBase):
         self.fx.server.tools.extra_env["FAKE_ENGINE_LOG"] = str(self.log / "engine")
         body, run = self.make_motion()
         self.assertEqual(run["state"], "done", run["message"])
-        self.assertEqual([c["kind"] for c in writer_calls(self.log)], ["claude", "claude"])
+        self.assertEqual([c["kind"] for c in writer_calls(self.log)], ["claude"] * 6)
         cmds = [("quick" if "--quick" in c["argv"] else c["argv"][0]) for c in engine_calls(self.log)]
         # 1 回目の台本は形の NG（全拍の検査には進まない）。2 回目は quick → 全拍 → 組み立て
         self.assertEqual(cmds, ["quick", "quick", "check", "deck"])
-        second = writer_calls(self.log)[1]
+        second = writer_calls(self.log)[-1]
         self.assertTrue(second["retry"])
-        self.assertTrue(any("NG: 1枚目（id bad-scene）" in ln for ln in second["ng"]), second["ng"])
+        self.assertTrue(any("NG: 1枚目（id cover）" in ln for ln in second["ng"]), second["ng"])
 
     def test_a_full_check_ng_goes_back_to_the_writer(self) -> None:
         self.fx.server.tools.extra_env["FAKE_ENGINE_FULL_NG"] = "1"
@@ -341,12 +342,52 @@ class MakeTests(MotionBase):
         body, run = self.make_motion(title="絵文字")
         self.assertEqual(run["state"], "done", run["message"])
         calls = writer_calls(self.log)
-        self.assertEqual(len(calls), 2)
-        self.assertTrue(any("絵文字" in ln and "3枚目（id rules）" in ln for ln in calls[1]["ng"]), calls[1]["ng"])
+        self.assertEqual(len(calls), 6)
+        self.assertTrue(any("絵文字" in ln and "3枚目（id rules）" in ln for ln in calls[-1]["ng"]), calls[-1]["ng"])
+
+    def test_bad_json_during_scene_repair_keeps_the_original_check_result(self) -> None:
+        self.start(mode='invalid_repair_garbage')
+        _, run = self.make_motion()
+        self.assertEqual(run['state'], 'done', run['message'])
+        calls = writer_calls(self.log)
+        self.assertEqual(len(calls), 7)
+        self.assertTrue(any('NG: 1枚目（id cover）' in line for line in calls[-1]['ng']))
+        self.assertEqual(Path(calls[-1]['cwd']).name, 'cover')
+
+    def test_codex_also_writes_plan_and_scenes(self) -> None:
+        self.start(cfg=Settings(writer='codex', worker=WorkerSettings(parallel=4)))
+        _, run = self.make_motion()
+        self.assertEqual((run['state'], run['args']['writer']), ('done', 'codex'), run['message'])
+        calls = writer_calls(self.log)
+        self.assertEqual([c['kind'] for c in calls], ['codex'] * 5)
+        self.assertEqual(sum(c['what'] == 'motion_plan' for c in calls), 1)
+        self.assertEqual(sum(c['what'] == 'motion_scene' for c in calls), 4)
+
+    def test_resume_keeps_completed_scenes_and_skips_research_and_plan(self) -> None:
+        from test_create_from_screen import request_payload
+        self.start(cfg=Settings(worker=WorkerSettings(parallel=4, writer_timeout_seconds=2)))
+        self.fx.server.tools.extra_env['FAKE_MOTION_SLEEP_SCENE'] = 'why'
+        response = self.fx.post('/api/intakes', request_payload('4 場面で説明する（架空）', mode='motion'))
+        self.assertEqual(response.status, 201, response.body)
+        deck = response.json()['deck_id']
+        run = wait_until_idle(self.fx, deck)
+        self.assertEqual((run['state'], run['failure_kind']), ('failed', 'writer_timeout'))
+        self.assertIn('3/4', run['message'])
+        before = len(writer_calls(self.log))
+        self.fx.server.tools.extra_env.pop('FAKE_MOTION_SLEEP_SCENE')
+        resumed = self.fx.post(f'/api/decks/{deck}/resume')
+        self.assertEqual(resumed.status, 200, resumed.body)
+        run = wait_until_idle(self.fx, deck)
+        self.assertEqual(run['state'], 'done', run['message'])
+        calls = writer_calls(self.log)[before:]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]['what'], 'motion_scene')
+        self.assertEqual(Path(calls[0]['cwd']).name, 'why')
+        self.assertEqual(len(self.view(deck)['pages']), 4)
 
     def test_the_writer_prompt_is_the_motion_one(self) -> None:
         self.make_motion(style="standard")
-        call = writer_calls(self.log)[0]
+        call = next(c for c in writer_calls(self.log) if c["what"] == "motion_scene")
         self.assertTrue(call["motion"] and call["has_motion_contract"])
         self.assertFalse(call["has_pitch_contract"])
         text = "\n".join(call["prompt_lines"])

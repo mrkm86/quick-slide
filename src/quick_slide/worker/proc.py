@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import codecs
+import io
 import os
 import subprocess
 import threading
@@ -71,10 +73,17 @@ def run_process(cmd: list[str], *, cwd: Path, env: Mapping[str, str], timeout: f
 
     def read_out() -> None:
         assert proc.stdout is not None
-        for chunk in iter(lambda: proc.stdout.read(65536), ""):
+        # read(n) は n 文字か EOF まで待つ。read1 で届いた分だけ拾い、UTF-8 の境界は保持する。
+        decoder = io.IncrementalNewlineDecoder(codecs.getincrementaldecoder("utf-8")("replace"), translate=True)
+        while True:
+            raw = proc.stdout.buffer.read1(65536)
+            chunk = decoder.decode(raw, final=not raw)
             out_chunks.append(chunk)
             if out_file is not None:
                 out_file.write(chunk)
+                out_file.flush()
+            if not raw:
+                break
 
     def read_err() -> None:
         assert proc.stderr is not None

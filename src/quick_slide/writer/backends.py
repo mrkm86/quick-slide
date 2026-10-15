@@ -4,6 +4,7 @@
 - 道具を使わせない: `claude` は道具を空にし（`--tools ""`）、MCP・スキル・カスタマイズを読ませない。
   `codex` は読み取りだけの砂場（`-s read-only`）・承認を求めない（`-a never`）・利用者の設定を読まない・
   セッションを残さない。作業の根は描いた回の `writer/` の空のフォルダ
+- 受信したイベントは各呼び出しの `events.jsonl` に逐次保存する。途中の本文は採用せず、最終結果だけを読む
 - 応答から JSON のオブジェクトを 1 つだけ取り出す（説明やコードフェンスは許す。壊れた JSON は直さない）
 - 下調べ係（`writer/research.py`）も同じ CLI を同じ旗で呼び、**Web の検索と取得だけ**を足す（`web=True`）:
   `claude` は道具を WebSearch・WebFetch だけにして、その 2 つだけを前もって許し、ほかは聞かずに断る（`--permission-mode dontAsk`）。
@@ -20,6 +21,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +75,28 @@ class WriterFailed(Exception):
         super().__init__(message)
         self.kind = kind
         self.message = message
+
+
+
+# 資料ごとの場面並列とは別に、台本係・下調べ係のCLIの総数を抑える。
+MAX_CONCURRENT_CLI = 8
+_cli_slots = threading.BoundedSemaphore(MAX_CONCURRENT_CLI)
+
+
+def _limit_cli(runner):
+    @wraps(runner)
+    def limited(*args, **kwargs):
+        stop = kwargs.get("stop")
+        while not _cli_slots.acquire(timeout=0.1):
+            if stop is not None and stop.is_set():
+                raise WriterFailed("stopped", "サーバを止めたので、台本を書くのを中断しました。")
+        try:
+            if stop is not None and stop.is_set():
+                raise WriterFailed("stopped", "サーバを止めたので、台本を書くのを中断しました。")
+            return runner(*args, **kwargs)
+        finally:
+            _cli_slots.release()
+    return limited
 
 
 def choose_backend(setting: str, origin_runtime: str | None, available: dict[str, str | None]) -> tuple[str, str]:
@@ -162,15 +186,27 @@ def _claude_flags(exe: str, env: dict[str, str], cwd: Path, *, web: bool = False
     return flags
 
 
+@_limit_cli
 def ask_claude(exe: str, prompt: str, *, job_dir: Path, env: dict[str, str], timeout: float,
                stop: threading.Event | None, web: bool = False) -> str:
     job_dir.mkdir(parents=True, exist_ok=True)
-    cmd = [exe, "-p", "--output-format", "json", *_claude_flags(exe, env, job_dir, web=web)]
+    flags = _claude_flags(exe, env, job_dir, web=web)
+    help_text = _help_text(_claude_help_cache, [exe, "--help"], env, job_dir)
+    if not all(_knows(help_text, flag) for flag in ("--verbose", "--include-partial-messages")):
+        raise WriterFailed("missing", "台本を書く Claude Code が途中経過の出力に対応していません。"
+                                      "Claude Code を新しくしてから、もう一度頼んでください。")
+    cmd = [exe, "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", *flags]
     r = run_process(cmd, cwd=job_dir, env=env, timeout=timeout, stop=stop, stdin_text=prompt,
-                    stderr_path=job_dir / "stderr.txt")
+                    stdout_path=job_dir / "events.jsonl", stderr_path=job_dir / "stderr.txt")
     _raise_for_process(r, "claude")
+    answer = None
     try:
-        answer = json.loads(r.stdout)
+        for line in r.stdout.splitlines():
+            if not line.strip():
+                continue
+            event = json.loads(line)
+            if isinstance(event, dict) and event.get("type") == "result":
+                answer = event
     except ValueError:
         answer = None
     if not isinstance(answer, dict):
@@ -197,6 +233,7 @@ def _codex_command(exe: str, job_dir: Path, *, web: bool = False) -> list[str]:
             "-o", str(job_dir / "last-message.txt"), "-"]
 
 
+@_limit_cli
 def ask_codex(exe: str, prompt: str, *, job_dir: Path, env: dict[str, str], timeout: float,
               stop: threading.Event | None, web: bool = False) -> str:
     job_dir.mkdir(parents=True, exist_ok=True)
