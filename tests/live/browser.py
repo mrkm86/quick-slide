@@ -205,17 +205,27 @@ class Browser:
         self.profile = Path(tempfile.mkdtemp(prefix="quick-slide-chrome-"))
         # 孫（描画・GPU などの子の Chrome）ごと止められるように起こす。Windows で親だけ止めると、孫が
         # プロフィールのフォルダを握ったまま残り、後片付けで消せない
-        self.proc = oscompat.popen_group(
-            [exe, "--headless=new", "--remote-debugging-port=0", f"--user-data-dir={self.profile}",
-             "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--hide-scrollbars",
-             "--disable-extensions", "--disable-background-timer-throttling",
-             "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
-             f"--window-size={width},{height}", "about:blank"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.port = self._wait_for_port()
         self.pages: list[Page] = []
+        log_path = self.profile / "chrome.log"
+        with log_path.open("wb") as stderr:
+            self.proc = oscompat.popen_group(
+                [exe, "--headless=new", "--remote-debugging-port=0", f"--user-data-dir={self.profile}",
+                 "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--hide-scrollbars",
+                 "--disable-extensions", "--disable-background-timer-throttling",
+                 "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
+                 f"--window-size={width},{height}", "about:blank"],
+                stdout=subprocess.DEVNULL, stderr=stderr)
+        try:
+            self.port = self._wait_for_port()
+        except Exception as exc:
+            # __init__ が失敗すると呼び側は close を登録できない。遅れて起きる Chrome もここで回収する。
+            try:
+                tail = log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
+            finally:
+                self.close()
+            raise RuntimeError(f"{exc}\nChrome stderr:\n{tail}") from exc
 
-    def _wait_for_port(self, seconds: float = 30.0) -> int:
+    def _wait_for_port(self, seconds: float = 60.0) -> int:
         f = self.profile / "DevToolsActivePort"
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
