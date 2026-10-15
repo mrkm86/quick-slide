@@ -68,8 +68,9 @@ class UpdateRunTests(unittest.TestCase):
         self.tmp = temp_dir(self)
         self.cache = self.tmp / ".claude/plugins/cache/quick-slide/quick-slide"
         self.root = plugin_at(self.cache / "2.0.0", "2.0.0")
-        for target, value in (("plugin_root", lambda: self.root),
-                              ("os.environ", {"CLAUDE_CONFIG_DIR": str(self.tmp / ".claude"), "PATH": ""})):
+        # ホームも試験のフォルダにする（実の ~/.codex を見ない。Windows は USERPROFILE が無いとホームを決められない）
+        env = {"CLAUDE_CONFIG_DIR": str(self.tmp / ".claude"), "PATH": "", "HOME": str(self.tmp), "USERPROFILE": str(self.tmp)}
+        for target, value in (("plugin_root", lambda: self.root), ("os.environ", env)):
             p = mock.patch.object(update, target, value) if target != "os.environ" else mock.patch.dict(update.os.environ, value, clear=True)
             p.start()
             self.addCleanup(p.stop)

@@ -219,10 +219,12 @@ class Browser:
         f = self.profile / "DevToolsActivePort"
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
-            if f.is_file():
+            try:
                 text = f.read_text(encoding="utf-8").splitlines()
-                if text and text[0].strip().isdigit():
-                    return int(text[0].strip())
+            except OSError:   # まだ無い・Windows では Chrome が書いている途中だと開けない（PermissionError）
+                text = []
+            if text and text[0].strip().isdigit():
+                return int(text[0].strip())
             if self.proc.poll() is not None:
                 raise RuntimeError(f"Chrome が起動直後に終了した（exit {self.proc.returncode}）")
             time.sleep(0.05)
