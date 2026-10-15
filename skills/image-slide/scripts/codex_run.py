@@ -186,7 +186,7 @@ def check_auth(cli: str, log=print) -> dict:
             _run_auth_cmd([cli, "exec", "--skip-git-repo-check", "-s", "read-only", "-C", work,
                            "-c", "model_reasoning_effort=low", "Reply with the single word: ok"], 180, "トークンの更新")
         finally:
-            shutil.rmtree(work, ignore_errors=True)
+            _remove(work)
         raw = _read_auth(path)
         f = freshness(raw)
         if not f["fresh"]:
@@ -241,6 +241,17 @@ def _flat_refs(refs: list[pathlib.Path], work: pathlib.Path) -> list[pathlib.Pat
     return out
 
 
+def _remove(d: "str | pathlib.Path", tries: int = 50) -> None:
+    """フォルダを消す。Windows は止めた子の握りやウイルス対策の検査で、少しのあいだ消せないことがある。
+    1 回きりで諦めると、隔離ホーム（auth.json の写し）が黙って残るので、消えるまで少し待って試し直す（最大 5 秒）。"""
+    d = pathlib.Path(d)
+    for _ in range(tries):
+        shutil.rmtree(d, ignore_errors=True)
+        if not d.exists():
+            return
+        time.sleep(0.1)
+
+
 def _private_home(snapshot: bytes) -> pathlib.Path:
     """使い捨ての隔離ホーム。作る途中で失敗したら、作りかけ（auth.json のコピー）を消してから投げ直す。"""
     home = pathlib.Path(tempfile.mkdtemp(prefix="image-slide-home."))
@@ -253,7 +264,7 @@ def _private_home(snapshot: bytes) -> pathlib.Path:
         (home / "config.toml").write_text('model_reasoning_effort = "low"\n', encoding="utf-8")
         (home / "generated_images").mkdir()
     except BaseException:
-        shutil.rmtree(home, ignore_errors=True)
+        _remove(home)
         raise
     return home
 
@@ -359,7 +370,7 @@ def generate(cli: str, snapshot: bytes, text: str, refs: list[pathlib.Path], des
             _publish_logs(home, out_log, err_log, secrets)
         for d in (home, work):
             if d is not None:
-                shutil.rmtree(d, ignore_errors=True)
+                _remove(d)
 
 
 def _publish_logs(home: pathlib.Path, out_log: pathlib.Path, err_log: pathlib.Path, secrets: list[str]) -> None:

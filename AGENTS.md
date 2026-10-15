@@ -48,6 +48,7 @@ QUICK_SLIDE_FRESH_E2E=1 bash tests/run.sh   # 上に加えて「配った機体�
 ```
 
 テストは使い捨ての `QUICK_SLIDE_HOME` とキャッシュで走り、実の置き場を読まない・書かない。
+PR では、GitHub Actions が同じものを Windows で回す（`.github/workflows/test.yml`。文書だけの変更・リリースの PR・main への push では回さない。macOS は公開後に足す・`docs/adr/0023-ci-windows-first.md`）。
 
 ## 4. 進め方
 

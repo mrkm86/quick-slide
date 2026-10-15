@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from fnmatch import fnmatchcase
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import math
@@ -58,6 +59,8 @@ def main() -> int:
     parser.add_argument("-j", "--jobs", type=int, default=4)
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-k", action="append", default=[])
+    # -k の逆: 名前が合う試験を除く（-k と同じ書き方。CI で混みに弱い組と、ほかの組に分けて回す）
+    parser.add_argument("-x", "--exclude", action="append", default=[])
     parser.add_argument("--worker", nargs=2, metavar=("MANIFEST", "REPORT"))
     args = parser.parse_args()
     if args.worker:
@@ -71,9 +74,12 @@ def main() -> int:
     suite = loader.discover("tests", top_level_dir="tests")
     for error in loader.errors:
         print(error, file=sys.stderr, flush=True)
+    excludes = [x if "*" in x else f"*{x}*" for x in args.exclude]
     by_module = {}
     for test in cases(suite):
         name = test.id()
+        if any(fnmatchcase(name, x) for x in excludes):
+            continue
         by_module.setdefault(name.rsplit(".", 2)[0], []).append(name)
     groups = list(by_module.values())
     if args.jobs > 1:
@@ -85,7 +91,8 @@ def main() -> int:
     started = time.monotonic()
 
     def run(names):
-        with tempfile.TemporaryDirectory(prefix="qs-test-process-") as folder:
+        # 消せないものが残っても、ほかの組の結果を捨てない（Windows では握られたファイルを消せない。残りは run.sh が最後に消す）
+        with tempfile.TemporaryDirectory(prefix="qs-test-process-", ignore_cleanup_errors=True) as folder:
             root = Path(folder)
             env = os.environ.copy()
             for key, directory in (("TMPDIR", "tmp"), ("CODEX_HOME", "no-codex-home"),

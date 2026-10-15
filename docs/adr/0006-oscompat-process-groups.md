@@ -32,6 +32,8 @@ mac・Linux と Windows で書き方が変わるものを、`oscompat.py` に寄
 - 台本係・描き係が起こす子（`popen_group`）は、起こした直後に **閉じると中を全部止める Job Object**
   （`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`）に入れる。子がそのあとに起こす孫も、同じ Job に入る
 - 止めるときは Job ごと止める（`kill_group`）。子が終わったら Job を閉じる（`end_group`）。閉じたときに残っていた孫も止まる
+  - 追記（Issue #5）: `kill_group` は Job の中が全部終わるまで待つ（`TerminateJobObject` は終わりを待たない）。
+    `.cmd` の包みの cmd.exe だけ待つと、孫がまだ隔離ホームのファイルを握っていて、直後の削除が黙って失敗し、`auth.json` の写しが残った（CI の Windows で見つかった）
 - Job に入れられなかったときは、`taskkill /T /F /PID` に頼る
 - **常駐のサーバ（`start` と再起動の後継）は Job に入れない**（`group_kwargs` だけで起こす）。起こした CLI が
   終わっても生き残らせるため

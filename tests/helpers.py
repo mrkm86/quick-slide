@@ -146,7 +146,8 @@ class ServerFixture:
     # --- HTTP ---
     def request(self, method: str, path: str, body: Any = None, headers: dict[str, str] | None = None, *,
                 host: str | None = None, raw_body: bytes | None = None, session: bool = False) -> HttpResult:
-        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        # 30 秒: 遅い機械（CI の Windows で全部を並列に回すと、軽い要求でも 10 秒を超えた）でも落ちない。止まったら落ちる
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)
         h: dict[str, str] = {"Host": host if host is not None else f"127.0.0.1:{self.port}"}
         data: bytes | None = raw_body
         if body is not None:

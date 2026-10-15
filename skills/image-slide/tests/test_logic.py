@@ -1515,6 +1515,10 @@ def t_formats_and_thumbs():
 TESTS = {k[2:]: v for k, v in globals().items() if k.startswith("t_")}
 
 if __name__ == "__main__":
+    # 試験の表示（失敗の報告・skip の理由）だけは UTF-8 にする。英語の Windows（cp1252）では日本語を print しただけで落ちる。
+    # PYTHONIOENCODING は使わない: 子の偽物や本体の出力にも効いて、文字コードの書き忘れを隠す（tests/run.sh と同じ）
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8")
     name = sys.argv[1] if len(sys.argv) > 1 else ""
     if name not in TESTS:
         print("使えるテスト: " + ", ".join(TESTS))
