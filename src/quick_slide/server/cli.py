@@ -20,7 +20,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from ..errors import QuickSlideError, ValidationError
-from ..oscompat import group_kwargs
+from ..oscompat import group_kwargs, kill_group
 from ..paths import SAMPLES_DIR, DataRoot
 from ..updates import fetch_latest
 from ..settings import BROWSER_MODES, Settings
@@ -142,7 +142,12 @@ def cmd_start(args: argparse.Namespace) -> int:
             break
         time.sleep(0.1)
     rc = child.poll()
-    _print_json({"ok": False, "code": "start_failed", "message": "サーバの起動を確認できませんでした。runtime/server.out と runtime/server.log を確認してください。",
+    # 確認できなかった子を残すと、失敗を返したあとに遅れて起動してしまう。
+    # ここで起こした子だけを止める（二重起動で先に起きたサーバには触らない）。
+    if rc is None:
+        kill_group(child)
+        rc = child.wait()
+    _print_json({"ok": False, "code": "start_failed", "message": "サーバの起動を確認できませんでした。起こした子プロセスは終了しました。runtime/server.out と runtime/server.log を確認してください。",
                  "child_exit_code": rc, "stdio": str(root.server_stdio_path)})
     return 3
 
@@ -307,7 +312,7 @@ def cmd_launch(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="quick_slide.server", description="Quick Slide 常駐サーバ")
     p.add_argument("--home", default=None, help="データ置き場（既定: $QUICK_SLIDE_HOME または ~/.quick-slide）")
-    p.add_argument("--timeout", type=float, default=10.0, help="起動・停止・状態確認の待ち秒数")
+    p.add_argument("--timeout", type=float, default=None, help="待ち秒数（既定: 起動30秒、停止・状態確認10秒）")
     sub = p.add_subparsers(dest="command", required=True)
     for name in ("serve", "start"):
         sp = sub.add_parser(name)
@@ -336,6 +341,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.timeout is None:
+        args.timeout = 30.0 if args.command == "start" else 10.0
     try:
         if args.command == "serve":
             return cmd_serve(args)

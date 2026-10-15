@@ -158,6 +158,32 @@ class StartupSweepTests(unittest.TestCase):
         self.assertIsNone(summary["launches_expired"], "失敗した掃除の件数は 0 ではなく null（測っていない）")
 
 
+class StartDeadlineTests(unittest.TestCase):
+    def test_unconfirmed_child_is_reaped_before_failure_is_returned(self) -> None:
+        from unittest.mock import patch
+        from quick_slide.server import cli
+
+        root = DataRoot(temp_dir(self) / "home")
+        args = cli.build_parser().parse_args(["--home", str(root.root), "--timeout", "0.1", "start"])
+        real_popen = subprocess.Popen
+        children = []
+
+        def delayed_child(cmd, **kwargs):
+            # 起動前で止まる本物の子。server.json がまだ無くても回収できることを確かめる。
+            child = real_popen([sys.executable, "-c", "import time; time.sleep(60)"], **kwargs)
+            children.append(child)
+            self.addCleanup(lambda: child.poll() is None and child.kill())
+            return child
+
+        with patch.object(cli.subprocess, "Popen", side_effect=delayed_child), patch.object(cli, "_print_json") as output:
+            self.assertEqual(cli.cmd_start(args), 3)
+        self.assertIsNotNone(children[0].poll(), "失敗を返す前に子が終了している")
+        result = output.call_args.args[0]
+        self.assertEqual(result["code"], "start_failed")
+        self.assertIsNotNone(result["child_exit_code"])
+        self.assertFalse(root.server_json_path.exists())
+
+
 class RealProcessLifecycleTests(unittest.TestCase):
     """実プロセス: start（デタッチ）→ status → 二重 start → health → 静的配信 → attach → stop。stdout/stderr に秘匿値が無い。"""
 
@@ -178,7 +204,7 @@ class RealProcessLifecycleTests(unittest.TestCase):
             except ProcessLookupError:
                 pass
 
-    def _cli(self, *args: str, timeout: float = 30) -> tuple[int, dict]:
+    def _cli(self, *args: str, timeout: float = 60) -> tuple[int, dict]:
         proc = subprocess.run([sys.executable, "-m", "quick_slide.server", *args], env=self.env, cwd=str(REPO),
                               capture_output=True, text=True, timeout=timeout, encoding="utf-8")
         last = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else "{}"

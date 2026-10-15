@@ -44,7 +44,7 @@ class RestartProcessTests(unittest.TestCase):
             "CODEX_HOME": str(fake_codex_home(self.tmp)), "IMAGE_SLIDE_CACHE": str(self.tmp / "image-slide-cache"),
             "IMAGE_SLIDE_CONFIG": str(self.tmp / "no-config.yaml"),
         }
-        self.addCleanup(self.cli, "stop")
+        self.addCleanup(self.stop_server)
 
     # --- 道具 ---
     def write_settings(self, data: dict) -> None:
@@ -57,6 +57,40 @@ class RestartProcessTests(unittest.TestCase):
         r = subprocess.run([sys.executable, "-m", "quick_slide.server", "--home", str(self.home), *args],
                            env=self.env, capture_output=True, text=True, timeout=60, cwd=str(REPO), encoding="utf-8")
         return json.loads(r.stdout.strip().splitlines()[-1])
+
+    def logs(self) -> str:
+        tails = []
+        for name in ("server.out", "server.log"):
+            path = self.home / "runtime" / name
+            if path.exists():
+                tails.append(f"{name}:\n" + path.read_text(encoding="utf-8", errors="replace")[-3000:])
+        return "\n".join(tails)
+
+    def assert_started(self) -> dict:
+        result = self.cli("start")
+        self.assertTrue(result.get("ok"), f"{result}\n{self.logs()}")
+        return result
+
+    def stop_server(self) -> None:
+        # stop はプロセスの終了まで待つ。失敗を黙って捨てて置き場を消さない。
+        deadline = time.monotonic() + 30
+        while True:
+            result = self.cli("stop")
+            if result.get("ok"):
+                return
+            if time.monotonic() >= deadline:
+                from quick_slide.oscompat import pid_alive
+                import signal
+
+                rec = self.record()
+                if pid_alive(rec["pid"]):
+                    os.kill(rec["pid"], getattr(signal, "SIGKILL", signal.SIGTERM))
+                    until = time.monotonic() + 10
+                    while pid_alive(rec["pid"]) and time.monotonic() < until:
+                        time.sleep(0.1)
+                self.assertFalse(pid_alive(rec["pid"]), f"サーバが残っている: {result}\n{self.logs()}")
+                return
+            time.sleep(0.2)
 
     def record(self) -> dict:
         return json.loads((self.home / "runtime" / "server.json").read_text(encoding="utf-8"))
@@ -102,7 +136,7 @@ class RestartProcessTests(unittest.TestCase):
 
     # --- 試験 ---
     def test_restart_comes_back_on_the_same_url_with_a_new_instance(self) -> None:
-        started = self.cli("start")
+        started = self.assert_started()
         self.assertTrue(started["ok"], started)
         status, body = self.http("POST", "/api/server/restart", {"mode": "now"})
         self.assertEqual(status, 202, body)
@@ -114,7 +148,7 @@ class RestartProcessTests(unittest.TestCase):
         self.assertFalse(h["settings"]["restart_required"])
 
     def test_a_new_port_is_reported_and_the_new_server_is_there(self) -> None:
-        started = self.cli("start")
+        started = self.assert_started()
         new_port = free_port()
         self.write_settings({"server": {"port": new_port}, "worker": {"parallel": 1}})
         self.assertTrue(self.health(self.port)["settings"]["restart_required"], "手で直したことに気づく")
@@ -127,7 +161,7 @@ class RestartProcessTests(unittest.TestCase):
         self.assertEqual(self.record()["url"], body["expected_url"])
 
     def test_an_address_this_machine_does_not_have_falls_back_to_the_last_good_settings(self) -> None:
-        started = self.cli("start")
+        started = self.assert_started()
         self.write_settings({"server": {"port": self.port, "host": "203.0.113.7"}, "writer": "codex",
                              "worker": {"parallel": 1}})
         status, body = self.http("POST", "/api/server/restart", {"mode": "now"})
@@ -146,7 +180,7 @@ class RestartProcessTests(unittest.TestCase):
 
     def test_wait_mode_lets_the_running_job_finish_first(self) -> None:
         self.env.update({"FAKE_WRITER_MODE": "slow", "FAKE_WRITER_SLEEP": "4"})
-        started = self.cli("start")
+        started = self.assert_started()
         status, intake = self.http("POST", "/api/intakes", intake_payload(mode="pitch"))
         self.assertEqual(status, 201, intake)
         self.wait("仕事が走らない", lambda: self.health(self.port)["worker"]["busy"] == 1)
@@ -171,7 +205,7 @@ class RestartProcessTests(unittest.TestCase):
     def test_now_mode_resumes_a_drawing_job_from_the_drawing_stage(self) -> None:
         """今すぐ: 走っている仕事の終わりを書かずに止まり、次のサーバの起動時の掃除が描く段から続ける（P2 と同じ戻し方）。"""
         self.env.update({"FAKE_CODEX_SLEEP": "3"})
-        started = self.cli("start")
+        started = self.assert_started()
         status, intake = self.http("POST", "/api/intakes", intake_payload(mode="pitch"))
         self.assertEqual(status, 201, intake)
         progress = f"/api/decks/{intake['deck_id']}/progress"
@@ -190,7 +224,7 @@ class RestartProcessTests(unittest.TestCase):
         self.assertEqual(len(list((self.tmp / "writer-calls").glob("*.json"))), 1, "台本係はもう一度呼ばない")
 
     def test_refusals_change_nothing(self) -> None:
-        started = self.cli("start")
+        started = self.assert_started()
         status, body = self.http("POST", "/api/server/restart", {"mode": "later"})
         self.assertEqual((status, body["error"]["code"]), (400, "bad_restart_mode"))
         status, body = self.http("POST", "/api/server/restart", {"mode": "now"}, session=False)
