@@ -36,6 +36,8 @@ class MotionKeysTest(PresentLiveBase):
         r = page.eval("(() => { const b = document.querySelector('#slide iframe').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()")
         k = r[2] / 1920
         self.click(page, r[0] + (200 + 150) * k, r[1] + (800 + 40) * k)
+        # フォーカスが中に移ってからキーを打つ（決まった秒数だけ待つと、遅い機械ではキーが先に着いてページが進んだ）
+        page.until("document.activeElement === document.querySelector('#slide iframe')", what="クリックでフォーカスが中へ移る")
         time.sleep(0.3)
         self.assertEqual(count(page).replace("\n", ""), "1 / 4拍 1 / 2", "contenteditable のクリックでページが動かない")
         for key in ("ArrowRight", "ArrowLeft", "Enter"):

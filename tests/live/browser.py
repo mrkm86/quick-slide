@@ -24,11 +24,15 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from quick_slide import oscompat
+
 CHROME_PATHS = (
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
     "/usr/bin/google-chrome",
     "/usr/bin/chromium",
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
 )
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"  # RFC 6455
@@ -199,13 +203,15 @@ class Browser:
         if exe is None:
             raise RuntimeError("Chrome が無い")
         self.profile = Path(tempfile.mkdtemp(prefix="quick-slide-chrome-"))
-        self.proc = subprocess.Popen(
+        # 孫（描画・GPU などの子の Chrome）ごと止められるように起こす。Windows で親だけ止めると、孫が
+        # プロフィールのフォルダを握ったまま残り、後片付けで消せない
+        self.proc = oscompat.popen_group(
             [exe, "--headless=new", "--remote-debugging-port=0", f"--user-data-dir={self.profile}",
              "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--hide-scrollbars",
              "--disable-extensions", "--disable-background-timer-throttling",
              "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
              f"--window-size={width},{height}", "about:blank"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.port = self._wait_for_port()
         self.pages: list[Page] = []
 
@@ -213,10 +219,12 @@ class Browser:
         f = self.profile / "DevToolsActivePort"
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
-            if f.is_file():
+            try:
                 text = f.read_text(encoding="utf-8").splitlines()
-                if text and text[0].strip().isdigit():
-                    return int(text[0].strip())
+            except OSError:   # まだ無い・Windows では Chrome が書いている途中だと開けない（PermissionError）
+                text = []
+            if text and text[0].strip().isdigit():
+                return int(text[0].strip())
             if self.proc.poll() is not None:
                 raise RuntimeError(f"Chrome が起動直後に終了した（exit {self.proc.returncode}）")
             time.sleep(0.05)
@@ -239,9 +247,6 @@ class Browser:
                 p.close()
             except OSError:
                 pass
-        self.proc.terminate()
-        try:
-            self.proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
+        oscompat.kill_group(self.proc, grace=10)
+        oscompat.end_group(self.proc)
         shutil.rmtree(self.profile, ignore_errors=True)

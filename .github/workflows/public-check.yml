@@ -1,0 +1,26 @@
+# 公開してはいけないものが入っていないかを、PR ごとに必ず見る（文書だけの変更でも。docs/adr/0023-ci-windows-first.md）。
+#
+# - push のあとに動くので、出してはいけないものを止めるのは push 前の hooks（tools/public_check.py）の役目。
+#   ここはすぐ気づくための最後の砦で、名前の一覧は渡さない（見るのはメールアドレスと、この機械のもの）
+# - 標準ライブラリだけで動くので、いちばん安い Linux で回す
+
+name: public-check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tree:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: 公開してはいけないもの（追跡しているファイル全体）
+        run: python3 tools/public_check.py tree
