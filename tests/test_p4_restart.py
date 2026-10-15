@@ -84,7 +84,8 @@ class RestartProcessTests(unittest.TestCase):
             status, body = self.http("GET", "/api/health", port=port, session=False)
         except (OSError, http.client.HTTPException, ValueError):
             return None
-        return body if status in (200, 503) else None
+        # 停止中の 503 は health 本文ではなくエラー本文になる。
+        return body if status in (200, 503) and "instance_id" in body else None
 
     def wait(self, what: str, fn, seconds: float = 60.0):
         deadline = time.monotonic() + seconds

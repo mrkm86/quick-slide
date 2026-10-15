@@ -282,6 +282,9 @@ class QuickSlideServer:
         self._httpd: _HTTPServer | None = None
         self._lock = InstanceLock(self.root.server_lock_path)
         self._stopping = threading.Event()
+        self._requests = threading.Condition()
+        self._active_requests = 0
+        self._closing = False
         self.tools = tools or Tools()
         self.start_workers = start_workers   # 試験で取り込みの形だけを見るときは起こさない
         # 同梱の見本の置き場（docs/adr/0007-bundled-samples.md）。常駐の serve・start は `paths.SAMPLES_DIR` を渡す。
@@ -401,7 +404,14 @@ class QuickSlideServer:
         threading.Thread(target=self.shutdown, name="quick-slide-stop", daemon=True).start()
 
     def close(self) -> None:
-        # ワーカー → httpd → Store → server.json → server.lock の順。ワーカーは台帳に終わりを書いてから止まる
+        # 新しい要求を断り、DB を使い得る要求が全て抜けるまで待つ。
+        # daemon の接続スレッドは HTTP keep-alive の読み待ちも含むので join しない。
+        with self._requests:
+            self._closing = True
+            self._stopping.set()
+            self._requests.wait_for(lambda: self._active_requests == 0)
+        # 要求 → ワーカー → httpd → Store → server.json → server.lock の順。
+        # ワーカーは台帳に終わりを書いてから止まる
         if self.workers is not None:
             try:
                 self.workers.stop(abandon=self._abandon)
@@ -504,6 +514,24 @@ class QuickSlideServer:
 
     # --- 要求処理 ---
     def dispatch(self, h: _Handler) -> None:
+        with self._requests:
+            if self._closing or self._stopping.is_set():
+                accepted = False
+            else:
+                self._active_requests += 1
+                accepted = True
+        if not accepted:
+            self._send(h, h.command, Response.json(
+                503, ApiError(503, "server_stopping", "サーバを停止しています。").body(), close=True))
+            return
+        try:
+            self._dispatch(h)
+        finally:
+            with self._requests:
+                self._active_requests -= 1
+                self._requests.notify_all()
+
+    def _dispatch(self, h: _Handler) -> None:
         cid = secrets.token_hex(6)
         started = time.monotonic()
         path, query = split_target(h.path)
