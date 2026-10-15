@@ -41,7 +41,7 @@ TYPES = {
     "compare": (HEAD_KEYS | {"left", "right", "accent", "arrow"}, True, ("headline", "left", "right")),
     "bar-chart": (HEAD_KEYS | {"bars", "unit", "note", "max", "callout"}, True, ("headline", "bars")),
     "table": (HEAD_KEYS | {"columns", "rows", "highlight", "widths"}, True, ("headline", "columns", "rows")),
-    "photo": ({"image", "layout", "split", "kicker", "headline", "body", "caption"}, False, ("headline",)),
+    "photo": ({"image", "layout", "split", "kicker", "headline", "body", "caption", "hide_text"}, False, ("headline",)),
     "quote": ({"quote", "by", "position", "kicker", "source", "layout", "image"}, True, ("quote",)),
     "bullets": (HEAD_KEYS | {"items", "image", "side", "split"}, True, ("headline", "items")),
     "timeline": (HEAD_KEYS | {"items", "current"}, True, ("headline", "items")),
@@ -175,6 +175,11 @@ def load(path) -> dict:
         if "_visual" in spec and not isinstance(spec["_visual"], str):
             raise ScriptError(f"{no}枚目（{typ}）: _visual は文字で書く")
         characters_of(spec, path.parent, no)   # 書き方の誤りは読むときに止める（ファイルの有無も）
+        if typ == "photo" and "hide_text" in spec:   # html-slide と同じ所で止める（ADR 0018）
+            if not isinstance(spec["hide_text"], bool):
+                raise ScriptError(f"{no}枚目（photo）: hide_text は true か false")
+            if spec["hide_text"] and spec.get("layout", "full") != "full":
+                raise ScriptError(f"{no}枚目（photo）: hide_text は layout: full のときだけ")
         if typ == "quote" and spec.get("layout") == "full":
             chrome = False
         out.append({"no": no, "type": typ, "spec": spec, "chrome": chrome})
@@ -205,6 +210,12 @@ def headline_of(spec) -> str:
     if spec.get("value"):
         return plain(str(spec["value"]) + str(spec.get("unit") or ""))
     return spec.get("type", "")
+
+
+def image_only(spec) -> bool:
+    """photo の全面の hide_text: 画像だけを描くページ（扉絵）。見出しはページの名前（文脈の一覧・代替テキスト）として
+    持つだけで、絵には描かせない（html-slide の ADR 0026 と同じ意味・ADR 0018）。"""
+    return spec.get("type") == "photo" and spec.get("hide_text") is True
 
 
 def plain(s: str) -> str:
@@ -295,7 +306,9 @@ def content_of(spec, images: list[dict], ref_offset: int = 0) -> dict:
             return [walk(x) for x in v]
         return v
 
-    drop = COMMON_KEYS | LAYOUT_KEYS.get(typ, set())
+    drop = COMMON_KEYS | LAYOUT_KEYS.get(typ, set()) | {"hide_text"}
+    if image_only(spec):   # 画像だけのページ: 出典（caption）のほかは文字を描かせない
+        drop |= {"kicker", "headline", "body"}
     out = {}
     for k, v in spec.items():
         if k in drop or k.startswith("_"):
