@@ -143,10 +143,13 @@ class Page:
         self.call("Runtime.enable")
         self.call("Page.enable")
 
-    def call(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def call(self, method: str, params: dict[str, Any] | None = None, *, session_id: str | None = None) -> dict[str, Any]:
         self._id += 1
         mine = self._id
-        self.ws.send(json.dumps({"id": mine, "method": method, "params": params or {}}))
+        message = {"id": mine, "method": method, "params": params or {}}
+        if session_id is not None:
+            message["sessionId"] = session_id
+        self.ws.send(json.dumps(message))
         while True:
             msg = json.loads(self.ws.recv())
             if msg.get("method") == "Runtime.exceptionThrown":
@@ -156,18 +159,19 @@ class Page:
                     raise RuntimeError(f"{method}: {msg['error']}")
                 return msg.get("result") or {}
 
-    def eval(self, expression: str) -> Any:
-        r = self.call("Runtime.evaluate", {"expression": expression, "returnByValue": True, "awaitPromise": True})
+    def eval(self, expression: str, *, session_id: str | None = None) -> Any:
+        r = self.call("Runtime.evaluate", {"expression": expression, "returnByValue": True, "awaitPromise": True},
+                      session_id=session_id)
         if "exceptionDetails" in r:
             raise JsError(_describe(r["exceptionDetails"]))
         return r.get("result", {}).get("value")
 
-    def until(self, expression: str, *, seconds: float = 20.0, what: str = "") -> Any:
+    def until(self, expression: str, *, seconds: float = 20.0, what: str = "", session_id: str | None = None) -> Any:
         """真になるまで待つ。**待っている間も例外は拾い続ける**ので、凍った理由が結果に出る。"""
         deadline = time.monotonic() + seconds
         last: Any = None
         while time.monotonic() < deadline:
-            last = self.eval(expression)
+            last = self.eval(expression, session_id=session_id)
             if last:
                 return last
             self.raise_if_broken()

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import time
 import unittest
@@ -23,31 +24,53 @@ from .test_present import PresentLiveBase, count, press  # noqa: E402
 
 
 class MotionKeysTest(PresentLiveBase):
-    def click(self, page, x: float, y: float) -> None:
-        page.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y})
-        self.click_info = page.eval(f"""(() => {{
-          const rect = el => {{ const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; }};
-          return {{ viewport: [innerWidth, innerHeight, devicePixelRatio],
-            frame: rect(document.querySelector('#slide iframe')), bar: rect(document.getElementById('bar')),
-            hit: document.elementFromPoint({x}, {y}).outerHTML.slice(0, 500) }};
-        }})()""")
-        event = {"x": x, "y": y, "button": "left", "clickCount": 1}
-        page.call("Input.dispatchMouseEvent", {"type": "mousePressed", **event})
+    def click(self, page, selector: str) -> None:
+        # activeElement は背面のタブにも残る。実際の入力先を前面にしてから操作する。
+        page.call("Page.bringToFront")
+        page.until("document.hasFocus() && document.visibilityState === 'visible'",
+                   what="操作するタブが前面で焦点を持つ")
+        document = page.call("DOM.getDocument")["root"]["nodeId"]
+        node = page.call("DOM.querySelector", {"nodeId": document, "selector": "#slide iframe"})["nodeId"]
+        frame = page.call("DOM.describeNode", {"nodeId": node})["node"]["frameId"]
+        # 別プロセスのフレームをデバッグ対象として列挙してから接続する。
+        page.call("Target.getTargets")
+        session = page.call("Target.attachToTarget", {"targetId": frame, "flatten": True})["sessionId"]
         try:
-            # 別プロセスの iframe が押下を受けて焦点を得てから離す。クリックの再送はしない。
-            page.until("document.activeElement === document.querySelector('#slide iframe')",
-                       what=f"押下で iframe に焦点が移る: {self.click_info}")
+            page.call("Runtime.enable", session_id=session)
+            box = page.eval("(() => { const r = document.querySelector('#slide iframe').getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })()")
+            # 外枠の ready と、中の resize による舞台の拡縮は別。実際の表示領域に合うまで待つ。
+            page.until(f"""Math.abs(innerWidth - {box[2]}) <= 1 && Math.abs(innerHeight - {box[3]}) <= 1 &&
+                Math.abs(document.getElementById('stage').getBoundingClientRect().width -
+                         1920 * Math.min(innerWidth / 1920, innerHeight / 1080)) < 1""",
+                       session_id=session, what="iframe の表示領域と舞台の拡縮が合う")
+            target = json.dumps(selector)
+            point = page.until(f"""(() => {{
+              const el = document.querySelector({target});
+              if (!el) return false;
+              const r = el.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
+              const hit = document.elementFromPoint(x, y);
+              return r.width > 0 && r.height > 0 && hit && el.contains(hit) && [x, y];
+            }})()""", session_id=session, what="クリック対象が実際に表示されている")
+            x, y = box[0] + point[0], box[1] + point[1]
+            self.click_info = {"selector": selector, "frame": box, "point": [x, y]}
+            page.until(f"document.elementFromPoint({x}, {y}) === document.querySelector('#slide iframe')",
+                       what=f"外枠の部品がクリック対象を覆っていない: {self.click_info}")
+            page.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y})
+            event = {"x": x, "y": y, "button": "left", "clickCount": 1}
+            page.call("Input.dispatchMouseEvent", {"type": "mousePressed", **event})
+            try:
+                page.until("document.activeElement === document.querySelector('#slide iframe')",
+                           what=f"押下で iframe に焦点が移る: {self.click_info}")
+            finally:
+                page.call("Input.dispatchMouseEvent", {"type": "mouseReleased", **event})
         finally:
-            page.call("Input.dispatchMouseEvent", {"type": "mouseReleased", **event})
+            page.call("Target.detachFromTarget", {"sessionId": session})
 
     def test_keys_in_editable_and_controls_do_not_turn_pages(self) -> None:
         deck = self.make("motion", "claude_code")
         page = self.open(deck)
         self.assertEqual(count(page).replace("\n", ""), "1 / 4拍 1 / 2")
-        # 編集できる要素（舞台 1920x1080 の 200,800 → 画面 1280x720 の 約 233,560）をクリックして、キーを打つ
-        r = page.eval("(() => { const b = document.querySelector('#slide iframe').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()")
-        k = r[2] / 1920
-        self.click(page, r[0] + (200 + 150) * k, r[1] + (800 + 40) * k)
+        self.click(page, "#ce")
         # フォーカスが中に移ってからキーを打つ（決まった秒数だけ待つと、遅い機械ではキーが先に着いてページが進んだ）
         page.until("document.activeElement === document.querySelector('#slide iframe')", what="クリックでフォーカスが中へ移る")
         time.sleep(0.3)
@@ -64,10 +87,6 @@ class MotionKeysTest(PresentLiveBase):
         time.sleep(0.6)
         self.assertEqual(count(page).replace("\n", ""), base, "ボタンの Enter でページが動かない")
 
-    def geometry(self, page):
-        r = page.eval("(() => { const b = document.querySelector('#slide iframe').getBoundingClientRect(); return [b.left, b.top, b.width]; })()")
-        return r[0], r[1], r[2] / 1920
-
     # 本物のブラウザの別プロセスの iframe には、続けて 2 回クリックを送ると 2 回目が届かないことがある（CDP の送り方の都合）。
     # だから 1 つの画面に 1 回のクリックだけ送る
 
@@ -77,20 +96,30 @@ class MotionKeysTest(PresentLiveBase):
         for attempt in range(5):
             with self.subTest(attempt=attempt):
                 page = self.open(deck)
-                x0, y0, k = self.geometry(page)
-                self.click(page, x0 + (1200 + 150) * k, y0 + (800 + 40) * k)
+                self.click(page, "#lz")
                 try:
                     page.until("document.getElementById('count').textContent.replace(/\\n/g, '') === '4 / 4拍 1 / 2'", what="LIVE の部品のハンドラー")
                 except AssertionError as exc:
-                    hit = page.eval(f"document.elementFromPoint({x0 + 1350 * k}, {y0 + 840 * k}).outerHTML.slice(0, 500)")
-                    raise AssertionError(f"{exc}\n発表位置: {count(page)!r}\nクリック時: {self.click_info}\nクリック位置の要素: {hit}") from exc
+                    raise AssertionError(f"{exc}\n発表位置: {count(page)!r}\nクリック時: {self.click_info}") from exc
 
     def test_click_on_an_editable_runs_its_handler_and_only_the_stage_advance_is_stopped(self) -> None:
         deck = self.make("motion", "claude_code")
         page = self.open(deck)
-        x0, y0, k = self.geometry(page)
         # contenteditable のハンドラー（MS.go(2,0)）は動き、そのあとエンジンの「次へ」は動かない（3 場面目の 1 拍目のまま）
-        self.click(page, x0 + (700 + 150) * k, y0 + (800 + 40) * k)
+        self.click(page, "#ce2")
         page.until("document.getElementById('count').textContent.replace(/\\n/g, '') === '3 / 4拍 1 / 2'", what="編集できる要素のハンドラー")
         time.sleep(0.6)
         self.assertEqual(count(page).replace("\n", ""), "3 / 4拍 1 / 2", "ハンドラーのあとにページ送りが重ならない")
+
+    def test_click_activates_a_background_tab_before_sending_input(self) -> None:
+        deck = self.make("motion", "claude_code")
+        page = self.open(deck)
+        other = self.open(deck)
+        other.call("Page.bringToFront")
+        page.until("!document.hasFocus() && document.visibilityState === 'hidden'",
+                   what="別のタブを前面にして再現条件を作る")
+        page.call("Emulation.setDeviceMetricsOverride", {"width": 1264, "height": 625,
+                                                        "deviceScaleFactor": 1, "mobile": False})
+        self.click(page, "#lz")
+        page.until("document.getElementById('count').textContent.replace(/\\n/g, '') === '4 / 4拍 1 / 2'",
+                   what="背面だったタブでも1回のクリックでLIVEのハンドラーが動く")
