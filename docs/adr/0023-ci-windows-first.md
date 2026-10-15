@@ -2,9 +2,14 @@
 
 ## 採用
 
-GitHub Actions（`.github/workflows/test.yml`）で、PR と main への push のときに Windows でテストを回す。
-回すのは `bash tests/run.sh` と、エンジンのテスト（`skills/*/tests/run.sh`）と、公開前の検査（`tools/public_check.py tree`）。
-本物の Codex・Claude は呼ばない（今のテストのまま）。
+GitHub Actions（`.github/workflows/test.yml`）で、PR のときに Windows でテストを回す。
+回すのは `bash tests/run.sh` と、エンジンのテスト（`skills/*/tests/run.sh`）。本物の Codex・Claude は呼ばない（今のテストのまま）。
+公開前の検査（`tools/public_check.py tree`）は別の workflow（`public-check.yml`）で、どの PR でも Linux で回す。
+
+- **main への push では回さない。** PR で回したのと同じ中身で、1 回 25 分あまり（Windows は 2 倍で数える）
+- **試験が読まない文書（`docs/`・`README.md`・`AGENTS.md`・`LICENSE`）だけの変更では回さない。** `CHANGELOG.md` は
+  版の試験（`test_version`）が形を見るので回す。公開前の検査は文書こそ要るので、分けて必ず回す。
+  必須のチェックにするときは、文書だけの PR で Windows の回が始まらず「待ち」のままになることに気をつける
 
 - **macOS はリポジトリを公開したあとに足す。** 非公開のあいだは Actions の無料枠（月 2,000 分）を使い、
   macOS は 10 倍、Windows は 2 倍で減る。両方だと 1 回およそ 100 分ぶんで月 20 回ほどしか回せないが、

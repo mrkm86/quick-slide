@@ -1,18 +1,22 @@
-# PR と main への push のときに、Windows でテストを回す（docs/adr/0023-ci-windows-first.md）。
+# PR のときに、Windows でテストを回す（docs/adr/0023-ci-windows-first.md）。
 #
+# - main への push では回さない（PR で回したのと同じ中身。1 回 25 分あまりで、Windows は 2 倍で数える）
+# - 試験が読まない文書（docs/・README.md・AGENTS.md・LICENSE）だけの変更では回さない。CHANGELOG.md は版の試験が読むので回す。
+#   公開前の検査は文書だけの変更でも要るので、別の workflow（public-check.yml）で必ず回す
 # - 当面は Windows だけ。macOS は手元でいつも回していて、非公開のあいだは Actions の分数が 10 倍で減るため。
 #   公開したら macOS も足す
 # - 本物の Codex・Claude は呼ばない（テストが偽物を差す）。ログインは要らない
-# - push のあとに動くので、出してはいけないものを止めるのは push 前の hooks（tools/public_check.py）の役目。
-#   ここはすぐ気づくための最後の砦で、名前の一覧は渡さない（見るのはメールアドレスと、この機械のもの）
 # - 試験の段は、前の段が落ちても続けて回す（どの組が落ちたかを 1 回で見る）。依存ソフトを入れられなければ回さない
 
 name: test
 
 on:
   pull_request:
-  push:
-    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "README.md"
+      - "AGENTS.md"
+      - "LICENSE"
   # 手で起こすときは、回す 1 行を渡せる（Windows でだけ起きる失敗を、全部を回さずに確かめる。全部だと 20 分あまり）
   #   gh workflow run test.yml --ref <ブランチ> -f only='python3 skills/html-slide/tests/test_outputs.py deck_formats'
   workflow_dispatch:
@@ -60,10 +64,6 @@ jobs:
           dir="$(dirname "$(command -v python)")"
           [ -e "$dir/python3.exe" ] || cp "$dir/python.exe" "$dir/python3.exe"
           python3 -c 'import sys; print(sys.version, sys.executable)'
-
-      # 依存ソフトは要らない（標準ライブラリだけ）。入れるのに失敗しても見る
-      - name: 公開してはいけないもの（追跡しているファイル全体）
-        run: python3 tools/public_check.py tree
 
       # 入れるものは quick_slide_setup.py --setup と同じ（Python のパッケージ・puppeteer-core・Chrome の headless shell・
       # モーション用の Playwright の Chromium）。置き場は使い捨てで、エンジンには環境変数で教える
