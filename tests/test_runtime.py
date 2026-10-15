@@ -161,6 +161,7 @@ class StartupSweepTests(unittest.TestCase):
 class StartDeadlineTests(unittest.TestCase):
     def test_unconfirmed_child_is_reaped_before_failure_is_returned(self) -> None:
         from unittest.mock import patch
+        from types import SimpleNamespace
         from quick_slide.server import cli
 
         root = DataRoot(temp_dir(self) / "home")
@@ -175,7 +176,8 @@ class StartDeadlineTests(unittest.TestCase):
             self.addCleanup(lambda: child.poll() is None and child.kill())
             return child
 
-        with patch.object(cli.subprocess, "Popen", side_effect=delayed_child), patch.object(cli, "_print_json") as output:
+        launcher = SimpleNamespace(Popen=delayed_child, DEVNULL=subprocess.DEVNULL)
+        with patch.object(cli, "subprocess", launcher), patch.object(cli, "_print_json") as output:
             self.assertEqual(cli.cmd_start(args), 3)
         self.assertIsNotNone(children[0].poll(), "失敗を返す前に子が終了している")
         result = output.call_args.args[0]
