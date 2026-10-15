@@ -67,7 +67,11 @@ class MotionKeysTest(PresentLiveBase):
         page = self.open(deck)
         x0, y0, k = self.geometry(page)
         self.click(page, x0 + (1200 + 150) * k, y0 + (800 + 40) * k)
-        page.until("document.getElementById('count').textContent.replace(/\\n/g, '') === '4 / 4拍 1 / 2'", what="LIVE の部品のハンドラー")
+        try:
+            page.until("document.getElementById('count').textContent.replace(/\\n/g, '') === '4 / 4拍 1 / 2'", what="LIVE の部品のハンドラー")
+        except AssertionError as exc:
+            hit = page.eval(f"document.elementFromPoint({x0 + 1350 * k}, {y0 + 840 * k}).outerHTML.slice(0, 500)")
+            raise AssertionError(f"{exc}\n発表位置: {count(page)!r}\nクリック位置の要素: {hit}") from exc
 
     def test_click_on_an_editable_runs_its_handler_and_only_the_stage_advance_is_stopped(self) -> None:
         deck = self.make("motion", "claude_code")
