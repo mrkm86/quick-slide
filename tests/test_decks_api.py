@@ -358,11 +358,11 @@ class NotReadyRoutesTests(unittest.TestCase):
         gets = [f"/api/decks/{d}/plan"]
         for path in posts:
             r = self.fx.post(path, {"text": "x"})
-            self.assertEqual((r.status, r.error_code), (503, "not_ready_in_v2"), path)
+            self.assertEqual((r.status, r.error_code), (503, "not_ready"), path)
             self.assertEqual(set(r.json()["error"]), {"code", "message"}, path)
         for path in gets:
             r = self.fx.get(path)
-            self.assertEqual((r.status, r.error_code), (503, "not_ready_in_v2"), path)
+            self.assertEqual((r.status, r.error_code), (503, "not_ready"), path)
         # P3 の直す口は、ページの無いデッキには 409（ページが無い）と断る
         for path, body in ((f"/api/decks/{d}/instructions", {"scope": "page", "slide_id": s, "text": "x"}),
                            (f"/api/decks/{d}/pages/insert", {"after_slide_id": None, "text": "x"}),

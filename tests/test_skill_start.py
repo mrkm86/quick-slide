@@ -89,7 +89,7 @@ class SkillStartTests(unittest.TestCase):
         rc, out, _, _ = self.start("--revise")
         self.assertEqual((rc, out["code"]), (2, "note_required"))
         rc, out, _, _ = self.start("--manuscript-file", str(self.manuscript), "--attach", str(self.manuscript))
-        self.assertEqual((rc, out["code"]), (2, "not_ready_in_v2"))
+        self.assertEqual((rc, out["code"]), (2, "not_ready"))
         self.assertIn("まだできません", out["message"])
         rc, out, _, _ = self.start("--revise", "--note", "x", "--pages", "7,a")
         self.assertEqual((rc, out["code"]), (2, "pages_invalid"))

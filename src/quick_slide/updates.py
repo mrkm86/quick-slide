@@ -30,7 +30,7 @@ from . import __version__
 from .clock import format_rfc3339
 
 # 公開リポジトリ（確かめる先とリンクの元。ここ 1 か所に書く）
-REPOSITORY = "mrkm86/quick-slide-v2"
+REPOSITORY = "mrkm86/quick-slide"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPOSITORY}/releases"
 

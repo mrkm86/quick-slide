@@ -21,7 +21,7 @@ payload の形は v1 と同じ（`schema_version`・`origin{kind,runtime,convers
 違いは `origin.runtime` だけ。依頼は原稿と同じく payload_json・events・ログに書かない。
 モード・ブランド・スタイルは依頼の文から読まない（`deck_attributes` の `mode`・`brand_id`・`style` で、原稿の道と同じ）。
 
-まだ受けないもの（`NotReadyError`。サーバは 400 `not_ready_in_v2` にする）: 既存のデッキへの追加
+まだ受けないもの（`NotReadyError`。サーバは 400 `not_ready` にする）: 既存のデッキへの追加
 （`append_to_deck_id`）・会話抜粋・添付・書式。黙って捨てずに断る。
 
 **送り直しは同じデッキを返す**（`RESEND_WINDOW_SECONDS` 以内に、同じ会話の識別子で、同じ原稿・題・属性が
@@ -51,7 +51,7 @@ PAYLOAD_KEYS = {"schema_version", "origin", "title_hint", "manuscript", "request
 ORIGIN_KEYS = {"kind", "runtime", "conversation_key"}
 DECK_ATTRIBUTE_KEYS = {"purpose", "audience", "style_note", "page_count", "brand_id", "mode", "style", "image_look",
                        "images", "outline_fixed", "style_id", "format_id", "format_values", "format_options"}
-# 形は v1 のまま残し、v2 ではまだ受けない項目（値が入っていたら断る）。書式はブランドの中に持つ（P4）
+# 形は v1 のまま残し、まだ受けない項目（値が入っていたら断る）。書式はブランドの中に持つ（P4）
 NOT_READY_ATTRIBUTES = ("format_id", "format_values", "format_options")
 MAX_PAGE_COUNT = 40
 RESEND_WINDOW_SECONDS = 10 * 60
@@ -67,7 +67,7 @@ PROVISIONAL_TITLE_CHARS = 40
 
 
 class NotReadyError(QuickSlideError):
-    """形は正しいが、v2 ではまだ受けない項目。サーバは 400 `not_ready_in_v2` にする。"""
+    """形は正しいが、まだ受けない項目。サーバは 400 `not_ready` にする。"""
 
     exit_code = 2
 
@@ -259,14 +259,14 @@ class IntakesMixin(StoreBase):
         if find_secret_like(manuscript, cfg.extra_secret_patterns):
             raise ValidationError("原稿に秘密情報らしい文字列が含まれています。除いて再投入してください")
         if payload.get("transcript_excerpt") is not None:
-            raise NotReadyError("会話抜粋（transcript_excerpt）は v2 ではまだ受け付けません。原稿だけで送ってください。")
+            raise NotReadyError("会話抜粋（transcript_excerpt）は、この版ではまだ受け付けません。原稿だけで送ってください。")
         atts = payload.get("attachments")
         if atts is not None and not isinstance(atts, list):
             raise ValidationError("intake.attachments は配列")
         if atts:
-            raise NotReadyError("画像の添付（attachments）は v2 ではまだ受け付けません。画像なしで送ってください。")
+            raise NotReadyError("画像の添付（attachments）は、この版ではまだ受け付けません。画像なしで送ってください。")
         if payload.get("append_to_deck_id") is not None:
-            raise NotReadyError("既存のスライドへの追加（append_to_deck_id）は v2 ではまだできません。新しいスライドとして送ってください。")
+            raise NotReadyError("既存のスライドへの追加（append_to_deck_id）は、この版ではまだできません。新しいスライドとして送ってください。")
         force_new = payload.get("force_new_deck", False)
         if not isinstance(force_new, bool):
             raise ValidationError("intake.force_new_deck は真偽値")
@@ -311,7 +311,7 @@ class IntakesMixin(StoreBase):
         reject_unknown_keys(attrs, DECK_ATTRIBUTE_KEYS, "intake.deck_attributes")
         for k in NOT_READY_ATTRIBUTES:
             if attrs.get(k) not in (None, "", "auto", {}, []):
-                raise NotReadyError(f"deck_attributes.{k} は v2 ではまだ使えません。外して送ってください。")
+                raise NotReadyError(f"deck_attributes.{k} は、この版ではまだ使えません。外して送ってください。")
         out = {k: v for k, v in attrs.items() if k not in NOT_READY_ATTRIBUTES}
         for k in ("purpose", "audience", "style_note"):
             v = out.get(k)

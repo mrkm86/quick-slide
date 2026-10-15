@@ -209,7 +209,7 @@ class SettingsFileTests(unittest.TestCase):
 @mock.patch.dict(os.environ, {U.ENV_NO_CHECK: ""})
 class UpdateApiTests(unittest.TestCase):
     def test_status_and_refresh(self) -> None:
-        fetch = FakeFetch(release("v2.0.0"), release("v9.0.0"))
+        fetch = FakeFetch(release(f"v{U.__version__}"), release("v9.0.0"))   # 1 回目は今と同じ版
         fx = start_server(self, update_fetch=fetch)
         st = fx.get("/api/update").json()
         self.assertTrue(st["enabled"])

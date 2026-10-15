@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Quick Slide v2 のサーバと画面のテスト。これ1本で全部走る（エンジンのテストは skills/*/tests/run.sh）。
+# Quick Slide のサーバと画面のテスト。これ1本で全部走る（エンジンのテストは skills/*/tests/run.sh）。
 #
 # 方針:
 #   - 実の置き場（~/.quick-slide）を読まない・書かない。サーバは一時ディレクトリの置き場とポート 0 で立てる

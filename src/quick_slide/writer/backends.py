@@ -79,7 +79,7 @@ def choose_backend(setting: str, origin_runtime: str | None, available: dict[str
     """どの LLM で書くか。(backend, 理由)。
 
     - 設定で `claude` / `codex` に固定 → それ。無ければ失敗（**黙って別の CLI に替えない**）
-    - `auto` で会話の出所が分かる（Claude Code / Codex）→ 同じもの。無ければ失敗（入れる・ログインするものを言う）
+    - `auto` で会話の出所が分かる（Claude Code / Codex）→ 同じものを優先。無ければ手元にあるもう一方
     - `auto` で出所が分からない（画面・CLI など）→ 手元にあるものを claude → codex の順で
     ログインできているかは呼んだときに分かる（失敗の文が `claude` の /login・`codex login` を言う）。
     """
@@ -89,10 +89,7 @@ def choose_backend(setting: str, origin_runtime: str | None, available: dict[str
                                           f"{INSTALL_HINT[setting]}てください。または、設定の writer を auto に戻してください。")
         return setting, "settings"
     preferred = RUNTIME_TO_BACKEND.get(origin_runtime or "")
-    if preferred:
-        if not available.get(preferred):
-            raise WriterFailed("missing", f"この会話の {NAMES[preferred]} の CLI が見つからないので、台本を書けません。"
-                                          f"{INSTALL_HINT[preferred]}てから、もう一度頼んでください。")
+    if preferred and available.get(preferred):
         return preferred, "origin"
     for name in BACKENDS:
         if available.get(name):

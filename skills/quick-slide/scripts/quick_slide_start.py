@@ -756,7 +756,7 @@ def run(args: argparse.Namespace) -> int:
                        (args.attach and not args.revise, "新しく作るときの画像の添付（--attach。--revise と一緒なら使える）"),
                        (args.transcript_file, "会話抜粋（--transcript-file）")):
         if flag:
-            raise Failure("not_ready_in_v2", NOT_YET_MESSAGE.format(what=what), EXIT_INPUT)
+            raise Failure("not_ready", NOT_YET_MESSAGE.format(what=what), EXIT_INPUT)
     repo = repo_root(args.repo)
     if args.import_file:
         return cmd_import(repo, home, args)

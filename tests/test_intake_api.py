@@ -114,10 +114,10 @@ class IntakeApiTests(unittest.TestCase):
         ]
         for extra in cases:
             r = self.post({**intake_payload(), **extra})
-            self.assertEqual((r.status, r.error_code), (400, "not_ready_in_v2"), extra)
-            self.assertIn("v2 では", r.json()["error"]["message"])
+            self.assertEqual((r.status, r.error_code), (400, "not_ready"), extra)
+            self.assertIn("この版では", r.json()["error"]["message"])
         r = self.post(intake_payload(format_id="5a1de57d-0000-4b00-8000-00000000ffff"))
-        self.assertEqual((r.status, r.error_code), (400, "not_ready_in_v2"))
+        self.assertEqual((r.status, r.error_code), (400, "not_ready"))
         self.assertEqual(self.post({**intake_payload(), "force_new_deck": True}).status, 201)
 
     def test_shape_errors(self) -> None:
