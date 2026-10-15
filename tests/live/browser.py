@@ -137,6 +137,7 @@ class Page:
     """開いた 1 枚の画面。`eval` で読み、`errors` に投げられた例外が溜まる。"""
 
     def __init__(self, ws_url: str) -> None:
+        self.ws_url = ws_url
         self.ws = _Socket(ws_url)
         self._id = 0
         self.errors: list[str] = []
@@ -174,6 +175,16 @@ class Page:
             time.sleep(0.25)
         raise AssertionError(f"{seconds:.0f} 秒待っても真にならなかった: {what or expression}（最後の値 {last!r}）"
                              + (f"\n画面が投げた例外:\n" + "\n".join(self.errors) if self.errors else ""))
+
+    def frame(self, selector: str) -> "Page":
+        """別プロセスの iframe を CDP で読む。ページ自身の sandbox は変えない。使い終えたら close。"""
+        doc = self.call("DOM.getDocument")
+        found = self.call("DOM.querySelector", {"nodeId": doc["root"]["nodeId"], "selector": selector})
+        node = self.call("DOM.describeNode", {"nodeId": found["nodeId"]})["node"]
+        targets = self.call("Target.getTargets")["targetInfos"]
+        if not any(t["targetId"] == node["frameId"] for t in targets):
+            raise RuntimeError(f"iframe の DevTools 対象が無い: {selector}")
+        return Page(self.ws_url.rsplit("/", 1)[0] + "/" + node["frameId"])
 
     def goto(self, url: str) -> None:
         self.call("Page.navigate", {"url": url})
@@ -248,6 +259,7 @@ class Browser:
             tab = json.loads(resp.read().decode("utf-8"))
         page = Page(tab["webSocketDebuggerUrl"])
         self.pages.append(page)
+        page.call("Page.bringToFront")
         page.goto(url)
         return page
 
