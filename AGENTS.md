@@ -1,4 +1,4 @@
-# AGENTS.md — Quick Slide v2 で作業するエージェントへの指示
+# AGENTS.md — Quick Slide で作業するエージェントへの指示
 
 ## 0. 最初に守ること
 

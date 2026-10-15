@@ -243,7 +243,7 @@ class RealProcessLifecycleTests(unittest.TestCase):
             # まだ無い口は「まだ使えない」と答える（成功したふりをしない）
             s, _, b = self._http(port, "POST", f"/api/decks/{uuid.uuid4()}/generate", {"format": "pdf"},
                                  {"X-Quick-Slide-Session": session})
-            self.assertEqual((s, json.loads(b)["error"]["code"]), (503, "not_ready_in_v2"))
+            self.assertEqual((s, json.loads(b)["error"]["code"]), (503, "not_ready"))
             # 取り込みは形を検査する（原稿だけの不完全な形は断る。何も作らない）
             s, _, b = self._http(port, "POST", "/api/intakes", {"manuscript": "x"}, {"X-Quick-Slide-Session": session})
             self.assertEqual((s, json.loads(b)["error"]["code"]), (400, "validation_error"))

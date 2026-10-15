@@ -1,97 +1,106 @@
-# Quick Slide v2
+# Quick Slide
 
-会話の続きから16:9の日本語スライドを作り、ブラウザの画面でページを指定して直し、PPTX・PDF に書き出すプラグイン。
-Claude Code と Codex のどちらにも載る。
+**会話をスライドに。その場で直して、持ち出せる。**
 
-- **画像は ChatGPT のサブスク枠で描く。** Codex 組み込みの画像生成（gpt-image-2）を使い、API の従量課金を前提にしない
-- **エンジンは CLI から単体で呼べる。** 画面を通さなくても、スキルとして使える
+Codex・Claude に「この内容をスライドにして」と頼むと、ブラウザで見られる資料を作ります。
+ページを指定して直し、PPTX・PDF に書き出せます。macOS・Windows 向けのローカルプラグインです。
 
-## スキル
+![編集できるプレゼンの見本](samples/presentation/built/run/slides/slide-01.png)
 
-| スキル | 役 |
-|---|---|
-| [`skills/quick-slide/`](skills/quick-slide/SKILL.md) | 会話の入口。原稿を整えてローカルのサーバに渡し、画面の URL を返す。会話から直す。導入の確かめ（`--doctor`）と導入（`--setup`） |
-
-## エンジン
-
-| スキル | 作るもの |
-|---|---|
-| [`skills/html-slide/`](skills/html-slide/SKILL.md) | 文字も図形も PowerPoint の部品として組んだ、あとから直せて動く PPTX（プレゼンモード） |
-| [`skills/image-slide/`](skills/image-slide/SKILL.md) | 同じ台本を画像生成で1枚ずつ丸ごと描いた資料（ピッチモード） |
-| [`skills/motion-slide/`](skills/motion-slide/SKILL.md) | クリックで拍が進む Web プレゼン（HTML 1枚。モーションモード。PPTX・PDF にはならず、書き出しは HTML） |
-
-2つは同じ台本を受ける。設計判断はそれぞれの `docs/adr/`。
-
-## 入れ方
-
-### 1. プラグインを入れる
-
-- **Claude Code**: このリポジトリをマーケットプレイスとして足して入れる
-
-  ```text
-  /plugin marketplace add <このリポジトリの URL かフォルダ>
-  /plugin install quick-slide@quick-slide
-  ```
-
-- **Codex**: このリポジトリを置いたフォルダをプラグインとして登録する（マーケットプレイスの定義は `.agents/plugins/marketplace.json`、
-  プラグインの定義は `.codex-plugin/plugin.json`。スキルは `skills/`）
-
-どちらも、リポジトリの丸写しがプラグインの置き場に入る（下の置き場はどれもプラグインの外）。
-
-### 2. 足りないものを確かめて入れる
-
-```bash
-python3 <プラグイン>/skills/quick-slide/scripts/quick_slide_setup.py --doctor        # 何が揃っていて何が足りないか（何も書かない）
-python3 <プラグイン>/skills/quick-slide/scripts/quick_slide_setup.py --setup         # 何をどこへ入れるかを出して聞く
-python3 <プラグイン>/skills/quick-slide/scripts/quick_slide_setup.py --setup --yes   # 聞かずに入れる
-```
-
-会話で「Quick Slide の導入を確かめて」と頼めば、スキルが `--doctor` を流し、入れてよいか聞いてから `--setup --yes` を流す。
-
-Windows では `python3` を `py -3` に読み替える（`python3` は Microsoft Store のスタブで動かない）。診断は Windows では、
-置き場のアクセス権・OneDrive の同期先の中に無いか・長いパスも確かめる（`docs/adr/0012-windows-file-permissions.md`）。
-
-`node`・`codex`・`claude` は、PATH で見つからなければよくある置き場（npm のグローバルの置き場・Homebrew・nvm など）も探す
-（診断もサーバも同じ）。Codex の砂場の中で走った診断は、入っているものが見えないことがあるので、足りないと出ても入れる案内はせず、
-自分のターミナルで `--doctor` を流すよう言う（`docs/adr/0017-cli-outside-path.md`）。
-
-**Codex から使うときは、サーバを自分のターミナルで先に起こしておく**（Codex の砂場の中からは、置き場に書けないので起こせない）:
-
-```bash
-python3 <プラグイン>/skills/quick-slide/scripts/quick_slide_start.py --start-server   # Windows は py -3
-```
-
-| 何 | `--setup` が入れるか | どこへ |
+| 形式 | できること | 見本 |
 |---|---|---|
-| Python 3.12 以上 | 入れない（python.org か Homebrew。Windows は python.org か `winget install -e --id Python.Python.3.13 --scope user`） | — |
-| python-pptx・lxml・Pillow・PyYAML | 入れる（`pip --user`。Python が外から管理されているときは手順を言う） | 利用者の場所 |
-| Node 18 以上・npm | 入れない（nodejs.org か `brew install node`。Windows は `winget install -e --id OpenJS.NodeJS.LTS`） | — |
-| puppeteer-core | 入れる（`npm install --prefix`） | `~/.quick-slide/engines/html-slide/node/` |
-| Chrome（headless shell） | 入れる（`@puppeteer/browsers`） | `~/.quick-slide/engines/html-slide/chrome/` |
-| Playwright と Chromium（モーションだけ要る） | 入れる（`pip --user`・`<その Python> -m playwright install chromium`） | Playwright の置き場 |
-| 游ゴシック（プレゼンが文字の幅を測る） | 入れない（mac は PowerPoint for Mac に同梱、Windows は OS に入っている。無ければ html-slide の設定の `fonts:`） | — |
-| `codex` CLI（絵を描く・台本係にもなる） | 入れない（`npm install -g @openai/codex`。全体に入れるため） | — |
-| `claude` CLI（台本係） | 入れない（Claude Code に付いてくる） | — |
+| プレゼン | 文字・図形をあとから編集できる PPTX。PDF にも書き出せる | [プレゼンの見本](samples/presentation/script.json) |
+| ピッチ | ページ全体を画像で描く。PPTX・PDF に書き出せる | 下の画像 |
+| モーション | クリックで図が動く Web プレゼン。HTML で持ち出せる | [モーションの見本](samples/motion/built/run/index.html) |
 
-全体に入れるもの（`npm -g`・`sudo`）は入れない。管理者の権限も要らない。
+![画像で描くピッチの見本](samples/pitch/built/run/slides/slide-01.png)
 
-### 3. ログインする
+## はじめる
 
-- 絵を描く: ターミナルで `codex login`（**ChatGPT のアカウントで**。API キーでは描かない）
-- 台本係: 会話しているアプリ（Claude Code か Codex）がログインしていればよい
+### 1. プラグインを追加する
 
-Quick Slide はログインを代わりにしない（`--doctor` がコマンドを言う）。
+配布元は GitHub のリポジトリ `mrkm86/quick-slide` です。
+会話にまとめて依頼したい方は、[初回導入プロンプト](docs/FIRST-INSTALL.md) を Codex または Claude Code に貼ってください。
+プラグイン未導入でも使える依頼文です。
 
-### 4. 使う
+**ChatGPT デスクトップ（Codex）**
 
-会話で「この内容をスライドにして」と言う。スキル `quick-slide` がサーバを起こし（ポート 7801）、画面の URL を返す。
-直すのは画面（ページを選んで指示）か会話（「3枚目の見出しを短く」）。書き出しは画面の右上の PDF・PPTX のボタン。
+Codex の会話に次の文を貼ります。
 
-最初にサーバを起こすと、プレゼン・ピッチ・モーションの**見本**が 1 冊ずつ入る（それぞれのモードの紹介。タグ「見本」）。
-消してよく、消した見本は次の起動で戻らない。戻したいときは画面の 設定 › 見本 の「見本を入れ直す」。
-見本の中身と作り直し方は [`samples/`](samples/README.md)。
+> GitHub の mrkm86/quick-slide を Quick Slide のプラグインとして登録・インストールしてください。
+> 既存のプラグイン設定を保持し、終わったら次にする操作を教えてください。
 
-### 5. 更新する
+登録するコマンドは以下です（ターミナルで実行する場合も同じ）。
+
+```text
+codex plugin marketplace add mrkm86/quick-slide
+codex plugin add quick-slide@quick-slide
+```
+
+`plugin add` がない版では、マーケットプレイス登録後に ChatGPT を再起動し、
+Plugins Directory のソース「Quick Slide」から追加してください。追加後は新しい会話で使います。
+[公式のプラグイン導入手順](https://developers.openai.com/plugins/build/plugins)
+
+**Claude デスクトップ・Claude Code**
+
+Claude Code の会話で次を実行します。
+
+```text
+/plugin marketplace add mrkm86/quick-slide
+/plugin install quick-slide@quick-slide
+```
+
+Claude デスクトップでは、Customize → Plugins → Add → Add marketplace →
+Add from a repository に `https://github.com/mrkm86/quick-slide` を入れ、Quick Slide を追加することもできます。
+[公式のプラグイン導入手順](https://support.claude.com/en/articles/13837440-use-plugins-in-claude)
+
+手元のフォルダから試す方法は [導入・検証ガイド](docs/INSTALL.md#手元のフォルダから入れる) にあります。
+
+Quick Slide は手元のファイルとコマンドを使います。Claude ではローカル実行のできる
+Claude Code で使ってください。Cowork での利用は、実行環境からホスト側の CLI と
+ローカルサーバに届くかを確認する必要があります。通常のチャットへの追加だけでは動作を保証しません。
+
+### 2. 準備を依頼する
+
+インストール後、新しい会話で次のように頼みます。
+
+> Quick Slide を使えるようにセットアップして。必要なものを確認し、
+> 管理者権限なしで入れられるものを入れてください。ログインが必要なら案内して。
+> 最後にサーバを起動して、見本を開いてください。
+
+セットアップスキルが診断し、入れられる依存ソフトを導入します。
+初回はブラウザなど数百 MB のダウンロードがあり、数分かかります。
+**アカウントへのログインと、アプリの再起動は利用者が行います。**
+
+| 必要なもの | 準備のしかた |
+|---|---|
+| Python 3.12 以上 | 未導入なら python.org から導入。Windows は `py -3` で実行 |
+| Node.js 18 以上 | 未導入なら nodejs.org から導入 |
+| Codex CLI と ChatGPT のログイン | `npm install -g @openai/codex`、続いて `codex login` |
+| 台本を書く CLI | Codex または Claude Code のどちらかにログイン。自動設定では、会話元の CLI がなければもう一方を使う |
+| Python のパッケージ・描画用ブラウザ | セットアップスキルが導入。モーション用の Playwright も診断 |
+| プレゼン用の字体 | Windows は OS の游ゴシック。macOS は PowerPoint 付属の游ゴシック、または字体設定 |
+
+絵を描くのは **ChatGPT のサブスクにログインした Codex CLI** です。
+Claude から使う場合も、絵には Codex のログインが必要です。API キーは不要です。
+
+Codex のサンドボックスからサーバを起動できない場合は、提示されるコマンドを
+利用者のターミナルで一度実行します。プラグインのインストールだけで依存ソフトやログインが揃うわけではありません。
+
+### 3. 作る・直す・書き出す
+
+> この会話を、提案用のスライドにして。まず構成を見せて。
+
+> 3枚目の見出しを短くして。
+
+作成した画面の URL が会話に返ります。アプリの内蔵ブラウザが利用できればそこで開き、
+届かなければ外部ブラウザ、最後に URL を手で開く順に案内します。
+内蔵ブラウザでの localhost 接続はアプリの版・実行環境によるため、必ず実機で確認してください。
+
+書き出しは画面右上の PPTX・PDF ボタンから。モーションは HTML を書き出します。
+初回起動では3形式の見本が入ります。見本は削除してもよく、設定から入れ直せます。
+
+## 更新する
 
 新しいバージョンが公開されると、ホームの画面の頭にお知らせが出る（変更点は GitHub のリリースの頁、更新のしかたは 設定 › 更新）。
 変更の記録は [`CHANGELOG.md`](CHANGELOG.md)。
@@ -119,30 +128,56 @@ codex plugin add quick-slide@quick-slide
 新しいバージョンがあるかは、サーバが GitHub（`api.github.com`）の最新のリリースを 6 時間に 1 回まで問い合わせて確かめる。送るのは
 問い合わせと、いま使っているバージョンの番号だけ。止めるには 設定 › 更新 の切り替えか、環境変数 `QUICK_SLIDE_NO_UPDATE_CHECK=1`。
 
-## 置き場
 
-| 何 | 既定 | 変え方 |
-|---|---|---|
-| データ（DB・スライド・設定・単体で使ったときの出力） | `~/.quick-slide/` | 環境変数 `QUICK_SLIDE_HOME` |
-| エンジンの設定 | `~/.quick-slide/engines/<スキル>/config.yaml` | `HTML_SLIDE_CONFIG`・`IMAGE_SLIDE_CONFIG` |
-| puppeteer-core と Chrome（headless shell） | `~/.quick-slide/engines/html-slide/node/`・`chrome/` | 設定の `node_modules`・`chrome`、環境変数 `HTML_SLIDE_NODE_MODULES`・`HTML_SLIDE_CHROME` |
-| 描いた絵のキャッシュ（上限つき） | `~/Library/Caches/quick-slide/<スキル>/` | `HTML_SLIDE_CACHE`・`IMAGE_SLIDE_CACHE`・設定の `cache_dir` |
+手元のフォルダから入れた場合の更新は [更新手順](docs/INSTALL.md#更新する) を参照してください。
 
-置き場はエンジンの `scripts/places.py`（Node のモジュールと Chrome は html-slide の `scripts/browser.py`）で決める。
-ごみ箱から完全に削除すると、そのスライドの置き場と描いた絵のキャッシュも消える。
+## Windows にも入れる
 
-## 状態
+Windows 機でも同じ配布元からプラグインを追加し、その機械の会話で上のセットアップを依頼します。
+macOS 側のログインや依存ソフトは移りません。Python の呼び方は `python3` ではなく **`py -3`** です。
+OneDrive の同期先や長すぎるパスを避けると導入が安定します。診断もこれらを確認します。
 
-- macOS で動かしている（Windows・Linux はまだ確かめていない）
-- 会話から 1 冊（P2）・直す（P3）・設定をエンジンへ（P4）・書き出しと導入（P5）まで。段の控えは `docs/P1-NOTES.md`〜`docs/P5-NOTES.md`
+実機での確認項目と、手動セットアップは [導入・検証ガイド](docs/INSTALL.md) を参照してください。
+Windows での既存の開発テストと、デスクトップアプリからのプラグイン導入・内蔵ブラウザの通し確認は別に扱います。
 
-作業に入る前に [AGENTS.md](AGENTS.md) を読むこと。
+## 詳しい使い方・開発
+
+- [会話から使うスキル](skills/quick-slide/SKILL.md)
+- [同梱の見本と再生成](samples/README.md)
+- [導入・検証ガイド](docs/INSTALL.md)
+- [作業ルールとテスト](AGENTS.md)
+
+データや描画用の道具はプラグインの外に保存します。置き場は `places.py` が決め、
+`QUICK_SLIDE_HOME` で変更できます。プラグインの更新とスライドの保存は独立しています。
 
 ## 同梱している第三者のソフトウェア
 
-- **yomiyasu**（日本語の文章のリンター・MIT）— 台本係が書いた台本の検査に使う。写しとライセンス文（`LICENSE`・`UNICODE-LICENSE.txt`）、版と更新の手順は
+- [**yomiyasu**](https://github.com/nanaism/yomiyasu)（日本語の文章のリンター・MIT）— 台本係が書いた台本の検査に使う。写しとライセンス文（`LICENSE`・`UNICODE-LICENSE.txt`）、版と更新の手順は
   [`src/quick_slide/vendor/yomiyasu/`](src/quick_slide/vendor/yomiyasu/README.md)
 
-## ライセンス
+- デザイン素材・アイコン — 出典、加工の表記とライセンスは [素材の説明](skills/dads/README.md#出典加工の表記とライセンス) を参照してください。
 
-未定。
+## 利用条件
+
+Quick Slide はソースを公開するソフトウェアですが、OSSではありません。
+**個人の非商用利用を許可します。商用・業務利用、本体の改変・派生物作成・再配布・販売は、
+権利者の事前の書面による許可が必要です。** 通常のインストール・更新・バックアップのための複製は許可します。
+
+業務利用は、社内での利用や個人の端末での利用も含みます。個別に許可された方は、その許可の範囲で利用できます。
+設定画面での設定変更、自分の原稿・画像・ロゴの入力、生成したスライドの編集は本体改変に含めません。
+業務利用の許可だけでは、本体の改変・再配布・販売は許可されません。
+詳細は [利用許諾条件](LICENSE) を参照してください。許可の申請は配布元リポジトリの管理者へお願いします。
+同梱する第三者の著作物は、それぞれのライセンスに従います。
+
+### 生成した資料・画像について
+
+**生成した資料を公開・配布・提出する前に、素材や生成画像の権利・利用条件、内容の正確性を
+利用者自身で確認し、必要な許可を取得してください。** Quick Slide は成果物の適法性、正確性、
+第三者の権利を侵害しないことを保証しません。
+
+画像生成には Codex を利用します。生成画像には、生成元を示す来歴情報（C2PA）や、
+目には見えない電子透かし（SynthID）が含まれる場合があります。
+これらは異なる仕組みです。[OpenAI の公式説明](https://developers.openai.com/api/docs/guides/content-provenance)
+
+Quick Slide は、各画像への付与状況や、編集・PPTX・PDF 等への書き出し後の保持・検出を保証しません。
+提出先・公開先の AI 生成物に関するルールや表示の要否も、利用者自身で確認してください。

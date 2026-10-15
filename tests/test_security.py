@@ -181,8 +181,8 @@ class NoTracebackTests(unittest.TestCase):
         r = self.fx.post(f"/api/decks/{uuid.uuid4()}/generate", {"format": "pdf"})
         self.assertEqual(r.status, 503)
         err = r.json()["error"]
-        self.assertEqual(err["code"], "not_ready_in_v2")
-        self.assertIn("v2 ではまだ使えません", err["message"])
+        self.assertEqual(err["code"], "not_ready")
+        self.assertIn("この版ではまだ使えません", err["message"])
         self.assertNotIn("correlation_id", err, "想定どおりの断りに相関 ID は付けない")
         self.assertNotIn("ERROR", self.logs.text())
 

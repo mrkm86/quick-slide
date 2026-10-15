@@ -1,7 +1,7 @@
 {
   "name": "quick-slide",
-  "version": "2.0.0",
-  "description": "会話から16:9の日本語スライドを作って直すQuick Slide。スキル: quick-slide（会話の入口。原稿を整えてローカルの画面に渡し、ページを指定して直し、PPTX・PDF を書き出す）・html-slide（編集できて動く PPTX を組むエンジン）・image-slide（画像生成で1枚ずつ描くエンジン）・illust（挿絵を SVG で描いて PNG にする）。",
+  "version": "1.0.0",
+  "description": "会話から日本語スライドを作り、ページを指定して直し、PPTX・PDF・HTML に書き出す。quick-slide は会話の入口、quick-slide-setup は初回導入、quick-slide-update は更新と診断。presentation・pitch・motion の3形式。",
   "author": {
     "name": "Quick Slide"
   },
@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "Quick Slide",
     "shortDescription": "会話から16:9の日本語スライド（資料・プレゼン・パワポ）を作って直す",
-    "longDescription": "Quick Slide は、会話の続きから16:9の日本語スライドを作り、ブラウザの画面でページを指定して直し、PPTX・PDF に書き出すプラグインです。スキル quick-slide が会話を原稿に整えてローカルのサーバに渡し、台本係（Claude Code か Codex）が台本を書きます。描くのは 2 つのエンジンで、html-slide は文字も図形も PowerPoint の部品として組んだ、あとから直せて動く PPTX を、image-slide は同じ台本を画像生成（ChatGPT のサブスク枠の Codex）で1枚ずつ描いた資料を作ります。初めて使う前に quick_slide_setup.py --doctor で足りないものを確かめ、--setup で入れます。",
+    "longDescription": "会話を原稿に整え、ローカルの画面で作成・修正・書き出しを行います。編集できる PPTX のプレゼン、画像で描くピッチ、クリックで動く HTML のモーションに対応。初回は「Quick Slide をセットアップして」と依頼してください。Python・Node・CLI の準備とサブスクのログインが必要です。画像は ChatGPT にログインした Codex CLI で描きます。",
     "developerName": "Quick Slide",
     "category": "Productivity",
     "capabilities": [
@@ -33,9 +33,11 @@
       "画面の回の PPTX・PDF・ページの画像を書き出す"
     ],
     "defaultPrompt": [
+      "Quick Slide をセットアップして、見本を開いて。",
       "この内容をスライドにして。",
       "この話を提案資料にまとめて。構成を先に見せて。",
-      "3枚目の見出しを短くして。"
+      "3枚目の見出しを短くして。",
+      "Quick Slide を更新して。"
     ]
   }
 }

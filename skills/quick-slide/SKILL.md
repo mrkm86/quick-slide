@@ -19,6 +19,13 @@ description: Quick Slide で会話の続きからスライドを作り、会話�
 4. **原稿本文を stdout・ログ・報告に貼らない。** 投入はファイル経由で行う
 5. **会話で見つけていない数字は足さない。** 調べてまとめるときも、見つけた資料に書いてある数字だけを使い、出典を添える
 
+## 台本を書く CLI
+
+台本係の設定が `auto` のときは、会話しているアプリと同じ CLI を優先する。
+その CLI が見つからなければ、導入済みのもう一方を使う。Claude の会話でも Codex だけで台本を書ける。
+設定で `claude` / `codex` を固定した場合は、その指定を保つ。
+画像生成には Codex が必要なので、Claude CLI だけの機械で画像まで使えるとは案内しない。
+
 ## 手順
 
 ### Windows で使うとき（Python の呼び方）
@@ -50,10 +57,11 @@ python3 "${SKILL_DIR}/scripts/quick_slide_setup.py" --doctor
 
 最終行の JSON の `checks[]`（`level` が `ng` のもの）と `ready`（presentation・pitch・motion・images）を読む（`motion` はモーションを使うときだけ要る Playwright と Chromium）。
 
-1. **`ng` を利用者に伝え、入れてよいか聞く。** 入れるのは管理者の権限が要らないものだけで、置き場は Quick Slide の中
+1. **`ng` と導入先を利用者に伝える。診断だけの依頼なら、入れてよいか聞く。**
+   「必要なものを入れて」「セットアップして」と導入を依頼済みなら、その範囲の導入は確認を繰り返さず進める。 入れるのは管理者の権限が要らないものだけで、置き場は Quick Slide の中
    （`~/.quick-slide/engines/html-slide/` の puppeteer-core と Chrome の headless shell・Python のパッケージは `pip --user`）。
    ダウンロードが数百 MB あることも言う（モーションを使わないなら、Playwright と Chromium は入れなくてよい）
-2. 承知されたら `--setup --yes` を流す（聞かずに流さない。`--yes` を付けないと計画を出して止まる）
+2. 導入の依頼または承知があれば `--setup --yes` を流す（診断だけの依頼では流さない。`--yes` を付けないと計画を出して止まる）
 
    ```bash
    python3 "${SKILL_DIR}/scripts/quick_slide_setup.py" --setup --yes
@@ -310,7 +318,7 @@ PPTX・PDF は**画面の右上のボタン**で書き出す（画面に出て�
 ## まだできないこと
 
 この版では、既存のスライドへの追加（`--append-to-deck`）・新しく作るときの画像の添付（`--attach` は `--revise` と一緒のときだけ）・
-会話抜粋（`--transcript-file`）はできない。指定すると `not_ready_in_v2` と理由が返る。そのまま伝え、新しいスライドとして頼み直す。
+会話抜粋（`--transcript-file`）はできない。指定すると `not_ready` と理由が返る。そのまま伝え、新しいスライドとして頼み直す。
 
 ## つまずいたとき
 
@@ -323,7 +331,7 @@ PPTX・PDF は**画面の右上のボタン**で書き出す（画面に出て�
 | `code: server_unreachable` | Codex の砂場が手元（127.0.0.1）への通信を塞いでいる。`codex -c sandbox_workspace_write.network_access=true exec ...` で開ける |
 | `code: repo_not_found` / `repo_invalid` | 本体が見つからない。`--where` で探した先を見る |
 | `code: secret_like_content` | 原稿に秘密らしい文字列がある。**該当箇所を会話に引用せず**、`[秘匿]` に置き換えて投入し直す |
-| `code: validation_error` / `not_ready_in_v2` | サーバの日本語の文がそのまま理由。言い換えずに伝え、渡した値を直す |
+| `code: validation_error` / `not_ready` | サーバの日本語の文がそのまま理由。言い換えずに伝え、渡した値を直す |
 | `code: deck_required` / `deck_not_found`（`--revise`） | この会話から作ったスライドが分からない。`--deck` にスライドの ID（URL の `/slides/` の後ろ）を渡す |
 | `code: pages_invalid` / `no_pages` | ページの番号が範囲の外・まだページが無い。返った `url` を会話に書き、番号を確かめてもらう |
 | `code: wait_timeout` | まだ描いている。`url` を会話に書き、画面で進みを見てもらう（仕事は止まっていない） |

@@ -35,7 +35,7 @@ LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 # 「ぜんぶの口」を意味するアドレスの代表的な書き方。判定は `is_wildcard_host`（`0:0::0` なども同じ扱い）。
 WILDCARD_HOSTS = ("0.0.0.0", "::")
 DEFAULT_PORT = 7801  # v1 と並べて動かさない（データの置き場も分ける）
-# 台本係の LLM。auto = 会話の出所（origin.runtime）に合わせ、分からなければ手元にある CLI（claude → codex の順）
+# 台本係の LLM。auto = 会話の出所（origin.runtime）に合わせ、その CLI が無いか分からなければ手元にある CLI（claude → codex の順）
 WRITER_CHOICES = ("auto", "claude", "codex")
 
 

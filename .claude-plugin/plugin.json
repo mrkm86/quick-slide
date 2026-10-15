@@ -1,7 +1,7 @@
 {
   "name": "quick-slide",
-  "version": "2.0.0",
-  "description": "会話から16:9の日本語スライドを作って直すQuick Slide。スキル: quick-slide（会話の入口。原稿を整えてローカルの画面に渡し、ページを指定して直し、PPTX・PDF を書き出す）・html-slide（編集できて動く PPTX を組むエンジン）・image-slide（画像生成で1枚ずつ描くエンジン）・illust（挿絵を SVG で描いて PNG にする）。",
+  "version": "1.0.0",
+  "description": "会話から日本語スライドを作り、ページを指定して直し、PPTX・PDF・HTML に書き出す。quick-slide は会話の入口、quick-slide-setup は初回導入、quick-slide-update は更新と診断。presentation・pitch・motion の3形式。",
   "author": {
     "name": "Quick Slide"
   },

@@ -5,7 +5,7 @@
 
 - 版: v1.1.1
 - コミット: 373356eb874af5184962c88e925ea7eb58450318
-- 取り寄せ元: https://github.com/nanaism/yomiyasu.git
+- 取り寄せ元: [yomiyasu のリポジトリ](https://github.com/nanaism/yomiyasu)
 - 写した日: 2026-10-11
 
 ## 写したファイル

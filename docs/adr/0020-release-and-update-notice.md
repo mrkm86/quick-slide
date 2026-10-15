@@ -11,7 +11,8 @@
 - **SemVer**（`MAJOR.MINOR.PATCH`。プレリリースは `-rc.1` など）。前のバージョンのデータや設定のまま使えなくなる変更は MAJOR を上げる
 - バージョンを書く場所は 3 か所だけ: `src/quick_slide/__init__.py` の `__version__`（正本）と、プラグインのマニフェスト
   `.claude-plugin/plugin.json`・`.codex-plugin/plugin.json`。上げるのは `tools/release.py prepare`。揃っているかは
-  `tests/test_version.py` が見る（それまで `__version__` は `2.0.0a2`、マニフェストは `2.0.0` で食い違っていた。`2.0.0` に揃えた）
+  `tests/test_version.py` が見る（それまで `__version__` は `2.0.0a2`、マニフェストは `2.0.0` で食い違っていた。`2.0.0` に揃えた）。
+  最初に公開するときに **1.0.0 から数え直した**（作り直す前の版と区別するための「2」は社内の呼び名で、利用者には初めての公開のため）
 - タグは `v<バージョン>`。GitHub のリリースの本文は `CHANGELOG.md` のそのバージョンの節（`tools/release.py notes`）
 
 ### お知らせの流れ

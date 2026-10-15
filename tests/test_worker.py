@@ -325,8 +325,8 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(choose_backend("auto", "claude_code", both), ("claude", "origin"))
         self.assertEqual(choose_backend("auto", "codex", both), ("codex", "origin"))
         self.assertEqual(choose_backend("auto", "other", both), ("claude", "available"))
-        with self.assertRaises(WriterFailed):
-            choose_backend("auto", "claude_code", {"claude": None, "codex": "/x"})
+        self.assertEqual(choose_backend("auto", "claude_code", {"claude": None, "codex": "/x"}), ("codex", "available"))
+        self.assertEqual(choose_backend("auto", "codex", {"claude": "/x", "codex": None}), ("claude", "available"))
         self.assertEqual(choose_backend("auto", None, {"claude": None, "codex": "/x"}), ("codex", "available"))
         self.assertEqual(choose_backend("codex", "claude_code", both), ("codex", "settings"))
         with self.assertRaises(WriterFailed) as ctx:
@@ -338,13 +338,11 @@ class FlowTests(unittest.TestCase):
         fx, _ = self.start(cfg=Settings(writer="codex", worker=WorkerSettings(parallel=1)))
         _, run = self.make(fx, runtime="claude_code")
         self.assertEqual(run["args"]["writer"], "codex")
-        # 会話の出所の CLI が無ければ、黙って別の CLI に替えず、何を入れるかを言って止まる
+        # 自動なら会話の出所の CLI が無くても、もう一方で完了できる
         fx, log = self.start(tools_kw={"claude": str(FAKES / "no-such-claude")})
         body, run = self.make(fx, runtime="claude_code")
-        self.assertEqual((run["state"], run["failure_kind"]), ("failed", "writer_missing"))
-        self.assertIn("Claude Code", run["message"])
-        self.assertEqual(writer_calls(log), [])
-        self.assertTrue(fx.get(f"/api/decks/{body['deck_id']}").json()["limit"]["stopped"])
+        self.assertEqual((run["state"], run["args"]["writer"]), ("done", "codex"))
+        self.assertTrue(writer_calls(log))
         # 出所が分からない（画面・CLI）なら手元にあるもの（claude → codex）
         fx, _ = self.start(tools_kw={"claude": str(FAKES / "no-such-claude")})
         _, run = self.make(fx, runtime="cli")
