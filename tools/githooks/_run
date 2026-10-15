@@ -1,0 +1,36 @@
+#!/bin/sh
+# このリポジトリの hooks の本体（tools/public_check.py。入れ方は `python3 tools/public_check.py install`）。
+# 公開前の検査をしてから、全体の hooks（`git config --global core.hooksPath`。無ければ .git/hooks）を今までどおり呼ぶ。
+name=$1
+shift
+here=$(cd "$(dirname "$0")" && pwd)
+root=$(git rev-parse --show-toplevel)
+
+py() {
+  for c in python3 "py -3" python; do
+    if $c -c "import sys; sys.exit(sys.version_info < (3, 8))" >/dev/null 2>&1; then
+      $c "$@"
+      return $?
+    fi
+  done
+  echo "public-check: Python 3 が見つからないので、公開前の検査をできません" >&2
+  return 1
+}
+
+next=$(git config --global --get core.hooksPath 2>/dev/null)
+case "$next" in "~/"*) next="$HOME/${next#\~/}" ;; esac
+[ -n "$next" ] || next="$(git rev-parse --git-common-dir)/hooks"
+next="$next/$name"
+if [ ! -x "$next" ] || [ "$next" -ef "$here/$name" ]; then next=""; fi
+
+case "$name" in
+  pre-push)
+    input=$(cat)
+    printf '%s\n' "$input" | py "$root/tools/public_check.py" pre-push "$1" || exit 1
+    if [ -n "$next" ]; then printf '%s\n' "$input" | "$next" "$@"; exit $?; fi
+    exit 0 ;;
+  pre-commit)
+    py "$root/tools/public_check.py" staged || exit 1 ;;
+esac
+if [ -n "$next" ]; then exec "$next" "$@"; fi
+exit 0

@@ -13,6 +13,7 @@
 例は `2.1.0`。
 
 1. main を最新にし、テストを全部通す（`AGENTS.md` §3）
+   `python3 tools/public_check.py tree` で、出してはいけないものが無いことも見る（`AGENTS.md` §0）
 2. リリースのブランチでバージョンを上げる
 
    ```bash
