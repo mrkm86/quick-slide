@@ -239,13 +239,14 @@ class DoctorTests(Base):
         quiet = {name: mock.patch.object(setup, name, return_value=value) for name, value in (
             ("check_python", []), ("check_node", {}), ("check_browser", None), ("check_fonts", None),
             ("check_motion", None), ("check_codex", None), ("check_writers", None))}
-        records = ('{"host": "\\ud800", "port": 0, "instance_id": "i"}', '{"host": "a\\u0000b", "port": 0, "instance_id": "i"}',
-                   '{"host": "127.0.0.1\\nx", "port": 0, "instance_id": "i"}', '{"host": 3, "port": 0}', "[]", "{oops")
+        # 設定と同じポートの記録なので、ポートの確認もその記録の host につなぎにいく
+        records = ('{"host": "\\ud800", "port": 7999, "instance_id": "i"}', '{"host": "a\\u0000b", "port": 7999, "instance_id": "i"}',
+                   '{"host": "127.0.0.1\\nx", "port": 7999, "instance_id": "i"}', '{"host": 3, "port": 7999}', "[]", "{oops")
         for content in records:
             with self.subTest(record=content):
                 home = temp_dir(self, "qs-home-")
                 (home / "config").mkdir(parents=True)
-                (home / "config" / "settings.json").write_text(json.dumps({"server": {"port": 0}}), encoding="utf-8")
+                (home / "config" / "settings.json").write_text(json.dumps({"server": {"port": 7999}}), encoding="utf-8")
                 (home / "runtime").mkdir(parents=True)
                 (home / "runtime" / "server.json").write_text(content, encoding="utf-8")
                 for p in quiet.values():
@@ -261,16 +262,42 @@ class DoctorTests(Base):
 
     def test_an_unreadable_listen_host_is_reported_not_raised(self):
         setup = load_setup()
-        for host in ("\ud800", "a\u0000b"):
-            with self.subTest(host=repr(host)):
+        for host, port in (("\ud800", 7999), ("a\u0000b", 7999), ("\ud800", 0)):   # 0（空いているポート）でも名前は見る
+            with self.subTest(host=repr(host), port=port):
                 home = temp_dir(self, "qs-home-")
                 (home / "config").mkdir(parents=True)
                 (home / "config" / "settings.json").write_text(
-                    json.dumps({"server": {"host": host, "port": 7999}}), encoding="utf-8")
+                    json.dumps({"server": {"host": host, "port": port}}), encoding="utf-8")
                 rep = setup.Report()
                 setup.check_port(rep, home)
                 self.assertEqual("ng", rep.get("port")["level"])
                 self.assertIn("server.host", rep.get("port")["fix"])
+
+    def test_ports_that_are_not_port_numbers_are_reported_not_raised(self):
+        setup = load_setup()
+        for port in (-1, 65536, 2 ** 70):
+            with self.subTest(port=port):
+                home = temp_dir(self, "qs-home-")
+                (home / "config").mkdir(parents=True)
+                (home / "config" / "settings.json").write_text(json.dumps({"server": {"port": port}}), encoding="utf-8")
+                (home / "runtime").mkdir(parents=True)
+                (home / "runtime" / "server.json").write_text(
+                    json.dumps({"host": "127.0.0.1", "port": port, "instance_id": "i"}), encoding="utf-8")
+                rep = setup.Report()
+                setup.check_port(rep, home)
+                self.assertEqual("ng", rep.get("port")["level"])
+                self.assertIn("server.port", rep.get("port")["fix"])
+
+    def test_a_machine_out_of_sockets_is_reported_not_raised(self):
+        import errno
+        import socket
+        setup = load_setup()
+        home = temp_dir(self, "qs-home-")
+        with mock.patch.object(socket, "socket", side_effect=OSError(errno.EMFILE, "Too many open files")):
+            rep = setup.Report()
+            setup.check_port(rep, home)
+        self.assertEqual("warn", rep.get("port")["level"])
+        self.assertIn("ソケットを作れませんでした", rep.get("port")["detail"])
 
     def item_with(self, home: Path, fake: "FakeServer", setup=None):
         with mock.patch.object(http.client, "HTTPConnection", fake.connect):

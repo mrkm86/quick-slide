@@ -475,35 +475,45 @@ def settings_listen(home: Path) -> tuple[str, int]:
 
 def check_port(rep: Report, home: Path) -> None:
     host, port = settings_listen(home)
+    settings = home / "config" / "settings.json"
+    if not 0 <= port <= 65535:
+        rep.add("port", "ポート", "ng", f"server.port の {port} は、ポートの番号ではありません（0〜65535）",
+                fix=f"{settings} の server.port を直してください")
+        return
     try:
         record = json.loads((home / "runtime" / "server.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         record = None
-    if isinstance(record, dict) and record.get("port") == port:
+    if port and isinstance(record, dict) and record.get("port") == port:
         try:
             with socket.create_connection((str(record.get("host") or "127.0.0.1"), port), timeout=1.0):
                 rep.add("port", "ポート", "ok", f"{port}（Quick Slide が動いています: {record.get('url')}）")
                 return
         except (OSError, ValueError, TypeError):   # 壊れた記録（つなげない名前）でも診断は続ける
             pass
-    if port == 0:
-        rep.add("port", "ポート", "ok", "起動のたびに空いているポートを使う設定（server.port が 0）")
-        return
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
-    s = socket.socket(family, socket.SOCK_STREAM)
+    s = None
     try:
-        s.bind((host, port))
-        rep.add("port", "ポート", "ok", f"{host}:{port} は空いています")
+        s = socket.socket(family, socket.SOCK_STREAM)
+        s.bind((host, port))   # 0 でも、その名前で待てるかは確かめる
+        if port == 0:
+            rep.add("port", "ポート", "ok", "起動のたびに空いているポートを使う設定（server.port が 0）")
+        else:
+            rep.add("port", "ポート", "ok", f"{host}:{port} は空いています")
     except (ValueError, TypeError):   # 設定の名前が、そもそもアドレスとして読めない（ソケットは TypeError も投げる）
         rep.add("port", "ポート", "ng", f"{host!r}:{port} は、その名前・アドレスでは待てません",
-                fix=f"{home / 'config' / 'settings.json'} の server.host を直してください")
+                fix=f"{settings} の server.host を直してください")
     except OSError as exc:
+        if s is None:   # 名前やポートの話ではなく、この機体がいまソケットを作れない
+            rep.add("port", "ポート", "warn", f"確かめられませんでした（ソケットを作れませんでした: {exc}）")
+            return
         busy = exc.errno in (errno.EADDRINUSE, errno.EACCES)
         rep.add("port", "ポート", "warn" if busy else "ng",
                 f"{host}:{port} は{'ほかのアプリが使っています' if busy else 'その名前・アドレスでは待てません'}",
-                fix=f"そのアプリを止めるか、{home / 'config' / 'settings.json'} の server.port を変えてください")
+                fix=f"そのアプリを止めるか、{settings} の server.port を変えてください")
     finally:
-        s.close()
+        if s is not None:
+            s.close()
 
 
 def _server_get(host: str, port: int, path: str, *, timeout: float = 5.0) -> dict[str, Any] | None:
