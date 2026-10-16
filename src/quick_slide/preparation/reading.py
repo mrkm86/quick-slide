@@ -88,6 +88,15 @@ def is_reparse(st: os.stat_result) -> bool:
     return bool(getattr(st, "st_file_attributes", 0) & _REPARSE)
 
 
+def normalize_final_path(path: str) -> str:
+    """`GetFinalPathNameByHandle` の答え（`\\\\?\\C:\\x`・`\\\\?\\UNC\\server\\share\\x`）を、通常の書き方（`C:\\x`・`\\\\server\\share\\x`）にする。"""
+    if path.upper().startswith("\\\\?\\UNC\\"):
+        return "\\\\" + path[8:]
+    if path.startswith("\\\\?\\"):
+        return path[4:]
+    return path
+
+
 def _final_path(fd: int) -> str | None:
     """開いたハンドルの実体パス（Windows。GetFinalPathNameByHandle）。取れなければ None。"""
     try:
@@ -99,8 +108,7 @@ def _final_path(fd: int) -> str | None:
         n = ctypes.windll.kernel32.GetFinalPathNameByHandleW(ctypes.c_void_p(handle), buf, len(buf), 0)  # type: ignore[attr-defined]
         if n == 0 or n >= len(buf):
             return None
-        out = buf.value
-        return out[4:] if out.startswith("\\\\?\\") else out
+        return normalize_final_path(buf.value)
     except (ImportError, OSError, AttributeError, ValueError):
         return None
 
@@ -229,11 +237,24 @@ class Reader:
         base = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
         cur = -1
         try:
-            cur = os.open(os.path.realpath(root), base | directory | getattr(os, "O_BINARY", 0))
-            for p in parts[:-1]:
-                nxt = os.open(p, base | directory | nofollow | getattr(os, "O_BINARY", 0), dir_fd=cur)
-                os.close(cur)
-                cur = nxt
+            # 起点は信頼できる `/` の FD。正規化した絶対ルートの各成分も、登録フォルダの相対成分も、全部 no-follow で開く
+            # （realpath のあとでルート自身や祖先が symlink に差し替えられても、外へは出ない）
+            real = os.path.realpath(root)
+            expected = os.stat(real)
+            cur = os.open(os.sep, base | directory | getattr(os, "O_BINARY", 0))
+
+            def descend(names: list[str]) -> None:
+                nonlocal cur
+                for c in names:
+                    nxt = os.open(c, base | directory | nofollow | getattr(os, "O_BINARY", 0), dir_fd=cur)
+                    os.close(cur)
+                    cur = nxt
+
+            descend([c for c in real.split(os.sep) if c])
+            opened = os.fstat(cur)
+            if (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino):
+                raise PreparationStopped("登録した場所が、確かめた実体と違うものに変わりました。", "outside_root")
+            descend(parts[:-1])
             return os.open(parts[-1], base | nofollow | getattr(os, "O_BINARY", 0), dir_fd=cur)
         except OSError:
             raise PreparationStopped("素材のファイルを開けませんでした（見つからない・読めない・登録した場所の外を指すリンクです）。",

@@ -52,27 +52,21 @@ def load_compiled(ctx: Any, run: dict[str, Any], snapshot_doc: dict[str, Any]) -
             raise PreparationStopped(f"テンプレートのコンパイル結果（{name}）が見つかりません。", "compilation_missing") from None
         if listed.get(name) != hashlib.sha256(text.encode("utf-8")).hexdigest():
             raise PreparationStopped(f"テンプレートのコンパイル結果（{name}）が、控えと違っています。", "compilation_changed")
-        out[name] = _without_paths(text, snapshot_doc)
-    return out
+        out[name] = text
+    return _without_paths(out, snapshot_doc)
 
 
-RESOURCE_HEADING = "\n# リソース\n"
+def _without_paths(compiled: dict[str, str], doc: dict[str, Any]) -> dict[str, str]:
+    """モデルへ渡す `writer.md`・`preparation.md`。完成した Markdown を切り貼りせず、テンプレートの文書（構造化データ）から、
+    登録した実パスの無い表で組み直す。原文の構成・追加指示はそのまま。控えのコンパイル結果とパス入りで一致しなければ使わない。"""
+    from .. import design_templates as dt
 
-
-def _without_paths(text: str, doc: dict[str, Any]) -> str:
-    """コンパイラのリソース対応表（登録した実パスが入る）を、ID・名前・種類・使い方だけの表に替える。
-    追加指示・構成の原文はそのまま残す。パスはモデルに渡さない。"""
-    i = text.find(RESOURCE_HEADING)
-    if i < 0:
-        return text
-    lines = ["# リソース",
-             "追加指示や構成に出てくる名前は、次の登録リソースを指す。名前から別の素材を推測しない。",
-             "フォルダの場合は、説明書き（README.md・README.txt）が準備係に渡される。使い方に従って必要なファイルだけが選ばれる。",
-             "指示で使うリソースが見つからない・読めない場合は止めて確認し、代わりの素材を作らない。"]
-    for row in doc.get("resources") or []:
-        lines.append(f"\n## {row['name']}\n- ID: {row['id']}\n- 種類: {'フォルダ' if row['kind'] == 'directory' else 'ファイル'}"
-                     + (f"\n- 使い方: {row['usage']}" if row["usage"].strip() else ""))
-    return text[:i].rstrip("\n") + "\n\n" + "\n".join(lines)
+    d = dt.validate(doc)
+    with_paths = dt.resource_table(d)
+    if compiled["writer.md"] != dt.writer_text(d, with_paths) or compiled["preparation.md"] != dt.preparation_text(d, with_paths):
+        raise PreparationStopped("テンプレートのコンパイル結果が、文書から組み直したものと違っています。", "compilation_changed")
+    table = dt.resource_table(d, paths=False)
+    return {"writer.md": dt.writer_text(d, table), "preparation.md": dt.preparation_text(d, table)}
 
 
 def write_json_sha(obj: Any) -> str:
@@ -329,12 +323,25 @@ class TemplateRun:
                     "compliance": {"status": "not_evaluated", "note": "指示の遵守は描画後に確かめる（この段では判定しない）"}}
         sha = write_json(self.dir / MANIFEST, manifest)
         self.rec.complete(n, "manifest", {MANIFEST: sha}, script_sha256=script["sha256"])
-        # 台本 → 使った世代と manifest のハッシュ（直しは、対象の台本から明示的に引く。最大世代の走査はしない）
+        self.boundary("manifest.recorded")
+        self._publish(script, sha)
+
+    def _publish(self, script: dict[str, Any], manifest_sha: str) -> None:
+        """台本 → 使った世代と manifest のハッシュの対応表を書き（直しは対象の台本から明示的に引く）、世代を完了にする。
+        何度呼んでも同じ結果になる（manifest の完了記録のあとで中断しても、再開が同じ記録から仕上げる）。"""
         write_json(self.root.deck_preparations_dir(self.deck_id) / "by-script" / f"{script['id']}.json",
-                   {"script_id": script["id"], "script_sha256": script["sha256"], "generation": n,
-                    "preparation_id": self.preparation_id, "manifest_sha256": sha})
-        self.rec.finish(n)
+                   {"script_id": script["id"], "script_sha256": script["sha256"], "generation": self.generation,
+                    "preparation_id": self.preparation_id, "manifest_sha256": manifest_sha})
+        self.rec.finish(self.generation)
         self.boundary("manifest.done")
+
+    def _mapping_ok(self, script: dict[str, Any], manifest_sha: str) -> bool:
+        try:
+            ref = read_json(self.root.deck_preparations_dir(self.deck_id) / "by-script" / f"{script['id']}.json")
+        except (OSError, ValueError):
+            return False
+        return (ref.get("script_sha256"), ref.get("generation"), ref.get("preparation_id"), ref.get("manifest_sha256")) == (
+            script["sha256"], self.generation, self.preparation_id, manifest_sha)
 
     def completed(self, store_script: Callable[[str], dict[str, Any]]) -> dict[str, Any] | None:
         """再開: 控えのハッシュが全部合う完了済みの段から、検査を通した台本の行を返す（manifest まで完了。台本係を呼ばない）。"""
@@ -347,7 +354,12 @@ class TemplateRun:
         if not verify_assets(self.dir, self.assets):
             return None
         row = store_script(st["script"]["script_id"])
-        return row if row["sha256"] == st["script"]["script_sha256"] == st["manifest"]["script_sha256"] else None
+        if row["sha256"] != st["script"]["script_sha256"] or row["sha256"] != st["manifest"]["script_sha256"]:
+            return None
+        manifest_sha = st["manifest"]["files"][MANIFEST]
+        if not self._mapping_ok(row, manifest_sha) or g.get("state") != "completed":
+            self._publish(row, manifest_sha)   # 完了記録と対応表の保存のあいだで中断した: 整合する記録から仕上げ直す
+        return row
 
     def pending_candidate(self, store_script: Callable[[str], dict[str, Any]]) -> dict[str, Any] | None:
         """再開: 素材解決まで完了した候補の台本（検査だけやり直す）。"""
@@ -379,6 +391,28 @@ def prepare_run(ctx: Any, run: dict[str, Any], *, llm: LLM.Llm | None, policy: P
     return tr
 
 
+def _manifest_consistent(folder: Path, st: dict[str, Any], head: dict[str, Any], ref: dict[str, Any], gen: int, pid: str) -> bool:
+    """manifest が、台本（id・sha）・準備 ID・世代・by-script と対応し、manifest の files が実際のファイル
+    （resolve 段の assets.json・bindings.json を含む）と全部合うか。"""
+    try:
+        m = read_json(folder / MANIFEST)
+        files = m["files"]
+        if (m["script"]["id"], m["script"]["sha256"], m["preparation_id"], m["generation"]) != (
+                head["id"], head["sha256"], pid, gen) or ref.get("script_id") != head["id"]:
+            return False
+        if not {INTAKE, CATALOG, READING, ASSETS, BINDINGS} <= set(files) or not verify(folder, files):
+            return False
+        if not verify(folder, st["resolve"]["files"]) or st["resolve"]["files"] != {k: files[k] for k in (ASSETS, BINDINGS)}:
+            return False
+        b, a = read_json(folder / BINDINGS), read_json(folder / ASSETS)
+        if b["script_sha256"] != head["sha256"]:
+            return False
+        return all(r in a and [f["sha256"] for f in a[r]["files"]] == [f["sha256"] for f in v["files"]]
+                   for r, v in b["refs"].items()) and {e["ref_id"] for e in b["bindings"]} <= set(b["refs"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
 def load_template_run(ctx: Any, run: dict[str, Any], *, reader: Reader | None = None, boundary: Callable[[str], None] | None = None
                       ) -> TemplateRun:
     """直し・差し込み用: デッキのいまの台本が使った準備の世代（台本 → 世代と manifest のハッシュの控え）を明示的に引く。
@@ -401,6 +435,8 @@ def load_template_run(ctx: Any, run: dict[str, Any], *, reader: Reader | None = 
           and sha256_file(folder / MANIFEST) == ref["manifest_sha256"] == st["manifest"]["files"].get(MANIFEST)
           and head["sha256"] == ref["script_sha256"]
           and verify(folder, st["intake"]["files"]) and verify(folder, st["reading"]["files"]))
+    if ok:
+        ok = _manifest_consistent(folder, st, head, ref, gen, pid)
     if not ok:
         raise PreparationStopped("いまの台本が使った素材準備の控えが、記録と違っています（欠けたか変わりました）。"
                                  "別の世代には切り替えずに止めます。", "preparation_changed")

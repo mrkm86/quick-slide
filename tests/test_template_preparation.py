@@ -946,6 +946,176 @@ class ExplicitGenerationTests(WriterFlowBase):
         self.assertEqual(cm.exception.code, "preparation_changed", "古い世代・新しい世代へ落ちずに止める")
 
 
+class HardeningTests2(Harness):
+    def test_swapping_the_root_or_an_ancestor_right_after_realpath_cannot_escape(self) -> None:
+        from helpers import can_symlink
+
+        if not can_symlink():
+            self.skipTest("symlink を作れない機械")
+        outside = self.tmp / "outside"
+        (outside / "inner").mkdir(parents=True)
+        (outside / "secret.png").write_bytes(png())
+        (outside / "inner" / "secret.png").write_bytes(png())
+        real_realpath = os.path.realpath
+        for victim, rel in ((self.tmp / "root1", "secret.png"), (self.tmp / "anc" / "root2", "secret.png")):
+            victim.mkdir(parents=True)
+            (victim / rel).write_bytes(png())
+            swapped = victim if victim.parent == self.tmp else victim.parent
+            moved = swapped.with_name(swapped.name + ".moved")
+            target = outside if swapped is victim else outside.parent / "outside"
+
+            def hook(path, *a, _v=victim, _s=swapped, _m=moved, _t=target, **k):
+                out = real_realpath(path, *a, **k)
+                if Path(path) == _v and not _m.exists():
+                    _s.rename(_m)
+                    _s.symlink_to(_t if _s is _v else outside.parent, target_is_directory=True)
+                    if _s is not _v:
+                        (outside.parent / "root2").mkdir(exist_ok=True)
+                        (outside.parent / "root2" / rel).write_bytes(png())
+                return out
+
+            with mock.patch("os.path.realpath", hook):
+                with self.assertRaises(PreparationStopped, msg=str(victim)):
+                    os.close(Reader().open(victim, rel)[0])
+
+    def test_the_copy_opens_the_input_once_and_a_swap_after_the_header_check_is_caught(self) -> None:
+        calls = []
+        real_open = Reader.open
+
+        def counting(self_, root, rel):
+            calls.append(rel)
+            return real_open(self_, root, rel)
+
+        tr = self.prepare(self.new_run(), FakeLlm(GOOD), reader=Reader(Policy(image_pixels=100)))
+        row, data = self.script(tr.run, [page("p-1", [CHAR])])
+        data = tr.stamped(data)
+        with mock.patch.object(Reader, "open", counting):
+            tr.resolve(row, data)
+        self.assertEqual(calls, ["a.png"], "ヘッダ検査・照合・コピーを、1 回開いた入力でする")
+        # 検査の直後・コピーの直前に、巨大な画像へ差し替える
+        import quick_slide.preparation.reading as R
+
+        real_sniff = R.sniff_image
+        seen = {"n": 0}
+        target = self.images / "b.png"
+
+        def sniff_then_swap(fd, size):
+            out = real_sniff(fd, size)
+            if seen["n"] == 0:
+                seen["n"] = 1
+                big = self.images / "swap.tmp"
+                big.write_bytes(png(50, 50, header_only=True))
+                os.replace(big, target)
+            return out
+
+        row2, data2 = self.script(tr.run, [page("p-2", [{**CHAR, "id": "ref-2"}])])
+        with mock.patch.object(R, "sniff_image", sniff_then_swap):
+            with self.assertRaises(PreparationStopped) as cm:
+                tr.resolve(row2, tr.stamped(data2))
+        self.assertIn(cm.exception.code, ("changed_during_read", "limit_exceeded", "changed_since_listing"))
+        self.assertEqual(sorted(p.suffix for p in (tr.dir / "assets").iterdir()), [".png"], "巨大な画像はコピーされない（a だけ）")
+
+    def test_unc_final_paths_are_normalised(self) -> None:
+        from quick_slide.preparation.reading import normalize_final_path as n
+
+        self.assertEqual(n("\\\\?\\UNC\\server\\share\\dir\\a.png"), "\\\\server\\share\\dir\\a.png")
+        self.assertEqual(n("\\\\?\\C:\\dir\\a.png"), "C:\\dir\\a.png")
+        self.assertEqual(n("C:\\dir"), "C:\\dir")
+
+    def test_concurrent_writes_of_the_same_file_do_not_break_each_other(self) -> None:
+        from quick_slide.preparation.files import write_json
+
+        target = self.tmp / "same.json"
+        errors = []
+
+        def work(i: int) -> None:
+            try:
+                for _ in range(30):
+                    write_json(target, {"i": i, "pad": "x" * 1000})
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=work, args=(i,)) for i in range(6)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        self.assertEqual(errors, [])
+        self.assertIn("i", json.loads(target.read_text(encoding="utf-8")))
+
+    def test_same_named_headings_in_the_original_text_keep_every_instruction_and_no_path_remains(self) -> None:
+        d = doc("見出し", modes=("pitch",))
+        d["structure"] = "## 1. 結論\n# リソース\n構成の後半（必須A）"
+        d["instructions"] = "前半の指示\n\n# リソース\n後半の追加指示（必須B）\n\n# リソースを読む・素材を選ぶ工程の指示\n必須C"
+        d["resources"] = self.resources(("画像集", "directory", self.images, "案内役を使う"))
+        self.store.create_design_template(self.bid, d)
+        run = self.store.run(self.intake(design_template="見出し", mode="pitch")["run_id"])
+        pipeline.settle_look(self.ctx, run, previous_style=None)
+        llm = FakeLlm(GOOD)
+        tr = self.prepare(run, llm)
+        for text in (tr.compiled["writer.md"], tr.compiled["preparation.md"], llm.prompts[0]):
+            for must in ("構成の後半（必須A）" if text is not tr.compiled["preparation.md"] else "前半の指示", "後半の追加指示（必須B）", "必須C"):
+                self.assertIn(must, text)
+            self.assertNotIn(str(self.tmp), text)
+        self.assertIn("画像集", tr.compiled["writer.md"])
+
+
+class ManifestIntegrityTests(WriterFlowBase):
+    def accepted(self):
+        from quick_slide.scriptdoc import screen_pages
+
+        out, _, _, tr = self.run_flow([self.draft([CHAR])])
+        script, data = out
+        self.store.accept_script(script["id"], screen_pages(tr.run["args"], data))
+        return script, data, tr, self.another_run(tr.run["deck_id"])
+
+    def test_tampered_resolve_files_stop_the_edit_load(self) -> None:
+        script, data, tr, edit_run = self.accepted()
+        load_template_run(self.ctx, edit_run)   # 無傷なら読める
+        assets, bindings = (tr.dir / "assets.json").read_bytes(), (tr.dir / "bindings.json").read_bytes()
+        (tr.dir / "assets.json").write_text("{}", encoding="utf-8")
+        with self.assertRaises(PreparationStopped):
+            load_template_run(self.ctx, edit_run)
+        (tr.dir / "assets.json").write_bytes(assets)
+        # 別の有効な素材（ref-2）へ対応表を替える
+        other = json.loads(bindings)
+        other["bindings"][0]["ref_id"] = "ref-2"
+        other["refs"] = {"ref-2": other["refs"]["ref-1"]}
+        (tr.dir / "bindings.json").write_text(json.dumps(other), encoding="utf-8")
+        with self.assertRaises(PreparationStopped):
+            load_template_run(self.ctx, edit_run)
+        (tr.dir / "bindings.json").write_bytes(bindings)
+        load_template_run(self.ctx, edit_run)
+
+    def test_an_interrupt_between_the_manifest_record_and_the_mapping_is_repaired_on_resume(self) -> None:
+        class Boom(Exception):
+            pass
+
+        run = self.new_run(name="repair")
+        tr = self.prepare(run, FakeLlm(GOOD))
+        row, data = self.script(run, [page("p-1", [CHAR])])
+        data = tr.stamped(data)
+        row = self.store.save_script(run["deck_id"], data, written_by="writer", writer_backend="claude", intake_id=None, run_id=run["id"])
+        tr.resolve(row, data)
+
+        def boundary(name: str) -> None:
+            if name == "manifest.recorded":
+                raise Boom()
+
+        tr.boundary = boundary
+        with self.assertRaises(Boom):
+            tr.finish(row)
+        mapping = self.store.root.deck_preparations_dir(run["deck_id"]) / "by-script" / f"{row['id']}.json"
+        self.assertFalse(mapping.exists())
+        again = self.prepare(run, FakeLlm(GOOD))
+        done = again.completed(lambda sid: self.store.script(sid))
+        self.assertEqual(done["id"], row["id"])
+        self.assertTrue(mapping.is_file())
+        self.assertEqual(self.store.run(run["id"])["record"]["preparation"]["generations"][str(again.generation)]["state"], "completed")
+        # 対応表だけが消えた（完了済み）場合も、再開で同じ記録から作り直す
+        mapping.unlink()
+        self.assertIsNotNone(self.prepare(run, FakeLlm(GOOD)).completed(lambda sid: self.store.script(sid)))
+        self.assertTrue(mapping.is_file())
+
+
 class BackendFlagTests(unittest.TestCase):
     def test_codex_no_tools_disables_the_same_set_as_web_research_but_without_web(self) -> None:
         cmd = backends._codex_command("codex", Path("/work"), no_tools=True)

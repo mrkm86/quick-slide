@@ -300,8 +300,9 @@ def resource_report(resources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def resource_table(d: dict[str, Any]) -> str:
-    """指示の中の名前と、実際の置き場の対応。台本係・準備・描画係に同じものを渡す。"""
+def resource_table(d: dict[str, Any], *, paths: bool = True) -> str:
+    """指示の中の名前と、実際の置き場の対応。台本係・準備・描画係に同じものを渡す。
+    `paths=False` は、登録した実パスを含めない表（ID・名前・種類・使い方。モデルへ渡す用）。"""
     if not d["resources"] and not d["attachments"]:
         return ""
     lines = ["# リソース",
@@ -309,12 +310,40 @@ def resource_table(d: dict[str, Any]) -> str:
              "フォルダの場合は、中の説明書き（" + "・".join(GUIDE_FILES) + "）があれば先に読み、使い方に従って必要なファイルだけを選ぶ。",
              "指示で使うリソースが見つからない・読めない場合は止めて確認し、代わりの素材を作らない。"]
     for row in d["resources"]:
-        lines.append(f"\n## {row['name']}\n- 種類: {'フォルダ' if row['kind'] == 'directory' else 'ファイル'}\n- パス: {row['path']}"
+        lines.append(f"\n## {row['name']}\n- 種類: {'フォルダ' if row['kind'] == 'directory' else 'ファイル'}"
+                     + (f"\n- パス: {row['path']}" if paths else f"\n- ID: {row['id']}")
                      + (f"\n- 使い方: {row['usage']}" if row["usage"].strip() else ""))
     for row in d["attachments"]:
         lines.append(f"\n## {row['name']}\n- 種類: 添付ファイル（{row['file']}）\n- 内容のハッシュ: {row['sha256']}"
                      + (f"\n- 使い方: {row['usage']}" if row["usage"].strip() else ""))
     return "\n".join(lines)
+
+
+def writer_text(d: dict[str, Any], table: str) -> str:
+    """台本係への指示（`writer.md`）。原文の構成・追加指示はそのまま、リソースの対応表だけを `table` で渡す。"""
+    writer = ("# デザインテンプレートの指示\n\n## 台本の組み立て方\n"
+              "承認済みの台本が渡された場合は、そのページ数・順番・主張・素材指定を優先して保持する。"
+              "台本が未確定の場合は、今回の原稿から構成に沿って台本を組み立てる。")
+    if d["structure"].strip():
+        writer += "\n\n## 構成\n" + d["structure"]
+    if d["instructions"].strip():
+        writer += "\n\n## 追加指示（原文）\n" + d["instructions"]
+    if table:
+        writer += "\n\n" + table
+    return writer
+
+
+def preparation_text(d: dict[str, Any], table: str) -> str:
+    """素材準備係への指示（`preparation.md`）。"""
+    preparation = ("# リソースを読む・素材を選ぶ工程の指示\n"
+                   "追加指示と構成を読み、使うよう指示されたリソースを実際に開く。"
+                   "今回の原稿と指示から必要なファイルだけを選び、ページ・リソース名・選んだファイル・内容のハッシュ・選んだ理由を返す。"
+                   "ここでは生成・外部への投稿・元データの変更をしない。")
+    if d["instructions"].strip():
+        preparation += "\n\n## 追加指示（原文）\n" + d["instructions"]
+    if table:
+        preparation += "\n\n" + table
+    return preparation
 
 
 def compile_document(document: Any, brand: dict[str, Any], *, mode: str) -> dict[str, Any]:
@@ -324,23 +353,7 @@ def compile_document(document: Any, brand: dict[str, Any], *, mode: str) -> dict
         raise ValueError("ブランドまたは使える形式が一致しません。")
     table = resource_table(d)
     instructions = d["instructions"].strip()
-    writer = ("# デザインテンプレートの指示\n\n## 台本の組み立て方\n"
-              "承認済みの台本が渡された場合は、そのページ数・順番・主張・素材指定を優先して保持する。"
-              "台本が未確定の場合は、今回の原稿から構成に沿って台本を組み立てる。")
-    if d["structure"].strip():
-        writer += "\n\n## 構成\n" + d["structure"]
-    if instructions:
-        writer += "\n\n## 追加指示（原文）\n" + d["instructions"]
-    if table:
-        writer += "\n\n" + table
-    preparation = ("# リソースを読む・素材を選ぶ工程の指示\n"
-                   "追加指示と構成を読み、使うよう指示されたリソースを実際に開く。"
-                   "今回の原稿と指示から必要なファイルだけを選び、ページ・リソース名・選んだファイル・内容のハッシュ・選んだ理由を返す。"
-                   "ここでは生成・外部への投稿・元データの変更をしない。")
-    if instructions:
-        preparation += "\n\n## 追加指示（原文）\n" + d["instructions"]
-    if table:
-        preparation += "\n\n" + table
+    writer, preparation = writer_text(d, table), preparation_text(d, table)
     # 描画係へは準備済みの素材と一緒に渡す。画像ツール自体にファイル探索を任せない。
     drawing = "\n\n".join(part for part in (instructions, table) if part)
     import yaml

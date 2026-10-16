@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +36,7 @@ def write_json(path: Path, obj: Any) -> str:
     """一時名へ書いてから置き換える。書いた中身の sha256 を返す。"""
     data = dumps(obj)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.part-{os.getpid()}")
+    tmp = path.with_name(f".{path.name}.part-{os.getpid()}-{threading.get_ident()}-{uuid.uuid4().hex[:8]}")
     try:
         tmp.write_bytes(data)
         oscompat.replace(tmp, path)
