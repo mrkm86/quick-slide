@@ -18,6 +18,7 @@ from .assets import AssetsMixin
 from .base import StoreBase
 from .brands import BrandsMixin
 from .decks import DecksMixin
+from .design_templates import DesignTemplatesMixin
 from .edits import EditsMixin
 from .events import EventsMixin
 from .exports import ExportsMixin
@@ -41,6 +42,7 @@ class Store(
     DeckViewsMixin,
     LaunchesMixin,
     DecksMixin,
+    DesignTemplatesMixin,
     PresetsMixin,
     StylesMixin,
     BrandsMixin,

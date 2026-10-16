@@ -55,6 +55,8 @@ EVENT_KINDS = (
     "style_created",
     "style_revision_added",
     "style_deleted",
+    "design_template_saved",    # テンプレートの改訂を足した（作成・上書き・新しい版・複製）。中身は書かない
+    "design_template_deleted",
     "deck_created",
     "deck_updated",
     "deck_duplicated",
