@@ -89,11 +89,21 @@ jobs:
           echo "HTML_SLIDE_CHROME=$chrome" >> "$GITHUB_ENV"
 
       - name: サーバと画面（混みに弱い組・2 並列）
+        id: timing
         if: ${{ !cancelled() && steps.deps.outcome == 'success' && !env.ONLY }}
         run: |
           set -f   # * をファイル名に展開しない
           args=(); for k in $TIMING_GROUP; do args+=(-k "$k"); done
-          bash tests/run.sh -j 2 "${args[@]}"
+          bash tests/run.sh -j 2 "${args[@]}" 2>&1 | tee "$RUNNER_TEMP/timing-tests.log"
+
+      # ジョブ全体が終わる前にも、失敗した段のログを取得できるようにする。
+      - name: 混みに弱い組の失敗ログを残す
+        if: ${{ !cancelled() && steps.timing.outcome == 'failure' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: timing-tests-log
+          path: ${{ runner.temp }}/timing-tests.log
+          retention-days: 7
 
       - name: サーバと画面（ほか・4 並列）
         if: ${{ !cancelled() && steps.deps.outcome == 'success' && !env.ONLY }}
