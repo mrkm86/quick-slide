@@ -1,6 +1,7 @@
 """デザインテンプレートのリソースが、この機体にあるか（API の resource-check と `--doctor`）。中身は見ない。"""
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import json
 import sqlite3
@@ -150,20 +151,74 @@ class DoctorTests(Base):
 
     def test_broken_or_foreign_responses_are_not_read_as_all_present(self):
         home = temp_dir(self, "qs-home-")
-        self.write_record(home)
-        setup = load_setup()
-        health = {"instance_id": self.fx.get("/api/health").json()["instance_id"]}
-        for broken in ({}, {"templates": 1, "resources": 1}, {"templates": "1", "resources": 0, "missing": []},
-                       {"templates": 1, "resources": 1, "missing": [{"template_name": "週報"}]}, None):
-            with self.subTest(broken=broken):
-                with mock.patch.object(setup, "_server_get", side_effect=[health, broken]):
-                    item = self.item(home, setup)
+        self.write_record(home, instance_id="i-1")
+        ok = {"templates": 1, "resources": 1, "missing": []}
+        cases = {
+            "empty object": json.dumps({}), "no missing": json.dumps({"templates": 1, "resources": 1}),
+            "string count": json.dumps(dict(ok, templates="1")), "bool count": json.dumps(dict(ok, resources=True)),
+            "negative": json.dumps(dict(ok, templates=-1)), "missing not list": json.dumps(dict(ok, missing={})),
+            "item without names": json.dumps(dict(ok, missing=[{"template_name": "週報"}])),
+            "array": "[]", "null": "null", "bad json": "{oops", "bad utf-8": b"\xff\xfe{}",
+            "not 200": (404, json.dumps(ok)), "cut short": http.client.IncompleteRead(b"{"),
+            "timeout": TimeoutError("timed out"), "refused": ConnectionRefusedError(),
+        }
+        for name, answer in cases.items():
+            with self.subTest(name=name):
+                fake = FakeServer({"/api/health": json.dumps({"instance_id": "i-1"}),
+                                   "/api/settings/design-templates/resource-check": answer})
+                item = self.item_with(home, fake)
                 self.assertEqual("warn", item["level"])
                 self.assertIn("確かめられませんでした", item["detail"])
+                self.assertEqual(["/api/health", "/api/settings/design-templates/resource-check"], fake.asked)
 
-    def test_corrupt_record_and_down_server_neither_start_nor_open_anything(self):
+    def test_every_connection_is_made_to_the_record_with_a_timeout_and_closed(self):
+        home = temp_dir(self, "qs-home-")
+        self.write_record(home, host="::1", port=8765, instance_id="i-1")
+        fake = FakeServer({"/api/health": json.dumps({"instance_id": "i-1"}),
+                           "/api/settings/design-templates/resource-check":
+                               json.dumps({"templates": 0, "resources": 0, "missing": []})})
+        self.assertEqual("ok", self.item_with(home, fake)["level"])
+        self.assertEqual({("::1", 8765)}, {(c.host, c.port) for c in fake.conns})
+        self.assertTrue(all(c.timeout and c.timeout <= 10 for c in fake.conns))
+        self.assertEqual({"[::1]:8765"}, {c.headers.get("Host") for c in fake.conns})   # サーバの Host 検査を通る
+        self.assertTrue(all(c.closed for c in fake.conns))
+
+    def test_another_instance_is_never_asked_for_the_check(self):
+        home = temp_dir(self, "qs-home-")
+        self.write_record(home, instance_id="i-1")
+        for name, health in (("other", json.dumps({"instance_id": "i-2"})), ("no id", json.dumps({})),
+                             ("down", ConnectionRefusedError())):
+            with self.subTest(name=name):
+                fake = FakeServer({"/api/health": health})
+                item = self.item_with(home, fake)
+                self.assertEqual("ok", item["level"])
+                self.assertIn("サーバが動いていない", item["detail"])
+                self.assertEqual(["/api/health"], fake.asked)
+
+    def test_broken_records_are_not_dialled_and_do_not_stop_the_doctor(self):
+        records = {"array": "[]", "host with newline": json.dumps({"host": "127.0.0.1\nx", "port": 1, "instance_id": "i"}),
+                   "huge port": '{"host": "127.0.0.1", "port": 1e999, "instance_id": "i"}',
+                   "port as text": json.dumps({"host": "127.0.0.1", "port": "8765", "instance_id": "i"}),
+                   "port out of range": json.dumps({"host": "127.0.0.1", "port": 70000, "instance_id": "i"}),
+                   "id not text": json.dumps({"host": "127.0.0.1", "port": 1, "instance_id": 3})}
+        for name, content in records.items():
+            with self.subTest(name=name):
+                home = temp_dir(self, "qs-home-")
+                (home / "runtime").mkdir(parents=True)
+                (home / "runtime" / "server.json").write_text(content, encoding="utf-8")
+                fake = FakeServer({})
+                item = self.item_with(home, fake)
+                self.assertEqual("ok", item["level"])
+                self.assertIn("サーバが動いていない", item["detail"])
+                self.assertEqual([], fake.asked)
+
+    def test_neither_starts_the_server_nor_opens_the_database(self):
+        # 記録が無い・壊れている・半端なときも、サーバに最後まで聞けたときも
         setup = load_setup()
-        for name, content in (("empty", None), ("corrupt", "{not json"), ("partial", json.dumps({"host": "127.0.0.1"}))):
+        answers = {"/api/health": json.dumps({"instance_id": "i-1"}),
+                   "/api/settings/design-templates/resource-check": json.dumps({"templates": 0, "resources": 0, "missing": []})}
+        for name, content in (("none", None), ("corrupt", "{not json"), ("partial", json.dumps({"host": "127.0.0.1"})),
+                              ("running", json.dumps({"host": "127.0.0.1", "port": 1, "instance_id": "i-1"}))):
             with self.subTest(name=name):
                 home = temp_dir(self, "qs-home-")
                 if content is not None:
@@ -173,10 +228,47 @@ class DoctorTests(Base):
                 with mock.patch.object(subprocess, "Popen", side_effect=fail), \
                      mock.patch.object(subprocess, "run", side_effect=fail), \
                      mock.patch.object(sqlite3, "connect", side_effect=fail):
-                    item = self.item(home, setup)
+                    item = self.item_with(home, FakeServer(answers), setup)
                 self.assertEqual("ok", item["level"])
-                self.assertIn("サーバが動いていない", item["detail"])
 
+    def item_with(self, home: Path, fake: "FakeServer", setup=None):
+        with mock.patch.object(http.client, "HTTPConnection", fake.connect):
+            return self.item(home, setup)
+
+
+class FakeServer:
+    """http.client.HTTPConnection の代わり。道ごとの答え（本文・(状態, 本文)・投げる例外）を返し、聞かれた道を控える。"""
+
+    def __init__(self, answers):
+        self.answers, self.asked, self.conns = answers, [], []
+
+    def connect(self, host, port, timeout=None):
+        conn = FakeConnection(self, host, port, timeout)
+        self.conns.append(conn)
+        return conn
+
+
+class FakeConnection:
+    def __init__(self, server, host, port, timeout):
+        self.server, self.host, self.port, self.timeout = server, host, port, timeout
+        self.headers, self.path, self.closed = {}, None, False
+
+    def request(self, method, path, headers=None):
+        self.server.asked.append(path)
+        self.path, self.headers = path, dict(headers or {})
+        if path not in self.server.answers:
+            raise ConnectionRefusedError()
+
+    def getresponse(self):
+        answer = self.server.answers[self.path]
+        if isinstance(answer, BaseException):
+            raise answer
+        status, body = answer if isinstance(answer, tuple) else (200, answer)
+        body = body.encode("utf-8") if isinstance(body, str) else body
+        return mock.Mock(status=status, read=mock.Mock(return_value=body))
+
+    def close(self):
+        self.closed = True
 
 if __name__ == "__main__":
     unittest.main()

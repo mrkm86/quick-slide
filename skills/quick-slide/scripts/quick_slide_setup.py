@@ -508,17 +508,19 @@ def _server_get(host: str, port: int, path: str, *, timeout: float = 5.0) -> dic
     200 の JSON オブジェクトでなければ None。"""
     import http.client
     shown = f"[{host}]" if ":" in host and not host.startswith("[") else host
-    conn = http.client.HTTPConnection(host, port, timeout=timeout)
+    conn = None
     try:
+        conn = http.client.HTTPConnection(host, port, timeout=timeout)
         conn.request("GET", path, headers={"Host": f"{shown}:{port}"})
         resp = conn.getresponse()
         body = resp.read()
         if resp.status != 200:
             return None
-    except (OSError, http.client.HTTPException):
+    except (OSError, ValueError, http.client.HTTPException):
         return None
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
     try:
         data = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, ValueError):
@@ -536,22 +538,36 @@ def _resource_check_shape(result: dict[str, Any]) -> bool:
                     for m in missing))
 
 
+def _server_record(home: Path) -> tuple[str, int, str] | None:
+    """サーバの記録（runtime/server.json）から、つなぐ先と instance_id を読む。形が違えば None（診断は続ける）。"""
+    try:
+        record = json.loads((home / "runtime" / "server.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    host, port, instance = record.get("host"), record.get("port"), record.get("instance_id")
+    if not (isinstance(host, str) and host and host.isprintable() and not any(c.isspace() for c in host)):
+        return None
+    if not (type(port) is int and 0 < port < 65536):
+        return None
+    if not (isinstance(instance, str) and instance):
+        return None
+    return host, port, instance
+
+
 def check_template_resources(rep: Report, home: Path) -> None:
     """デザインテンプレートのリソース（登録したファイル・フォルダ）が、この機体にあるかだけを見る。
     データはサーバが持つので、動いているサーバに聞く（サーバを起こさない・データベースを直接開かない）。
     見つからなくても、そのテンプレートを使う資料のほかには効かないので「注意」にとどめる。"""
     label = "デザインテンプレートのリソース"
-    try:
-        record = json.loads((home / "runtime" / "server.json").read_text(encoding="utf-8"))
-        host, port, instance = str(record["host"]), int(record["port"]), str(record["instance_id"])
-    except (OSError, ValueError, KeyError, TypeError):
-        record = None
+    record = _server_record(home)
     # 古い記録のポートを別のサーバが使っていることがある。記録したそのサーバだけに聞く
-    health = _server_get(host, port, "/api/health") if record else None
-    if health is None or health.get("instance_id") != instance:
+    health = _server_get(*record[:2], "/api/health") if record else None
+    if record is None or health is None or health.get("instance_id") != record[2]:
         rep.add("template_resources", label, "ok", "サーバが動いていないので確かめていません（サーバが動いているときに確かめます）")
         return
-    result = _server_get(host, port, "/api/settings/design-templates/resource-check")
+    result = _server_get(*record[:2], "/api/settings/design-templates/resource-check")
     if result is None or not _resource_check_shape(result):
         rep.add("template_resources", label, "warn", "確かめられませんでした（サーバの応答を読めませんでした）",
                 fix="Quick Slide を新しい版にしてから、もう一度確かめてください")
