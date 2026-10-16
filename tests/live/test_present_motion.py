@@ -31,11 +31,20 @@ class MotionKeysTest(PresentLiveBase):
         with closing(page.frame("#slide iframe")) as inner:
             target = json.dumps(selector)
             inner.until(f"!!document.querySelector({target})", what="クリックする部品")
-            inner.until(f"""(() => {{
-              const el = document.querySelector({target}), r = el.getBoundingClientRect();
-              return r.width > 0 && r.height > 0 &&
-                !!document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest({target});
-            }})()""", what="部品が舞台に描画される")
+            try:
+                inner.until(f"""(() => {{
+                  const el = document.querySelector({target}), r = el.getBoundingClientRect();
+                  return r.width > 0 && r.height > 0 &&
+                    !!document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest({target});
+                }})()""", what="部品が舞台に描画される")
+            except AssertionError as exc:
+                state = inner.eval(f"""(() => {{
+                  const el = document.querySelector({target}), r = el.getBoundingClientRect();
+                  return {{ viewport: [innerWidth, innerHeight], rect: [r.x, r.y, r.width, r.height],
+                    stage: document.getElementById('stage').style.transform, visibility: document.visibilityState,
+                    hit: document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.outerHTML.slice(0, 500) }};
+                }})()""")
+                raise AssertionError(f"{exc}\n描画状態: {state}") from exc
             box = inner.eval(f"""(() => {{
               const el = document.querySelector({target}), r = el.getBoundingClientRect();
               return {{ x: r.x + r.width / 2, y: r.y + r.height / 2,

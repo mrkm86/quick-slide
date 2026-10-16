@@ -216,6 +216,7 @@ class Browser:
         self.profile = Path(tempfile.mkdtemp(prefix="quick-slide-chrome-"))
         # 孫（描画・GPU などの子の Chrome）ごと止められるように起こす。Windows で親だけ止めると、孫が
         # プロフィールのフォルダを握ったまま残り、後片付けで消せない
+        self.viewport = {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False}
         self.pages: list[Page] = []
         log_path = self.profile / "chrome.log"
         with log_path.open("wb") as stderr:
@@ -260,6 +261,8 @@ class Browser:
         page = Page(tab["webSocketDebuggerUrl"])
         self.pages.append(page)
         page.call("Page.bringToFront")
+        # --window-size は OS の窓の大きさ。CDP の viewport を指定し、初期描画から同じ寸法にする。
+        page.call("Emulation.setDeviceMetricsOverride", self.viewport)
         page.goto(url)
         return page
 
