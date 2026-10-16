@@ -334,10 +334,27 @@
   };
 
   // ---- 画面遷移（pushState。単一ウィンドウ）----
+  // 履歴の各項目に通し番号（history.state.qsIndex）を持たせる。戻る・進むで未保存の確認を断ったとき、
+  // 履歴の項目を足さず・消さずに元の位置へ戻る（history.go）ために使う。replaceState は番号を引き継ぐ
+  var histPos = (history.state && typeof history.state.qsIndex === "number") ? history.state.qsIndex : 0;
+  var nativeReplace = history.replaceState.bind(history);
+  history.replaceState = function (state, title, url) {
+    return nativeReplace(Object.assign({}, state, { qsIndex: histPos }), title, url);
+  };
+  history.replaceState(history.state, "");
+  // 元の位置へ戻す history.go を出している間（pending）は、画面の移動を1つだけ預かって、戻りきってから行う
+  var pending = null, deferred = null;
+  SS.restoreFailsafeMs = 10000;   // 試験が縮めるための口
+  function settleRestore() {
+    if (pending) { clearTimeout(pending.timer); pending = null; }
+    var again = deferred; deferred = null;
+    if (again) { SS.navigate(again.path, again.replace); }
+  }
   SS.navigate = function (path, replace) {
+    if (pending) { deferred = { path: path, replace: replace }; return; }
     if (SS.settingsLeave && SS.settingsLeave.dirty() && !SS.confirm("保存していない入力があります。画面を移動しますか？")) { return; }
     SS.settingsLeave = null;
-    if (replace) { history.replaceState(null, "", path); } else { history.pushState(null, "", path); }
+    if (replace) { history.replaceState(null, "", path); } else { histPos++; history.pushState({ qsIndex: histPos }, "", path); }
     SS.render();
   };
   SS.route = function () {
@@ -354,12 +371,15 @@
     if (p === "/settings/server") { return { name: "settings", section: "server" }; }
     if (p === "/settings/samples") { return { name: "settings", section: "samples" }; }
     if (p === "/settings/updates") { return { name: "settings", section: "updates" }; }
+    var t = /^\/settings\/brands\/([0-9a-f-]{36})\/templates\/([0-9a-f-]{36})$/.exec(p);
+    if (t) { return { name: "settings", section: "template", brandId: t[1], templateId: t[2] }; }
     var b = /^\/settings\/brands\/([0-9a-f-]{36})$/.exec(p);
     if (b) { return { name: "settings", section: "brand", brandId: b[1] }; }
     return { name: "home" };
   };
-  var renderSeq = 0;
+  var renderSeq = 0, shownUrl = null;   // 画面に出している URL（履歴で動いたとき、断ったら戻す先）
   SS.render = function () {
+    shownUrl = location.pathname + location.search;
     closeMenu();
     document.documentElement.classList.remove("is-locked");   // 引き出す板が開いたまま画面が替わっても、背景の固定を残さない
     var r = SS.route();
@@ -392,7 +412,38 @@
     e.preventDefault();
     SS.navigate(a.getAttribute("href"));
   });
-  window.addEventListener("popstate", function () { SS.render(); });
+  // 戻る・進むも、画面を移るのと同じく未保存の確認を通す。断ったら、history.go で元の位置へ戻り（その popstate は無視する）、
+  // いまの画面と履歴をそのまま残す。番号の無い項目（このしくみより前の履歴）へ動いたときだけ、位置が分からないので、
+  // 断ったら URL を足して戻す（項目が1つ増える）
+  window.addEventListener("popstate", function () {
+    var target = history.state && typeof history.state.qsIndex === "number" ? history.state.qsIndex : null;
+    if (pending) {
+      // 出しておいた戻しが着いた（目的の番号の popstate）ときだけ読み捨てる。ほかの popstate は、普通に確認を通す
+      var restored = target === pending.target;
+      if (restored) { settleRestore(); return; }
+      clearTimeout(pending.timer); pending = null;
+    }
+    if (shownUrl !== null && SS.settingsLeave && SS.settingsLeave.dirty() && !SS.confirm("保存していない入力があります。画面を移動しますか？")) {
+      if (target !== null && target !== histPos) {
+        // 戻しの間は履歴の項目が変わらない（移動は預かる）ので、history.go は必ず範囲内で、popstate は必ず届く。
+        // 待つのは、その popstate が届くまで。下の失敗時の保険（SS.restoreFailsafeMs）は最後の手段で、普通は働かない
+        pending = { target: histPos, timer: setTimeout(function () {
+          // 届かなかった: 預かった移動は捨て、いま出している画面の URL に履歴の項目を合わせる（番号は項目のものを残す）。
+          // 遅れて届いた popstate は、普通の移動として確認を通る
+          deferred = null;
+          pending = null;
+          if (history.state && typeof history.state.qsIndex === "number") { histPos = history.state.qsIndex; }
+          history.replaceState(history.state, "", shownUrl);
+        }, SS.restoreFailsafeMs) };
+        history.go(histPos - target);
+      } else if (target === null) { histPos++; history.pushState({ qsIndex: histPos }, "", shownUrl); }
+      return;
+    }
+    if (target !== null) { histPos = target; }
+    SS.settingsLeave = null;
+    SS.render();
+    settleRestore();
+  });
 
   // ---- 再起動（P4）----
   // POST /api/server/restart のあと、同じ URL の health を見張る。インスタンスが替われば（同じ URL で起動した・

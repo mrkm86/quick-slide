@@ -599,6 +599,8 @@
     if (readonly) { rail.appendChild(text("p", item.capabilities.edit.reason, "notice")); }
     rail.appendChild(colorFieldset);
     rail.appendChild(form);
+    // デザインテンプレート（一覧・追加・編集は別の画面。ブランドの保存とは別々に保存する）
+    if (SS.designTemplates) { rail.appendChild(SS.designTemplates.section(item)); }
     save.disabled = true;
     if (!readonly) {
       var danger = h("section", { class: "editor-section danger-zone" }, text("h2", "ブランドの削除", "editor-section__title"));
@@ -1122,6 +1124,7 @@
     return SS.api("/api/settings").then(function (catalog) {
       if (!guard()) { return; }
       if (route.section === "server") { return serverScreen(root, catalog); }
+      if (route.section === "template") { return SS.designTemplates.screen(root, catalog, route, guard); }
       if (route.section === "brand") {
         var item = catalog.brands.filter(function (entry) { return entry.id === route.brandId; })[0] || null;
         if (!item) {
