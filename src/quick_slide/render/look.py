@@ -177,6 +177,8 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
 
 
 COMPILATION_FILE = "compilation.json"
+# コンパイル結果の必須のファイル（compilation.json 自身を除く。ピッチは style.yaml も要る）
+REQUIRED_COMPILATION_FILES = ("template.json", "brand.json", "writer.md", "preparation.md", "theme.yaml", "engine-input.json")
 
 
 def _compile_snapshot(store: Any, root: DataRoot, run: dict[str, Any], snapshot: dict[str, Any],
@@ -227,12 +229,18 @@ def _reuse_compilation(store: Any, root: DataRoot, run: dict[str, Any], ref: dic
         src = root.run_compilation_dir(other["deck_id"], other["id"])
         try:
             meta = json.loads((src / COMPILATION_FILE).read_text(encoding="utf-8"))
-            files = {name: (src / name).read_text(encoding="utf-8") for name in meta["files"]}
-        except (OSError, ValueError, KeyError):
+            listed = meta["files"]
+            # 必須のファイルが（compilation.json の一覧にも、実ファイルにも）揃っていなければ使わない
+            required = set(REQUIRED_COMPILATION_FILES) | ({"style.yaml"} if run["mode"] == "pitch" else set())
+            if not required <= set(listed):
+                continue
+            files = {name: (src / name).read_text(encoding="utf-8") for name in listed}
+        except (OSError, ValueError, KeyError, TypeError):
             continue
-        if meta.get("snapshot_sha256") != ref["snapshot_sha256"] or meta.get("compiler_version") != compiler_version:
+        if meta.get("snapshot_sha256") != ref["snapshot_sha256"] or meta.get("compiler_version") != compiler_version \
+                or meta.get("mode") != run["mode"]:
             continue
-        if any(hashlib.sha256(v.encode("utf-8")).hexdigest() != meta["files"][k] for k, v in files.items()):
+        if any(hashlib.sha256(v.encode("utf-8")).hexdigest() != listed[k] for k, v in files.items()):
             continue
         if src != out_dir:
             out_dir.mkdir(parents=True, exist_ok=True)

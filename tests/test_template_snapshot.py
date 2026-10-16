@@ -185,6 +185,22 @@ class SnapshotSurvivesChangesTests(Base):
                 LOOK.resolve(self.store, self.store.root, self.store.run(made), previous_style=None)
             self.assertIn("コンパイラの版", str(cm.exception))
 
+    def test_a_reused_compilation_missing_a_required_file_is_recompiled_not_trusted(self) -> None:
+        self.accept()
+        for lost in ("writer.md", "theme.yaml", "preparation.md", "engine-input.json"):
+            with self.subTest(lost=lost):
+                self.assert_unchanged(self.first["run_id"])   # 前の回の写しを（欠けていれば）作り直して揃える
+                made = self.store.create_edit(self.deck_id, {"op": "render", "source": "screen"})["run"]["id"]
+                (self.compilation_dir(self.first["run_id"]) / lost).unlink()   # 一覧（compilation.json）には残ったまま
+                self.assert_unchanged(made)   # 落ちずに、控えから作り直して同じ姿になる
+                self.assertTrue((self.compilation_dir(made) / lost).is_file())
+                # 作り直せない状況（コンパイラの版が違う）では、欠けた写しを受け入れずに止める
+                other = self.store.create_edit(self.deck_id, {"op": "render", "source": "screen"})["run"]["id"]
+                shutil.rmtree(self.compilation_dir(made))
+                with mock.patch.object(dt, "COMPILER_VERSION", dt.COMPILER_VERSION + 1):
+                    with self.assertRaises(StateError):
+                        LOOK.resolve(self.store, self.store.root, self.store.run(other), previous_style=None)
+
     def test_a_tampered_snapshot_stops_the_run_instead_of_using_it(self) -> None:
         self.accept()
         ref = self.store.run(self.first["run_id"])["args"]["template_snapshot"]
@@ -210,6 +226,76 @@ class SnapshotSurvivesChangesTests(Base):
         newer = self.intake(design_template=fresh["template_id"])
         self.assertNotEqual(fingerprint(self.store, newer["run_id"])["brand"]["revision_id"], self.before["brand"]["revision_id"])
         self.assert_unchanged(self.first["run_id"])
+
+
+class MigrationBackfillTests(unittest.TestCase):
+    """0013 より前（版 12）に受け付けたテンプレートのデッキは、移行でデッキの列へ控えが写り、拒否も複製も効く。"""
+
+    def seed_v12(self):
+        from helpers import temp_dir
+        from quick_slide.db.migrate import load_migrations, user_version
+        from quick_slide.db.migrate import migrate as run_migrate
+        from quick_slide.paths import DataRoot
+
+        tmp = temp_dir(self)
+        old = tmp / "m12"
+        old.mkdir()
+        for m in load_migrations():
+            if m.version <= 12:
+                shutil.copyfile(m.path, old / m.path.name)
+        root = DataRoot(tmp / "home")
+        root.ensure()
+        conn = sqlite3.connect(root.db_path, isolation_level=None)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        run_migrate(conn, directory=old)
+        self.assertEqual(user_version(conn), 12)
+        t = "2026-10-11T00:00:00Z"
+        conn.execute("BEGIN")
+        conn.execute("INSERT INTO brands(id,name,current_revision_id,kind,created_at,updated_at) VALUES('b','b','br','user',?,?)", (t, t))
+        conn.execute("INSERT INTO brand_revisions(id,brand_id,revision,config_json,created_at) VALUES('br','b',1,'{}',?)", (t,))
+        conn.execute("INSERT INTO styles(id,name,current_revision_id,kind,created_at,updated_at) VALUES('s','s','sr','user',?,?)", (t, t))
+        conn.execute("INSERT INTO style_revisions(id,style_id,revision,config_json,created_at) VALUES('sr','s',1,'{}',?)", (t,))
+        sha = "a" * 64
+        conn.execute("INSERT INTO template_snapshots(id,snapshot_sha256,snapshot_json,created_at) VALUES('snap',?,'{}',?)", (sha, t))
+        args = {"d1": {"mode": "presentation", "template_snapshot": {"snapshot_id": "snap", "snapshot_sha256": sha}},
+                "d2": {"mode": "presentation"}}
+        for did, a in args.items():
+            conn.execute("INSERT INTO decks(id,title,mode,brand_revision_id,style_revision_id,created_at,updated_at)"
+                         " VALUES(?,?,'presentation','br','sr',?,?)", (did, did, t, t))
+            conn.execute("INSERT INTO runs(id,deck_id,number,mode,engine,args_json,state,created_at,updated_at,ended_at)"
+                         " VALUES(?,?,1,'presentation','html-slide',?,'failed',?,?,?)", (f"r-{did}", did, json.dumps(a), t, t, t))
+        conn.execute("COMMIT")
+        return root, conn, sha
+
+    def test_the_deck_column_is_backfilled_and_refusals_and_duplicate_work(self) -> None:
+        from quick_slide.server.deck_routes import resume_capability
+        from quick_slide.store.edits import TEMPLATE_RESUME_REASON
+
+        root, conn, sha = self.seed_v12()
+        store = Store.open(root, conn=conn, settings=Settings())
+        self.addCleanup(store.close)
+        rows = {r[0]: r[1] for r in store.conn.execute("SELECT id,template_snapshot_id FROM decks")}
+        self.assertEqual(rows, {"d1": "snap", "d2": None})
+        ref = {"snapshot_id": "snap", "snapshot_sha256": sha}
+        self.assertEqual(store.deck_template_snapshot_ref("d1"), ref)
+        self.assertIsNone(store.deck_template_snapshot_ref("d2"))
+        cap = resume_capability(store, "d1", store.latest_run("d1"), None)
+        self.assertEqual((cap["available"], cap["reason"]), (False, TEMPLATE_RESUME_REASON))
+        with self.assertRaises(StateError):
+            store.change_deck_axes("d1", brand_revision_id=store.preset_brand_revision_id())
+        with self.assertRaises(StateError):
+            store.create_edit("d1", {"op": "rebuild", "source": "screen", "changed": []})
+        copy = store.duplicate_deck("d1")
+        self.assertEqual(store.deck_template_snapshot_ref(copy["id"]), ref)
+        self.assertEqual(store.deck_run_args(copy["id"])["template_snapshot"], ref)
+
+    def test_a_deck_with_a_null_column_falls_back_to_its_first_runs_reference(self) -> None:
+        root, conn, sha = self.seed_v12()
+        store = Store.open(root, conn=conn, settings=Settings())
+        self.addCleanup(store.close)
+        store.conn.execute("UPDATE decks SET template_snapshot_id=NULL WHERE id='d1'")   # 0013 を適用済みの開発機の DB など
+        self.assertEqual(store.deck_template_snapshot_ref("d1"), {"snapshot_id": "snap", "snapshot_sha256": sha})
 
 
 class PlainRunsUnchangedTests(Base):

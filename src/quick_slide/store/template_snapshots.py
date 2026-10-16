@@ -171,4 +171,11 @@ class TemplateSnapshotsMixin(StoreBase):
         """そのデッキの控えへの参照。無ければテンプレートを使わないデッキ。"""
         row = self._one("SELECT s.id,s.snapshot_sha256 FROM decks d JOIN template_snapshots s ON s.id=d.template_snapshot_id"
                         " WHERE d.id=?", (deck_id,))
-        return None if row is None else {"snapshot_id": row["id"], "snapshot_sha256": row["snapshot_sha256"]}
+        if row is not None:
+            return {"snapshot_id": row["id"], "snapshot_sha256": row["snapshot_sha256"]}
+        # 列を持つ前（0013 より前）に作ったデッキ: 一番古い回の引数が指す控えで見る
+        first = self._one("SELECT args_json FROM runs WHERE deck_id=? ORDER BY number LIMIT 1", (deck_id,))
+        ref = (load_json(first["args_json"]) or {}).get(SNAPSHOT_ARG) if first else None
+        if isinstance(ref, dict) and self._one("SELECT 1 FROM template_snapshots WHERE id=?", (ref.get("snapshot_id"),)):
+            return {"snapshot_id": ref["snapshot_id"], "snapshot_sha256": ref.get("snapshot_sha256")}
+        return None
