@@ -259,6 +259,19 @@ class DoctorTests(Base):
                 self.assertIsNotNone(rep.get("port"))
                 self.assertEqual("ok", rep.get("template_resources")["level"])
 
+    def test_an_unreadable_listen_host_is_reported_not_raised(self):
+        setup = load_setup()
+        for host in ("\ud800", "a\u0000b"):
+            with self.subTest(host=repr(host)):
+                home = temp_dir(self, "qs-home-")
+                (home / "config").mkdir(parents=True)
+                (home / "config" / "settings.json").write_text(
+                    json.dumps({"server": {"host": host, "port": 7999}}), encoding="utf-8")
+                rep = setup.Report()
+                setup.check_port(rep, home)
+                self.assertEqual("ng", rep.get("port")["level"])
+                self.assertIn("server.host", rep.get("port")["fix"])
+
     def item_with(self, home: Path, fake: "FakeServer", setup=None):
         with mock.patch.object(http.client, "HTTPConnection", fake.connect):
             return self.item(home, setup)

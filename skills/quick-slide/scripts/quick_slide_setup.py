@@ -484,7 +484,7 @@ def check_port(rep: Report, home: Path) -> None:
             with socket.create_connection((str(record.get("host") or "127.0.0.1"), port), timeout=1.0):
                 rep.add("port", "ポート", "ok", f"{port}（Quick Slide が動いています: {record.get('url')}）")
                 return
-        except (OSError, ValueError):   # 壊れた記録（つなげない名前）でも診断は続ける
+        except (OSError, ValueError, TypeError):   # 壊れた記録（つなげない名前）でも診断は続ける
             pass
     if port == 0:
         rep.add("port", "ポート", "ok", "起動のたびに空いているポートを使う設定（server.port が 0）")
@@ -494,7 +494,7 @@ def check_port(rep: Report, home: Path) -> None:
     try:
         s.bind((host, port))
         rep.add("port", "ポート", "ok", f"{host}:{port} は空いています")
-    except ValueError:   # 設定の名前が、そもそもアドレスとして読めない
+    except (ValueError, TypeError):   # 設定の名前が、そもそもアドレスとして読めない（ソケットは TypeError も投げる）
         rep.add("port", "ポート", "ng", f"{host!r}:{port} は、その名前・アドレスでは待てません",
                 fix=f"{home / 'config' / 'settings.json'} の server.host を直してください")
     except OSError as exc:
