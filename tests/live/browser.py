@@ -137,6 +137,7 @@ class Page:
     """開いた 1 枚の画面。`eval` で読み、`errors` に投げられた例外が溜まる。"""
 
     def __init__(self, ws_url: str) -> None:
+        self.ws_url = ws_url
         self.ws = _Socket(ws_url)
         self._id = 0
         self.errors: list[str] = []
@@ -175,6 +176,16 @@ class Page:
         raise AssertionError(f"{seconds:.0f} 秒待っても真にならなかった: {what or expression}（最後の値 {last!r}）"
                              + (f"\n画面が投げた例外:\n" + "\n".join(self.errors) if self.errors else ""))
 
+    def frame(self, selector: str) -> "Page":
+        """別プロセスの iframe を CDP で読む。ページ自身の sandbox は変えない。使い終えたら close。"""
+        doc = self.call("DOM.getDocument")
+        found = self.call("DOM.querySelector", {"nodeId": doc["root"]["nodeId"], "selector": selector})
+        node = self.call("DOM.describeNode", {"nodeId": found["nodeId"]})["node"]
+        targets = self.call("Target.getTargets")["targetInfos"]
+        if not any(t["targetId"] == node["frameId"] for t in targets):
+            raise RuntimeError(f"iframe の DevTools 対象が無い: {selector}")
+        return Page(self.ws_url.rsplit("/", 1)[0] + "/" + node["frameId"])
+
     def goto(self, url: str) -> None:
         self.call("Page.navigate", {"url": url})
         self.until("document.readyState === 'complete'", seconds=30, what=f"{url} が読み込み終わること")
@@ -205,17 +216,28 @@ class Browser:
         self.profile = Path(tempfile.mkdtemp(prefix="quick-slide-chrome-"))
         # 孫（描画・GPU などの子の Chrome）ごと止められるように起こす。Windows で親だけ止めると、孫が
         # プロフィールのフォルダを握ったまま残り、後片付けで消せない
-        self.proc = oscompat.popen_group(
-            [exe, "--headless=new", "--remote-debugging-port=0", f"--user-data-dir={self.profile}",
-             "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--hide-scrollbars",
-             "--disable-extensions", "--disable-background-timer-throttling",
-             "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
-             f"--window-size={width},{height}", "about:blank"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.port = self._wait_for_port()
+        self.viewport = {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False}
         self.pages: list[Page] = []
+        log_path = self.profile / "chrome.log"
+        with log_path.open("wb") as stderr:
+            self.proc = oscompat.popen_group(
+                [exe, "--headless=new", "--remote-debugging-port=0", f"--user-data-dir={self.profile}",
+                 "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--hide-scrollbars",
+                 "--disable-extensions", "--disable-background-timer-throttling",
+                 "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
+                 f"--window-size={width},{height}", "about:blank"],
+                stdout=subprocess.DEVNULL, stderr=stderr)
+        try:
+            self.port = self._wait_for_port()
+        except Exception as exc:
+            # __init__ が失敗すると呼び側は close を登録できない。遅れて起きる Chrome もここで回収する。
+            try:
+                tail = log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
+            finally:
+                self.close()
+            raise RuntimeError(f"{exc}\nChrome stderr:\n{tail}") from exc
 
-    def _wait_for_port(self, seconds: float = 30.0) -> int:
+    def _wait_for_port(self, seconds: float = 60.0) -> int:
         f = self.profile / "DevToolsActivePort"
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
@@ -238,6 +260,9 @@ class Browser:
             tab = json.loads(resp.read().decode("utf-8"))
         page = Page(tab["webSocketDebuggerUrl"])
         self.pages.append(page)
+        page.call("Page.bringToFront")
+        # --window-size は OS の窓の大きさ。CDP の viewport を指定し、初期描画から同じ寸法にする。
+        page.call("Emulation.setDeviceMetricsOverride", self.viewport)
         page.goto(url)
         return page
 
