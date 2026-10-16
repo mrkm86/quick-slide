@@ -503,6 +503,39 @@ def check_port(rep: Report, home: Path) -> None:
         s.close()
 
 
+def _server_get(host: str, port: int, path: str, *, timeout: float = 5.0) -> dict[str, Any] | None:
+    """動いているサーバに GET する（記録の host・port に直接。表示用の URL・プロキシ・転送は使わない）。
+    200 の JSON オブジェクトでなければ None。"""
+    import http.client
+    shown = f"[{host}]" if ":" in host and not host.startswith("[") else host
+    conn = http.client.HTTPConnection(host, port, timeout=timeout)
+    try:
+        conn.request("GET", path, headers={"Host": f"{shown}:{port}"})
+        resp = conn.getresponse()
+        body = resp.read()
+        if resp.status != 200:
+            return None
+    except (OSError, http.client.HTTPException):
+        return None
+    finally:
+        conn.close()
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _resource_check_shape(result: dict[str, Any]) -> bool:
+    """resource-check の応答の形を確かめる（別のアプリの応答や壊れた応答を「全部ある」と読まない）。"""
+    def count(v: Any) -> bool:
+        return type(v) is int and v >= 0
+    missing = result.get("missing")
+    return (count(result.get("templates")) and count(result.get("resources")) and isinstance(missing, list)
+            and all(isinstance(m, dict) and all(isinstance(m.get(k), str) for k in ("template_name", "resource_name"))
+                    for m in missing))
+
+
 def check_template_resources(rep: Report, home: Path) -> None:
     """デザインテンプレートのリソース（登録したファイル・フォルダ）が、この機体にあるかだけを見る。
     データはサーバが持つので、動いているサーバに聞く（サーバを起こさない・データベースを直接開かない）。
@@ -510,17 +543,23 @@ def check_template_resources(rep: Report, home: Path) -> None:
     label = "デザインテンプレートのリソース"
     try:
         record = json.loads((home / "runtime" / "server.json").read_text(encoding="utf-8"))
-        url = str(record["url"]).rstrip("/") + "/api/settings/design-templates/resource-check"
-        import urllib.request
-        with urllib.request.urlopen(url, timeout=5) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
+        host, port, instance = str(record["host"]), int(record["port"]), str(record["instance_id"])
     except (OSError, ValueError, KeyError, TypeError):
+        record = None
+    # 古い記録のポートを別のサーバが使っていることがある。記録したそのサーバだけに聞く
+    health = _server_get(host, port, "/api/health") if record else None
+    if health is None or health.get("instance_id") != instance:
         rep.add("template_resources", label, "ok", "サーバが動いていないので確かめていません（サーバが動いているときに確かめます）")
         return
-    missing = result.get("missing") or []
+    result = _server_get(host, port, "/api/settings/design-templates/resource-check")
+    if result is None or not _resource_check_shape(result):
+        rep.add("template_resources", label, "warn", "確かめられませんでした（サーバの応答を読めませんでした）",
+                fix="Quick Slide を新しい版にしてから、もう一度確かめてください")
+        return
+    missing = result["missing"]
     if not missing:
         rep.add("template_resources", label, "ok",
-                f"テンプレート {result.get('templates', 0)} 件・リソース {result.get('resources', 0)} 件とも、この機体にあります")
+                f"テンプレート {result['templates']} 件・リソース {result['resources']} 件とも、この機体にあります")
         return
     names = "／".join(f"{m['template_name']}: {m['resource_name']}" for m in missing[:5]) + ("ほか" if len(missing) > 5 else "")
     rep.add("template_resources", label, "warn", f"{len(missing)} 件が見つかりません（{names}）",
