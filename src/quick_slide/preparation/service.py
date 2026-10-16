@@ -340,8 +340,8 @@ class TemplateRun:
             ref = read_json(self.root.deck_preparations_dir(self.deck_id) / "by-script" / f"{script['id']}.json")
         except (OSError, ValueError):
             return False
-        return (ref.get("script_sha256"), ref.get("generation"), ref.get("preparation_id"), ref.get("manifest_sha256")) == (
-            script["sha256"], self.generation, self.preparation_id, manifest_sha)
+        return (ref.get("script_id"), ref.get("script_sha256"), ref.get("generation"), ref.get("preparation_id"),
+                ref.get("manifest_sha256")) == (script["id"], script["sha256"], self.generation, self.preparation_id, manifest_sha)
 
     def completed(self, store_script: Callable[[str], dict[str, Any]]) -> dict[str, Any] | None:
         """再開: 控えのハッシュが全部合う完了済みの段から、検査を通した台本の行を返す（manifest まで完了。台本係を呼ばない）。"""

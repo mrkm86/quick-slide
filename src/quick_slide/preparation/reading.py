@@ -235,25 +235,42 @@ class Reader:
         if nofollow is None or directory is None or os.open not in os.supports_dir_fd:
             raise PreparationStopped("この環境では、登録した場所の外に出ない開き方を保証できないため、素材を読めません。", "unsafe_platform")
         base = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
+        # 辿るだけのフォルダは、Linux では O_PATH（一覧を読む権限が要らない）で開く
+        walk = (getattr(os, "O_PATH", 0) or os.O_RDONLY) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
         cur = -1
         try:
             # 起点は信頼できる `/` の FD。正規化した絶対ルートの各成分も、登録フォルダの相対成分も、全部 no-follow で開く
             # （realpath のあとでルート自身や祖先が symlink に差し替えられても、外へは出ない）
             real = os.path.realpath(root)
             expected = os.stat(real)
-            cur = os.open(os.sep, base | directory | getattr(os, "O_BINARY", 0))
+            cur = os.open(os.sep, walk | directory | getattr(os, "O_BINARY", 0))
 
             def descend(names: list[str]) -> None:
                 nonlocal cur
                 for c in names:
-                    nxt = os.open(c, base | directory | nofollow | getattr(os, "O_BINARY", 0), dir_fd=cur)
+                    nxt = os.open(c, walk | directory | nofollow | getattr(os, "O_BINARY", 0), dir_fd=cur)
                     os.close(cur)
                     cur = nxt
 
-            descend([c for c in real.split(os.sep) if c])
+            fallback = False
+            try:
+                descend([c for c in real.split(os.sep) if c])
+            except PermissionError:
+                if getattr(os, "O_PATH", 0):
+                    raise
+                # O_PATH が無い OS で、祖先が「検索はできるが一覧は読めない」: 正規化した絶対ルートを直接 no-follow で開き、
+                # 実体の同一性を前後で確かめる
+                os.close(cur)
+                cur = -1
+                cur = os.open(real, walk | directory | nofollow | getattr(os, "O_BINARY", 0))
+                fallback = True
             opened = os.fstat(cur)
             if (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino):
                 raise PreparationStopped("登録した場所が、確かめた実体と違うものに変わりました。", "outside_root")
+            if fallback:
+                again = os.stat(real)
+                if os.path.realpath(root) != real or (again.st_dev, again.st_ino) != (expected.st_dev, expected.st_ino):
+                    raise PreparationStopped("登録した場所が、開いている間に別の実体へ変わりました。", "outside_root")
             descend(parts[:-1])
             return os.open(parts[-1], base | nofollow | getattr(os, "O_BINARY", 0), dir_fd=cur)
         except OSError:

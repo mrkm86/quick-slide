@@ -947,6 +947,18 @@ class ExplicitGenerationTests(WriterFlowBase):
 
 
 class HardeningTests2(Harness):
+    @unittest.skipIf(os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0), "権限が効かない環境（root・Windows）では試せない")
+    def test_an_ancestor_that_can_be_searched_but_not_listed_still_opens(self) -> None:
+        anc = self.tmp / "searchable"
+        root = anc / "root"
+        root.mkdir(parents=True)
+        (root / "a.png").write_bytes(png())
+        anc.chmod(0o111)
+        self.addCleanup(anc.chmod, 0o755)
+        fd, st, _ = Reader().open(root, "a.png")
+        os.close(fd)
+        self.assertGreater(st.st_size, 0)
+
     def test_swapping_the_root_or_an_ancestor_right_after_realpath_cannot_escape(self) -> None:
         from helpers import can_symlink
 
@@ -992,6 +1004,12 @@ class HardeningTests2(Harness):
         with mock.patch.object(Reader, "open", counting):
             tr.resolve(row, data)
         self.assertEqual(calls, ["a.png"], "ヘッダ検査・照合・コピーを、1 回開いた入力でする")
+
+    @unittest.skipIf(os.name == "nt", "Windows では、開いている間のファイルの置き換え自体を OS が断る（PermissionError）ので、この競合は POSIX だけで試す")
+    def test_a_swap_after_the_header_check_is_caught(self) -> None:
+        tr = self.prepare(self.new_run(), FakeLlm(GOOD), reader=Reader(Policy(image_pixels=100)))
+        row, data = self.script(tr.run, [page("p-1", [CHAR])])
+        tr.resolve(row, tr.stamped(data))
         # 検査の直後・コピーの直前に、巨大な画像へ差し替える
         import quick_slide.preparation.reading as R
 
@@ -1013,7 +1031,7 @@ class HardeningTests2(Harness):
             with self.assertRaises(PreparationStopped) as cm:
                 tr.resolve(row2, tr.stamped(data2))
         self.assertIn(cm.exception.code, ("changed_during_read", "limit_exceeded", "changed_since_listing"))
-        self.assertEqual(sorted(p.suffix for p in (tr.dir / "assets").iterdir()), [".png"], "巨大な画像はコピーされない（a だけ）")
+        self.assertEqual(len(list((tr.dir / "assets").iterdir())), 1, "巨大な画像はコピーされない（a だけ）")
 
     def test_unc_final_paths_are_normalised(self) -> None:
         from quick_slide.preparation.reading import normalize_final_path as n
@@ -1059,6 +1077,61 @@ class HardeningTests2(Harness):
 
 
 class ManifestIntegrityTests(WriterFlowBase):
+    def forge_manifest(self, tr, **changes):
+        """manifest の ID・世代だけを書き換え、ハッシュの鎖（by-script・記録）は合わせ直す（ID の照合だけで止まるかを見る）。"""
+        from quick_slide.preparation.files import sha256_file, write_json
+
+        m = json.loads((tr.dir / "manifest.json").read_text(encoding="utf-8"))
+        for k, v in changes.items():
+            if k == "script_id":
+                m["script"]["id"] = v
+            else:
+                m[k] = v
+        sha = write_json(tr.dir / "manifest.json", m)
+        mapping = self.store.root.deck_preparations_dir(tr.run["deck_id"]) / "by-script"
+        ref_file = next(mapping.glob("*.json"))
+        ref = json.loads(ref_file.read_text(encoding="utf-8"))
+        write_json(ref_file, {**ref, "manifest_sha256": sha})
+        rid = tr.run["id"]
+        rec = self.store.run(rid)["record"]["preparation"]
+        rec["generations"][str(tr.generation)]["stages"]["manifest"]["files"]["manifest.json"] = sha
+        self.store.set_run_record(rid, {"preparation": rec})
+
+    def test_each_manifest_id_alone_is_enough_to_stop(self) -> None:
+        for change in ({"script_id": "other-script"}, {"generation": 99}, {"preparation_id": "other-preparation"}):
+            run = self.new_run(name="ids" + next(iter(change)))
+            tr = self.prepare(run, FakeLlm(GOOD))
+            row, data = self.script(run, [page("p-1", [CHAR])])
+            data = tr.stamped(data)
+            row = self.store.save_script(run["deck_id"], data, written_by="writer", writer_backend="claude", intake_id=None,
+                                         run_id=run["id"])
+            tr.resolve(row, data)
+            tr.finish(row)
+            from quick_slide.scriptdoc import screen_pages
+
+            self.store.accept_script(row["id"], screen_pages(run["args"], data))
+            edit_run = self.another_run(run["deck_id"])
+            load_template_run(self.ctx, edit_run)
+            self.forge_manifest(tr, **change)
+            with self.assertRaises(PreparationStopped, msg=str(change)):
+                load_template_run(self.ctx, edit_run)
+
+    def test_a_mapping_with_only_a_wrong_script_id_is_repaired_on_resume(self) -> None:
+        run = self.new_run(name="mapid")
+        tr = self.prepare(run, FakeLlm(GOOD))
+        row, data = self.script(run, [page("p-1", [CHAR])])
+        data = tr.stamped(data)
+        row = self.store.save_script(run["deck_id"], data, written_by="writer", writer_backend="claude", intake_id=None,
+                                     run_id=run["id"])
+        tr.resolve(row, data)
+        tr.finish(row)
+        mapping = self.store.root.deck_preparations_dir(run["deck_id"]) / "by-script" / f"{row['id']}.json"
+        ref = json.loads(mapping.read_text(encoding="utf-8"))
+        mapping.write_text(json.dumps({**ref, "script_id": "wrong"}), encoding="utf-8")
+        again = self.prepare(run, FakeLlm(GOOD))
+        self.assertIsNotNone(again.completed(lambda sid: self.store.script(sid)))
+        self.assertEqual(json.loads(mapping.read_text(encoding="utf-8"))["script_id"], row["id"])
+
     def accepted(self):
         from quick_slide.scriptdoc import screen_pages
 
