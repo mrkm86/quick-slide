@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..errors import ConflictError, NotFoundError, QuickSlideError, StartupError, StateError, ValidationError
+from ..errors import ConflictError, NotFoundError, QuickSlideError, SelectionError, StartupError, StateError, ValidationError
 
 GENERIC_500_MESSAGE = "サーバ内部で予期しない問題が起きました。しばらくしてからもう一度お試しください。"
 # 楽観ロックの不一致（誰かが先に変えていた）。場面によらず 1 文にする
@@ -49,6 +49,8 @@ class ApiError(Exception):
 def from_store_error(exc: QuickSlideError) -> ApiError:
     """アクセス層の例外 → HTTP。順序は具体的なものから。"""
     message = str(exc) or "入力を受け付けられませんでした。"
+    if isinstance(exc, SelectionError):
+        return ApiError(exc.status, exc.code, message, details=exc.details)
     if isinstance(exc, NotFoundError):
         return ApiError(404, "not_found", message)
     if isinstance(exc, ValidationError):

@@ -120,6 +120,21 @@ def build_payload(args: argparse.Namespace) -> tuple[dict[str, Any], str | None]
     if manuscript is not None and not manuscript.strip():
         raise Failure("manuscript_required", "原稿が空です。", EXIT_INPUT)
     attrs: dict[str, Any] = {"mode": args.mode}
+    if args.design_template_version is not None and not args.design_template:
+        raise Failure("design_template_required", "--design-template-version だけは指定できません。--design-template にテンプレートの名前か ID も渡してください。",
+                      EXIT_INPUT)
+    if args.design_template_version is not None and args.design_template_version < 1:
+        raise Failure("design_template_version_invalid", "--design-template-version は 1 以上の整数です。", EXIT_INPUT)
+    if args.design_template:
+        if args.style_id:
+            raise Failure("design_template_style_conflict",
+                          "--design-template と --style-id は一緒に指定できません。どちらか一方にしてください。", EXIT_INPUT)
+        if args.mode == "motion":
+            raise Failure("template_mode_unsupported", "デザインテンプレートはモーション（--mode motion）では使えません。", EXIT_INPUT)
+        # 名前・ID の解決（既定のブランドの中だけ・曖昧なら候補の ID を返して止まる）はサーバが最終の判断をする
+        attrs["design_template"] = args.design_template
+        if args.design_template_version is not None:
+            attrs["design_template_version"] = args.design_template_version
     if args.style:
         if args.style not in STYLES[args.mode]:
             raise Failure("style_invalid", f"--style はこのモードでは {' / '.join(STYLES[args.mode])} のいずれかです。", EXIT_INPUT)
@@ -438,13 +453,19 @@ def run(args: argparse.Namespace) -> int:
     mode = browser_mode(record)
     should_open = False if (args.no_open or mode == "manual") else (args.open_browser or mode == "external")
     opened = bool(webbrowser.open(body["url"])) if should_open else False
+    template = body.get("design_template")
     out = {
-        "status": "ready", "url": body["url"], "deck_id": body.get("deck_id"), "deck_title": body.get("deck_title"),
+        # テンプレートの回は、素材の準備がつながるまで台本を書く前に止まる。「ready（作れる）」とは言わない
+        "status": "ready" if not template else "accepted", "url": body["url"], "deck_id": body.get("deck_id"), "deck_title": body.get("deck_title"),
         "mode": body.get("mode"), "style": body.get("style"), "resolution": body.get("resolution"),
         "intake_id": body.get("intake_id"), "launch_id": body.get("launch_id"), "job_id": body.get("job_id"),
         "message": conversation_message(body, researching="request" in payload), "opened": opened, "browser_mode": mode, "server": server,
         "payload": payload_summary(payload, key_source), "deck_url": deck_url(record, body["deck_id"]),
     }
+    if template:
+        out["design_template"] = template
+        out["generation_ready"] = False
+        out["message"] = body.get("generation_note") or "デザインテンプレートの指定を受け付けましたが、生成できる状態ではありません。"
     if args.wait and body.get("job_id"):
         done = wait_job(record, body["deck_id"], body["job_id"], args.wait_timeout)
         out.update(finished_fields(done))
@@ -492,7 +513,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--note-file", help="--revise の指示をファイルで渡す（長いとき）")
     p.add_argument("--remake", action="store_true", help="--revise で絵を直すとき、今の絵を土台にせず作り直す")
     p.add_argument("--attach", action="append", help="--revise に添える画像（何度でも）")
-    p.add_argument("--brand-id", help="ブランドの UUID（設定の画面で登録したもの）")
+    p.add_argument("--brand-id", help="ブランドの UUID（設定の画面で登録したもの）。--design-template の名前を探すブランドにもなる（省けば既定のブランド）")
+    p.add_argument("--design-template", help="デザインテンプレートの名前か ID（ブランドの中で探す。同じ名前が複数なら候補の ID を返して止まる。"
+                                             "--style-id・motion とは一緒に使えない）")
+    p.add_argument("--design-template-version", type=int, help="--design-template の版の番号（省けば受付時の最新）")
     p.add_argument("--style-id", help="スライドスタイルの UUID（設定の画面で登録したもの。--style より細かい書き方の方針・使う型）")
     p.add_argument("--conversation-key", help="会話の識別子を明示する（既定は環境変数から。定数は渡さない）")
     p.add_argument("--runtime", choices=("claude_code", "codex", "browser", "cli", "other"),

@@ -30,6 +30,7 @@ from ..ids import PRESET_STYLE_STANDARD_ID, PRESET_STYLE_VISUAL_ID
 from ..pins import PinRefused, pin_source
 from ..scriptdoc import IMPORTED_TYPE, one_page, screen_pages, with_hidden, with_order, with_restored
 from ..security.secret_scan import find_secret_like
+from ..store.edits import TEMPLATE_REBUILD_REASON, TEMPLATE_RESTORE_REASON
 from .deck_routes import NO_PAGES_REASON, _counts, _tidy, _deck_not_found, _json, _live_deck_row, card_public, deck_view
 from .errors import ApiError
 from .vocabulary import (
@@ -222,6 +223,8 @@ def route_adopt(server: "QuickSlideServer", req: "Request") -> "Response":
     with server.store_lock:
         store = server.store
         _live_deck_row(store, deck_id)
+        if store.deck_template_snapshot_ref(deck_id):
+            raise ApiError(409, "template_restore_unsupported", TEMPLATE_RESTORE_REASON)
         pages, args = _head_pages(store, deck_id)
         if one_page(args):
             raise ApiError(409, "not_for_infographic", INFOGRAPHIC_REASON)
@@ -482,6 +485,8 @@ def route_rebuild(server: "QuickSlideServer", req: "Request") -> "Response":
     with server.store_lock:
         store = server.store
         row = _live_deck_row(store, deck_id)
+        if store.deck_template_snapshot_ref(deck_id):
+            raise ApiError(409, "template_rebuild_unsupported", TEMPLATE_REBUILD_REASON)
         view = deck_view(store, deck_id)
         cap = view["capabilities"]["rebuild"]
         if not cap["available"]:

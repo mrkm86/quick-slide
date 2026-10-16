@@ -65,10 +65,21 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
         overrides = {k: args[k] for k in ("image_look", "style_note") if args.get(k)}
     notes: list[str] = []
 
-    brand_rev = _current_revision(store, "brand", deck["brand_revision_id"])
-    style_rev = _current_revision(store, "style", deck["style_revision_id"])
-    store.follow_deck_settings(deck["id"], brand_revision_id=brand_rev["id"], style_revision_id=style_rev["id"])
-    brand_cfg, style_cfg = brand_rev["config"], style_rev["config"]
+    snapshot_ref = args.get("template_snapshot")
+    if snapshot_ref:
+        # デザインテンプレートの回: 受け付けたときの控えだけから決める。最新のブランド・スタイルへは追随せず
+        # （`_current_revision`・`follow_deck_settings` を通らない）、デッキの 2 つの改訂 ID も動かさない
+        snapshot = store.template_snapshot(snapshot_ref)
+        brand_rev = _snapshot_brand(snapshot)
+        style_rev = {"id": deck["style_revision_id"], "style_id": None, "revision": None}   # 付属の既定スタイルの互換値
+        style_cfg = {}
+        overrides = snapshot.get("explicit_overrides") or {}
+    else:
+        brand_rev = _current_revision(store, "brand", deck["brand_revision_id"])
+        style_rev = _current_revision(store, "style", deck["style_revision_id"])
+        store.follow_deck_settings(deck["id"], brand_revision_id=brand_rev["id"], style_revision_id=style_rev["id"])
+        style_cfg = style_rev["config"]
+    brand_cfg = brand_rev["config"]
 
     # --- スタイル ---
     wanted = overrides.get("style") or (style_cfg.get("engine_style") or {}).get(mode) or engine.default_style
@@ -147,6 +158,7 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
     record = {
         "brand": {"id": brand_rev["brand_id"], "revision_id": brand_rev["id"], "revision": brand_rev["revision"]},
         "style": {"id": style_rev["style_id"], "revision_id": style_rev["id"], "revision": style_rev["revision"]},
+        **({"template": _template_record(snapshot, snapshot_ref)} if snapshot_ref else {}),
         "theme": theme, "theme_file": str(theme_path),
         "font": font,
         "theme_sha256": hashlib.sha256(theme_path.read_bytes()).hexdigest(),
@@ -157,6 +169,20 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
         "allowed_types": allowed, "overrides": overrides or None, "notes": notes,
     }
     return update, record
+
+
+def _snapshot_brand(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """控えのブランドを、`_current_revision` が返す改訂の形にする（assets は控えた目録）。"""
+    b = snapshot["brand"]
+    return {"id": b["revision_id"], "brand_id": b["id"], "revision": b["revision"], "config": b["config"],
+            "assets": b["assets"]}
+
+
+def _template_record(snapshot: dict[str, Any], ref: dict[str, Any]) -> dict[str, Any]:
+    t = snapshot["template"]
+    return {"snapshot_id": ref["snapshot_id"], "snapshot_sha256": ref["snapshot_sha256"], "template_id": t["id"],
+            "version": t["revision"], "revision_id": t["revision_id"], "content_sha256": t["content_sha256"],
+            "brand_sha256": snapshot["brand"]["sha256"], "followed_latest": False}
 
 
 def _imported_theme_ok(root: DataRoot, deck_id: str) -> bool:

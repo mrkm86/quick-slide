@@ -20,6 +20,17 @@ class ValidationError(QuickSlideError):
     exit_code = 2
 
 
+class SelectionError(ValidationError):
+    """デザインテンプレートの選び方の誤り（投入のとき）。API の `code`・候補などの `details`・HTTP の状態を持つ
+    （曖昧なときは候補の ID を返す。`server/errors.from_store_error` がそのまま応答にする）。"""
+
+    def __init__(self, code: str, message: str, *, details: dict | None = None, status: int = 400) -> None:
+        super().__init__(message)
+        self.code = code
+        self.details = details or {}
+        self.status = status
+
+
 class NotFoundError(QuickSlideError):
     """対象が存在しない（削除済みも含む）。"""
 

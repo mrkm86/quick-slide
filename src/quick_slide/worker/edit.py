@@ -76,6 +76,7 @@ from .proc import run_process
 from .pipeline import (
     Context,
     RenderPlan,
+    TEMPLATE_PREPARATION_PENDING_MESSAGE,
     _writer_progress,
     check_candidate,
     import_recorded,
@@ -154,6 +155,10 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
     def fail(message: str, kind: str, rc: int | None = None) -> str:
         ctx.call(store.fail_run, run_id, message=message, failure_kind=kind, rc=rc)
         return "failed"
+
+    if args.get("template_snapshot") and op in ("revise", "insert"):
+        # 台本係を呼ぶ直しは、素材の準備（PR 6）がつながるまで、テンプレートなしの経路で書かせずに止める
+        return fail(TEMPLATE_PREPARATION_PENDING_MESSAGE, "template_preparation")
 
     if resume == "import":
         return import_recorded(ctx, run)

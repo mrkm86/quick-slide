@@ -32,6 +32,7 @@ from typing import Any
 from .. import importing, motion
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, Engine, engine_for, engine_marker
+from ..errors import StateError
 from ..paths import DataRoot
 from ..pins import Pin
 from ..pins import resolve as resolve_pins
@@ -73,6 +74,11 @@ from .tools import Tools
 log = logging.getLogger("quick_slide.worker")
 # 書き出しをページごとの部品から組む時間の上限（PPTX は python-pptx・PDF はページを抜いて並べるだけ。数秒で終わる）
 ASSEMBLE_TIMEOUT_SECONDS = 120
+# デザインテンプレートで作る回は、素材の準備（PR 6）がつながるまで、台本を書く手前で止める。
+# 古い（テンプレートなしの）経路で描いたり、「できた」ように見せたりしない
+TEMPLATE_PREPARATION_PENDING_MESSAGE = (
+    "デザインテンプレートを使った資料づくりは、素材の準備がまだ使えないため、台本を書く前に止めました。"
+    "テンプレートの指定は受け付けた内容のまま残っています。テンプレートを使わずに作るか、対応した版を待ってください。")
 
 
 class Abandoned(BaseException):
@@ -182,9 +188,19 @@ def make(ctx: Context, job: dict[str, Any]) -> str:
         ctx.call(store.fail_run, run_id, message=message, failure_kind=kind, rc=rc)
         return "failed"
 
+    template = run["args"].get("template_snapshot")
+    if template and resume is not None:
+        return fail(TEMPLATE_PREPARATION_PENDING_MESSAGE, "template_preparation")
     if resume == "import":
         return import_recorded(ctx, run)
     if resume is None:
+        if template:
+            try:
+                settle_look(ctx, run, previous_style=None)   # 控えから設定を確定して記録する（最新の設定は見ない）
+            except StateError as exc:   # 控えが無い・受け付けたときと違う: 別のものを使わずに止める
+                return fail(str(exc), "template_snapshot")
+            ctx.call(store.set_run_record, run_id, {"template_stop": {"reason": "preparation_unavailable"}})
+            return fail(TEMPLATE_PREPARATION_PENDING_MESSAGE, "template_preparation")
         settle_look(ctx, run, previous_style=None)
         # 描く前の確かめ（仕事ごとに 1 回。ピッチは Codex のログイン。書く前に見るので、描けないのに台本係の枠を使わない）
         pre = check_prerequisites(engine, tools=ctx.tools, home=ctx.root.root, cwd=run_dir, stop=ctx.stop)
