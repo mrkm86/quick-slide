@@ -336,7 +336,15 @@ class UptimeCountsTheTimeTheMachineWasAsleepTests(unittest.TestCase):
         self.assertGreaterEqual(read(), first, "読むたびに戻る時計を選んでいる")
 
     def test_health_says_which_clock_it_measured_with(self):
+        from quick_slide.clock import elapsed_clock
+
         fx = start_server(self)
+        # Windows の Python 3.12 の time.monotonic() は約 15.6ms 刻みで、起動の直後に読むと 0.0 になる。
+        # 同じ時計が進むのを待ってから読む（応答は小数 3 桁に丸めるので、1ms より多く待つ）
+        _, read = elapsed_clock()
+        began = read()
+        while read() - began < 0.01:
+            time.sleep(0.001)
         health = fx.get("/api/health").json()
         self.assertGreater(health["uptime_seconds"], 0)
         self.assertTrue(health["uptime_clock"], "どの時計で測ったかを言っていない")

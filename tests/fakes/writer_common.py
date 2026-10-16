@@ -38,8 +38,11 @@ MODE = os.environ.get("FAKE_WRITER_MODE", "ok")
 
 def record(**kw) -> None:
     LOG.mkdir(parents=True, exist_ok=True)
-    (LOG / f"{time.time():.6f}-{os.getpid()}-{uuid.uuid4().hex[:6]}.json").write_text(
-        json.dumps(kw, ensure_ascii=False), encoding="utf-8")
+    path = LOG / f"{time.time():.6f}-{os.getpid()}-{uuid.uuid4().hex[:6]}.json"
+    pending = path.with_suffix(".tmp")
+    pending.write_text(json.dumps(kw, ensure_ascii=False), encoding="utf-8")
+    # 並列の呼び出しが数えるのは、書き終わった JSON だけ。
+    pending.replace(path)
 
 
 def calls(kind: str) -> int:

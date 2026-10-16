@@ -441,6 +441,7 @@ class EditTests(MotionBase):
     def setUp(self) -> None:
         super().setUp()
         self.body, self.run = self.make_motion()
+        self.assertEqual(self.run["state"], "done", self.run["message"])
         self.deck = self.body["deck_id"]
 
     def wait(self) -> dict:
