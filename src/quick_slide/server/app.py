@@ -1019,6 +1019,7 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"POST"}), _uuid_route("/api/settings/styles/", "setting_id", "/delete"), _settings_routes.delete_setting),
     # デザインテンプレート（PR 2）。固定の経路は ID の経路より先に並べる
     (frozenset({"GET"}), _exact("/api/settings/design-templates"), _template_routes.list_templates),
+    (frozenset({"GET"}), _exact("/api/settings/design-templates/resource-check"), _template_routes.resource_check),
     (frozenset({"POST"}), _exact("/api/settings/design-templates"), _template_routes.create_template),
     (frozenset({"POST"}), _exact("/api/settings/design-templates/import/check"), _template_routes.check_import),
     (frozenset({"POST"}), _exact("/api/settings/design-templates/import"), _template_routes.import_template),

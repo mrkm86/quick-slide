@@ -503,6 +503,30 @@ def check_port(rep: Report, home: Path) -> None:
         s.close()
 
 
+def check_template_resources(rep: Report, home: Path) -> None:
+    """デザインテンプレートのリソース（登録したファイル・フォルダ）が、この機体にあるかだけを見る。
+    データはサーバが持つので、動いているサーバに聞く（サーバを起こさない・データベースを直接開かない）。
+    見つからなくても、そのテンプレートを使う資料のほかには効かないので「注意」にとどめる。"""
+    label = "デザインテンプレートのリソース"
+    try:
+        record = json.loads((home / "runtime" / "server.json").read_text(encoding="utf-8"))
+        url = str(record["url"]).rstrip("/") + "/api/settings/design-templates/resource-check"
+        import urllib.request
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+    except (OSError, ValueError, KeyError, TypeError):
+        rep.add("template_resources", label, "ok", "サーバが動いていないので確かめていません（サーバが動いているときに確かめます）")
+        return
+    missing = result.get("missing") or []
+    if not missing:
+        rep.add("template_resources", label, "ok",
+                f"テンプレート {result.get('templates', 0)} 件・リソース {result.get('resources', 0)} 件とも、この機体にあります")
+        return
+    names = "／".join(f"{m['template_name']}: {m['resource_name']}" for m in missing[:5]) + ("ほか" if len(missing) > 5 else "")
+    rep.add("template_resources", label, "warn", f"{len(missing)} 件が見つかりません（{names}）",
+            fix="設定の画面で、そのテンプレートのリソースのパスを直してください", missing=missing)
+
+
 def doctor(home: Path) -> tuple[Report, dict[str, Any]]:
     rep = Report()
     facts: dict[str, Any] = {}
@@ -517,6 +541,7 @@ def doctor(home: Path) -> tuple[Report, dict[str, Any]]:
     if os.name == "nt":
         check_home_windows(rep, home)
     check_port(rep, home)
+    check_template_resources(rep, home)
     return rep, facts
 
 

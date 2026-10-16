@@ -80,6 +80,24 @@ def list_templates(app, req):
     return _json({"brand_id": brand_id, "templates": app.store.list_design_templates(brand_id)})
 
 
+def resource_check(app, req):
+    """全テンプレート（いまの版）のリソースが、この機体にあるかだけを返す（stat だけ。中身は読まない）。--doctor が使う。
+    取り込みやブランドの移行で、ほかの機体のパスが入っていても気づけるようにする。"""
+    with app.store_lock:
+        rows = []
+        for brand in app.store.list_brands():
+            for t in app.store.list_design_templates(brand["id"]):
+                rows.append((brand["name"], t, app.store.get_design_template(t["template_id"])["document"]))
+    # ネットワーク上のパスで待たされても他の要求を止めないよう、存在の確認は鍵の外で行う
+    missing = []
+    for brand_name, t, doc in rows:
+        for res, ok in zip(doc["resources"], dt.resource_presence(doc["resources"])):
+            if not ok:
+                missing.append({"brand_name": brand_name, "template_id": t["template_id"], "template_name": t["name"],
+                                "resource_name": res["name"], "kind": res["kind"]})
+    return _json({"templates": len(rows), "resources": sum(len(doc["resources"]) for _, _, doc in rows), "missing": missing})
+
+
 @_locked
 def get_template(app, req):
     return _json(app.store.get_design_template(req.params["template_id"], revision=_revision_number(req)))
