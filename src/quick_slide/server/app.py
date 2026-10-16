@@ -111,6 +111,8 @@ class Request:
     params: dict[str, str] = field(default_factory=dict)
     # 本文をディスクへ流して受けた口（`POST /api/imports`）の一時ファイル。ハンドラが移さなければ、答えたあとで消す
     upload: Path | None = None
+    # 接続してきた側のアドレス（同じパソコンからか見分ける口だけが使う。ログには出さない）
+    client: str = ""
 
     def header(self, name: str) -> str | None:
         return self.headers.get(name.lower())
@@ -549,7 +551,8 @@ class QuickSlideServer:
                 body = b""
             else:
                 body = self._read_body(h, headers, method)
-            req = Request(method=method, path=path, query=query, headers=headers, body=body, upload=upload)
+            req = Request(method=method, path=path, query=query, headers=headers, body=body, upload=upload,
+                          client=str(h.client_address[0]))
             self._check_host(req)
             resp = self._route(req)
         except ApiError as exc:
@@ -989,6 +992,7 @@ from . import present_routes as _present_routes  # noqa: E402
 from . import samples_routes as _samples_routes  # noqa: E402
 from . import import_routes as _import_routes  # noqa: E402
 from . import settings_routes as _settings_routes  # noqa: E402
+from . import template_routes as _template_routes  # noqa: E402
 from . import update_routes as _update_routes  # noqa: E402
 
 _not_ready = _later.not_ready
@@ -1013,6 +1017,21 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"POST"}), _exact("/api/settings/styles"), _settings_routes.save_style),
     (frozenset({"POST"}), _uuid_route("/api/settings/styles/", "setting_id"), _settings_routes.save_style),
     (frozenset({"POST"}), _uuid_route("/api/settings/styles/", "setting_id", "/delete"), _settings_routes.delete_setting),
+    # デザインテンプレート（PR 2）。固定の経路は ID の経路より先に並べる
+    (frozenset({"GET"}), _exact("/api/settings/design-templates"), _template_routes.list_templates),
+    (frozenset({"POST"}), _exact("/api/settings/design-templates"), _template_routes.create_template),
+    (frozenset({"POST"}), _exact("/api/settings/design-templates/import/check"), _template_routes.check_import),
+    (frozenset({"POST"}), _exact("/api/settings/design-templates/import"), _template_routes.import_template),
+    (frozenset({"POST"}), _exact("/api/settings/design-templates/plan"), _template_routes.plan_save),
+    (frozenset({"POST"}), _exact("/api/settings/resource-path/pick"), _template_routes.pick_resource_path),
+    (frozenset({"GET"}), _uuid_route("/api/settings/design-templates/", "template_id"), _template_routes.get_template),
+    (frozenset({"POST"}), _uuid_route("/api/settings/design-templates/", "template_id"), _template_routes.save_template),
+    (frozenset({"POST"}), _uuid_route("/api/settings/design-templates/", "template_id", "/copy"), _template_routes.copy_template),
+    (frozenset({"POST"}), _uuid_route("/api/settings/design-templates/", "template_id", "/delete"), _template_routes.delete_template),
+    (frozenset({"GET"}), _uuid_route("/api/settings/design-templates/", "template_id", "/revisions"), _template_routes.list_revisions),
+    (frozenset({"GET"}), _uuid_route("/api/settings/design-templates/", "template_id", "/markdown"), _template_routes.export_markdown),
+    (frozenset({"GET"}), _uuid_route("/api/settings/design-templates/", "template_id", "/compiled"), _template_routes.compiled_json),
+    (frozenset({"GET"}), _uuid_route("/api/settings/design-templates/", "template_id", "/compiled/export"), _template_routes.compiled_zip),
     (frozenset({"GET"}), _exact("/settings"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _exact("/settings/brands"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _exact("/settings/styles"), QuickSlideServer._route_index),
@@ -1022,6 +1041,8 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"GET"}), _exact("/api/samples"), _samples_routes.route_list),
     (frozenset({"POST"}), _exact("/api/samples/restore"), _samples_routes.route_restore),
     (frozenset({"GET"}), _uuid_route("/settings/brands/", "setting_id"), QuickSlideServer._route_index),
+    # デザインテンプレートの編集画面（直接開く・再読み込みでも画面を返す）
+    (frozenset({"GET"}), _two_uuid_route("/settings/brands/", "setting_id", "/templates/", "template_id"), QuickSlideServer._route_index),
     (frozenset({"GET"}), _exact("/api/health"), QuickSlideServer._route_health),
     (frozenset({"GET"}), _exact("/api/session"), QuickSlideServer._route_session),
     (frozenset({"POST"}), _exact("/api/server/stop"), QuickSlideServer._route_stop),
