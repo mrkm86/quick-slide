@@ -159,7 +159,8 @@ class DoctorTests(Base):
             "negative": json.dumps(dict(ok, templates=-1)), "missing not list": json.dumps(dict(ok, missing={})),
             "item without names": json.dumps(dict(ok, missing=[{"template_name": "週報"}])),
             "array": "[]", "null": "null", "bad json": "{oops", "bad utf-8": b"\xff\xfe{}",
-            "not 200": (404, json.dumps(ok)), "cut short": http.client.IncompleteRead(b"{"),
+            "utf-16": json.dumps(ok).encode("utf-16"), "not 200": (404, json.dumps(ok)), "201": (201, json.dumps(ok)),
+            "cut short": http.client.IncompleteRead(b"{"), "cut while reading": ReadFails(http.client.IncompleteRead(b"{")),
             "timeout": TimeoutError("timed out"), "refused": ConnectionRefusedError(),
         }
         for name, answer in cases.items():
@@ -170,6 +171,7 @@ class DoctorTests(Base):
                 self.assertEqual("warn", item["level"])
                 self.assertIn("確かめられませんでした", item["detail"])
                 self.assertEqual(["/api/health", "/api/settings/design-templates/resource-check"], fake.asked)
+                self.assertTrue(fake.conns and all(c.closed for c in fake.conns))   # 断ったときも閉じる
 
     def test_every_connection_is_made_to_the_record_with_a_timeout_and_closed(self):
         home = temp_dir(self, "qs-home-")
@@ -194,6 +196,7 @@ class DoctorTests(Base):
                 self.assertEqual("ok", item["level"])
                 self.assertIn("サーバが動いていない", item["detail"])
                 self.assertEqual(["/api/health"], fake.asked)
+                self.assertTrue(all(c.closed for c in fake.conns))
 
     def test_broken_records_are_not_dialled_and_do_not_stop_the_doctor(self):
         records = {"array": "[]", "host with newline": json.dumps({"host": "127.0.0.1\nx", "port": 1, "instance_id": "i"}),
@@ -231,9 +234,41 @@ class DoctorTests(Base):
                     item = self.item_with(home, FakeServer(answers), setup)
                 self.assertEqual("ok", item["level"])
 
+    def test_the_whole_doctor_survives_broken_records(self):
+        setup = load_setup()
+        quiet = {name: mock.patch.object(setup, name, return_value=value) for name, value in (
+            ("check_python", []), ("check_node", {}), ("check_browser", None), ("check_fonts", None),
+            ("check_motion", None), ("check_codex", None), ("check_writers", None))}
+        records = ('{"host": "\\ud800", "port": 0, "instance_id": "i"}', '{"host": "a\\u0000b", "port": 0, "instance_id": "i"}',
+                   '{"host": "127.0.0.1\\nx", "port": 0, "instance_id": "i"}', '{"host": 3, "port": 0}', "[]", "{oops")
+        for content in records:
+            with self.subTest(record=content):
+                home = temp_dir(self, "qs-home-")
+                (home / "config").mkdir(parents=True)
+                (home / "config" / "settings.json").write_text(json.dumps({"server": {"port": 0}}), encoding="utf-8")
+                (home / "runtime").mkdir(parents=True)
+                (home / "runtime" / "server.json").write_text(content, encoding="utf-8")
+                for p in quiet.values():
+                    p.start()
+                try:
+                    with mock.patch.object(http.client, "HTTPConnection", FakeServer({}).connect):
+                        rep, _ = setup.doctor(home)
+                finally:
+                    for p in quiet.values():
+                        p.stop()
+                self.assertIsNotNone(rep.get("port"))
+                self.assertEqual("ok", rep.get("template_resources")["level"])
+
     def item_with(self, home: Path, fake: "FakeServer", setup=None):
         with mock.patch.object(http.client, "HTTPConnection", fake.connect):
             return self.item(home, setup)
+
+
+class ReadFails:
+    """答えの頭は返るが、本文を読んでいる途中で切れる。"""
+
+    def __init__(self, error):
+        self.error = error
 
 
 class FakeServer:
@@ -263,6 +298,8 @@ class FakeConnection:
         answer = self.server.answers[self.path]
         if isinstance(answer, BaseException):
             raise answer
+        if isinstance(answer, ReadFails):
+            return mock.Mock(status=200, read=mock.Mock(side_effect=answer.error))
         status, body = answer if isinstance(answer, tuple) else (200, answer)
         body = body.encode("utf-8") if isinstance(body, str) else body
         return mock.Mock(status=status, read=mock.Mock(return_value=body))
