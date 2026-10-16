@@ -162,8 +162,13 @@ class TemplateSnapshotsMixin(StoreBase):
                 "revision_id": t["revision_id"], "brand_id": snapshot["brand"]["id"],
                 "brand_revision_id": snapshot["brand"]["revision_id"], "snapshot_id": ref["snapshot_id"]}
 
+    def link_deck_template_snapshot(self, deck_id: str, ref: dict[str, Any]) -> None:
+        """デッキが控えを指す（描き終えた回が無くても、複製しても、控えを失わない）。"""
+        self._require_tx()
+        self._exec("UPDATE decks SET template_snapshot_id=? WHERE id=?", (ref["snapshot_id"], deck_id))
+
     def deck_template_snapshot_ref(self, deck_id: str) -> dict[str, Any] | None:
-        """そのデッキの控えへの参照（最初の回が持つ。無ければテンプレートを使わないデッキ）。"""
-        row = self._one("SELECT args_json FROM runs WHERE deck_id=? ORDER BY number LIMIT 1", (deck_id,))
-        ref = (load_json(row["args_json"]) or {}).get(SNAPSHOT_ARG) if row else None
-        return ref if isinstance(ref, dict) else None
+        """そのデッキの控えへの参照。無ければテンプレートを使わないデッキ。"""
+        row = self._one("SELECT s.id,s.snapshot_sha256 FROM decks d JOIN template_snapshots s ON s.id=d.template_snapshot_id"
+                        " WHERE d.id=?", (deck_id,))
+        return None if row is None else {"snapshot_id": row["id"], "snapshot_sha256": row["snapshot_sha256"]}

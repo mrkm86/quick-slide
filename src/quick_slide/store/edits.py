@@ -37,6 +37,8 @@ DECK_ARG_KEYS = ("mode", "style", "image_look", "images", "page_count", "purpose
 TEMPLATE_ARG_KEYS = ("template_snapshot",)
 TEMPLATE_RESTORE_REASON = ("デザインテンプレートで作った資料では、前の版への切り替えはまだできません"
                            "（素材の控えを含めて戻す仕組みが、まだ無いためです）。")
+TEMPLATE_RESUME_REASON = ("デザインテンプレートで作る資料は、素材の準備がまだ使えないため、再開できません"
+                          "（台本を書く前に止まります）。")
 TEMPLATE_REBUILD_REASON = ("デザインテンプレートで作った資料は、設定を替えて組み直せません"
                            "（受け付けたときのテンプレートとブランドで作ります）。新しいスライドとして頼み直してください。")
 
@@ -49,6 +51,9 @@ class EditsMixin(StoreBase):
         deck = self._get("decks", deck_id)
         out = {k: args.get(k) for k in (*DECK_ARG_KEYS, *TEMPLATE_ARG_KEYS) if k in args}
         out["mode"] = deck["mode"]
+        ref = self.deck_template_snapshot_ref(deck_id)   # type: ignore[attr-defined]
+        if ref:   # 控えはデッキが持つ。最新の回に無くても（複製・止まった回）引き継ぐ
+            out["template_snapshot"] = ref
         return out
 
     def create_edit(self, deck_id: str, request: dict[str, Any]) -> dict[str, Any]:

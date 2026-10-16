@@ -243,6 +243,10 @@ def resume_capability(store, deck_id: str, latest: dict[str, Any] | None, shown:
     """再開（いまの台本で描き直す）: 一番新しい回が失敗していて、いまの台本があるときだけ押せる。"""
     if store.deck_working(deck_id):
         return {"available": False, "label": RESUME_LABEL, "reason": RESUME_WORKING_REASON}
+    if store.deck_template_snapshot_ref(deck_id):   # 素材の準備がつながるまで、再開しても同じ所で止まる
+        from ..store.edits import TEMPLATE_RESUME_REASON
+
+        return {"available": False, "label": RESUME_LABEL, "reason": TEMPLATE_RESUME_REASON}
     head = store.head_script(deck_id)
     behind = head is not None and (shown is None or shown.get("script_id") != head["id"])
     if head is not None and latest is not None and (latest["state"] == "failed" or behind):

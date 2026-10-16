@@ -162,6 +162,11 @@ class DataRoot:
         """描いた回に渡した設定の控え（ブランドから作ったテーマの YAML など）。エンジンにはこのファイルを渡す。"""
         return self.run_dir(deck_id, run_id) / "settings"
 
+    def run_compilation_dir(self, deck_id: str, run_id: str) -> Path:
+        """デザインテンプレートの回のコンパイル結果（writer.md・preparation.md・style.yaml・theme.yaml・engine-input.json・
+        compilation.json など）。正本は DB の控え（template_snapshots）で、ここは控えから作り直せる写し。"""
+        return self.run_dir(deck_id, run_id) / "template"
+
     @property
     def trash_dir(self) -> Path:
         return self.root / ".trash"

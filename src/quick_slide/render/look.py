@@ -70,6 +70,7 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
         # デザインテンプレートの回: 受け付けたときの控えだけから決める。最新のブランド・スタイルへは追随せず
         # （`_current_revision`・`follow_deck_settings` を通らない）、デッキの 2 つの改訂 ID も動かさない
         snapshot = store.template_snapshot(snapshot_ref)
+        compiled = _compile_snapshot(store, root, run, snapshot, snapshot_ref)
         brand_rev = _snapshot_brand(snapshot)
         style_rev = {"id": deck["style_revision_id"], "style_id": None, "revision": None}   # 付属の既定スタイルの互換値
         style_cfg = {}
@@ -103,7 +104,9 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
     # 字体の控え（使えなかった理由も）は記録の `font` に書く（付属のブランドの字体は名前だけなので毎回ここに出る）
     font = brand_font(root, brand_cfg, engine.skill)
     theme_path = settings_dir / "theme.yaml"
-    theme_path.write_text(palette.theme_yaml(theme) + font_yaml(font), encoding="utf-8")
+    # テンプレートの回は、控えからコンパイルしたテーマを使う（同じ色の組から作る。ファイルは回の控えに残してある）
+    theme_text = compiled["files"]["theme.yaml"] if snapshot_ref else palette.theme_yaml(theme)
+    theme_path.write_text(theme_text + font_yaml(font), encoding="utf-8")
 
     # --- ブランド: ロゴ ---
     logo_cfg = brand_cfg.get("logo") or {}
@@ -153,12 +156,14 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
         "tone": style_cfg.get("tone") or "standard",
         "brand_revision_id": brand_rev["id"],
         "style_revision_id": style_rev["id"],
+        **({"style_file": compiled["record"]["style_file"], "compilation_dir": compiled["record"]["dir"]}
+           if snapshot_ref else {}),
     }
     update = {"style": wanted, "image_look": look, "style_note": style_note, "look": plan}
     record = {
         "brand": {"id": brand_rev["brand_id"], "revision_id": brand_rev["id"], "revision": brand_rev["revision"]},
         "style": {"id": style_rev["style_id"], "revision_id": style_rev["id"], "revision": style_rev["revision"]},
-        **({"template": _template_record(snapshot, snapshot_ref)} if snapshot_ref else {}),
+        **({"template": _template_record(snapshot, snapshot_ref), "compilation": compiled["record"]} if snapshot_ref else {}),
         "theme": theme, "theme_file": str(theme_path),
         "font": font,
         "theme_sha256": hashlib.sha256(theme_path.read_bytes()).hexdigest(),
@@ -169,6 +174,74 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
         "allowed_types": allowed, "overrides": overrides or None, "notes": notes,
     }
     return update, record
+
+
+COMPILATION_FILE = "compilation.json"
+
+
+def _compile_snapshot(store: Any, root: DataRoot, run: dict[str, Any], snapshot: dict[str, Any],
+                      ref: dict[str, Any]) -> dict[str, Any]:
+    """控えの文書・ブランド・モードから共通コンパイル（`design_templates.compile_document`）を作り、回の控えに書く。
+    正本は DB の控え。ファイルが欠けていれば控えから作り直す。受け付けたときのコンパイラの版が使えなければ止める
+    （最新の版で黙って解釈し直さない）。同じ控えの完了済みのコンパイルが前の回にあれば、それを写して使う。
+    戻り値: {"files": {名前: 本文}, "record": 回の記録に残す要約}。"""
+    from .. import design_templates as dt
+    from ..errors import StateError
+
+    out_dir = root.run_compilation_dir(run["deck_id"], run["id"])
+    wanted = snapshot.get("compiler_version")
+    reused = _reuse_compilation(store, root, run, ref, wanted, out_dir)
+    if reused is None:
+        if wanted != dt.COMPILER_VERSION:
+            raise StateError("デザインテンプレートを受け付けたときと、いまのコンパイラの版が違うため、止めました"
+                             "（最新の版で解釈し直さず、新しいスライドとして頼み直してください）。")
+        b = snapshot["brand"]
+        brand = {"id": b["id"], "current_revision_id": b["revision_id"], "config": b["config"], "assets": b["assets"]}
+        try:
+            result = dt.compile_document(snapshot["template"]["document"], brand, mode=run["mode"])
+        except ValueError as exc:
+            raise StateError(f"デザインテンプレートをコンパイルできません: {exc}") from None
+        files = {k: v for k, v in result["files"].items() if v}
+        meta = {"compiler_version": result["compiler_version"], "contract_sha256": result["contract_sha256"],
+                "snapshot_id": ref["snapshot_id"], "snapshot_sha256": ref["snapshot_sha256"], "mode": result["mode"],
+                "stage": result["stage"], "render_ready": result["render_ready"], "can_prepare": result["can_prepare"],
+                "generation_executed": result["generation_executed"],
+                "files": {k: hashlib.sha256(v.encode("utf-8")).hexdigest() for k, v in sorted(files.items())}}
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for name, text in files.items():
+            (out_dir / name).write_text(text, encoding="utf-8", newline="\n")
+        (out_dir / COMPILATION_FILE).write_text(json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8",
+                                                newline="\n")
+    else:
+        files, meta = reused
+    record = {"compiler_version": meta["compiler_version"], "contract_sha256": meta["contract_sha256"],
+              "snapshot_sha256": ref["snapshot_sha256"], "dir": str(out_dir), "files": meta["files"],
+              "style_file": str(out_dir / "style.yaml") if "style.yaml" in files else None}
+    return {"files": files, "record": record}
+
+
+def _reuse_compilation(store: Any, root: DataRoot, run: dict[str, Any], ref: dict[str, Any], compiler_version: Any,
+                       out_dir: Path) -> tuple[dict[str, str], dict[str, Any]] | None:
+    """前の回の、同じ控え・同じコンパイラの版の、中身がハッシュと合うコンパイルを、この回の控えへ写す。"""
+    for other in [run, *store.runs_for_deck(run["deck_id"])]:
+        src = root.run_compilation_dir(other["deck_id"], other["id"])
+        try:
+            meta = json.loads((src / COMPILATION_FILE).read_text(encoding="utf-8"))
+            files = {name: (src / name).read_text(encoding="utf-8") for name in meta["files"]}
+        except (OSError, ValueError, KeyError):
+            continue
+        if meta.get("snapshot_sha256") != ref["snapshot_sha256"] or meta.get("compiler_version") != compiler_version:
+            continue
+        if any(hashlib.sha256(v.encode("utf-8")).hexdigest() != meta["files"][k] for k, v in files.items()):
+            continue
+        if src != out_dir:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            for name, text in files.items():
+                (out_dir / name).write_text(text, encoding="utf-8", newline="\n")
+            (out_dir / COMPILATION_FILE).write_text(json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True),
+                                                    encoding="utf-8", newline="\n")
+        return files, meta
+    return None
 
 
 def _snapshot_brand(snapshot: dict[str, Any]) -> dict[str, Any]:

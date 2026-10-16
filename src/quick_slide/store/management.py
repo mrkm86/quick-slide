@@ -160,6 +160,9 @@ class DeckManagementMixin(StoreBase):
                     origin_deck_id=deck_id,
                 )
                 new_id = new["id"]
+                ref = self.deck_template_snapshot_ref(deck_id)
+                if ref:   # デザインテンプレートの控えは、描き終えた回が無くても写す（複製が通常のデッキにならない）
+                    self.link_deck_template_snapshot(new_id, ref)
                 for t in self.deck_tags(deck_id):
                     self._exec("INSERT OR IGNORE INTO deck_tags(deck_id,tag_id) VALUES(?,?)", (new_id, t["id"]))
                 made.append(self.root.deck_dir(new_id))

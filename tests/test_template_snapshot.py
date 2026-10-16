@@ -9,22 +9,26 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sqlite3
+import threading
 import unittest
 from unittest import mock
 
 from helpers import intake_payload, start_server, wait_until_idle
 from test_template_intake import Base, doc
 
-from quick_slide import palette
+from quick_slide import design_templates as dt
 from quick_slide.errors import StateError
 from quick_slide.render import look as LOOK
 from quick_slide.scriptdoc import screen_pages
 from quick_slide.server.deck_routes import SCREEN_LABELS
 from quick_slide.server.page_view import edit_capabilities
 from quick_slide.store import Store
-from quick_slide.store.edits import TEMPLATE_REBUILD_REASON, TEMPLATE_RESTORE_REASON
-from quick_slide.worker.pipeline import TEMPLATE_PREPARATION_PENDING_MESSAGE
+from quick_slide.store.edits import TEMPLATE_REBUILD_REASON, TEMPLATE_RESTORE_REASON, TEMPLATE_RESUME_REASON
+from quick_slide.settings import Settings
+from quick_slide.worker.pipeline import TEMPLATE_PREPARATION_PENDING_MESSAGE, Context, make
+from quick_slide.worker.tools import Tools
 
 RED = "#C8102E"
 
@@ -37,7 +41,8 @@ def fingerprint(store, run_id: str) -> dict:
     return {"template": record["template"], "brand": record["brand"], "theme_sha256": record["theme_sha256"],
             "theme_file_sha256": hashlib.sha256(theme).hexdigest(), "theme": record["theme"], "logo": record["logo"],
             "font": record["font"], "engine_style": record["engine_style"], "footer": record["footer"],
-            "revisions": (update["look"]["brand_revision_id"], update["look"]["style_revision_id"])}
+            "compilation": {k: v for k, v in record["compilation"].items() if k not in ("dir", "style_file")},
+            "style_compiled": record["compilation"]["style_file"] is not None, "revisions": (update["look"]["brand_revision_id"], update["look"]["style_revision_id"])}
 
 
 class SnapshotSurvivesChangesTests(Base):
@@ -121,13 +126,81 @@ class SnapshotSurvivesChangesTests(Base):
         with self.assertRaises(StateError):
             self.store.template_snapshot({"snapshot_id": "missing", "snapshot_sha256": ref["snapshot_sha256"]})
 
-    def test_a_failure_while_writing_the_files_can_be_recovered_from_the_snapshot(self) -> None:
+    def compilation_dir(self, run_id: str):
+        return self.store.root.run_compilation_dir(self.deck_id, run_id)
+
+    def test_the_compilation_outputs_are_stored_in_the_run_directory_and_recorded(self) -> None:
+        self.accept()
+        out = self.compilation_dir(self.first["run_id"])
+        names = {p.name for p in out.iterdir()}
+        self.assertEqual(names, {"template.json", "brand.json", "writer.md", "preparation.md", "theme.yaml",
+                                 "engine-input.json", "compilation.json"})   # style.yaml はピッチだけ
+        meta = json.loads((out / "compilation.json").read_text(encoding="utf-8"))
+        self.assertEqual(meta["compiler_version"], dt.COMPILER_VERSION)
+        self.assertFalse(meta["render_ready"] or meta["generation_executed"])
+        run = self.store.run(self.first["run_id"])
+        LOOK.resolve(self.store, self.store.root, run, previous_style=None)
+        for name, sha in meta["files"].items():
+            self.assertEqual(hashlib.sha256((out / name).read_bytes()).hexdigest(), sha, name)
+        record = self.before["compilation"]
+        self.assertEqual((record["compiler_version"], record["files"]), (dt.COMPILER_VERSION, meta["files"]))
+        self.assertFalse(self.before["style_compiled"])
+        # 回の実効のテーマは、コンパイルしたテーマ（字体の行を足す前）から始まる
+        theme = (self.store.root.run_settings_dir(self.deck_id, self.first["run_id"]) / "theme.yaml").read_text(encoding="utf-8")
+        self.assertTrue(theme.startswith((out / "theme.yaml").read_text(encoding="utf-8")))
+
+    def test_a_pitch_run_also_compiles_the_style_file(self) -> None:
+        self.tpl = self.template("ピッチ用")
+        r = self.intake(design_template="ピッチ用", mode="pitch")
+        self.deck_id = r["deck_id"]
+        fp = fingerprint(self.store, r["run_id"])
+        self.assertTrue(fp["style_compiled"])
+        self.assertTrue(self.compilation_dir(r["run_id"]).joinpath("style.yaml").is_file())
+
+    def test_a_failure_while_compiling_can_be_recovered_from_the_snapshot(self) -> None:
         self.accept()
         self.change_everything()
-        with mock.patch.object(palette, "theme_yaml", side_effect=OSError("書き込めない")):
+        made = self.store.create_edit(self.deck_id, {"op": "render", "source": "screen"})["run"]["id"]
+        shutil.rmtree(self.compilation_dir(self.first["run_id"]), ignore_errors=True)   # 前の回の写しが無い（使い回せない）状態
+        with mock.patch.object(dt, "compile_document", side_effect=OSError("書き込めない")):
             with self.assertRaises(OSError):
-                LOOK.resolve(self.store, self.store.root, self.store.run(self.first["run_id"]), previous_style=None)
-        self.assert_unchanged(self.first["run_id"])   # DB の控えから、もう一度同じ姿に決められる
+                LOOK.resolve(self.store, self.store.root, self.store.run(made), previous_style=None)
+        self.assertFalse(self.compilation_dir(made).exists())
+        self.assert_unchanged(made)   # DB の控えから、もう一度同じ姿に決められる
+        # ファイルが欠けても、控えから作り直せる（元のテンプレートは上書き・削除済み）
+        self.assert_unchanged(made)
+        shutil.rmtree(self.compilation_dir(self.first["run_id"]), ignore_errors=True)
+        shutil.rmtree(self.compilation_dir(made), ignore_errors=True)
+        self.assert_unchanged(self.first["run_id"])
+        self.assertTrue(self.compilation_dir(self.first["run_id"]).joinpath("writer.md").is_file())
+
+    def test_a_compiler_version_mismatch_stops_unless_a_completed_compilation_exists(self) -> None:
+        self.accept()
+        made = self.store.create_edit(self.deck_id, {"op": "render", "source": "screen"})["run"]["id"]
+        with mock.patch.object(dt, "COMPILER_VERSION", dt.COMPILER_VERSION + 1):
+            self.assert_unchanged(made)   # 完了済みのコンパイルを使い回す（新しい版で解釈し直さない）
+            shutil.rmtree(self.compilation_dir(self.first["run_id"]), ignore_errors=True)
+            shutil.rmtree(self.compilation_dir(made), ignore_errors=True)
+            with self.assertRaises(StateError) as cm:
+                LOOK.resolve(self.store, self.store.root, self.store.run(made), previous_style=None)
+            self.assertIn("コンパイラの版", str(cm.exception))
+
+    def test_a_tampered_snapshot_stops_the_run_instead_of_using_it(self) -> None:
+        self.accept()
+        ref = self.store.run(self.first["run_id"])["args"]["template_snapshot"]
+        self.store.conn.execute("DROP TRIGGER template_snapshots_no_update")
+        body = self.store.conn.execute("SELECT snapshot_json FROM template_snapshots WHERE id=?",
+                                       (ref["snapshot_id"],)).fetchone()[0]
+        self.store.conn.execute("UPDATE template_snapshots SET snapshot_json=? WHERE id=?",
+                                (body.replace("図は少なめにする", "書き換えた指示"), ref["snapshot_id"]))
+        with self.assertRaises(StateError):
+            LOOK.resolve(self.store, self.store.root, self.store.run(self.first["run_id"]), previous_style=None)
+        ctx = Context(self.store, threading.RLock(), self.store.root, Settings(), Tools(), threading.Event())
+        self.assertEqual(make(ctx, self.store.job(self.first["job_id"])), "failed")
+        run = self.store.run(self.first["run_id"])
+        self.assertEqual(run["failure_kind"], "template_snapshot")
+        self.assertIn("受け付けたときと違っています", run["message"])
+        self.assertIsNone(self.store.head_script(self.deck_id))
 
     def test_the_same_template_accepted_later_gets_the_new_state_while_the_old_deck_stays(self) -> None:
         self.accept()
@@ -257,7 +330,7 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(self.fx.store.script(self.fx.store.head_script(body["deck_id"])["id"])["version"], 1,
                              "台本の版を進めていない")
 
-    def test_a_request_intake_with_a_template_can_be_resumed_and_still_stops(self) -> None:
+    def test_a_stopped_template_request_deck_cannot_be_resumed_until_preparation_is_connected(self) -> None:
         p = intake_payload(design_template="プレゼン用")
         p.pop("manuscript")
         p["request"] = "架空の勉強会の案内を作る"
@@ -265,12 +338,34 @@ class ServerTests(unittest.TestCase):
         body = self.fx.post("/api/intakes", p).json()
         run = wait_until_idle(self.fx, body["deck_id"])
         self.assertEqual(run["failure_kind"], "template_preparation")
+        view = self.fx.get(f"/api/decks/{body['deck_id']}").json()
+        self.assertEqual((view["capabilities"]["resume"]["available"], view["capabilities"]["resume"]["reason"]),
+                         (False, TEMPLATE_RESUME_REASON))
+        self.assertFalse(view["limit"]["resume"]["available"])
         r = self.fx.post(f"/api/decks/{body['deck_id']}/resume", {})
-        self.assertEqual(r.status, 200, r.body)
-        run2 = wait_until_idle(self.fx, body["deck_id"])
-        self.assertNotEqual(run2["id"], run["id"])
-        self.assertEqual((run2["failure_kind"], run2["args"]["template_snapshot"]),
-                         ("template_preparation", run["args"]["template_snapshot"]))
+        self.assertEqual((r.status, r.error_code), (409, "nothing_to_resume"))
+        self.assertEqual(r.json()["error"]["message"], TEMPLATE_RESUME_REASON)
+        with self.fx.server.store_lock:
+            self.assertEqual(len(self.fx.store.runs_for_deck(body["deck_id"])), 1, "新しい回を作らない")
+
+    def test_duplicating_a_stopped_template_deck_keeps_the_snapshot_and_the_refusals(self) -> None:
+        body = self.fx.post("/api/intakes", intake_payload(design_template="プレゼン用")).json()
+        wait_until_idle(self.fx, body["deck_id"])
+        r = self.fx.post(f"/api/decks/{body['deck_id']}/duplicate", {})
+        self.assertEqual(r.status, 201, r.body)
+        copy = r.json()["deck"]["id"]
+        self.assertNotEqual(copy, body["deck_id"])
+        with self.fx.server.store_lock:
+            store = self.fx.store
+            self.assertEqual(store.deck_template_snapshot_ref(copy), store.deck_template_snapshot_ref(body["deck_id"]))
+            self.assertIsNotNone(store.deck_template_snapshot_ref(copy))
+            self.assertEqual(store.deck_run_args(copy)["template_snapshot"], store.deck_template_snapshot_ref(copy))
+            with self.assertRaises(StateError):
+                store.change_deck_axes(copy, brand_revision_id=store.preset_brand_revision_id())
+            with self.assertRaises(StateError):
+                store.create_edit(copy, {"op": "rebuild", "source": "screen", "changed": []})
+        r = self.fx.post(f"/api/decks/{copy}/rebuild", {})
+        self.assertEqual((r.status, r.error_code), (409, "template_rebuild_unsupported"))
 
 
 if __name__ == "__main__":

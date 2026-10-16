@@ -36,9 +36,9 @@ class StartTemplateCliTests(unittest.TestCase):
         cls.manuscript.write_text(MANUSCRIPT, encoding="utf-8")
         refuse = runnable(FAKES / "refuse.py")
         cls.env = {k: v for k, v in os.environ.items() if k not in CONVERSATION_VARS}
-        cls.env.update({"QUICK_SLIDE_HOME": str(cls.home), "PYTHONDONTWRITEBYTECODE": "1", "PYTHONUTF8": "1",
+        cls.env.update({"QUICK_SLIDE_HOME": str(cls.home), "PYTHONDONTWRITEBYTECODE": "1",
                         "QUICK_SLIDE_CLAUDE": refuse, "QUICK_SLIDE_CODEX_TEXT": refuse})
-        rc, out, _, err = cls.cli("--start-server")
+        rc, out, _, err = cls.cli("--start-server", legacy_console=False)
         assert rc == 0, (out, err)
         cls.record = json.loads((cls.home / "runtime" / "server.json").read_text(encoding="utf-8"))
         config = cls.api("GET", "/api/settings")["brand_default"]
@@ -76,8 +76,11 @@ class StartTemplateCliTests(unittest.TestCase):
         return data
 
     @classmethod
-    def cli(cls, *args: str):
-        r = subprocess.run([sys.executable, str(SCRIPT), *args], env=cls.env, capture_output=True, text=True, timeout=180,
+    def cli(cls, *args: str, legacy_console: bool = True):
+        # Windows の既定の文字コードを真似る（スクリプトは自分で標準出力を UTF-8 にする）。サーバを起こす呼び出しだけは、
+        # 子のサーバが環境を引き継ぐので外す
+        env = {**cls.env, **({"PYTHONIOENCODING": "cp1252"} if legacy_console else {})}
+        r = subprocess.run([sys.executable, str(SCRIPT), *args], env=env, capture_output=True, text=True, timeout=180,
                            cwd=str(cls.tmp), encoding="utf-8")
         lines = r.stdout.strip().splitlines()
         return r.returncode, json.loads(lines[-1]) if lines else {}, r.stdout, r.stderr

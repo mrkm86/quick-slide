@@ -736,6 +736,9 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
         self.assertEqual(conn.execute("PRAGMA foreign_keys").fetchone()[0], 1, "外部キーは戻す")
         after = {t: [dict(r) for r in conn.execute(f"SELECT * FROM {t} ORDER BY id")] for t in ("decks", "runs", "exports")}
+        # 0013 が足した列（デザインテンプレートの控え。旧い行は NULL）は、これまでの列の中身と分けて見る
+        for row in after["decks"]:
+            self.assertIsNone(row.pop("template_snapshot_id"))
         self.assertEqual(after, before, "中身はそのまま")
         # モーションの 1 冊・描いた回・HTML の書き出しを受ける。参照（デッキ ← 描いた回 ← 書き出し）も効く
         t = "2026-10-11T00:00:00Z"

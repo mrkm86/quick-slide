@@ -132,6 +132,7 @@ class IntakesMixin(StoreBase):
             if selection:
                 ref = self.save_template_snapshot(selection["snapshot"], selection["snapshot_sha256"])
                 args[SNAPSHOT_ARG] = ref
+                self.link_deck_template_snapshot(deck_id, ref)
                 summary = self.template_summary(selection["snapshot"], ref)
             run = self.create_run(deck_id, args=args)
             job = self.create_job(deck_id, run_id=run["id"], intake_id=intake_id)
