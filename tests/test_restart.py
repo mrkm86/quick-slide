@@ -37,22 +37,46 @@ class KillAndRestartTests(unittest.TestCase):
             "CODEX_HOME": str(fake_codex_home(self.tmp)), "IMAGE_SLIDE_CACHE": str(self.tmp / "image-slide-cache"),
             "IMAGE_SLIDE_CONFIG": str(self.tmp / "no-config.yaml"),
         }
-        self.addCleanup(self.cli, "stop")
+        self.addCleanup(self.stop_server)
 
     def cli(self, *args: str) -> dict:
         r = subprocess.run([sys.executable, "-m", "quick_slide.server", "--home", str(self.home), *args],
                            env=self.env, capture_output=True, text=True, timeout=60, cwd=str(REPO), encoding="utf-8")
         return json.loads(r.stdout.strip().splitlines()[-1])
 
-    def assert_started(self) -> None:
+    def logs(self) -> str:
+        tails = []
+        for name in ("server.out", "server.log"):
+            path = self.home / "runtime" / name
+            if path.exists():
+                tails.append(f"{name}:\n" + path.read_text(encoding="utf-8", errors="replace")[-3000:])
+        return "\n".join(tails)
+
+    def assert_started(self) -> dict:
         result = self.cli("start")
-        if not result.get("ok"):
-            logs = []
-            for name in ("server.out", "server.log"):
-                path = self.home / "runtime" / name
-                if path.exists():
-                    logs.append(f"{name}:\n{path.read_text(encoding='utf-8', errors='replace')[-6000:]}")
-            self.fail(f"サーバを起動できませんでした: {result}\n" + "\n".join(logs))
+        self.assertTrue(result.get("ok"), f"{result}\n{self.logs()}")
+        return result
+
+    def stop_server(self) -> None:
+        # stop はプロセスの終了まで待つ。失敗を黙って捨てて置き場を消さない。
+        deadline = time.monotonic() + 30
+        while True:
+            result = self.cli("stop")
+            if result.get("ok"):
+                return
+            if time.monotonic() >= deadline:
+                from quick_slide.oscompat import pid_alive
+                import signal
+
+                rec = self.record()
+                if pid_alive(rec["pid"]):
+                    os.kill(rec["pid"], getattr(signal, "SIGKILL", signal.SIGTERM))
+                    until = time.monotonic() + 10
+                    while pid_alive(rec["pid"]) and time.monotonic() < until:
+                        time.sleep(0.1)
+                self.assertFalse(pid_alive(rec["pid"]), f"サーバが残っている: {result}\n{self.logs()}")
+                return
+            time.sleep(0.2)
 
     def record(self) -> dict:
         return json.loads((self.home / "runtime" / "server.json").read_text(encoding="utf-8"))
