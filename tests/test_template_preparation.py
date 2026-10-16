@@ -158,7 +158,9 @@ class ReadingTests(Harness):
         llm = FakeLlm(GOOD)
         self.prepare(self.new_run(), llm)
         p = llm.prompts[0]
-        self.assertNotIn(str(self.tmp), p.replace(str(self.images), "<images>"), "場所の外のパスは出さない")
+        self.assertNotIn(str(self.tmp), p, "登録した実パスは準備係へ渡さない（置換せずに検査する）")
+        self.assertNotIn(self.tmp.name, p)
+        self.assertIn("画像集", p, "名前・種類・使い方の対応表は渡す")
         self.assertIn("案内役を使う", p)
         self.assertIn("ref-1 | a.png", p)
         self.assertIn("## 1. 結論", p, "構成の原文")
@@ -324,17 +326,17 @@ class LlmTests(Harness):
         self.assertEqual(cm.exception.code, "blocked")
         self.assertIn("案内役が見つからない", cm.exception.message)
 
-    def test_unsupported_roles_are_dropped_from_the_catalog_and_recorded(self) -> None:
-        answer = {"references": [{"id": "ref-1", "roles": ["layout"], "description": "構図"},
-                                 {"id": "ref-2", "roles": ["character", "common"], "description": "人物"}]}
-        tr = self.prepare(self.new_run(), FakeLlm(answer))
-        self.assertEqual([(r.id, r.roles) for r in tr.catalog.references], [("ref-2", ("character",))])
-        self.assertEqual({u["id"] for u in tr.catalog.unsupported}, {"ref-1", "ref-2"})
-
-    def test_html_mode_offers_no_references_in_6a(self) -> None:
-        tr = self.prepare(self.new_run(mode="presentation", name="html"), FakeLlm(GOOD))
-        self.assertEqual(tr.catalog.references, [])
-        self.assertTrue(tr.catalog.unsupported)
+    def test_a_role_that_cannot_be_converted_stops_instead_of_being_ignored(self) -> None:
+        for roles in (["layout"], ["character", "common"]):
+            answer = {"references": [{"id": "ref-1", "roles": roles, "description": "必須の素材"}]}
+            run = self.new_run()
+            with self.assertRaises(PreparationStopped) as cm:
+                self.prepare(run, FakeLlm(answer))
+            self.assertEqual(cm.exception.code, "unsupported_role", roles)
+        with self.assertRaises(PreparationStopped) as cm:
+            self.prepare(self.new_run(mode="presentation"), FakeLlm(GOOD))   # HTML には素材を置く変換がまだ無い
+        self.assertEqual(cm.exception.code, "unsupported_role")
+        self.prepare(self.new_run(mode="presentation"), FakeLlm({"references": []}))   # 素材を求めなければ通る
 
     def test_ids_are_stable_for_the_same_input_and_issued_per_generation(self) -> None:
         a = self.prepare(self.new_run(), FakeLlm(GOOD))
@@ -587,7 +589,7 @@ class ResumeTests(Harness):
     def stop_at(self, name: str):
         def boundary(n: str) -> None:
             if n == name:
-                raise self.Interrupt(n)
+                raise ResumeTests.Interrupt(n)
         return boundary
 
     def test_resume_after_an_interrupt_at_each_preparation_boundary(self) -> None:
@@ -720,6 +722,8 @@ class WriterFlowTests(WriterFlowBase):
         self.assertIn("# デザインテンプレートの指示", p)
         self.assertIn("図は少なめにする", p, "writer.md の追加指示（原文）")
         self.assertIn('"id": "ref-1"', p)
+        self.assertNotIn(str(self.tmp), p, "writer.md の対応表にも実パスは入らない")
+        self.assertIn("案内役を使う", p)
         catalog = p.split("```json")[1].split("```")[0]
         self.assertNotIn(str(self.tmp), catalog, "カタログにパスは出ない")
         self.assertNotIn('"path"', catalog)
@@ -760,7 +764,7 @@ class WriterFlowTests(WriterFlowBase):
 
     def test_html_with_a_reference_stops_with_a_reason_and_a_template_without_one_passes(self) -> None:
         run = self.new_run(mode="presentation", name="htmlflow")
-        tr = self.prepare(run, FakeLlm(GOOD))
+        tr = self.prepare(run, FakeLlm({"references": []}))
         out, calls, seen, _ = self.run_flow([{"title": "t", "slides": [page("a", type="statement", headline="本文")]}], run=run, tr=tr)
         self.assertIsInstance(out, tuple)
         self.assertEqual(seen[0]["slides"][0]["id"], "a")
@@ -825,11 +829,133 @@ class EditFlowTests(WriterFlowBase):
             load_template_run(self.ctx, other)
 
 
+class HardeningTests(Harness):
+    def test_a_directory_component_that_is_a_link_is_refused(self) -> None:
+        from helpers import can_symlink
+
+        if not can_symlink():
+            self.skipTest("symlink を作れない機械")
+        outside = self.tmp / "outside"
+        outside.mkdir()
+        (outside / "secret.png").write_bytes(png())
+        (self.images / "sub").symlink_to(outside, target_is_directory=True)
+        (self.images / "leaf.png").symlink_to(outside / "secret.png")
+        reader = Reader()
+        for rel in ("sub/secret.png", "leaf.png"):
+            with self.assertRaises(PreparationStopped, msg=rel):
+                os.close(reader.open(self.images, rel)[0])
+        tr = self.prepare(self.new_run(), FakeLlm({"references": []}))
+        rels = [i["rel"] for i in tr.intake["resources"][0]["items"]]
+        self.assertNotIn("sub/secret.png", rels)
+        self.assertNotIn("leaf.png", rels)
+
+    def test_windows_names_junctions_and_short_names_are_refused(self) -> None:
+        from quick_slide.preparation.reading import _check_rel, is_reparse
+
+        for bad in ("a.png:stream", "x.png.", "x.png ", "CON", "nul.png", "com1.txt", "PROGRA~1/a.png", "a/AUX.png"):
+            with self.assertRaises(PreparationStopped, msg=bad):
+                _check_rel(bad, windows=True)
+        self.assertEqual(_check_rel("dir/ok.png", windows=True), ["dir", "ok.png"])
+        _check_rel("a:b", windows=False) if os.name != "nt" else None
+        self.assertTrue(is_reparse(SimpleNamespace(st_file_attributes=0x400)))
+        self.assertFalse(is_reparse(SimpleNamespace(st_file_attributes=0x20)))
+
+    def test_inventory_stops_while_enumerating(self) -> None:
+        consumed = []
+
+        class Entry:
+            def __init__(self, n):
+                self.name, self.path = f"f{n}.txt", f"/x/f{n}.txt"
+                consumed.append(n)
+
+            def is_symlink(self): return False
+            def is_dir(self, follow_symlinks=True): return False
+            def is_file(self, follow_symlinks=True): return True
+            def stat(self, follow_symlinks=True): return SimpleNamespace(st_size=1)
+
+        class It:
+            def __iter__(self): return (Entry(n) for n in range(10**9))
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        with mock.patch("os.scandir", return_value=It()):
+            with self.assertRaises(PreparationStopped):
+                Reader(Policy(listing_items=3)).inventory(Path("/x"), "n")
+        self.assertLessEqual(len(consumed), 5, "全件を取ってから数えない")
+
+    def test_a_swap_to_a_huge_image_after_listing_cannot_slip_past_the_pixel_limit(self) -> None:
+        tr = self.prepare(self.new_run(), FakeLlm(GOOD), reader=Reader(Policy(image_pixels=100)))
+        (self.images / "a.png").write_bytes(png(50, 50, header_only=True))
+        row, data = self.script(tr.run, [page("p-1", [CHAR])])
+        with self.assertRaises(PreparationStopped) as cm:
+            tr.resolve(row, tr.stamped(data))
+        self.assertIn(cm.exception.code, ("limit_exceeded", "changed_since_listing"))
+        self.assertEqual(list((tr.dir / "assets").glob("*")) if (tr.dir / "assets").exists() else [], [])
+
+    def test_resume_before_resolution_rechecks_the_original_input(self) -> None:
+        run = self.new_run()
+        llm = FakeLlm(GOOD)
+        with self.assertRaises(ResumeTests.Interrupt):
+            self.prepare(run, llm, boundary=ResumeTests.stop_at(self, "reading.begin"))
+        (self.images / "README.md").write_text("# 中断のあとで変わった説明書き\n", encoding="utf-8")
+        tr = self.prepare(run, llm)
+        self.assertEqual(tr.generation, 2, "入力が変わっていたら新しい世代でやり直す")
+        self.assertIn("中断のあとで変わった説明書き", llm.prompts[-1])
+
+    def test_two_images_on_one_page_are_refused(self) -> None:
+        tr = self.prepare(self.new_run(), FakeLlm({"references": [
+            {"id": "ref-1", "roles": ["image"], "description": "a"}, {"id": "ref-2", "roles": ["image"], "description": "b"}]}))
+        two = [{"id": "ref-1", "role": "image", "reason": "r"}, {"id": "ref-2", "role": "image", "reason": "r"}]
+        self.assertTrue(check_references(page("p", two), "p", RefContext.of(tr.catalog)))
+        row, data = self.script(tr.run, [page("p", two)])
+        with self.assertRaises(EngineInputUnsupported):
+            tr.resolve(row, tr.stamped(data))
+            tr.convert(data)
+
+    def test_first_draft_image_paths_are_refused(self) -> None:
+        tr = self.prepare(self.new_run(), FakeLlm(GOOD))
+        for slide in (page("a", image={"path": "/etc/hosts"}), page("a", image="/etc/hosts"),
+                      page("a", cards=[{"image": {"path": "../x.png"}}])):
+            self.assertTrue(tr.check_script({"slides": [slide]}, fresh=True), slide)
+        self.assertEqual(tr.check_script({"slides": [page("a", image={"path": "attachments/x.png"})]}, fresh=True,
+                                         allowed_paths={"attachments/x.png"}), [])
+        self.assertEqual(tr.check_script({"slides": [page("a", image={"prompt": "夕焼け"})]}, fresh=True), [])
+
+
+class ExplicitGenerationTests(WriterFlowBase):
+    def test_an_edit_uses_the_generation_of_the_head_script_and_stops_if_it_is_broken(self) -> None:
+        from quick_slide.scriptdoc import screen_pages
+
+        out, _, _, tr = self.run_flow([self.draft([CHAR])])
+        script, data = out
+        deck = tr.run["deck_id"]
+        self.store.accept_script(script["id"], screen_pages(tr.run["args"], data))
+        # 新しい世代（壊れていない古い世代が残る状況）を作ってから、対象の台本が使った世代を壊す
+        spare = self.another_run(deck)
+        extra = load_template_run(self.ctx, spare)
+        new = insert_after(data, "cover", [page("n1", [{**CHAR, "id": "ref-2"}])])
+        row = self.store.save_script(deck, new, written_by="writer", writer_backend="claude", intake_id=None, run_id=spare["id"])
+        extra.resolve(row, new)
+        extra.finish(row)
+        self.assertGreater(extra.generation, tr.generation)
+        edit_run = self.another_run(deck)
+        self.assertEqual(load_template_run(self.ctx, edit_run).generation, tr.generation, "最新の世代ではなく、台本が使った世代")
+        (tr.dir / "manifest.json").write_text("{}", encoding="utf-8")
+        with self.assertRaises(PreparationStopped) as cm:
+            load_template_run(self.ctx, edit_run)
+        self.assertEqual(cm.exception.code, "preparation_changed", "古い世代・新しい世代へ落ちずに止める")
+
+
 class BackendFlagTests(unittest.TestCase):
     def test_codex_no_tools_disables_the_same_set_as_web_research_but_without_web(self) -> None:
         cmd = backends._codex_command("codex", Path("/work"), no_tools=True)
-        for name in backends.CODEX_WEB_DISABLED_FEATURES:
+        # 期待値は実装の定数ではなく、試験の側に独立して書く（欠けた無効化を検出するため）
+        required = ["shell_tool", "unified_exec", "view_image", "image_generation", "browser_use", "browser_use_external",
+                    "browser_use_full_cdp_access", "computer_use", "in_app_browser", "in_app_local_automation", "apps", "plugins",
+                    "remote_plugin", "multi_agent", "code_mode_host", "skill_mcp_dependency_install", "hooks"]
+        for name in required:
             self.assertIn(f"features.{name}=false", cmd)
+        self.assertEqual({c for c in cmd if c.startswith("features.")}, {f"features.{n}=false" for n in required})
         self.assertIn('web_search="disabled"', cmd)
         self.assertNotIn("--search", cmd)
         self.assertNotIn('web_search="live"', cmd)

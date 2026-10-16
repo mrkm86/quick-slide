@@ -64,14 +64,45 @@ def label(kind: str) -> str:
     return "フォルダ" if kind == "directory" else "ファイル"
 
 
-def _check_rel(rel: str) -> list[str]:
+_WIN_RESERVED = frozenset({"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", *(f"COM{i}" for i in range(1, 10)),
+                           *(f"LPT{i}" for i in range(1, 10))})
+_WIN_SHORT = re.compile(r"~\d")
+_REPARSE = 0x400   # FILE_ATTRIBUTE_REPARSE_POINT（junction・symlink）
+
+
+def _check_rel(rel: str, windows: bool | None = None) -> list[str]:
+    windows = os.name == "nt" if windows is None else windows
     parts = rel.split("/")
     if not rel or any(p in ("", ".", "..") for p in parts) or "\\" in rel or _CONTROL.search(rel) or "\n" in rel:
         raise PreparationStopped("素材のパスの形が正しくありません。", "path_invalid")
-    if os.name == "nt" and any(":" in p or p.endswith((".", " ")) for p in parts):
-        # 代替データストリーム（file.png:stream）・末尾の点や空白（別の名前に化ける）は断る
-        raise PreparationStopped("Windows で安全に開けない名前の素材は使えません。", "path_invalid")
+    if windows:
+        for p in parts:
+            # 代替データストリーム・末尾の点や空白・デバイス名・短縮名（8.3。確実に判定できないので断る）は開かない
+            if ":" in p or p.endswith((".", " ")) or p.split(".")[0].upper() in _WIN_RESERVED or _WIN_SHORT.search(p):
+                raise PreparationStopped("Windows で安全に開けない名前（デバイス名・短縮名・ストリームなど）の素材は使えません。",
+                                         "path_invalid")
     return parts
+
+
+def is_reparse(st: os.stat_result) -> bool:
+    return bool(getattr(st, "st_file_attributes", 0) & _REPARSE)
+
+
+def _final_path(fd: int) -> str | None:
+    """開いたハンドルの実体パス（Windows。GetFinalPathNameByHandle）。取れなければ None。"""
+    try:
+        import ctypes
+        import msvcrt
+
+        handle = msvcrt.get_osfhandle(fd)
+        buf = ctypes.create_unicode_buffer(32768)
+        n = ctypes.windll.kernel32.GetFinalPathNameByHandleW(ctypes.c_void_p(handle), buf, len(buf), 0)  # type: ignore[attr-defined]
+        if n == 0 or n >= len(buf):
+            return None
+        out = buf.value
+        return out[4:] if out.startswith("\\\\?\\") else out
+    except (ImportError, OSError, AttributeError, ValueError):
+        return None
 
 
 def decode_text(data: bytes, what: str) -> str:
@@ -174,17 +205,13 @@ class Reader:
 
     # --- 開く ---
     def open(self, root: Path, rel: str) -> tuple[int, os.stat_result, Path]:
-        """登録フォルダ（`root`）の下の通常ファイルを開く。範囲外・symlink・特殊ファイルは断る。"""
+        """登録フォルダ（`root`）の下の通常ファイルを開く。範囲外・symlink・junction・特殊ファイルは断る。
+
+        POSIX: フォルダの FD から、各成分を no-follow で順に開く（確認と開く間の差し替えが効かない）。
+        Windows: 各成分の reparse point を断り、開いたハンドルの実体パスが期待どおりか確かめる。保証できなければ止める。"""
         parts = _check_rel(rel)
         path = root.joinpath(*parts)
-        expected = os.path.join(os.path.realpath(root), *parts)
-        if os.path.normcase(os.path.realpath(path)) != os.path.normcase(expected):
-            raise PreparationStopped("登録した場所の外を指す素材（シンボリックリンク等）は使えません。", "outside_root")
-        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
-        try:
-            fd = os.open(path, flags)
-        except OSError:
-            raise PreparationStopped("素材のファイルを開けませんでした（見つからないか、読めません）。", "unreadable") from None
+        fd = self._open_nt(root, parts, path) if os.name == "nt" else self._open_posix(root, parts)
         try:
             st = os.fstat(fd)
             if not stat.S_ISREG(st.st_mode):
@@ -193,6 +220,46 @@ class Reader:
             os.close(fd)
             raise
         return fd, st, path
+
+    @staticmethod
+    def _open_posix(root: Path, parts: list[str]) -> int:
+        nofollow, directory = getattr(os, "O_NOFOLLOW", None), getattr(os, "O_DIRECTORY", None)
+        if nofollow is None or directory is None or os.open not in os.supports_dir_fd:
+            raise PreparationStopped("この環境では、登録した場所の外に出ない開き方を保証できないため、素材を読めません。", "unsafe_platform")
+        base = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
+        cur = -1
+        try:
+            cur = os.open(os.path.realpath(root), base | directory | getattr(os, "O_BINARY", 0))
+            for p in parts[:-1]:
+                nxt = os.open(p, base | directory | nofollow | getattr(os, "O_BINARY", 0), dir_fd=cur)
+                os.close(cur)
+                cur = nxt
+            return os.open(parts[-1], base | nofollow | getattr(os, "O_BINARY", 0), dir_fd=cur)
+        except OSError:
+            raise PreparationStopped("素材のファイルを開けませんでした（見つからない・読めない・登録した場所の外を指すリンクです）。",
+                                     "unreadable") from None
+        finally:
+            if cur >= 0:
+                os.close(cur)
+
+    @staticmethod
+    def _open_nt(root: Path, parts: list[str], path: Path) -> int:
+        real_root = os.path.realpath(root)
+        cur = real_root
+        try:
+            for p in parts:
+                cur = os.path.join(cur, p)
+                if is_reparse(os.lstat(cur)) or os.path.islink(cur):
+                    raise PreparationStopped("登録した場所の外を指しうるリンク（junction・シンボリックリンク）は使えません。",
+                                             "outside_root")
+            fd = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+        except OSError:
+            raise PreparationStopped("素材のファイルを開けませんでした（見つからないか、読めません）。", "unreadable") from None
+        final = _final_path(fd)
+        if final is None or os.path.normcase(final) != os.path.normcase(os.path.join(real_root, *parts)):
+            os.close(fd)
+            raise PreparationStopped("開いたファイルの実体が登録した場所の中にあると確かめられないため、使えません。", "outside_root")
+        return fd
 
     def _unchanged(self, fd: int, path: Path, before: FileIdentity) -> None:
         try:
@@ -256,11 +323,12 @@ class Reader:
         while stack:
             folder, prefix = stack.pop()
             try:
-                with os.scandir(folder) as it:
-                    entries = sorted(it, key=lambda e: e.name)
+                it = os.scandir(folder)
             except OSError:
                 raise PreparationStopped(f"リソース「{name}」のフォルダの中を読めませんでした。", "unreadable") from None
-            for e in entries:
+            with it:
+              # 列挙しながら上限を見る（全件をメモリへ取ってから数えない）
+              for e in it:
                 rel = prefix + e.name
                 try:
                     if e.is_symlink():
@@ -282,15 +350,27 @@ class Reader:
         return sorted(out, key=lambda e: e.rel)
 
     # --- コピー ---
-    def copy(self, root: Path, rel: str, dest_dir: Path, *, ext: str) -> tuple[str, int]:
-        """1 ファイルを内容のハッシュの名前（`<sha256><ext>`）で `dest_dir` にコピーする。(sha256, バイト数)。
-        読んでいる間の変更は、前後の fstat とコピーしたものの再ハッシュで見て、止める。"""
+    def copy_image(self, root: Path, rel: str, dest_dir: Path, *, expected: tuple[int | None, int | None, int | None] | None = None
+                   ) -> tuple[ImageInfo, str, int]:
+        """1 つのハンドルで、ヘッダ検査（形式・大きさ・画素の上限）→ 一覧との照合 → コピー → 前後の同一性の検査までを済ませ、
+        内容のハッシュの名前（`<sha256>.png|jpg`）で `dest_dir` に置く。(画像情報, sha256, バイト数)。
+        `expected` は一覧に出したときの (バイト数, 幅, 高さ)。違えば止める。読んでいる間の変更は前後の fstat と、
+        コピーしたものから読み直したヘッダ・ハッシュで見て、止める。"""
         fd, st, path = self.open(root, rel)
         tmp = None
         try:
             before = FileIdentity.of(st)
             if st.st_size > self.policy.image_bytes:
                 raise PreparationStopped("画像が大きすぎます。", "limit_exceeded", {"limit": self.policy.image_bytes})
+            try:
+                info = sniff_image(fd, st.st_size)
+            except (ValueError, OSError):
+                raise PreparationStopped("画像として読めません（PNG・JPEG のヘッダが正しくありません）。", "bad_image") from None
+            if info.width * info.height > self.policy.image_pixels:
+                raise PreparationStopped("画像の画素数が多すぎます。", "limit_exceeded", {"limit": self.policy.image_pixels})
+            if expected is not None and any(e is not None and e != g for e, g in zip(expected, (st.st_size, info.width, info.height))):
+                raise PreparationStopped("素材が、一覧に出したときと違う画像になっています。もう一度頼んでください。",
+                                         "changed_since_listing")
             dest_dir.mkdir(parents=True, exist_ok=True)
             tmp = dest_dir / f".part-{os.getpid()}-{id(fd)}"
             digest, total = hashlib.sha256(), 0
@@ -308,12 +388,20 @@ class Reader:
                 self.on_read(path)
             self._unchanged(fd, path, before)
             sha = digest.hexdigest()
-            if hashlib.sha256(tmp.read_bytes()).hexdigest() != sha or total != before.size:
-                raise PreparationStopped("素材のコピーが元と一致しません。もう一度頼んでください。", "changed_during_read")
-            final = dest_dir / f"{sha}{ext}"
+            # コピーしたものを読み直して、検査したヘッダと同じ画像か・ハッシュが同じかを確かめる
+            copied = os.open(tmp, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+            try:
+                again = sniff_image(copied, total)
+            except (ValueError, OSError):
+                again = None
+            finally:
+                os.close(copied)
+            if again != info or total != before.size or hashlib.sha256(tmp.read_bytes()).hexdigest() != sha:
+                raise PreparationStopped("素材のコピーが検査した画像と一致しません。もう一度頼んでください。", "changed_during_read")
+            final = dest_dir / f"{sha}{'.png' if info.media_type == 'image/png' else '.jpg'}"
             oscompat.replace(tmp, final)
             tmp = None
-            return sha, total
+            return info, sha, total
         finally:
             os.close(fd)
             if tmp is not None:

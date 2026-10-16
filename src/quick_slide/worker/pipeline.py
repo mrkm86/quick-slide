@@ -719,7 +719,7 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any], *, temp
             s.pop("_hidden", None)   # 非表示と版の印は画面が決める（台本係は書かない）
             s.pop("_pin", None)
         if template is not None:
-            ref_problems = template.check_script(data, fresh=True)
+            ref_problems = template.check_script(data, fresh=True, allowed_paths={p['rel'] for p in pictures})
             if ref_problems:
                 previous, problems = data, ref_problems
                 continue

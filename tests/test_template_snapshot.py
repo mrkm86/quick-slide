@@ -405,11 +405,11 @@ class ServerTests(unittest.TestCase):
         first = wait_until_idle(self.fx, body["deck_id"])
         with self.fx.server.store_lock:
             store = self.fx.store
-            data = {"title": "試験", "slides": [{"id": "a", "type": "content", "title": "一枚目", "body": "本文"}]}
-            script = store.save_script(body["deck_id"], data, written_by="screen", writer_backend=None, intake_id=None,
-                                       run_id=None)
-            store.set_script_check(script["id"], 0, [])
-            store.accept_script(script["id"], screen_pages(first["args"], data))
+            row = store.conn.execute("SELECT id FROM scripts WHERE deck_id=?", (body["deck_id"],)).fetchone()
+            script = store.script(row["id"])
+            data = store.load_script(script)
+            store.accept_script(script["id"], screen_pages(first["args"], data))   # 描画がつながるまでは画面側が承認した想定
+            before = (store.head_script(body["deck_id"])["id"], [p["page_id"] for p in store.script_pages(script["id"])])
             made = store.create_edit(body["deck_id"], {"op": "insert", "after": None, "text": "1 枚足す", "attachments": [],
                                                        "source": "screen", "can_generate": False})
         self.fx.server.wake_worker()
@@ -419,7 +419,10 @@ class ServerTests(unittest.TestCase):
                          ("failed", "template_render_pending", TEMPLATE_RENDER_PENDING_MESSAGE))
         with self.fx.server.store_lock:
             store = self.fx.store
-            self.assertEqual(store.script(store.head_script(body["deck_id"])["id"])["version"], 3, "準備の控えを使って足した")
+            self.assertEqual(store.head_script(body["deck_id"])["id"], before[0], "止まったあとも、いまの台本は変わらない")
+            self.assertEqual([p["page_id"] for p in store.script_pages(before[0])], before[1])
+            self.assertEqual(store.conn.execute("SELECT COUNT(*) FROM scripts WHERE deck_id=?", (body["deck_id"],)).fetchone()[0], 2,
+                             "候補は保存するが、承認しない")
             gens = store.run(run["id"])["record"]["preparation"]["generations"]
             (gen,) = gens.values()
             self.assertEqual((gen["state"], gen["parent"] is not None), ("completed", True), "完了した世代を引き継いだ新しい世代")

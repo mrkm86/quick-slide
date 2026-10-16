@@ -111,6 +111,8 @@ def check_references(page: Any, where: str, ctx: RefContext) -> list[str]:
                 problems.append(f"NG: {w}の slot は書かない（ピッチのページには画像の枠が無い）")
             elif not isinstance(slot, str) or not _SLOT_RE.match(slot) or not isinstance(page.get(slot), dict):
                 problems.append(f"NG: {w}の slot は、このページにある画像の枠の名前にする")
+    if sum(1 for e in refs if isinstance(e, dict) and e.get("role") == "image") > 1:
+        problems.append(f"NG: {where}: role が image の素材は 1 ページに 1 つまで（画像の枠は 1 つ）")
     text = json.dumps({k: v for k, v in page.items() if k != REF_KEY}, ensure_ascii=False)
     if _REF_WORD.search(text):
         problems.append(f"NG: {where}: 参照 ID（ref-N）をページの文字に書かない")

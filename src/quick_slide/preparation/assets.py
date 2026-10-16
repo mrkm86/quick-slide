@@ -49,12 +49,9 @@ def resolve_assets(ref_ids: list[str], *, catalog: Catalog, providers: dict[str,
             raise PreparationStopped("素材の置き場（リソース）が、登録から外れています。", "resource_missing")
         files = []
         for f in provider.fetch(ref.item_id):
-            info, size = reader.sniff(f.root, f.rel)
-            if (f.size is not None and size != f.size) or (f.width is not None and (info.width, info.height) != (f.width, f.height)):
-                raise PreparationStopped("素材が、一覧に出したときと違う画像になっています。もう一度頼んでください。",
-                                         "changed_since_listing")
-            sha, total = reader.copy(f.root, f.rel, gen_dir / ASSETS_DIR, ext=EXT_FOR[info.media_type])
-            files.append({"file_id": f.file_id, "path": f"{ASSETS_DIR}/{sha}{EXT_FOR[info.media_type]}", "sha256": sha,
+            info, sha, total = reader.copy_image(f.root, f.rel, gen_dir / ASSETS_DIR, expected=(f.size, f.width, f.height))
+            ext = EXT_FOR[info.media_type]
+            files.append({"file_id": f.file_id, "path": f"{ASSETS_DIR}/{sha}{ext}", "sha256": sha,
                           "bytes": total, "media_type": info.media_type, "width": info.width, "height": info.height})
         out[rid] = {"files": files}
         if asset_total(out) > reader.policy.selected_total_bytes:

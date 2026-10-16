@@ -38,6 +38,7 @@ def materialize_engine_input(data: dict[str, Any], *, mode: str, gen_dir: Path |
         if mode != "pitch":
             raise EngineInputUnsupported(HTML_UNSUPPORTED)
         chars: list[dict[str, str]] = []
+        placed: set[str] = set()
         for e in refs:
             files = ((assets or {}).get(e["id"]) or {}).get("files")
             if not files or gen_dir is None:
@@ -46,6 +47,9 @@ def materialize_engine_input(data: dict[str, Any], *, mode: str, gen_dir: Path |
             if e["role"] == "character":
                 chars.append({"name": e["name"].strip(), "image": path, "pose": (e.get("pose") or "").strip()})
             elif e["role"] == "image":
+                if "image" in placed:
+                    raise EngineInputUnsupported("1 ページに持込画像を 2 つ以上置く変換はまだ使えません。")
+                placed.add("image")
                 slide["image"] = {"path": path}
             else:
                 raise EngineInputUnsupported(f"役割 {e['role']} は、まだエンジンの入力に変換できません。")

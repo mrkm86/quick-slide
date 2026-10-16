@@ -213,6 +213,12 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
         return fail(exc.message, exc.kind)
     if isinstance(result, str):
         return result
+    if template is not None:
+        # テンプレートの直しも、候補の台本と準備の記録を保存したところで止める（描画が無いので、承認してページを変えない）
+        ctx.call(store.set_run_record, run_id, {"template_stop": {
+            "reason": "render_unavailable", "generation": template.generation,
+            "candidate": result.candidate["id"] if result.candidate else None}})
+        return fail(TEMPLATE_RENDER_PENDING_MESSAGE, TEMPLATE_STOP_KIND)
     try:
         with deck_turn(ctx, deck_id, "apply"):
             script = _apply(ctx, run, req, head, data, result)

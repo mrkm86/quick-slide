@@ -23,7 +23,7 @@ from .assets import ASSETS_DIR, asset_total, link_or_copy, resolve_assets, verif
 from .catalog import SUPPORTED_ROLES, Catalog, CatalogItem, FolderProvider, Reference, issue_ids
 from .engine_input import materialize_engine_input
 from .errors import PreparationStopped
-from .files import read_json, sha256_file, verify, write_json
+from .files import dumps, read_json, sha256_bytes, sha256_file, verify, write_json
 from .intake import read_resources
 from .policy import DEFAULT_POLICY, Policy
 from .reading import Reader
@@ -36,7 +36,7 @@ INTAKE, CATALOG, READING, ASSETS, BINDINGS, MANIFEST = ("intake.json", "resource
                                                          "bindings.json", "manifest.json")
 
 
-def load_compiled(ctx: Any, run: dict[str, Any]) -> dict[str, str]:
+def load_compiled(ctx: Any, run: dict[str, Any], snapshot_doc: dict[str, Any]) -> dict[str, str]:
     """回のコンパイル控え（`writer.md`・`preparation.md`）。記録したハッシュと合わなければ使わない。"""
     look = run["args"].get("look") or {}
     folder = look.get("compilation_dir")
@@ -52,8 +52,31 @@ def load_compiled(ctx: Any, run: dict[str, Any]) -> dict[str, str]:
             raise PreparationStopped(f"テンプレートのコンパイル結果（{name}）が見つかりません。", "compilation_missing") from None
         if listed.get(name) != hashlib.sha256(text.encode("utf-8")).hexdigest():
             raise PreparationStopped(f"テンプレートのコンパイル結果（{name}）が、控えと違っています。", "compilation_changed")
-        out[name] = text
+        out[name] = _without_paths(text, snapshot_doc)
     return out
+
+
+RESOURCE_HEADING = "\n# リソース\n"
+
+
+def _without_paths(text: str, doc: dict[str, Any]) -> str:
+    """コンパイラのリソース対応表（登録した実パスが入る）を、ID・名前・種類・使い方だけの表に替える。
+    追加指示・構成の原文はそのまま残す。パスはモデルに渡さない。"""
+    i = text.find(RESOURCE_HEADING)
+    if i < 0:
+        return text
+    lines = ["# リソース",
+             "追加指示や構成に出てくる名前は、次の登録リソースを指す。名前から別の素材を推測しない。",
+             "フォルダの場合は、説明書き（README.md・README.txt）が準備係に渡される。使い方に従って必要なファイルだけが選ばれる。",
+             "指示で使うリソースが見つからない・読めない場合は止めて確認し、代わりの素材を作らない。"]
+    for row in doc.get("resources") or []:
+        lines.append(f"\n## {row['name']}\n- ID: {row['id']}\n- 種類: {'フォルダ' if row['kind'] == 'directory' else 'ファイル'}"
+                     + (f"\n- 使い方: {row['usage']}" if row["usage"].strip() else ""))
+    return text[:i].rstrip("\n") + "\n\n" + "\n".join(lines)
+
+
+def write_json_sha(obj: Any) -> str:
+    return sha256_bytes(dumps(obj))
 
 
 class TemplateRun:
@@ -104,6 +127,11 @@ class TemplateRun:
     def start(self, llm: LLM.Llm | None) -> None:
         cur = self.rec.current()
         adopted = cur is not None and self._adopt_intake(cur)
+        if adopted and "resolve" not in cur["stages"]:
+            # 素材解決の前の再開: 入力が今も控えのとおりかを、元の入力から確かめ直す（変わっていれば新しい世代でやり直す）
+            again = read_resources(self.doc, reader=self.reader, preparation_md=self.compiled["preparation.md"], mode=self.mode)
+            if write_json_sha(again) != cur["stages"]["intake"]["files"][INTAKE]:
+                adopted = False
         if adopted and "reading" in cur["stages"] and verify(self.dir, cur["stages"]["reading"]["files"]):
             self._load(self.dir, self.generation, self.preparation_id)   # 読解まで完了した世代（同じ回の中断の再開）
             self.resumed = True
@@ -178,6 +206,13 @@ class TemplateRun:
                                                    mode_label=MODE_LABELS.get(self.mode, self.mode), intake=self.intake,
                                                    issued=issued, supported=supported, errors=errs),
                 issued_ids={ref for ref, _ in issued}, supported=supported, policy=self.policy)
+        if interp.unsupported:
+            # このモード・この版で変換できない役割（構図の見本・全ページ共通・HTML の素材）を求める素材がある。
+            # 黙って外して参照なしで進めない（必須の指定を落とさない）
+            raise PreparationStopped(
+                "このテンプレートの素材には、まだ使えない役割（構図の見本・全ページ共通の参照・プレゼン（HTML）への素材の配置）が"
+                "必要です。対応した版を待つか、その素材を使わないテンプレートにしてください。", "unsupported_role",
+                {"items": interp.unsupported})
         by_ref = {ref: it for ref, it in issued}
         refs = [Reference(r["id"], by_ref[r["id"]].resource_id, by_ref[r["id"]].item_id, tuple(r["roles"]), r["description"],
                           by_ref[r["id"]].media_type) for r in sorted(interp.references, key=lambda r: int(r["id"][4:]))]
@@ -195,7 +230,7 @@ class TemplateRun:
         assert self.catalog is not None
         return {"writer_md": self.compiled["writer.md"], "catalog": self.catalog.writer_view(), "mode": self.mode}
 
-    def check_script(self, data: dict[str, Any], *, fresh: bool = False) -> list[str]:
+    def check_script(self, data: dict[str, Any], *, fresh: bool = False, allowed_paths: set[str] | None = None) -> list[str]:
         """台本全体の参照の検査（`NG:` の行）。`fresh` は台本係の初稿そのもの（サーバの印 `_preparation` を書かせない）。"""
         problems = [f"NG: 一番外の {PREP_KEY} は書かない（サーバが付ける）"] if fresh and PREP_KEY in data else []
         for i, s in enumerate(data.get("slides") or [], 1):
@@ -203,6 +238,14 @@ class TemplateRun:
                 if isinstance(s, dict) and key in s:
                     problems.append(f"NG: {i}枚目（id={s.get('id')}）: {key} は書かない（素材は _references で指定する。"
                                     "エンジンに渡す値はサーバが作る）")
+        if fresh:   # 初稿: 台本係が書いた画像のパスは、渡した画像（依頼のページの画像）以外は断る（素材は参照 ID だけ）
+            from ..writer.patch import image_paths
+
+            for i, s in enumerate(data.get("slides") or [], 1):
+                bad = sorted(p for p in image_paths(s) if p not in (allowed_paths or set()))
+                if bad:
+                    problems.append(f"NG: {i}枚目（id={s.get('id') if isinstance(s, dict) else ''}）: 画像の path は書かない"
+                                    f"（手元の素材は _references で指定する）: {', '.join(bad)}")
         return problems + validate_script({k: v for k, v in data.items() if not (fresh and k == PREP_KEY)}, self.ref_ctx)
 
     def stamped(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -286,6 +329,10 @@ class TemplateRun:
                     "compliance": {"status": "not_evaluated", "note": "指示の遵守は描画後に確かめる（この段では判定しない）"}}
         sha = write_json(self.dir / MANIFEST, manifest)
         self.rec.complete(n, "manifest", {MANIFEST: sha}, script_sha256=script["sha256"])
+        # 台本 → 使った世代と manifest のハッシュ（直しは、対象の台本から明示的に引く。最大世代の走査はしない）
+        write_json(self.root.deck_preparations_dir(self.deck_id) / "by-script" / f"{script['id']}.json",
+                   {"script_id": script["id"], "script_sha256": script["sha256"], "generation": n,
+                    "preparation_id": self.preparation_id, "manifest_sha256": sha})
         self.rec.finish(n)
         self.boundary("manifest.done")
 
@@ -322,7 +369,7 @@ def prepare_run(ctx: Any, run: dict[str, Any], *, llm: LLM.Llm | None, policy: P
                 reader: Reader | None = None, boundary: Callable[[str], None] | None = None) -> TemplateRun:
     """テンプレートの回の入口の確認と読解（準備係 LLM）。止めるときは PreparationStopped（世代の記録に理由を残す）。"""
     snapshot = ctx.call(ctx.store.template_snapshot, run["args"]["template_snapshot"])
-    tr = TemplateRun(ctx, run, doc=snapshot["template"]["document"], compiled=load_compiled(ctx, run),
+    tr = TemplateRun(ctx, run, doc=snapshot["template"]["document"], compiled=load_compiled(ctx, run, snapshot["template"]["document"]),
                      reader=reader or Reader(policy), boundary=boundary)
     try:
         tr.start(llm)
@@ -334,19 +381,30 @@ def prepare_run(ctx: Any, run: dict[str, Any], *, llm: LLM.Llm | None, policy: P
 
 def load_template_run(ctx: Any, run: dict[str, Any], *, reader: Reader | None = None, boundary: Callable[[str], None] | None = None
                       ) -> TemplateRun:
-    """直し・差し込み用: デッキの最後に完了した世代（検査を通した台本の控え）を基にした `TemplateRun`。LLM・素材の再読取はしない。"""
+    """直し・差し込み用: デッキのいまの台本が使った準備の世代（台本 → 世代と manifest のハッシュの控え）を明示的に引く。
+    その世代が壊れていれば、古い世代へ落ちずに止める。LLM・素材の再読取はしない。"""
     snapshot = ctx.call(ctx.store.template_snapshot, run["args"]["template_snapshot"])
-    tr = TemplateRun(ctx, run, doc=snapshot["template"]["document"], compiled=load_compiled(ctx, run),
-                     reader=reader or Reader(), boundary=boundary)
-    for _, g in deck_generations(ctx, run["deck_id"]):
-        st = g.get("stages") or {}
-        if g.get("state") != "completed" or not all(s in st for s in ("intake", "reading", "manifest")):
-            continue
-        folder = ctx.root.preparation_dir(run["deck_id"], g["generation"])
-        if verify(folder, st["intake"]["files"]) and verify(folder, st["reading"]["files"]) \
-                and verify(folder, st["manifest"]["files"]):
-            tr._load(folder, g["generation"], g["preparation_id"])
-            if not verify_assets(folder, tr.assets):
-                raise PreparationStopped("選んだ素材のコピーが、控えと違っています（欠けたか変わりました）。", "assets_changed")
-            return tr
-    raise PreparationStopped("この資料の素材準備の控えが見つかりません。新しいスライドとして頼み直してください。", "preparation_missing")
+    tr = TemplateRun(ctx, run, doc=snapshot["template"]["document"],
+                     compiled=load_compiled(ctx, run, snapshot["template"]["document"]), reader=reader or Reader(), boundary=boundary)
+    head = ctx.call(ctx.store.head_script, run["deck_id"])
+    ref_file = ctx.root.deck_preparations_dir(run["deck_id"]) / "by-script" / f"{head['id'] if head else 'none'}.json"
+    try:
+        ref = read_json(ref_file)
+        gen, pid = ref["generation"], ref["preparation_id"]
+    except (OSError, ValueError, KeyError, TypeError):
+        raise PreparationStopped("いまの台本が使った素材準備の控えが見つかりません。新しいスライドとして頼み直してください。",
+                                 "preparation_missing") from None
+    folder = ctx.root.preparation_dir(run["deck_id"], gen)
+    found = next((g for _, g in deck_generations(ctx, run["deck_id"]) if g["generation"] == gen and g["preparation_id"] == pid), None)
+    st = (found or {}).get("stages") or {}
+    ok = (found is not None and found.get("state") == "completed" and all(k in st for k in ("intake", "reading", "manifest"))
+          and sha256_file(folder / MANIFEST) == ref["manifest_sha256"] == st["manifest"]["files"].get(MANIFEST)
+          and head["sha256"] == ref["script_sha256"]
+          and verify(folder, st["intake"]["files"]) and verify(folder, st["reading"]["files"]))
+    if not ok:
+        raise PreparationStopped("いまの台本が使った素材準備の控えが、記録と違っています（欠けたか変わりました）。"
+                                 "別の世代には切り替えずに止めます。", "preparation_changed")
+    tr._load(folder, gen, pid)
+    if not verify_assets(folder, tr.assets):
+        raise PreparationStopped("選んだ素材のコピーが、控えと違っています（欠けたか変わりました）。", "assets_changed")
+    return tr
