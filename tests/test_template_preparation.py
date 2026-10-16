@@ -959,6 +959,67 @@ class HardeningTests2(Harness):
         os.close(fd)
         self.assertGreater(st.st_size, 0)
 
+    @unittest.skipIf(os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0), "権限が効かない環境（root・Windows）では試せない")
+    def test_without_a_search_only_open_a_search_only_ancestor_stops_instead_of_opening_by_path(self) -> None:
+        anc = self.tmp / "searchable2"
+        root = anc / "root"
+        root.mkdir(parents=True)
+        (root / "a.png").write_bytes(png())
+        anc.chmod(0o111)
+        self.addCleanup(anc.chmod, 0o755)
+        with mock.patch.object(os, "O_PATH", 0, create=True), mock.patch.object(os, "O_SEARCH", 0, create=True):
+            with self.assertRaises(PreparationStopped) as cm:
+                os.close(Reader().open(root, "a.png")[0])
+        self.assertEqual(cm.exception.code, "unreadable")
+
+    @unittest.skipIf(os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0), "権限が効かない環境（root・Windows）では試せない")
+    def test_a_search_only_ancestor_swapped_and_put_back_cannot_escape(self) -> None:
+        from helpers import can_symlink
+
+        if not can_symlink():
+            self.skipTest("symlink を作れない機械")
+        # 登録先: tmp/anc(0o111)/swap/root。外: tmp/elsewhere/root。最初の realpath の直後に swap を外へのリンクに替え、
+        # 実体の stat と open はリンク越しのまま、次に realpath が呼ばれたところで元に戻す（前後の照合だけでは防げない筋書き）。
+        # 一覧の読めない祖先の下でも、途中のリンクを辿らない開き方なら止まる
+        anc = self.tmp / "anc"
+        root = anc / "swap" / "root"
+        root.mkdir(parents=True)
+        (root / "a.png").write_bytes(png())
+        (self.tmp / "elsewhere" / "root").mkdir(parents=True)
+        (self.tmp / "elsewhere" / "root" / "a.png").write_bytes(png())
+        anc.chmod(0o111)
+        self.addCleanup(anc.chmod, 0o755)
+        swap, moved = anc / "swap", anc / "swap.moved"
+        real_realpath = os.path.realpath
+        state = {"swapped": False, "restored": False}
+
+        def writable(change):
+            anc.chmod(0o755)
+            try:
+                change()
+            finally:
+                anc.chmod(0o111)
+
+        def restore():
+            writable(lambda: (swap.unlink(), moved.rename(swap)))
+            state["restored"] = True
+
+        def on_realpath(path, *a, **k):
+            if Path(path) == root and state["swapped"] and not state["restored"]:
+                restore()
+            out = real_realpath(path, *a, **k)
+            if Path(path) == root and not state["swapped"]:
+                writable(lambda: (swap.rename(moved), swap.symlink_to(self.tmp / "elsewhere", target_is_directory=True)))
+                state["swapped"] = True
+            return out
+
+        with mock.patch("os.path.realpath", on_realpath):
+            with self.assertRaises(PreparationStopped):
+                os.close(Reader().open(root, "a.png")[0])
+        if not state["restored"]:   # 照合で realpath を呼び直さない実装では、ここで戻す
+            restore()
+        self.assertTrue(state["swapped"], "筋書きどおりに差し替えた")
+
     def test_swapping_the_root_or_an_ancestor_right_after_realpath_cannot_escape(self) -> None:
         from helpers import can_symlink
 
