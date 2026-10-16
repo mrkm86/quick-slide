@@ -286,6 +286,7 @@ class Media:
         self.report = report
         self.done: dict[str, str] = {}
         self.svg_jobs: list[tuple[int, bytes, dict, str]] = []
+        self.metafile_jobs: list[tuple[int, bytes, str, dict, str]] = []
 
     @staticmethod
     def _turned(size, rot):
@@ -305,8 +306,41 @@ class Media:
         w, h = self._turned(ops.get("size", (100, 100)), ops.get("rot", 0.0))
         return rel, w, h
 
+    def metafile(self, no: int, blob: bytes, ext: str, **ops) -> tuple[str, float, float]:
+        """配置ごとに変換器を起動せず、取り込みの最後にまとめて描く。"""
+        key = hashlib.sha256(blob + ext.encode() + repr(sorted(ops.items())).encode()).hexdigest()[:16]
+        if key not in self.done:
+            self.done[key] = f"media/s{no:02d}-{key}.png"
+            self.metafile_jobs.append((no, blob, ext, ops, self.done[key]))
+        w, h = self._turned(ops.get("size", (100, 100)), ops.get("rot", 0.0))
+        return self.done[key], w, h
+
+    def finish_metafiles(self) -> None:
+        from PIL import Image, ImageDraw
+        if not self.metafile_jobs:
+            return
+        # 切り抜きや色違いの配置も、元のラスタライズは共有する。
+        sources = {}
+        for _, blob, ext, ops, _ in self.metafile_jobs:
+            sources.setdefault((blob, ext, ops["size"]), len(sources))
+        pngs = convert_metafiles(list(sources))
+        self.dir.mkdir(parents=True, exist_ok=True)
+        for no, blob, ext, ops, rel in self.metafile_jobs:
+            png = pngs[sources[(blob, ext, ops["size"])]]
+            dest = self.dir / pathlib.Path(rel).name
+            if png is not None:
+                self.picture(no, png, ".png", name=dest.name, **ops)
+                if dest.is_file():
+                    continue
+            self.report.add(no, f"画像（{ext[1:].upper()}）", "写せないので空の枠にした（PNG にして貼り直すと写る）")
+            im = Image.new("RGBA", (100, 100), (176, 176, 176, 30))
+            ImageDraw.Draw(im).rectangle((0, 0, 99, 99), outline=(176, 176, 176, 255), width=2)
+            im.save(dest)
+        self.metafile_jobs.clear()
+
     def finish(self) -> None:
         """溜めた SVG を 1 回の Chrome でまとめて PNG にし、切り抜き・回転などを掛ける。描けなければ透明の画像にして報告する。"""
+        self.finish_metafiles()
         if not self.svg_jobs:
             return
         import subprocess
@@ -1020,12 +1054,6 @@ class ShapeReader:
             if blip is not None and not blip.get(R + "link"):
                 ctx.rep("画像", "中身が無いので空の枠にした")
             return self.missing_img(bx)
-        if ext in (".emf", ".wmf", ".emz", ".wmz"):
-            conv = convert_metafile(blob, ext)
-            if conv is None:
-                ctx.rep(f"画像（{ext[1:].upper()}）", "写せないので空の枠にした（PNG にして貼り直すと写る）")
-                return self.missing_img(bx)
-            blob, ext = conv, ".png"
         src = X.q(blip_fill, "a:srcRect")
         crop = tuple(X.ival(src, k, 0) / 100000 for k in ("l", "t", "r", "b")) if src is not None else (0, 0, 0, 0)
         alpha = 1.0
@@ -1051,7 +1079,9 @@ class ShapeReader:
         tile = X.q(blip_fill, "a:tile") is not None
         ops = dict(crop=crop, size=(bx["w"], bx["h"]), mask=mask, rot=bx["rot"], fh=bx["fh"], fv=bx["fv"], alpha=alpha,
                    gray=gray, duo=duo, clr_change=clr, tile=tile)
-        if ext == ".svg":
+        if ext in (".emf", ".wmf", ".emz", ".wmz"):
+            got = ctx.media.metafile(ctx.no, blob, ext, **ops)
+        elif ext == ".svg":
             got = ctx.media.svg(ctx.no, blob, **ops)
         else:
             got = ctx.media.picture(ctx.no, blob, ext, **ops)
@@ -1261,26 +1291,64 @@ class ShapeReader:
                                 adj=GEO.adjusts(prst) if prst is not None else None)
 
 
-def convert_metafile(blob: bytes, ext: str) -> bytes | None:
+def convert_metafile(blob: bytes, ext: str, *, size=(100, 100)) -> bytes | None:
+    return convert_metafiles([(blob, ext, size)])[0]
+
+
+def convert_metafiles(jobs: list[tuple[bytes, str, tuple]]) -> list[bytes | None]:
     """EMF・WMF を PNG に（LibreOffice があるときだけ。無ければ None）。"""
+    import base64
     import shutil
     import subprocess
     import tempfile
     exe = shutil.which("soffice") or shutil.which("libreoffice")
-    if not exe:
-        return None
+    if not exe or not jobs:
+        return [None] * len(jobs)
     with tempfile.TemporaryDirectory(prefix="qs-meta-") as tmp:
-        src = pathlib.Path(tmp) / f"m{ext}"
-        src.write_bytes(blob)
+        inputs = []
+        for i, (blob, ext, size) in enumerate(jobs):
+            # 直接開くと Draw は A4 の中央に原寸で置き、ページ全体を書き出す。
+            # 画像枠とページを同じ大きさにする。画素の色による余白除去はしない。
+            w, h = (max(1.0, float(v)) for v in size)
+            k = min(IMAGE_DENSITY, 4096 / max(w, h))
+            pw, ph = max(1, round(w * k)), max(1, round(h * k))
+            mw, mh = pw * 25.4 / 96, ph * 25.4 / 96
+            mime = "image/x-wmf" if ext in (".wmf", ".wmz") else "image/x-emf"
+            src = pathlib.Path(tmp) / f"m{i}.fodg"
+            src.write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
+    <office:document xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+     xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+     xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+     xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+     xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+     office:version="1.2" office:mimetype="application/vnd.oasis.opendocument.graphics">
+     <office:styles/>
+     <office:automatic-styles>
+      <style:page-layout style:name="page"><style:page-layout-properties
+       fo:page-width="{mw}mm" fo:page-height="{mh}mm" fo:margin="0mm"/></style:page-layout>
+      <style:style style:name="image" style:family="graphic"><style:graphic-properties draw:fill="none" draw:stroke="none"/></style:style>
+      <style:style style:name="background" style:family="drawing-page">
+       <style:drawing-page-properties draw:fill="solid" draw:fill-color="#ffffff"/></style:style>
+     </office:automatic-styles>
+     <office:master-styles><style:master-page style:name="Default" style:page-layout-name="page"/></office:master-styles>
+     <office:body><office:drawing><draw:page draw:name="image" draw:master-page-name="Default" draw:style-name="background">
+      <draw:frame draw:style-name="image" svg:x="0mm" svg:y="0mm" svg:width="{mw}mm" svg:height="{mh}mm">
+       <draw:image draw:mime-type="{mime}"><office:binary-data>{base64.b64encode(blob).decode("ascii")}</office:binary-data></draw:image>
+      </draw:frame>
+     </draw:page></office:drawing></office:body>
+    </office:document>''', encoding="utf-8")
+            inputs.append(str(src))
+        options = json.dumps({"Translucent": {"type": "boolean", "value": "false"}})
         try:
             # 別の LibreOffice が開いていてもぶつからないよう、使い捨てのプロファイルで動かす
             subprocess.run([exe, f"-env:UserInstallation={pathlib.Path(tmp, 'profile').as_uri()}", "--headless",
-                            "--convert-to", "png", "--outdir", tmp, str(src)],
-                           capture_output=True, timeout=60, check=False)
+                            "--infilter=OpenDocument Drawing Flat XML",
+                            "--convert-to", f"png:draw_png_Export:{options}", "--outdir", tmp, *inputs],
+                           capture_output=True, timeout=60 + 5 * len(jobs), check=False)
         except (OSError, subprocess.SubprocessError):
-            return None
-        out = pathlib.Path(tmp) / "m.png"
-        return out.read_bytes() if out.is_file() else None
+            return [None] * len(jobs)
+        return [out.read_bytes() if out.is_file() else None
+                for out in (pathlib.Path(tmp) / f"m{i}.png" for i in range(len(jobs)))]
 
 
 # --- 背景 ------------------------------------------------------------------------------------

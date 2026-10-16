@@ -314,6 +314,92 @@ def t_svg_only_image():
     check(not rep.items, f"報告: {rep.items}")
 
 
+def t_metafile_image():
+    """合成 EMF 入り PPTX。画像枠・元の余白・srcRect・通常の PNG を確認する。"""
+    import io
+    import shutil
+    import struct
+    from unittest import mock
+    from PIL import Image
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    with mock.patch("shutil.which", return_value=None):
+        check(PI.convert_metafile(b"", ".emf") is None, "変換器が無いとき")
+        report = PI.Report()
+        media = PI.Media(TMP / "metafile-missing", report)
+        first = media.metafile(1, b"missing", ".emf", size=(100, 100))
+        again = media.metafile(2, b"missing", ".emf", size=(100, 100))
+        check(first == again and len(media.metafile_jobs) == 1, "同じ配置は1回だけ処理")
+        media.finish()
+        check((TMP / "metafile-missing" / first[0]).is_file() and report.items, "変換できない画像は枠と報告")
+    if not (shutil.which("soffice") or shutil.which("libreoffice")):
+        print("skip: EMF の実変換には LibreOffice が要る")
+        return
+    # 200×100 のキャンバス。赤い矩形の周囲に 10% の意図的な余白。
+    records = (struct.pack("<6I", 39, 24, 1, 0, 0xff, 0)  # EMR_CREATEBRUSHINDIRECT
+               + struct.pack("<3I", 37, 12, 1)  # EMR_SELECTOBJECT
+               + struct.pack("<II4i", 43, 24, 20, 10, 180, 90)
+               + struct.pack("<5I", 14, 20, 0, 0, 20))
+    header = struct.pack("<II4i4iIIIIHHIII4i", 1, 88, 0, 0, 200, 100,
+                         0, 0, 5292, 2646, 0x464d4520, 0x10000, 88 + len(records), 5,
+                         2, 0, 0, 0, 0, 1920, 1080, 508, 286)
+    blob = header + records
+    with mock.patch("subprocess.run", side_effect=subprocess.TimeoutExpired("soffice", 60)):
+        check(PI.convert_metafile(blob, ".emf") is None, "変換が時間切れのとき")
+    png = PI.convert_metafile(blob, ".emf", size=(400, 200))
+    check(png is not None, "EMF を変換できない")
+    im = Image.open(io.BytesIO(png)).convert("RGBA")
+    check(im.size == (800, 400), f"画像枠に合わせた画素数: {im.size}")
+
+    def red_bounds(im):
+        rgb = im.convert("RGB")
+        return Image.eval(rgb.getchannel("G"), lambda v: 255 if v < 60 else 0).getbbox()
+
+    bounds = red_bounds(im)
+    check(bounds and 70 <= bounds[0] <= 90 and 710 <= bounds[2] <= 730, f"元の余白を保つ: {bounds}")
+    check(im.getpixel((5, 5))[:3] == (255, 255, 255), "元の余白は白")
+    photo = TMP / "metafile-placeholder.png"
+    Image.new("RGB", (200, 100), (0, 120, 220)).save(photo)
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    for i in range(3):
+        pic = slide.shapes.add_picture(str(photo), Inches(i * 3), Inches(1), width=Inches(2), height=Inches(1))
+        if i == 1:
+            pic.crop_left = pic.crop_right = 0.1
+    original = io.BytesIO()
+    prs.save(original)
+    pptx = TMP / "metafile.pptx"
+    with zipfile.ZipFile(io.BytesIO(original.getvalue())) as src, zipfile.ZipFile(pptx, "w") as dst:
+        for name in src.namelist():
+            data = src.read(name)
+            if name == "ppt/slides/_rels/slide1.xml.rels":
+                data = data.replace(b"</Relationships>", b'<Relationship Id="rIdEmf" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/test.emf"/></Relationships>')
+            if name == "ppt/slides/slide1.xml":
+                root = etree.fromstring(data)
+                for blip in root.findall(".//a:blip", PI.NS)[:2]:
+                    blip.set(PI.R + "embed", "rIdEmf")
+                data = etree.tostring(root)
+            if name == "[Content_Types].xml":
+                data = data.replace(b"</Types>", b'<Default Extension="emf" ContentType="image/x-emf"/></Types>')
+            dst.writestr(name, data)
+        dst.writestr("ppt/media/test.emf", blob)
+    out = TMP / "metafile-import"
+    with mock.patch.object(PI, "convert_metafiles", wraps=PI.convert_metafiles) as convert:
+        PI.import_pptx(pptx, out)
+    check(convert.call_count == 1, "配置ごとに変換器を起動しない")
+    check(len(convert.call_args.args[0]) == 1, "同じ素材・寸法のクロップ違いは変換を共有")
+    script = json.loads((out / "script.json").read_text(encoding="utf-8"))
+    imgs = re.findall(r'src="(media/[^\"]+)"', script["slides"][0]["html"])
+    check(len(imgs) == 3, f"取り込んだ画像: {imgs}")
+    full, cropped, normal = [Image.open(out / path).convert("RGBA") for path in imgs]
+    b = red_bounds(full)
+    check(b and 0.08 < b[0] / full.width < 0.12, f"取り込みの余白: {b}")
+    b = red_bounds(cropped)
+    check(b and b[0] < 3 and b[2] >= cropped.width - 3, f"PPTX のクロップ: {b}")
+    check(normal.getpixel((0, 0))[:3] == (0, 120, 220), "通常の PNG")
+
+
 def t_xml_entities():
     """XML の実体参照を解かない（外のファイルを読まない）。"""
     import ooxml as X

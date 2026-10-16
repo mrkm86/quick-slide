@@ -171,6 +171,8 @@ imp "PPTX でないもの・外へ出る部品の名前は rc=2" bad_files
 imp "XML の実体参照を解かない" xml_entities
 imp "PNG の控えの無い SVG の画像は Chrome で描いて PNG に（同じものは 1 つ・回転・ネットへ読みに行かない）" svg_only_image
 
+imp "EMF: 画像枠で変換・意図した余白とクロップ・通常の PNG を保つ（LibreOffice があるとき実変換）" metafile_image
+
 # --- Node のモジュールと Chrome の在りか（ADR 0016） ---
 browser() { run "$1" python3 "$DIR/test_browser.py" "$2"; }
 browser "在りかの順: 環境変数 → 設定 → Quick Slide の置き場 → 前からの置き場・環境変数と設定は無くても落ちない" order
