@@ -67,7 +67,8 @@ class EditsMixin(StoreBase):
             if deck_args.get("template_snapshot") and request["op"] in ("rebuild", "restore"):
                 # 受け付けたときの控えから、最新の設定へ戻す操作は、テンプレートの回では無断で適用しない
                 raise StateError(TEMPLATE_REBUILD_REASON if request["op"] == "rebuild" else TEMPLATE_RESTORE_REASON)
-            infographic = deck_args.get("mode") == "pitch" and deck_args.get("style") == "infographic"
+            infographic = (deck_args.get("mode") == "pitch" and deck_args.get("style") == "infographic") \
+                or bool(deck_args.get("template_snapshot"))   # 重ねずに 1 つずつ走らせるデッキ
             mine = {"kind": "edit", "request": request}
             ahead = sum(1 for other in self.open_jobs(deck_id)
                         if infographic or not self._can_overlap(mine, other))  # type: ignore[attr-defined]

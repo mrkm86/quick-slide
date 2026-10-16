@@ -114,7 +114,9 @@ class StartTemplateCliTests(unittest.TestCase):
     def test_wait_reports_the_reason_it_stopped(self) -> None:
         rc, out, _, _ = self.start("--design-template", "週報", "--wait", "--wait-timeout", "120", "--new-deck")
         self.assertEqual((rc, out["status"], out["generation_ready"]), (4, "failed", False))
-        self.assertIn("素材の準備がまだ使えない", out["result_message"])
+        # 台本係は「呼ばれたら落ちる」偽物なので、準備・台本の段で理由つきで止まる（描かず、できたとは言わない）
+        self.assertTrue(out["result_message"])
+        self.assertNotIn("完成", out["result_message"])
         self.assertEqual(out["pages"], [])
 
     def test_same_names_stop_with_candidate_ids_and_an_id_decides(self) -> None:

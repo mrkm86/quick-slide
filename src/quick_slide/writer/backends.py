@@ -167,8 +167,12 @@ def _knows(help_text: str, flag: str) -> bool:
     return re.search(re.escape(flag) + r"\b", help_text) is not None
 
 
-def _claude_flags(exe: str, env: dict[str, str], cwd: Path, *, web: bool = False) -> list[str]:
+def _claude_flags(exe: str, env: dict[str, str], cwd: Path, *, web: bool = False, no_tools: bool = False) -> list[str]:
     help_text = _help_text(_claude_help_cache, [exe, "--help"], env, cwd)
+    if no_tools and not (_knows(help_text, "--tools") and _knows(help_text, "--strict-mcp-config")):
+        # 「道具なし」を旗で確かめられない版では呼ばない（付けられない旗は黙って省かれるので、道具を持ったまま動いてしまう）
+        raise WriterFailed("missing", "素材の準備と台本を書く Claude Code が古く、道具を使わせない指定ができません。"
+                                      "Claude Code を新しくしてから、もう一度頼んでください。")
     flags: list[str] = []
     for spec in CLAUDE_WANTED_FLAGS:
         if web and spec[0] == "--tools":
@@ -188,9 +192,9 @@ def _claude_flags(exe: str, env: dict[str, str], cwd: Path, *, web: bool = False
 
 @_limit_cli
 def ask_claude(exe: str, prompt: str, *, job_dir: Path, env: dict[str, str], timeout: float,
-               stop: threading.Event | None, web: bool = False) -> str:
+               stop: threading.Event | None, web: bool = False, no_tools: bool = False) -> str:
     job_dir.mkdir(parents=True, exist_ok=True)
-    flags = _claude_flags(exe, env, job_dir, web=web)
+    flags = _claude_flags(exe, env, job_dir, web=web, no_tools=no_tools)
     help_text = _help_text(_claude_help_cache, [exe, "--help"], env, job_dir)
     if not all(_knows(help_text, flag) for flag in ("--verbose", "--include-partial-messages")):
         raise WriterFailed("missing", "台本を書く Claude Code が途中経過の出力に対応していません。"
@@ -219,11 +223,17 @@ def ask_claude(exe: str, prompt: str, *, job_dir: Path, env: dict[str, str], tim
     return text
 
 
-def _codex_command(exe: str, job_dir: Path, *, web: bool = False) -> list[str]:
+def _codex_command(exe: str, job_dir: Path, *, web: bool = False, no_tools: bool = False) -> list[str]:
+    """`codex exec` の引数。`no_tools` は素材の準備・テンプレートの台本用: Web を開かず、下調べ係と同じ道具の集合
+    （シェル・画像を見る・ブラウザ・下請けなど）を全部切り、Web 検索も切る。read-only の砂場は「道具なし」と同じではない。"""
+    if web and no_tools:
+        raise ValueError("web と no_tools は同時に指定できない")
     flags: list[str] = []
     settings = ["features.plugins=false", "features.hooks=false", "features.apps=false", 'forced_login_method="chatgpt"']
     if web:
         settings += [f"features.{name}=false" for name in CODEX_WEB_DISABLED_FEATURES] + ['web_search="live"']
+    elif no_tools:
+        settings += [f"features.{name}=false" for name in CODEX_WEB_DISABLED_FEATURES] + ['web_search="disabled"']
     for setting in settings:
         flags += ["-c", setting]
     if web:
@@ -235,8 +245,12 @@ def _codex_command(exe: str, job_dir: Path, *, web: bool = False) -> list[str]:
 
 @_limit_cli
 def ask_codex(exe: str, prompt: str, *, job_dir: Path, env: dict[str, str], timeout: float,
-              stop: threading.Event | None, web: bool = False) -> str:
+              stop: threading.Event | None, web: bool = False, no_tools: bool = False) -> str:
     job_dir.mkdir(parents=True, exist_ok=True)
+    if no_tools and not _knows(_help_text(_codex_help_cache, [exe, "--help"], env, job_dir), "--config"):
+        # 道具を切る指定は `-c features.<名前>=false`。それを受けない版では、切れないまま呼ばない
+        raise WriterFailed("missing", "素材の準備と台本を書く Codex が古く、道具を切る設定（-c）に対応していません。"
+                                      "Codex を新しくするか、設定の writer を claude にしてから、もう一度頼んでください。")
     if web and not _knows(_help_text(_codex_help_cache, [exe, "--help"], env, job_dir), "--search"):
         # 検索できないまま呼ぶと、記憶だけで原稿を起こしてしまう（黙って記憶で書かせない）
         raise WriterFailed("missing", "下調べをする Codex が Web 検索（--search）に対応していません。"
@@ -247,7 +261,7 @@ def ask_codex(exe: str, prompt: str, *, job_dir: Path, env: dict[str, str], time
         raise WriterFailed("auth", LOGIN_HINT["codex"])
     last = job_dir / "last-message.txt"
     last.unlink(missing_ok=True)
-    r = run_process(_codex_command(exe, job_dir, web=web), cwd=job_dir, env=env, timeout=timeout, stop=stop,
+    r = run_process(_codex_command(exe, job_dir, web=web, no_tools=no_tools), cwd=job_dir, env=env, timeout=timeout, stop=stop,
                     stdin_text=prompt, stdout_path=job_dir / "events.jsonl", stderr_path=job_dir / "stderr.txt")
     _raise_for_process(r, "codex")
     errors = []
@@ -284,7 +298,8 @@ def _raise_for_process(r, backend: str) -> None:
 
 
 def ask(backend: str, exe: str, prompt: str, *, job_dir: Path, env: dict[str, str], timeout: float,
-        stop: threading.Event | None = None) -> dict[str, Any]:
-    """1 回書かせて、台本の JSON（オブジェクト）を返す。"""
+        stop: threading.Event | None = None, no_tools: bool = False) -> dict[str, Any]:
+    """1 回書かせて、台本の JSON（オブジェクト）を返す。`no_tools` は素材の準備・テンプレートの台本用（道具を全部切る）。"""
     runner = ask_claude if backend == "claude" else ask_codex
-    return extract_json(runner(exe, prompt, job_dir=job_dir, env=env, timeout=timeout, stop=stop))
+    extra = {"no_tools": True} if no_tools else {}   # 付けないときは、これまでの呼び方のまま
+    return extract_json(runner(exe, prompt, job_dir=job_dir, env=env, timeout=timeout, stop=stop, **extra))

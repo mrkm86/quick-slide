@@ -22,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..preparation.references import REF_KEY, RefContext, check_references
 from ..scriptdoc import HIDDEN_KEY, PAGE_ID_RE, PIN_KEY, slides_of
 
 ROUTES = ("script", "image", "both", "keep")
@@ -37,6 +38,8 @@ class PagePatch:
     route: str
     slides: list[dict[str, Any]] | None = None
     image: dict[str, Any] | None = None
+    # 直したページの先頭が `_references` を省いた: 元のページの参照と配置を引き継ぐ（`[]` は明示的な削除なので引き継がない）
+    inherit_refs: bool = False
 
 
 @dataclass
@@ -77,7 +80,7 @@ def image_paths(value: Any) -> set[str]:
 
 
 def _check_page(page: Any, where: str, allowed_paths: set[str], forbidden_keys=("_characters", "_layout", HIDDEN_KEY, PIN_KEY),
-                *, motion: bool = False) -> list[str]:
+                *, motion: bool = False, refs: RefContext | None = None) -> list[str]:
     if not isinstance(page, dict):
         return [f"NG: {where}: ページはオブジェクトで書く"]
     problems = []
@@ -93,11 +96,16 @@ def _check_page(page: Any, where: str, allowed_paths: set[str], forbidden_keys=(
     bad = sorted(p for p in image_paths(page) if p not in allowed_paths)
     if bad:
         problems.append(f"NG: {where}: 画像の path は「添えた画像」のパスか、いまある path だけ（{', '.join(bad)}）")
+    if REF_KEY in page:   # 素材の参照はテンプレートの準備カタログがあるときだけ（`_characters`・パスは常に書かせない）
+        if refs is None:
+            problems.append(f"NG: {where}: {REF_KEY} は書かない（この資料にはテンプレートの素材が無い）")
+        else:
+            problems.extend(check_references(page, where, refs))
     return problems
 
 
 def parse_revision(answer: Any, *, script: dict[str, Any], targets: list[str], pictures: dict[str, Any],
-                   attachments: list[str], mode: str) -> Patch:
+                   attachments: list[str], mode: str, refs: RefContext | None = None) -> Patch:
     """台本係の直しの答えを確かめる。`pictures` は id → 直せる絵（None・"あり"・枠の名前の並び）。"""
     patch = Patch()
     problems = patch.problems
@@ -124,6 +132,9 @@ def parse_revision(answer: Any, *, script: dict[str, Any], targets: list[str], p
             problems.append(f"NG: id \"{key}\" の route は script・image・both・keep のどれか")
             continue
         pp = PagePatch(key=key, route=route)
+        if REF_KEY in item:   # 直さない（image・keep）ページの束縛は変えない。参照を変えるのは script・both の slides の中だけ
+            problems.append(f"NG: id \"{key}\": {REF_KEY} は slides の中のページに書く（pages の直下には書かない）")
+            continue
         allowed = image_paths(by_key.get(key, {})) | set(attachments)
         if route in ("script", "both"):
             new = item.get("slides")
@@ -133,7 +144,9 @@ def parse_revision(answer: Any, *, script: dict[str, Any], targets: list[str], p
             ok = True
             for j, page in enumerate(new):
                 where = f"id \"{key}\" の slides の {j + 1} 番目"
-                errs = _check_page(page, where, allowed, motion=mode == "motion")
+                errs = _check_page(page, where, allowed, motion=mode == "motion", refs=refs)
+                if refs is not None and j > 0 and isinstance(page, dict) and REF_KEY not in page:
+                    errs.append(f"NG: {where}: 分けたページには {REF_KEY} を明示する（無ければ []。元の絵を全ページへ広げない）")
                 if errs:
                     problems.extend(errs)
                     ok = False
@@ -151,6 +164,7 @@ def parse_revision(answer: Any, *, script: dict[str, Any], targets: list[str], p
             if not ok:
                 continue
             pp.slides = new
+            pp.inherit_refs = REF_KEY not in new[0]
         if route in ("image", "both"):
             pic = pictures.get(key)
             if not pic:
@@ -201,6 +215,8 @@ def apply_revision(script: dict[str, Any], patch: Patch) -> dict[str, Any]:
             continue
         first, *rest = pp.slides
         first = dict(first)
+        if pp.inherit_refs and isinstance(page, dict) and REF_KEY in page:
+            first[REF_KEY] = page[REF_KEY]   # 省略は元の参照を引き継ぐ
         if page.get(HIDDEN_KEY) is True:
             first[HIDDEN_KEY] = True   # 非表示の印は台本係ではなく画面が持つ
         # 版の印（_pin）は持ち越さない: 直したページは新しい姿なので、前の版の絵は使わない
@@ -210,7 +226,7 @@ def apply_revision(script: dict[str, Any], patch: Patch) -> dict[str, Any]:
 
 
 def parse_insert(answer: Any, *, script: dict[str, Any], attachments: list[str],
-                 mode: str = "presentation") -> tuple[list[dict[str, Any]], str, list[str]]:
+                 mode: str = "presentation", refs: RefContext | None = None) -> tuple[list[dict[str, Any]], str, list[str]]:
     """差し込みの答え → (足すページ, 一言, NG の行)。"""
     problems: list[str] = []
     if not isinstance(answer, dict) or not isinstance(answer.get("slides"), list) or not answer["slides"]:
@@ -222,7 +238,7 @@ def parse_insert(answer: Any, *, script: dict[str, Any], attachments: list[str],
     seen: set[str] = set()
     for j, page in enumerate(new, 1):
         where = f"slides の {j} 番目"
-        problems.extend(_check_page(page, where, set(attachments), motion=mode == "motion"))
+        problems.extend(_check_page(page, where, set(attachments), motion=mode == "motion", refs=refs))
         pid = page.get("id") if isinstance(page, dict) else None
         if not isinstance(pid, str) or not PAGE_ID_RE.match(pid) or pid in taken or pid in seen:
             problems.append(f"NG: {where}: 台本の中で重ならない新しい id を付ける（英小文字・数字・ハイフンで 40 字以内）")

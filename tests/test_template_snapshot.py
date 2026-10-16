@@ -15,7 +15,7 @@ import threading
 import unittest
 from unittest import mock
 
-from helpers import intake_payload, start_server, wait_until_idle
+from helpers import fake_tools, intake_payload, start_server, wait_until_idle
 from test_template_intake import Base, doc
 
 from quick_slide import design_templates as dt
@@ -27,7 +27,7 @@ from quick_slide.server.page_view import edit_capabilities
 from quick_slide.store import Store
 from quick_slide.store.edits import TEMPLATE_REBUILD_REASON, TEMPLATE_RESTORE_REASON, TEMPLATE_RESUME_REASON
 from quick_slide.settings import Settings
-from quick_slide.worker.pipeline import TEMPLATE_PREPARATION_PENDING_MESSAGE, Context, make
+from quick_slide.worker.pipeline import TEMPLATE_RENDER_PENDING_MESSAGE, Context, make
 from quick_slide.worker.tools import Tools
 
 RED = "#C8102E"
@@ -353,37 +353,42 @@ class RefusalTests(Base):
 
 
 class ServerTests(unittest.TestCase):
-    """本物のワーカー（台本係・エンジンは「呼ばれたら落ちる」偽物のまま）で、台本を書く前に止まることを見る。"""
+    """本物のワーカー（台本係・エンジンの検査は偽物）で、台本を確かめたところ（描く前）で止まることを見る。"""
 
     def setUp(self) -> None:
-        self.fx = start_server(self)
+        from test_worker import fake_skills_dir, settings
+
+        tools, log = fake_tools(self, skills_dir=fake_skills_dir(self))
+        tools.extra_env.update({"FAKE_ENGINE_SLEEP": "0.01", "FAKE_ENGINE_LOG": str(log / "engine")})
+        self.fx = start_server(self, tools=tools, settings=settings())
         with self.fx.server.store_lock:
             store = self.fx.store
             cfg = json.loads(json.dumps(store.brand_revision(store.preset_brand_revision_id())["config"]))
             self.brand = store.create_brand("試験のブランド", cfg)
             self.template = store.create_design_template(self.brand["id"], doc("プレゼン用", modes=("presentation",)))
 
-    def test_a_template_run_stops_before_writing_the_script_with_the_reason(self) -> None:
+    def test_a_template_run_stops_after_the_script_is_checked_with_the_reason(self) -> None:
         r = self.fx.post("/api/intakes", intake_payload(design_template="プレゼン用"))
         self.assertEqual(r.status, 201, r.body)
         body = r.json()
         run = wait_until_idle(self.fx, body["deck_id"])
-        self.assertEqual((run["state"], run["failure_kind"]), ("failed", "template_preparation"))
-        self.assertEqual(run["message"], TEMPLATE_PREPARATION_PENDING_MESSAGE)
-        self.assertIn("素材の準備がまだ使えない", run["message"])
+        self.assertEqual((run["state"], run["failure_kind"]), ("failed", "template_render_pending"))
+        self.assertEqual(run["message"], TEMPLATE_RENDER_PENDING_MESSAGE)
         with self.fx.server.store_lock:
             store = self.fx.store
-            self.assertIsNone(store.head_script(body["deck_id"]), "台本を書いていない")
-            self.assertEqual(store.conn.execute("SELECT COUNT(*) FROM scripts").fetchone()[0], 0)
+            self.assertIsNone(store.head_script(body["deck_id"]), "描く前なので、いまの台本にはしない")
+            self.assertEqual(store.conn.execute("SELECT COUNT(*) FROM scripts").fetchone()[0], 1, "台本は書いて確かめた")
             record = store.run(run["id"])["record"]
             self.assertEqual(record["look"]["template"]["template_id"], self.template["template_id"])
             self.assertFalse(record["look"]["template"]["followed_latest"])
             self.assertTrue(record["look"]["theme_sha256"])
-            self.assertEqual(record["template_stop"], {"reason": "preparation_unavailable"})
-            self.assertNotIn("script", record)
+            self.assertEqual(record["template_stop"]["reason"], "render_unavailable")
+            gen = record["preparation"]["generations"][str(record["preparation"]["current"])]
+            self.assertEqual((gen["state"], gen["stage"]), ("completed", "manifest"))
+            self.assertNotIn("engine", record, "描いていない")
         view = self.fx.get(f"/api/decks/{body['deck_id']}").json()
         self.assertEqual(view["pages"], [])
-        self.assertEqual((view["planning"]["state"], view["planning"]["message"]), ("failed", TEMPLATE_PREPARATION_PENDING_MESSAGE))
+        self.assertEqual((view["planning"]["state"], view["planning"]["message"]), ("failed", TEMPLATE_RENDER_PENDING_MESSAGE))
         self.assertFalse(view["capabilities"]["resume"]["available"])
 
     def test_rebuild_and_adopt_routes_refuse_a_template_deck(self) -> None:
@@ -411,10 +416,13 @@ class ServerTests(unittest.TestCase):
         run = wait_until_idle(self.fx, body["deck_id"])
         self.assertEqual(run["id"], made["run"]["id"])
         self.assertEqual((run["state"], run["failure_kind"], run["message"]),
-                         ("failed", "template_preparation", TEMPLATE_PREPARATION_PENDING_MESSAGE))
+                         ("failed", "template_render_pending", TEMPLATE_RENDER_PENDING_MESSAGE))
         with self.fx.server.store_lock:
-            self.assertEqual(self.fx.store.script(self.fx.store.head_script(body["deck_id"])["id"])["version"], 1,
-                             "台本の版を進めていない")
+            store = self.fx.store
+            self.assertEqual(store.script(store.head_script(body["deck_id"])["id"])["version"], 3, "準備の控えを使って足した")
+            gens = store.run(run["id"])["record"]["preparation"]["generations"]
+            (gen,) = gens.values()
+            self.assertEqual((gen["state"], gen["parent"] is not None), ("completed", True), "完了した世代を引き継いだ新しい世代")
 
     def test_a_stopped_template_request_deck_cannot_be_resumed_until_preparation_is_connected(self) -> None:
         p = intake_payload(design_template="プレゼン用")
@@ -423,7 +431,7 @@ class ServerTests(unittest.TestCase):
         p["origin"]["kind"] = "request"
         body = self.fx.post("/api/intakes", p).json()
         run = wait_until_idle(self.fx, body["deck_id"])
-        self.assertEqual(run["failure_kind"], "template_preparation")
+        self.assertEqual(run["failure_kind"], "template_render_pending")
         view = self.fx.get(f"/api/decks/{body['deck_id']}").json()
         self.assertEqual((view["capabilities"]["resume"]["available"], view["capabilities"]["resume"]["reason"]),
                          (False, TEMPLATE_RESUME_REASON))
