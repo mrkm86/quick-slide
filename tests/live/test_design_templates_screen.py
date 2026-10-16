@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import sys
 import time
 import unittest
@@ -21,6 +22,9 @@ if str(HERE.parent) not in sys.path:
     sys.path.insert(0, str(HERE.parent))
 
 from helpers import start_server  # noqa: E402
+
+# どの OS でも絶対パスになる、存在しない置き場（Windows ではドライブ名の無いパスは絶対パスにならない）
+NO_SUCH = Path(tempfile.gettempdir()).resolve() / "qs-design-template-no-such"
 
 from quick_slide import design_templates as dt  # noqa: E402
 
@@ -507,7 +511,7 @@ class EditorTests(ScreenBase):
         self.assertEqual(page.errors, [])
 
     def test_missing_resources_are_marked_on_the_card(self) -> None:
-        res = [{"id": "r1", "name": "無いフォルダ", "kind": "directory", "path": "/no/such/dir-for-test", "usage": ""}]
+        res = [{"id": "r1", "name": "無いフォルダ", "kind": "directory", "path": str(NO_SUCH / "dir-for-test"), "usage": ""}]
         t = self.create("見つからない", resources=res)
         page = self.open_editor_url(t["template_id"])
         self.tab(page, "resources")
@@ -563,7 +567,7 @@ class ConflictTests(ScreenBase):
         self.assertEqual(page.errors, [])
 
     def test_missing_resource_after_import_is_marked(self) -> None:
-        t = self.create("元", resources=[{"id": "r1", "name": "別のパソコンの素材", "kind": "file", "path": "/no/such/file.md", "usage": ""}])
+        t = self.create("元", resources=[{"id": "r1", "name": "別のパソコンの素材", "kind": "file", "path": str(NO_SUCH / "file.md"), "usage": ""}])
         text = self.fx.get(f"{BASE}/{t['template_id']}/markdown").body.decode("utf-8")
         self.fx.post(f"{BASE}/{t['template_id']}/delete", {"expected_revision_id": t["current_revision_id"]})
         page = self.open_brand()
@@ -821,7 +825,7 @@ class PhoneTests(ScreenBase):
         self.assertEqual(page.errors, [])
 
     def test_no_overflow_for_an_older_version_and_the_import_dialog(self) -> None:
-        res = [{"id": "r1", "name": "長いパスの素材", "kind": "file", "path": "/no/such/" + "very-long-directory-name/" * 5 + "file.md", "usage": "使い方" * 30}]
+        res = [{"id": "r1", "name": "長いパスの素材", "kind": "file", "path": str(NO_SUCH.joinpath(*["very-long-directory-name"] * 5, "file.md")), "usage": "使い方" * 30}]
         t = self.create("版と取り込み", resources=res, structure="## 見出し\n| 列1 | 列2 | 列3 | 列4 | 列5 |\n|---|---|---|---|---|\n| ああああああ | いいいいいい | うううううう | ええええええ | おおおおおお |")
         tid = t["template_id"]
         d = dict(t["document"], name="版と取り込み 2")

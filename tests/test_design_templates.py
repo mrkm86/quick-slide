@@ -13,6 +13,8 @@ from quick_slide.design_templates import TOP_KEYS, compile_document, from_markdo
 from quick_slide.store.presets import PRESET_BRAND_CONFIG
 
 REPO = Path(__file__).resolve().parents[1]
+# どの OS でも絶対パスになる、存在しない置き場（Windows ではドライブ名の無いパスは絶対パスにならない）
+NO_SUCH = Path(tempfile.gettempdir()).resolve() / "qs-design-template-no-such"
 
 
 class DesignTemplateTests(unittest.TestCase):
@@ -68,7 +70,7 @@ class DesignTemplateTests(unittest.TestCase):
             self.assertFalse(root_missing["resources"][0]["exists"])
 
     def test_resource_names_must_be_unique_across_paths_and_attachments(self):
-        self.d["resources"] = [{"id": "a", "name": "参考資料", "kind": "file", "path": "/tmp/a.md", "usage": ""}]
+        self.d["resources"] = [{"id": "a", "name": "参考資料", "kind": "file", "path": str(NO_SUCH / "a.md"), "usage": ""}]
         self.d["attachments"] = [{"id": "b", "name": "参考資料", "file": "b.md", "url": "/preview/files/b", "image": False, "usage": "", "sha256": "b"}]
         with self.assertRaisesRegex(ValueError, "重複"):
             validate(self.d)
@@ -78,7 +80,7 @@ class DesignTemplateTests(unittest.TestCase):
                "script": {"purpose": "目的の文", "audience": "", "writing": "", "conversion": "", "mandatory": "共通の文", "source_policy": "guided", "structure": "## 表紙"},
                "drawing": {"overall": "全体の文", "body": "", "diagrams": "", "cover": "", "colors": "", "typography": "", "illustration": "",
                            "forbidden": "", "additional": "共通の文", "image_look": "photo", "bleed": False, "image_only": True},
-               "references": [{"id": "kit", "label": "画像集", "path": "/tmp/kit", "kind": "skill", "instructions": "使い方の文", "required": False, "scope": "both"}],
+               "references": [{"id": "kit", "label": "画像集", "path": str(NO_SUCH / "kit"), "kind": "skill", "instructions": "使い方の文", "required": False, "scope": "both"}],
                "materials": [], "inputs": [{"key": "date", "label": "開催日", "type": "date", "required": True, "instructions": "推測しない"}],
                "checks": {"script": "文章の確認", "image": ""}}
         original = copy.deepcopy(old)
@@ -90,13 +92,13 @@ class DesignTemplateTests(unittest.TestCase):
             self.assertIn(value, upgraded["instructions"])
         # 台本・描画の両方に書かれていた同じ文は、一度だけ写す。
         self.assertEqual(upgraded["instructions"].count("共通の文"), 1)
-        self.assertEqual(upgraded["resources"], [{"id": "kit", "name": "画像集", "kind": "directory", "path": "/tmp/kit",
+        self.assertEqual(upgraded["resources"], [{"id": "kit", "name": "画像集", "kind": "directory", "path": str(NO_SUCH / "kit"),
                                                   "usage": "使い方の文\n見つからない場合は、このリソースを使わずに進めてよい。"}])
 
     def test_old_preserve_policy_and_recipient_survive_migration(self):
         old = {"schema_version": 2, "id": "old", "brand_id": self.brand["id"], "revision": 1, "name": "旧", "modes": ["pitch"], "description": None,
                "script": {"source_policy": "preserve", "structure": "## 表紙"}, "drawing": {},
-               "references": [{"id": "a", "label": "画像集", "path": "/tmp/a", "kind": "directory", "instructions": "", "required": True, "scope": "drawing"}],
+               "references": [{"id": "a", "label": "画像集", "path": str(NO_SUCH / "a"), "kind": "directory", "instructions": "", "required": True, "scope": "drawing"}],
                "materials": [], "inputs": [], "checks": {}}
         upgraded = validate(old)
         self.assertIn("構成へ無断で圧縮しない", upgraded["instructions"])
