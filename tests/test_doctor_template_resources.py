@@ -273,6 +273,28 @@ class DoctorTests(Base):
                 self.assertEqual("ng", rep.get("port")["level"])
                 self.assertIn("server.host", rep.get("port")["fix"])
 
+    def test_port_zero_with_a_usable_host_is_ok_and_closes_the_socket(self):
+        import socket
+        setup = load_setup()
+        hosts = ["127.0.0.1", "localhost"] + (["::1"] if socket.has_ipv6 and _can_bind("::1") else [])
+        real = socket.socket
+        made = []
+
+        def tracked(*args, **kwargs):
+            made.append(real(*args, **kwargs))
+            return made[-1]
+
+        for host in hosts:
+            with self.subTest(host=host):
+                home = temp_dir(self, "qs-home-")
+                (home / "config").mkdir(parents=True)
+                (home / "config" / "settings.json").write_text(json.dumps({"server": {"host": host, "port": 0}}), encoding="utf-8")
+                rep = setup.Report()
+                with mock.patch.object(socket, "socket", side_effect=tracked):
+                    setup.check_port(rep, home)
+                self.assertEqual("ok", rep.get("port")["level"])
+                self.assertTrue(made and made[-1].fileno() == -1)   # 閉じている
+
     def test_ports_that_are_not_port_numbers_are_reported_not_raised(self):
         setup = load_setup()
         for port in (-1, 65536, 2 ** 70):
@@ -302,6 +324,16 @@ class DoctorTests(Base):
     def item_with(self, home: Path, fake: "FakeServer", setup=None):
         with mock.patch.object(http.client, "HTTPConnection", fake.connect):
             return self.item(home, setup)
+
+
+def _can_bind(host):
+    import socket
+    try:
+        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
+            s.bind((host, 0))
+        return True
+    except OSError:
+        return False
 
 
 class ReadFails:
