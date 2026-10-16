@@ -948,6 +948,8 @@ class ExplicitGenerationTests(WriterFlowBase):
 
 class HardeningTests2(Harness):
     @unittest.skipIf(os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0), "権限が効かない環境（root・Windows）では試せない")
+    @unittest.skipUnless(getattr(os, "O_PATH", 0) or getattr(os, "O_SEARCH", 0),
+                         "一覧を読まずに辿る開き方（O_PATH・O_SEARCH）が無い環境では、止まるのが正しい（次の試験）")
     def test_an_ancestor_that_can_be_searched_but_not_listed_still_opens(self) -> None:
         anc = self.tmp / "searchable"
         root = anc / "root"
