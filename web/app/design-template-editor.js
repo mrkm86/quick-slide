@@ -408,7 +408,9 @@
         panel("basic", "基本", options.brand.name + "の色・ロゴ・字体を引き継ぎます。", [control("テンプレート名", d.name, function (v) { d.name = v; }), control("用途の説明", d.description, function (v) { d.description = v; }), modes]),
         panel("structure", "構成", "資料のページの並びと、各ページで伝えることを書きます。書き方は自由です。原稿でページの並びが決まっているときは、原稿のほうを優先します。", [structureGuide.card, structure], h("div", { class: "template-section__tools" }, structure.toggle, structureGuide.toggle)),
         panel("instructions", "追加指示", "文章の書き方も見た目も、ここにまとめて書きます。登録したリソースは「名前」で呼べます。", [instructionsGuide.card, additional], h("div", { class: "template-section__tools" }, additional.toggle, instructionsGuide.toggle)),
-        panel("resources", "リソース", "参考資料や素材を、名前を付けて登録します。フォルダを登録すると、中の説明書き（README.md など）を先に読んでから必要なファイルを選びます。", [resourceGuideCard, refs, materials], resourceGuideToggle)),
+        panel("resources", "リソース", "参考資料や素材を、名前を付けて登録します。フォルダを登録すると、中の説明書き（README.md など）を先に読んでから必要なファイルを選びます。", [resourceGuideCard, refs, materials,
+          // 登録したことを、スキルのプログラムを動かしてよいという許可とみなす（別の確認は出さない）。そのぶん、ここで注意を添える
+          text("p", "ここに登録したファイルやフォルダは、資料を作るときに AI が中を読み、スキルならそのプログラムも動かします。中身を確かめた、安心できるものだけを登録してください。", "small muted template-resource-caution")], resourceGuideToggle)),
       h("div", { class: "template-tab-footer" }, previous, position, next));
     // AI に渡す指示の原文は開発の確かめ用。普段の画面には出さず、URL に ?debug を付けたときだけ出す
     if (showDebug) { page.appendChild(h("details", { class: "template-debug" }, text("summary", "保存した指示を確認する（検証用）"), delivery)); }

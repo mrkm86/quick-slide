@@ -519,6 +519,9 @@ class EditorTests(ScreenBase):
         self.assertEqual(page.eval("document.querySelector('#template-resources .template-row__summary .template-row__missing').textContent"), "見つかりません")
         # 通常の画面には、保存した指示の確認（検証用）を出さない
         self.assertFalse(page.eval("!!document.querySelector('.template-debug')"))
+        # 登録を実行の許可とみなすので、リソースのタブには注意を出す
+        caution = page.eval("document.querySelector('#template-resources .template-resource-caution')?.textContent || ''")
+        self.assertIn("安心できるものだけを登録してください", caution)
         self.assertEqual(page.errors, [])
 
 
