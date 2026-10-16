@@ -1,6 +1,6 @@
 ---
 name: quick-slide
-description: Quick Slide で会話の続きからスライドを作り、会話から直す。この機械で初めて使うとき・「足りない」と言われたときは導入の確かめ（--doctor）と、利用者に聞いてからの導入（--setup）もする。ユーザーが「スライドにして」「資料にまとめて」「プレゼンを作って」「パワポにして」「企画書/提案書/説明資料にして」「デッキにして」「ピッチ資料にして」「〇〇について調べて5ページぐらいでまとめて」、または make slides / build a deck / turn this into a presentation のように言ったら、ツール名が出てこなくても使う。手元の PPTX を「取り込んで」「このパワポを Quick Slide で見たい」と言われたときも使う（原稿は要らない）。「Quick Slide を更新して」「新しいバージョンにして」「アップデートして」と言われたときも使う（下の「Quick Slide を更新する」）。作ったスライドについて「7・8枚目を直して」「この絵を夜に」「見出しを短く」と言われたときも使う。人に見せる資料は構成（ページごとの見出しと要点）を会話で合意してから描き、自分が知るための「調べてまとめて」は調べてそのまま描く。会話の内容を原稿に整え、ローカルの Quick Slide（未起動なら自分で起動する）に投入し、スライドの画面の URL を会話に返す。台本を書き（Claude Code か Codex）、検査して、エンジン（html-slide・image-slide）が描くところまでは Quick Slide が自分で進める。
+description: Quick Slide で会話の続きからスライドを作り、会話から直す。この機械で初めて使うとき・「足りない」と言われたときは導入の確かめ（--doctor）と、利用者に聞いてからの導入（--setup）もする。ユーザーが「スライドにして」「資料にまとめて」「プレゼンを作って」「パワポにして」「企画書/提案書/説明資料にして」「デッキにして」「ピッチ資料にして」「〇〇について調べて5ページぐらいでまとめて」、または make slides / build a deck / turn this into a presentation のように言ったら、ツール名が出てこなくても使う。手元の PPTX を「取り込んで」「このパワポを Quick Slide で見たい」と言われたときも使う（原稿は要らない）。「Quick Slide を更新して」「新しいバージョンにして」「アップデートして」と言われたときも使う（下の「Quick Slide を更新する」）。デザインテンプレートを会話から「登録して」「更新して」「複製して」「書き出して」と言われたときも使う（下の「デザインテンプレートを登録・更新する」）。作ったスライドについて「7・8枚目を直して」「この絵を夜に」「見出しを短く」と言われたときも使う。人に見せる資料は構成（ページごとの見出しと要点）を会話で合意してから描き、自分が知るための「調べてまとめて」は調べてそのまま描く。会話の内容を原稿に整え、ローカルの Quick Slide（未起動なら自分で起動する）に投入し、スライドの画面の URL を会話に返す。台本を書き（Claude Code か Codex）、検査して、エンジン（html-slide・image-slide）が描くところまでは Quick Slide が自分で進める。
 ---
 
 # Quick Slide（会話から 1 冊・会話から直す）
@@ -315,6 +315,73 @@ python3 "${SKILL_DIR}/scripts/quick_slide_start.py" --import "<PPTX のパス>" 
 PPTX・PDF は**画面の右上のボタン**で書き出す（画面に出ている回のファイルがそのまま落ちる。名前はスライドの題）。
 非表示のページは入らない。会話から頼まれたら、URL を書いて「画面の右上の PDF・PPTX のボタンで書き出せます」と伝える。
 
+### デザインテンプレートを登録・更新する（スキルや社内の作り方から）
+
+「この週報のスキルをテンプレートにして」「このテンプレートの追加指示を直して」と言われたら、画面で手入力させずに、
+会話から登録・更新する。設定の画面と同じ検証・同じ版の扱いを通る（スクリプトは `quick_slide_template.py`）。
+
+1. 元になるスキルや書式の説明を読み、次の形の **Markdown 1 枚（UTF-8）** を書く。ID・版・由来は書かない
+   （`name` は必須。`modes` は presentation / pitch から。`resources` は無ければ省く）:
+
+   ```markdown
+   ---
+   format: quick-slide-template
+   version: 1
+   name: 週報
+   description: 毎週の進捗の報告
+   modes:
+     - presentation
+   resources:
+     - name: 先週の資料
+       kind: directory
+       path: <そのパソコンの中の場所>
+       usage: 書き方の見本として読む
+   ---
+
+   # 構成
+
+   ## 1. 結論
+   先に結論を書く
+
+   # 追加指示
+
+   図は少なめにする
+   ```
+
+2. 呼ぶ（`${SKILL_DIR}` と `python3` の読み替えは上のとおり）:
+
+   ```bash
+   python3 "${SKILL_DIR}/scripts/quick_slide_template.py" list [--brand 名前または ID]
+   python3 "${SKILL_DIR}/scripts/quick_slide_template.py" show --template 名前または ID [--version N]
+   python3 "${SKILL_DIR}/scripts/quick_slide_template.py" export --template … [--version N] --out <ファイル> [--force]
+   python3 "${SKILL_DIR}/scripts/quick_slide_template.py" add --brand … --from <ファイル>
+   python3 "${SKILL_DIR}/scripts/quick_slide_template.py" update --template … --from <ファイル> [--overwrite] [--dry-run] [--expected-revision ID]
+   python3 "${SKILL_DIR}/scripts/quick_slide_template.py" copy --template … [--name 新しい名前] [--expected-revision ID]
+   python3 "${SKILL_DIR}/scripts/quick_slide_template.py" delete --template … [--expected-revision ID]
+   ```
+
+   - `--brand` を省くと、アプリの既定のブランドの中だけで探す（**名前も ID も**。別のブランドの ID を渡すと `template_other_brand`。
+     そのテンプレートのブランドを `--brand` に渡す。`--brand` を渡したときも、そのブランドの ID だけが通る）。同じ名前が複数あると `brand_ambiguous` / `template_ambiguous` と
+     候補の ID が返る。**先頭を選ばず**、利用者に聞いて ID で指定し直す
+   - 既存を直すときは先に `show`（か `export`）で今の中身を読み、直したものを `update` に渡す。何が起きるかを先に見たいときは `--dry-run`。
+     **`--dry-run` のあとに本当に保存するときは、返った `expected_revision_id` を `--expected-revision` に渡す**（間に別の保存があれば
+     `conflict`（409）で止まり、何も書かない。渡さないと、その時点の最新に対して保存する）。止まったら `show` で読み直して、利用者に聞く
+   - `update` の既定は **新しい版**（前の版に戻れる）。同じ会話が作った版を誰も触っていなければ、サーバが自動でその版を上書きする。
+     `--overwrite` は、利用者が「上書きして」と言ったときだけ付ける
+
+3. **聞き返すのは、意図が読めないときだけ。** どのテンプレートか決められない・上書きか新しい版か分からない・削除してよいか分からない
+   ときは、実行する前に利用者に聞く（CLI は対話しない）。「週報の追加指示を直して」のように意図が明確なら、毎回は聞かずに既定で進める
+
+4. **最終行の JSON の `message` を、そのまま伝える。** 「v5 を作りました（変更：構成・追加指示）」「v2 を上書きしました」
+   「内容が変わらないため保存しませんでした」のように、実際に起きたことを言う。`action` が `unchanged` なら版を作ったと言わない。
+   自動で上書きになった（`overwritten`）ときは、新しい版ではないことを添える。`--dry-run` の結果は「保存はまだしていません」と添える
+
+5. **CLI を呼べないとき**（ChatGPT などの Web の会話・手元のコマンドが使えない画面）は、同じ形の Markdown ファイルを作って渡し、
+   「設定 › ブランド › テンプレートの『取り込み』で選んでください」と案内する（取り込みは確かめてから保存する 2 段）
+
+`resources` の `path` はそのパソコンの中の場所で、書き出したファイルにもそのまま入る。ほかの人に渡すときは含めてよいか確かめる。
+テンプレートの本文は `show` 以外では出力に出ない。トークン・会話の識別子は出力に載らない。
+
 ## まだできないこと
 
 この版では、既存のスライドへの追加（`--append-to-deck`）・新しく作るときの画像の添付（`--attach` は `--revise` と一緒のときだけ）・
@@ -333,6 +400,8 @@ PPTX・PDF は**画面の右上のボタン**で書き出す（画面に出て�
 | `code: secret_like_content` | 原稿に秘密らしい文字列がある。**該当箇所を会話に引用せず**、`[秘匿]` に置き換えて投入し直す |
 | `code: validation_error` / `not_ready` | サーバの日本語の文がそのまま理由。言い換えずに伝え、渡した値を直す |
 | `code: deck_required` / `deck_not_found`（`--revise`） | この会話から作ったスライドが分からない。`--deck` にスライドの ID（URL の `/slides/` の後ろ）を渡す |
+| `code: brand_ambiguous` / `template_ambiguous`（テンプレート） | 同じ名前が複数ある。返った `candidates` の ID を利用者に見せ、どれかを聞いて ID で指定し直す（先頭を選ばない） |
+| `code: file_exists`（`export`） | 書き出す先に同じ名前のファイルがある。別の名前にするか、利用者の了解を得て `--force` を付ける |
 | `code: pages_invalid` / `no_pages` | ページの番号が範囲の外・まだページが無い。返った `url` を会話に書き、番号を確かめてもらう |
 | `code: wait_timeout` | まだ描いている。`url` を会話に書き、画面で進みを見てもらう（仕事は止まっていない） |
 | `status: revise_failed` / `result: failed` | `result_message`（サーバの 1 文）をそのまま伝える |

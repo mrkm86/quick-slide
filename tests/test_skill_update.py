@@ -143,8 +143,8 @@ class OutdatedServerTests(unittest.TestCase):
 
     def swap(self, running: dict | None, *, codex: bool = False):
         calls: list = []
-        with mock.patch.object(start, "_running_server", return_value=running), \
-                mock.patch.object(start, "inside_codex", return_value=codex), \
+        with mock.patch.object(start.common, "_running_server", return_value=running), \
+                mock.patch.object(start.common, "inside_codex", return_value=codex), \
                 mock.patch.object(start.subprocess, "run", side_effect=lambda *a, **k: calls.append(a) or mock.Mock(
                     returncode=0, stdout=json.dumps({"ok": True, "stopped": True}))):
             got = start.replace_outdated_server(self.repo, self.tmp / "home", 5.0)
