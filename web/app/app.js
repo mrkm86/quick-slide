@@ -4,13 +4,18 @@
   "use strict";
   var SS = window.SS;
   // Keep the initial shell stable; load the settings screen as a local extension.
-  var settingsReady = new Promise(function (resolve, reject) {
-    var script = document.createElement("script");
-    script.src = "/static/settings.js";
-    script.onload = resolve;
-    script.onerror = function () { reject(new SS.ApiError("設定画面を読み込めませんでした。再読み込みしてください。", "settings_load")); };
-    document.head.appendChild(script);
-  });
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var script = document.createElement("script");
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = function () { reject(new SS.ApiError("設定画面を読み込めませんでした。再読み込みしてください。", "settings_load")); };
+      document.head.appendChild(script);
+    });
+  }
+  // 設定は順に読む（デザインテンプレートの部品は、設定の画面より先に使える状態にしておく）
+  var settingsReady = loadScript("/static/design-template-editor.js").then(function () { return loadScript("/static/design-templates.js"); })
+    .then(function () { return loadScript("/static/settings.js"); });
   // 設定への入口。DADS の決まり（アイコンは文字のラベルと組む）に沿って「設定」と書く。現在地の印はホーム・スライドと同じ（太字と下の線）
   var settingsLink = SS.h("a", { class: "settings-link", href: "/settings", "data-nav": true, "data-route": "settings" });
   settingsLink.appendChild(document.getElementById("settings-icon").content.cloneNode(true));

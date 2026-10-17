@@ -1,0 +1,165 @@
+/* デザインテンプレート（設定 › ブランド › デザインテンプレート）の一覧と編集画面。製品の CSS（app.css）と共通部品を使い、追加部分だけを定義する。 */
+.template-field { display:grid; gap:var(--space-2); margin-bottom:var(--space-5); }
+.template-field:last-child { margin-bottom:0; }
+.template-field > span:first-child { font-weight:700; }
+.template-field input,.template-field textarea,.template-field select { width:100%; padding:var(--space-2) var(--space-3); color:var(--ink); border:1px solid var(--line); border-radius:var(--radius-1); background:var(--surface); font:inherit; }
+.template-field input { min-height:48px; }
+.template-field textarea { resize:vertical; line-height:1.9; min-height:168px; }
+.template-field .small { font-weight:400; }
+.template-checks { display:flex; gap:var(--space-5); flex-wrap:wrap; }
+.template-checks label { display:flex; align-items:center; gap:var(--space-2); min-height:44px; }
+.template-field input[type="checkbox"] { width:20px; height:20px; min-height:20px; padding:0; }
+.template-panel { padding:var(--space-5); border:1px solid var(--line-weak); border-radius:var(--radius-2); }
+.template-panel h2 { margin:0 0 var(--space-3); font-size:var(--font-size-18); }
+.template-material-image { width:64px; height:80px; object-fit:contain; flex-shrink:0; background:var(--surface); border:1px solid var(--line-weak); }
+/* 一覧（ブランドの詳細の下） */
+.template-actions { display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap; }
+.template-section-head { display:flex; justify-content:space-between; gap:var(--space-3); align-items:center; margin-bottom:var(--space-3); }
+.template-section-head h2 { margin:0; }
+.template-section { scroll-margin-top:calc(var(--topbar-h) + var(--space-5)); }
+.template-tabs { display:flex; overflow-x:auto; gap:var(--space-3); border-bottom:1px solid var(--line-weak); scroll-margin-top:var(--topbar-h); scrollbar-width:thin; }
+.template-tab { appearance:none; flex-shrink:0; min-height:48px; padding:var(--space-2) var(--space-3); border:0; border-bottom:3px solid transparent; background:var(--surface); color:var(--ink); font:inherit; cursor:pointer; }
+.template-tab:hover { background:var(--brand-soft); }
+.template-tab[aria-selected="true"] { border-bottom-color:var(--brand); color:var(--brand); font-weight:700; }
+.template-tabs-help { margin:var(--space-3) 0 var(--space-5); }
+/* 上限は編集画面全体にかけ、題名・保存・タブ・中身の左右の端をそろえる */
+.settings-page.template-editor { max-width:960px; margin-inline:auto; }
+.template-tab-panels > [role="tabpanel"] { margin-top:0; }
+.template-tab-footer { display:flex; justify-content:space-between; align-items:center; gap:var(--space-2); margin:var(--space-5) 0 0; }
+.template-structure-input { min-height:440px; font-family:var(--font-mono); }
+.template-section__head { display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-3); }
+.template-section__head h2 { margin-bottom:var(--space-3); }
+.template-guide__toggle { flex:none; margin-top:calc(-1 * var(--space-2)); color:var(--brand); }
+.template-guide__toggle[aria-expanded="true"] { background:var(--brand-soft); }
+.template-guide__toggle .icon, .template-guide__copy .icon { width:20px; height:20px; }
+.template-guide { margin:0 0 var(--space-5); padding:var(--space-3); border:1px solid var(--line-weak); border-radius:var(--radius-1); background:var(--color-surface-muted); }
+.template-guide__head { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); font-weight:700; }
+.template-guide pre { margin:var(--space-2) 0; white-space:pre-wrap; overflow-wrap:anywhere; font-family:var(--font-mono); font-size:var(--font-size-14); line-height:1.8; }
+.template-guide p { margin:0; }
+.template-pick { display:flex; gap:var(--space-2); }
+.template-pick select { flex:1; min-width:0; }
+.template-pick .btn { flex:none; min-height:48px; }
+.template-row__remove:hover:not(:disabled) { color:var(--danger-hover); background:var(--color-error-soft); }
+/* 長い名前（空白のない英数字など）でも画面の幅に収める */
+.template-editor > .breadcrumb { overflow-wrap:anywhere; }
+.template-head { margin:var(--space-3) 0 var(--space-5); }
+.template-head h1 { margin:0; font-size:var(--font-size-28); }
+.template-row { min-width:0; border:1px solid var(--line-weak); border-radius:var(--radius-1); padding:var(--space-3); margin:0 0 var(--space-3); }
+.template-check { display:flex; align-items:flex-start; gap:var(--space-2); margin:var(--space-3) 0; min-height:32px; }
+.template-check input { width:20px; height:20px; flex-shrink:0; accent-color:var(--brand); margin-top:3px; }
+.template-delivery { position:static; }
+.template-delivery select { display:block; width:100%; min-height:44px; padding:var(--space-2); border:1px solid var(--line); border-radius:var(--radius-1); background:var(--surface); margin-bottom:var(--space-3); font:inherit; }
+.template-output { display:block; width:100%; resize:vertical; padding:var(--space-3); min-height:280px; font:inherit; font-size:var(--font-size-14); line-height:1.8; border:1px solid var(--line); border-radius:var(--radius-1); }
+.template-delivery code { display:block; overflow-wrap:anywhere; }
+.template-stale-note { display:none; color:var(--danger); }
+.template-delivery[data-stale="true"] .template-stale-note { display:block; }
+.template-drawing-detail { margin:var(--space-3) 0; border-top:1px solid var(--line-weak); padding-top:var(--space-3); }
+.template-drawing-detail summary { cursor:pointer; font-weight:700; margin-bottom:var(--space-3); }
+.template-tab-panels > [role="tabpanel"][hidden] { display: none; }
+.template-ver { cursor:pointer; font:inherit; font-size:var(--font-size-14); }
+.template-ver:hover { color:var(--ink); border-color:var(--ink); }
+.template-versions-modal { width:min(40rem, calc(100vw - 32px)); max-height:calc(100vh - 32px); overflow:auto; }
+.template-versions { display:grid; gap:var(--space-2); margin:var(--space-3) 0; }
+.template-version { display:grid; grid-template-columns:auto 1fr; gap:0 var(--space-3); text-align:left; padding:var(--space-2) var(--space-3); border:1px solid var(--line); border-radius:var(--radius-1); background:var(--surface); color:var(--ink); font:inherit; cursor:pointer; }
+.template-version > :last-child { grid-column:1 / -1; }
+.template-version[aria-pressed="true"] { border-color:var(--ink); box-shadow:inset 0 0 0 1px var(--ink); }
+.template-version__no { font-weight:700; }
+.template-version-detail h4 { margin:var(--space-3) 0 var(--space-1); font-size:var(--font-size-14); }
+.template-version-detail pre { margin:0; max-height:12rem; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; padding:var(--space-2); background:var(--color-surface-muted); font-family:var(--font-mono); font-size:var(--font-size-14); }
+.template-guide__example { padding:var(--space-3) 0; border-bottom:1px solid var(--line-weak); }
+.template-guide__example dl { display:grid; grid-template-columns:auto 1fr; gap:var(--space-1) var(--space-3); margin:0 0 var(--space-2); font-size:var(--font-size-14); }
+.template-guide__example dt { font-weight:700; }
+.template-guide__example dd { margin:0; overflow-wrap:anywhere; }
+.template-field .title-row > span:first-child { font-weight:700; }
+.template-field .title-row { margin-bottom:calc(-1 * var(--space-2)); }
+/* 警告（黄・赤）にはせず、アプリの情報用の囲みで包む */
+.template-caution { margin-top:var(--space-3); }
+.template-caution p { margin:0; }
+.template-section__tools { display:flex; flex:none; gap:var(--space-1); margin-top:calc(-1 * var(--space-2)); }
+.template-section__tools .template-guide__toggle { margin-top:0; }
+.template-mode { color:var(--brand); }
+/* 描いた状態。書く欄と同じ枠に収め、切り替えても場所が動かないようにする */
+.template-md-view { min-width:0; min-height:168px; padding:var(--space-2) var(--space-3); border:1px solid var(--line-weak); border-radius:var(--radius-1); background:var(--surface); line-height:1.9; overflow-wrap:anywhere; }
+.template-md > :first-child { margin-top:0; }
+.template-md > :last-child { margin-bottom:0; }
+.template-md h3, .template-md h4, .template-md h5, .template-md h6 { margin:var(--space-4) 0 var(--space-1); line-height:1.5; }
+.template-md h3 { font-size:var(--font-size-20); }
+.template-md h4 { font-size:var(--font-size-18); }
+.template-md h5, .template-md h6 { font-size:var(--font-size-16); }
+.template-md p { margin:0 0 var(--space-2); }
+.template-md ul, .template-md ol { margin:0 0 var(--space-2); padding-left:1.5em; }
+.template-version-detail .template-md-view { min-height:0; max-height:16rem; overflow:auto; font-size:var(--font-size-14); }
+.template-md code { font-family:var(--font-mono); font-size:0.9em; padding:0 0.25em; border-radius:4px; background:var(--color-surface-muted); }
+/* 記号囲みの英単語は途中で折らない（空白のところでは折れる）。共通の code は break-all なので打ち消す。1行に収まらない長さのときだけ折る */
+.template-md code { overflow-wrap:anywhere; word-break:normal; }
+.template-md-table { max-width:100%; overflow-x:auto; margin:0 0 var(--space-3); }
+.template-md-table:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+.template-md table { border-collapse:collapse; font-size:var(--font-size-14); line-height:1.7; }
+.template-md th, .template-md td { padding:var(--space-1) var(--space-2); border:1px solid var(--line-weak); text-align:left; vertical-align:top; min-width:8em; }
+.template-md th { background:var(--color-surface-muted); white-space:nowrap; }
+/* 消しても保存しなければ戻せるので、強い赤の塗りにはしない */
+.template-row__remove { color:var(--danger); }
+.template-row__head { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); margin:calc(-1 * var(--space-2)) 0 0; }
+.template-row__title { min-width:0; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.template-row__tools { display:flex; flex:none; gap:var(--space-1); }
+.template-row--open .template-row__head { margin-bottom:var(--space-3); }
+.template-row__summary p { margin:0; }
+.template-row__where { display:flex; gap:var(--space-2); min-width:0; }
+.template-row__where > :last-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.template-row__kind { flex:none; display:inline-flex; align-items:center; gap:2px; padding:0 var(--space-2) 0 6px; border:1px solid; border-radius:999px; font-size:var(--font-size-14); font-weight:700; }
+.template-row__kind .icon { width:16px; height:16px; }
+/* フォルダは橙、ファイルは青。薄い地に濃い文字で読める濃さにする */
+.template-row__kind--directory { color:var(--color-primitive-orange-900); background:var(--color-primitive-orange-50); border-color:var(--color-primitive-orange-300); }
+.template-row__kind--file { color:var(--color-primitive-blue-900); background:var(--color-primitive-blue-50); border-color:var(--color-primitive-blue-300); }
+.template-row__missing { color:var(--danger); }
+.template-row__usage { margin-top:var(--space-1) !important; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.template-toolbar { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); margin-top:var(--space-4); }
+.template-toolbar__status { display:flex; align-items:center; gap:var(--space-2); min-width:0; }
+.template-toolbar__status .small { min-width:0; }
+.template-toolbar .btn--primary { flex:none; }
+/* 幅が足りないときは、操作（やめる・保存）の組ごと次の行の右端へ回す。文字を縦に潰さない */
+.template-toolbar { flex-wrap:wrap; }
+.template-toolbar__status .small { white-space:nowrap; }
+.template-toolbar__actions { display:flex; align-items:center; gap:var(--space-2); margin-left:auto; }
+.template-toolbar__actions .btn { flex:none; }
+/* 「保存する」と「▾」を1つのボタンのようにつなげる */
+.template-split { display:flex; }
+.template-split .template-save-main { border-top-right-radius:0; border-bottom-right-radius:0; }
+.template-save-more { border-top-left-radius:0; border-bottom-left-radius:0; border-left:1px solid rgba(255,255,255,.6); width:40px; min-width:40px; padding:0; display:inline-grid; place-items:center; }
+.template-save-more .icon { width:20px; height:20px; }
+.template-toolbar__actions .menu { min-width:16rem; }
+/* .btn の display が [hidden] に勝つので、隠すときは畳み直す */
+.template-save-more[hidden], .template-revert[hidden] { display:none; }
+.template-revert { gap:var(--space-1); }
+.template-revert .icon { width:20px; height:20px; }
+/* 前の版を呼び出して作っている新しい版は、まだ無い版なので点線で見せる */
+.template-ver--new { border-style:dashed; color:var(--brand); border-color:var(--brand); }
+/* 操作は保存ボタンと同じく右寄せ。説明は横の「？」に畳む */
+.template-version-call { display:flex; justify-content:flex-end; align-items:center; gap:var(--space-1); margin:var(--space-3) 0; padding-bottom:var(--space-3); border-bottom:1px solid var(--line-weak); }
+.template-version-resources { display:grid; gap:var(--space-2); }
+.template-version-resources .template-row { margin:0; padding:var(--space-2) var(--space-3); }
+.template-version-resources p { margin:0; }
+.template-version__path { overflow-wrap:anywhere; font-family:var(--font-mono); font-size:var(--font-size-14); }
+.template-version__usage { margin-top:var(--space-1) !important; white-space:pre-wrap; }
+.template-version-resources .template-row__where > :last-child { white-space:normal; overflow:visible; }
+.template-version-resources .template-row__where { align-items:flex-start; }
+/* 札は名前の文字のすぐ後ろに続ける（名前が長くても札だけ下に落ちない） */
+.template-list__title .chip { display:inline-flex; margin-left:var(--space-2); vertical-align:middle; }
+.template-list__modes { display:flex; flex-wrap:wrap; gap:var(--space-1); margin-top:var(--space-1); }
+.template-import-modal { width:min(36rem, calc(100vw - 32px)); }
+.template-import__resources { padding-left:1.2em; }
+.template-import__actions { flex-wrap:wrap; justify-content:flex-end; }
+/* テンプレートの行は折り返さない（名前を縮め、編集と ⋮ は右に置いたまま）。見出しは狭いと操作だけ次の行の右へ */
+#design-templates .setting-row { flex-wrap:nowrap; }
+#design-templates .template-section-head { flex-wrap:wrap; }
+#design-templates .template-section-head h2 { white-space:nowrap; }
+#design-templates .template-section-head .template-actions { margin-left:auto; flex-wrap:nowrap; }
+#design-templates .setting-row .template-actions { flex-wrap:nowrap; flex:none; }
+
+@media (max-width:560px) {
+  .template-tab { padding:var(--space-2); }
+  .template-tab-footer .btn { min-height:44px; }
+  .template-structure-input { min-height:360px; }
+  .template-head h1 { font-size:var(--font-size-24); }
+  .template-panel { padding:var(--space-3); }
+}
