@@ -31,18 +31,27 @@ class ParallelRunnerTests(unittest.TestCase):
                                                        "test_fixture_c": 20}), encoding="utf-8")
         for name in ("a", "b", "c"):
             (directory / f"test_fixture_{name}.py").write_text(
-                "import os, time, unittest\n"
+                "import unittest\n"
                 "class Cases(unittest.TestCase):\n"
-                "    def test_case(self):\n"
-                "        with open(os.environ['RUNNER_TRACE'], 'a', encoding='utf-8') as out:\n"
-                f"            out.write('{name}\\n')\n"
-                "        time.sleep(1)\n", encoding="utf-8")
+                "    def test_case(self): pass\n", encoding="utf-8")
+        # 親の submit 順を記録する。子が起動して書く順は OS のスケジュールに左右される。
+        launch = root / "launch.py"
+        launch.write_text(
+            "import os, parallel\n"
+            "class RecordingPool(parallel.ThreadPoolExecutor):\n"
+            "    def submit(self, fn, names):\n"
+            "        with open(os.environ['RUNNER_TRACE'], 'a', encoding='utf-8') as out:\n"
+            "            out.write(names[0].rsplit('.', 2)[0] + '\\n')\n"
+            "        return super().submit(fn, names)\n"
+            "parallel.ThreadPoolExecutor = RecordingPool\n"
+            "raise SystemExit(parallel.main())\n", encoding="utf-8")
         trace = root / "trace.txt"
-        proc = subprocess.run([sys.executable, str(entry), "-j", "2"], cwd=root,
+        proc = subprocess.run([sys.executable, str(launch), "-j", "2"], cwd=root,
                               env={**os.environ, "PYTHONPATH": str(directory), "RUNNER_TRACE": str(trace)},
                               capture_output=True, text=True, encoding="utf-8", timeout=30)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assertEqual(set(trace.read_text(encoding="utf-8").splitlines()[:2]), {"b", "c"})
+        self.assertEqual(trace.read_text(encoding="utf-8").splitlines(),
+                         ["test_fixture_c", "test_fixture_b", "test_fixture_a"])
         self.assertIn("Ran 3 tests", proc.stdout)
 
     def test_worker_keeps_duplicate_ids_and_reports_failure_and_skip(self):
