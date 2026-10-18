@@ -69,7 +69,7 @@ DECK_MODE_LABELS: dict[str, str] = {k["mode"]: k["label"] for k in DECK_KINDS}
 # 形式のカードに小さく出す、書き出せる形式の短い名前（並びもこの順）
 OUTPUT_LABELS: dict[str, str] = {"pptx": "PPTX", "pdf": "PDF", "html": "HTML", "images": "画像"}
 
-# 画面の入力欄から 1 冊作る（`POST /api/intakes` に `request`。docs/adr/0002-create-from-screen.md）
+# 互換用request APIの語彙（`POST /api/intakes`。新しい入口はADR 0029の依頼文作成）
 CREATE_WORDS: dict[str, str] = {
     "heading": "どんなスライドを作りますか？",
     "placeholder": "例: 最新の AI 開発の状況を 5 ページのレポートにまとめて",
@@ -79,9 +79,9 @@ CREATE_WORDS: dict[str, str] = {
     "too_long_reason": REQUEST_TOO_LONG_REASON,
 }
 
-# 既存の PPTX の取り込み（ホームで形式「プレゼン」を選んでいるときだけ出す・docs/adr/0011-import-pptx.md）
+# 既存の PPTX の取り込み（ホームの独立した入口・docs/adr/0011-import-pptx.md）
 IMPORT_WORDS: dict[str, str] = {
-    "button": "PPTX を取り込む",
+    "button": "プレゼン資料を取り込む",
     "working": "取り込んでいます…",
     "hint": "既存の PPTX を、画像・色・配置をそのまま写したスライドにします（ドロップでも取り込めます）",
     "drop": "ここに PPTX をドロップして取り込む",

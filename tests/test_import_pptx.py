@@ -94,7 +94,7 @@ class ImportRouteRefusalTests(unittest.TestCase):
         v = self.fx.get("/api/vocabulary").json()
         self.assertEqual({k["mode"]: k["importable"] for k in v["deck_kinds"]},
                          {"presentation": True, "pitch": False, "motion": False})
-        self.assertEqual(v["import"]["button"], "PPTX を取り込む")
+        self.assertEqual(v["import"]["button"], "プレゼン資料を取り込む")
         self.assertEqual(v["create_limits"]["import_bytes"], importing.MAX_PPTX_BYTES)
 
 

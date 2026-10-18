@@ -2,8 +2,6 @@
 // カードに出すのは **先頭の画像・タイトル・更新日時・枚数の 4 つだけ**（利用者の見本。ADR 0020 追記）。
 // 状態の印・進捗の文・目的・タグはカードに出さない（スライドの画面には全部ある）。
 // 出す値はすべて API の値（thumbnail_url / title / updated_at / page_count_label）。ここで数えたり丸めたりしない。
-// **いま画面から降りている機能は `src/quick_slide/scope.py` に 1 か所で書いてある**（そこに無い語は
-// このファイルに出てこない。DB の列と HTTP の口は残っているので、戻すときの繋ぎ直し先もそこにある）。
 (function () {
   "use strict";
   var SS = window.SS;
@@ -104,14 +102,7 @@
     return el;
   };
 
-  // ---- スライドを作る（ホームの上。依頼を書き、形式を選んで「作成」）----
-  // 依頼は下調べ係が Web で調べて原稿にする（サーバ側。画面は依頼と形式を渡すだけ）。作ったらすぐデッキの画面へ移り、
-  // 下調べ・台本・描画の進みはそこの帯が出す。形式の名前・説明・アイコン・色・書き出せる形式は語彙から（`SS.deckKinds`）。
-  // 選んだ形式は次に開いたときのために覚える（localStorage。読めなくても動く）
-  var KIND_KEY = "qs-create-kind";
-  function rememberedKind() { try { return localStorage.getItem(KIND_KEY) || ""; } catch (e) { return ""; } }
-  function rememberKind(mode) { try { localStorage.setItem(KIND_KEY, mode); } catch (e) { /* 覚えられなくても動く */ } }
-
+  // ホームの画像と、会話への依頼・PowerPoint取り込みの入口（ADR 0029）。
   function homeHero() {
     // 装飾専用の自作 SVG。文字と説明は HTML で表示し、利用者の入力は SVG に入れない。
     // 絵は「思いついたら、もう資料。」: 灯った電球（思いつき）から、スライドが重なって出てくる（もう資料）。
@@ -133,15 +124,17 @@
       '<rect class="hero-bulb-base" x="108" y="222" width="40" height="9" rx="3"/><rect class="hero-bulb-base" x="110" y="234" width="36" height="9" rx="3"/>' +
       '<path class="hero-accent" d="M117 246h22l-5 8h-12Z"/></svg>'
     });
-    return h("section", { class: "home-hero", "aria-labelledby": "hero-title" },
+    var hero = h("section", { class: "home-hero", "aria-labelledby": "hero-title" },
       h("div", { class: "home-hero__copy" },
         h("p", { class: "home-hero__eyebrow", text: "思いついたら、もう資料。" }),
         h("h1", { id: "hero-title", text: "Quick Slide" }),
         h("p", { class: "home-hero__description" }, "頭の中にあることを", h("br"), "整えて、そのままスライドにします。")), art);
+    homeStart(hero);
+    return hero;
   }
 
   // 形式の違いの板（スマホの「？」から）。名前・説明・書き出せる形式はサーバの語彙（`deck_kinds`）のまま並べる
-  function openKindHelp(kinds, opener) {
+  SS.openKindHelp = function (kinds, opener) {
     var close = h("button", { class: "btn btn--icon btn--ghost", type: "button", "aria-label": "閉じる" }, SS.icon("close"));
     var dlg = h("dialog", { class: "kind-help", "aria-labelledby": "kind-help-h" },
       h("div", { class: "kind-help__head" }, h("h2", { id: "kind-help-h", text: "形式の違い" }), close),
@@ -157,164 +150,53 @@
     dlg.addEventListener("close", function () { dlg.remove(); if (opener && opener.isConnected) { opener.focus(); } });
     document.body.appendChild(dlg);
     dlg.showModal();
-  }
+  };
 
-  function createBox() {
-    var kinds = SS.deckKinds();
-    // 見出し・例・ボタンの語・理由の文はサーバの語彙（`create`）から。無ければ最小限の語で出す
-    var words = (SS.vocab && SS.vocab.create) || {};
-    var maxChars = ((SS.vocab && SS.vocab.create_limits) || {}).request || 0;
-    // いまこの機械で作れない形式（ピッチなのに Codex が無いなど）は、札を残したまま押せなくする。理由はサーバの語
-    // （`deck_kinds[].available`・`reason`）。前に選んだ形式が使えなくなっていたら、使える最初の形式にする
-    function usable(k) { return k.available !== false; }
-    var firstUsable = kinds.filter(usable)[0];
-    var chosen = firstUsable ? firstUsable.mode : "";
-    var saved = rememberedKind();
-    kinds.forEach(function (k) { if (k.mode === saved && usable(k)) { chosen = saved; } });
-
-    // 既存の PPTX の取り込み: 取り込める形式（サーバの `deck_kinds[].importable`。いまはプレゼンだけ）を選んでいるときだけ出す。
-    // 語はサーバの語彙（`import`）。送るのは PPTX のバイト列そのまま（`POST /api/imports`。docs/adr/0011-import-pptx.md）
+  function homeStart(hero) {
     var iw = (SS.vocab && SS.vocab.import) || {};
-    var importMax = ((SS.vocab && SS.vocab.create_limits) || {}).import_bytes || 0;
-    function importable(mode) { return kinds.some(function (k) { return k.mode === mode && k.importable && usable(k); }); }
-    var fileInput = h("input", { type: "file", accept: iw.accept || ".pptx", class: "create__file", hidden: true,
-      "aria-hidden": "true", tabindex: "-1" });
-    var importBtn = h("button", { class: "btn create__import", type: "button", title: iw.hint || null },
-      SS.icon("upload"), h("span", { text: iw.button || "PPTX を取り込む" }));
+    var limit = ((SS.vocab && SS.vocab.create_limits) || {}).import_bytes || 0;
+    var err = h("p", { class: "create__error", role: "alert" });
+    var fileInput = h("input", { type: "file", accept: iw.accept || ".pptx", hidden: true, tabindex: "-1", "aria-hidden": "true" });
+    var importBtn = h("button", { class: "btn home-import", type: "button", "data-tone": "blue", title: iw.hint || null },
+      SS.icon("upload"), h("span", { text: iw.button || "プレゼン資料を取り込む" }));
+    // 取り込みは画像生成CLIの有無に依存しない。既存の取り込みAPIが利用可否を判定する。
     var importing = false;
-    function syncImport() {
-      var on = importable(chosen);
-      importBtn.hidden = !on;
-      importBtn.disabled = importing || posting;
-    }
     function sendImport(file) {
-      if (!file || importing || !importable(chosen)) { return; }
+      if (!file || importing) { return; }
       err.textContent = "";
-      if (!/\.(pptx|pptm|ppsx|potx)$/i.test(file.name || "")) { err.textContent = iw.wrong_type || ""; return; }
-      if (importMax && file.size > importMax) { err.textContent = iw.too_large || ""; return; }
+      if (!/\.(pptx|pptm|ppsx|potx)$/i.test(file.name || "")) { err.textContent = iw.wrong_type; return; }
+      if (limit && file.size > limit) { err.textContent = iw.too_large; return; }
       importing = true;
-      importBtn.lastChild.textContent = iw.working || "取り込んでいます…";
+      importBtn.disabled = true;
+      importBtn.lastChild.textContent = iw.working;
       importBtn.setAttribute("aria-busy", "true");
-      syncImport(); sync();
       SS.postFile("/api/imports?runtime=browser&name=" + encodeURIComponent(file.name), file).then(function (r) {
         SS.navigate(r.deck_url || ("/slides/" + r.deck_id));
       }).catch(function (e) {
-        importing = false;
-        importBtn.lastChild.textContent = iw.button || "PPTX を取り込む";
+        importing = false; importBtn.disabled = false;
+        importBtn.lastChild.textContent = iw.button;
         importBtn.removeAttribute("aria-busy");
-        err.textContent = (e && e.message) || "取り込めませんでした。もう一度お試しください。";
-        syncImport(); sync();
+        err.textContent = e.message || "取り込めませんでした。もう一度お試しください。";
       });
     }
     importBtn.addEventListener("click", function () { fileInput.value = ""; fileInput.click(); });
     fileInput.addEventListener("change", function () { sendImport(fileInput.files && fileInput.files[0]); });
-
-    var ta = h("textarea", { id: "create-request", class: "create__text", rows: "3", placeholder: words.placeholder || "" });
-    var counter = h("p", { class: "create__count small muted", "aria-live": "off" });
-    var err = h("p", { class: "create__error", role: "alert" });
-    var go = h("button", { class: "btn btn--primary create__go", type: "button", text: words.submit || "作成" });
-
-    var group = null, kindsHead = null, kindNotes = [];
-    if (kinds.length) {
-      // スマホでは 3 つを横 1 列の小さな札にして説明を畳む。違いは「？」の板で見る（PC はカードに説明が出ているので出さない）
-      var help = h("button", { class: "btn btn--icon btn--ghost create__help", type: "button",
-        "aria-label": "形式の違いを見る", "aria-haspopup": "dialog", title: "形式の違い" }, SS.icon("help"));
-      help.addEventListener("click", function () { openKindHelp(kinds, help); });
-      kindsHead = h("div", { class: "create__kinds-head" }, h("span", { id: "create-kinds-label", class: "create__kinds-label", text: "形式" }), help);
-      group = h("div", { class: "create__kinds", role: "radiogroup", "aria-labelledby": "create-kinds-label" });
-      kinds.forEach(function (k) {
-        var off = !usable(k);
-        var offId = off ? "create-kind-off-" + k.mode : null;
-        var input = h("input", { type: "radio", name: "create-kind", value: k.mode, class: "create__radio", checked: k.mode === chosen,
-          disabled: off, "aria-describedby": offId });
-        input.addEventListener("change", function () { chosen = k.mode; rememberKind(k.mode); syncImport(); });
-        // 書き出せる形式の名前はサーバが決める（`outputs[].label`）。文字列の並びで来ても読む
-        var outs = (k.outputs || []).map(function (o) { return o && o.label ? o.label : o; }).join("・");
-        group.appendChild(h("label", { class: "kind-card" + (off ? " kind-card--off" : ""), "data-tone": k.tone || "neutral",
-          title: off ? (k.reason || "") : null }, input,
-          h("span", { class: "kind-card__head" }, SS.icon(k.icon || "image"), h("span", { class: "kind-card__name", text: k.label }),
-            h("span", { class: "kind-card__mark", "aria-hidden": "true" })),
-          k.description ? h("span", { class: "kind-card__desc", text: k.description }) : null,
-          outs ? h("span", { class: "kind-card__out small", text: "書き出し: " + outs }) : null,
-          off ? h("span", { class: "kind-card__off small", text: "使えません" }) : null));
-      });
-      // 使えない理由は札の下に言葉で出す（スマホは札が小さく説明を畳むので、札の中には入れない）
-      kinds.filter(function (k) { return !usable(k); }).forEach(function (k) {
-        kindNotes.push(h("p", { id: "create-kind-off-" + k.mode, class: "create__kind-off small" },
-          h("strong", { text: k.label + ": " }), k.reason || "この機械ではいま使えません。"));
-      });
-    }
-
-    // ブランドの選び: 自分のブランドが 2 つ以上あるときだけ出す（付属の既定は数えない）。0〜1 のときは何も出さず、
-    // brand_id も送らない（サーバが既定のブランドを決める）。読めなかったら出さない
-    var brandRow = h("div", { class: "create__brand", hidden: true });
-    var brandSel = null;
-    SS.api("/api/settings").then(function (c) {
-      var own = ((c && c.brands) || []).filter(function (b) { return b.kind !== "preset"; });
-      if (own.length < 2) { return; }
-      var pre = own.filter(function (b) { return b.id === c.default_brand_id; })[0] || own[0];   // 既定はサーバの `default_brand_id`
-      brandSel = h("select", { id: "create-brand" }, own.map(function (b) { return h("option", { value: b.id, text: b.name, selected: b.id === pre.id }); }));
-      brandRow.appendChild(h("label", { for: "create-brand", text: "ブランド" }));
-      brandRow.appendChild(brandSel);
-      brandRow.hidden = false;
-    }).catch(function () { /* 読めなければ出さない */ });
-
-    var posting = false;
-    function sync() {
-      var n = ta.value.length;
-      counter.textContent = maxChars ? n + " / " + maxChars : "";
-      var over = !!maxChars && n > maxChars;
-      counter.classList.toggle("create__count--over", over);
-      go.disabled = posting || importing || !ta.value.trim() || over;
-      go.title = !ta.value.trim() ? (words.empty_reason || "") : over ? (words.too_long_reason || "") : "";
-    }
-    function submit() {
-      if (go.disabled) { return; }
-      posting = true;
-      err.textContent = "";
-      go.textContent = words.working || "作っています…";
-      go.setAttribute("aria-busy", "true");
-      sync();
-      var body = { schema_version: 1, origin: { kind: "request", runtime: "browser" }, request: ta.value.trim() };
-      body.deck_attributes = {};
-      if (chosen) { body.deck_attributes.mode = chosen; }
-      if (brandSel) { body.deck_attributes.brand_id = brandSel.value; }
-      SS.api("/api/intakes", { method: "POST", body: body }).then(function (r) {
-        SS.navigate(r.deck_url || ("/slides/" + r.deck_id));
-      }).catch(function (e) {
-        posting = false;
-        go.textContent = words.submit || "作成";
-        go.removeAttribute("aria-busy");
-        err.textContent = (e && e.message) || "作れませんでした。もう一度お試しください。";   // 断られた理由はサーバの文。入力は残す
-        sync();
-      });
-    }
-    ta.addEventListener("input", sync);
-    ta.addEventListener("keydown", function (e) { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); submit(); } });
-    go.addEventListener("click", submit);
-    sync();
-    syncImport();
-    var box = h("section", { class: "create", "aria-labelledby": "create-h" },
-      h("h2", { id: "create-h" }, h("label", { for: "create-request", text: words.heading || "" })),
-      ta, h("div", { class: "create__meta" }, err, counter),
-      kindsHead, group, kindNotes, brandRow,
-      h("div", { class: "create__actions" }, importBtn, fileInput, go));
-    // ドロップでも取り込む（取り込める形式を選んでいるときだけ。ほかの形式のときはドロップを受けない）
-    function dragHasFile(e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") >= 0; }
-    box.addEventListener("dragover", function (e) {
-      if (!dragHasFile(e) || !importable(chosen) || importing) { return; }
-      e.preventDefault();
-      box.classList.add("create--drop");
-      box.setAttribute("data-drop", iw.drop || "");
+    hero.querySelector(".home-hero__copy").appendChild(h("div", { class: "home-start" },
+      h("div", null, h("a", { href: "/create", "data-nav": true, class: "btn btn--primary" }, SS.icon("add"), "資料を作成する"),
+        h("p", { class: "small muted", text: "会話に渡す依頼文をつくります" })),
+      h("div", null, importBtn, h("p", { class: "small muted", text: "PowerPoint のファイルを選択・ドロップ" })), fileInput));
+    hero.appendChild(err);
+    function hasFile(e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") >= 0; }
+    hero.addEventListener("dragover", function (e) {
+      if (!hasFile(e) || importing) { return; }
+      e.preventDefault(); hero.classList.add("create--drop"); hero.setAttribute("data-drop", iw.drop);
     });
-    box.addEventListener("dragleave", function (e) { if (!box.contains(e.relatedTarget)) { box.classList.remove("create--drop"); } });
-    box.addEventListener("drop", function (e) {
-      box.classList.remove("create--drop");
-      if (!dragHasFile(e) || !importable(chosen)) { return; }
-      e.preventDefault();
-      sendImport(e.dataTransfer.files && e.dataTransfer.files[0]);
+    hero.addEventListener("dragleave", function (e) { if (!hero.contains(e.relatedTarget)) { hero.classList.remove("create--drop"); } });
+    hero.addEventListener("drop", function (e) {
+      hero.classList.remove("create--drop");
+      if (!hasFile(e)) { return; }
+      e.preventDefault(); sendImport(e.dataTransfer.files && e.dataTransfer.files[0]);
     });
-    return box;
   }
 
   // ---- 新しいバージョンのお知らせ（docs/adr/0020-release-and-update-notice.md）----
@@ -342,7 +224,6 @@
       var refresh = function () { if (guard()) { SS.views.home(root, route, guard); } };
       SS.clear(root);
       root.appendChild(homeHero());
-      root.appendChild(createBox());
 
       // ピン留めは 1 件も無ければ節ごと出さない（空の節と案内の文で、作成欄と最近のスライドの間が空く・2026-10-12）
       var pins = null;
