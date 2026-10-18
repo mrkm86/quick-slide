@@ -166,6 +166,7 @@ class CreateBoxTest(unittest.TestCase):
 
     def test_home_import_file_and_drop_use_existing_api(self):
         page=self.prepare('/')
+        page.until("!!document.querySelector('.home-hero__eyebrow')",what='ホームの見出し')   # 混んでいると描画が遅れる
         self.assertEqual(page.eval("document.querySelector('.home-hero__eyebrow').textContent"),'思いついたら、もう資料。')
         self.assertTrue(page.eval("!!document.querySelector('.home-hero__art svg')"))
         self.assertEqual(page.eval("document.querySelector('.home-import').dataset.tone"),'blue')
