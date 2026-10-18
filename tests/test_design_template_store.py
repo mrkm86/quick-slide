@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 from helpers import open_store, temp_dir
-from legacy_templates import (GOLDEN_ROW_SHA, all_rows, insert_legacy_template, old_content_sha256, stored_row)
+from legacy_templates import (GOLDEN_ROW_SHA, all_rows, legacy_doc, insert_legacy_template, old_content_sha256, stored_row)
 
 from quick_slide import design_templates as dt
 from quick_slide.db.connection import connect
@@ -429,10 +429,12 @@ class LegacyRowTests(Base):
     def test_the_old_stored_hash_is_the_old_algorithm_and_is_never_recomputed(self) -> None:
         for kind in ("empty", "full"):
             t = self.legacy(kind)
-            self.assertEqual(t["content_sha256"], GOLDEN_ROW_SHA[kind])
+            # 固定した見本（POSIX のパス）は旧コードの値のまま。DB へ置く見本は OS ごとの絶対パスなので、同じ旧算法で作る
+            self.assertEqual(old_content_sha256(legacy_doc(kind)), GOLDEN_ROW_SHA[kind])
+            self.assertEqual(t["content_sha256"], old_content_sha256(json.loads(t["document_json"])))
             effective = self.store.get_design_template(t["template_id"])["document"]
             self.assertNotEqual(content_sha256(effective), t["content_sha256"], "新しい算法の値は旧い行のハッシュと違う")
-            self.assertEqual(stored_row(self.store, t["revision_id"])[1], GOLDEN_ROW_SHA[kind])
+            self.assertEqual(stored_row(self.store, t["revision_id"])[1], t["content_sha256"])
 
     def test_a_same_content_save_makes_no_row_even_though_the_stored_hash_differs(self) -> None:
         for kind in ("empty", "full"):

@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from quick_slide.store.base import dump_json
 
 # 旧コードで試したブランド（固定の値。プリセットの設定を写したもの）
+# どの OS でも絶対パスになる、存在しない置き場（DB へ置く見本用。ハッシュを固定した見本は POSIX の文字列のまま）
+NO_SUCH_KIT = Path(tempfile.gettempdir()).resolve() / "qs-legacy-no-such-kit"
 BRAND_ID = "b-legacy"
 BRAND = {"id": BRAND_ID, "current_revision_id": "br-legacy", "assets": [], "config": {
     "colors": {"accent": "#0DB4F2", "gray": ["#1A1A1A", "#333333", "#666666", "#8C8C8C", "#B2B2B2", "#D6D6D6", "#EDEDED", "#F7F7F7"],
@@ -85,8 +89,9 @@ def insert_legacy_rows(execute, *, brand_id: str, brand_revision_id: str, templa
 
 
 def insert_legacy_template(store, brand_id: str, kind: str = "empty", *, name: str = "旧テンプレート",
-                           kit_path: str = "/nonexistent-legacy-kit") -> dict[str, str]:
-    """旧い形式の行をストアへ直接置く。置いたバイトとハッシュを返す。"""
+                           kit_path: str | None = None) -> dict[str, str]:
+    """旧い形式の行をストアへ直接置く。置いたバイトとハッシュを返す。`kit_path` の既定は、どの OS でも絶対パスになる存在しない場所。"""
+    kit_path = kit_path or str(NO_SUCH_KIT)
     with store.transaction():
         return insert_legacy_rows(store._exec, brand_id=brand_id, brand_revision_id=store.brand(brand_id)["current_revision_id"],
                                   template_id=store.new_id(), revision_id=store.new_id(), kind=kind, name=name, kit_path=kit_path,

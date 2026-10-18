@@ -877,9 +877,10 @@ class StaticResourceTests(WriterFlowBase):
 
     def setUp(self) -> None:
         super().setUp()
-        (self.images / "README.md").write_text(TEXT_G, encoding="utf-8")
+        # 原文のバイト列のまま書く（Windows の write_text は \n を \r\n にしてしまい、期待値とずれる）
+        (self.images / "README.md").write_bytes(TEXT_G.encode("utf-8"))
         for name, body in (("glossary.json", TEXT_J), ("settings.yaml", TEXT_Y), ("notes.md", TEXT_M)):
-            (self.tmp / name).write_text(body, encoding="utf-8")
+            (self.tmp / name).write_bytes(body.encode("utf-8"))
 
     def text_run(self, name="原文つき", *, usage="使う条件を読む"):
         rows = self.resources(("資料集", "directory", self.images, usage), ("用語集", "file", self.tmp / "glossary.json", "表記を合わせる"),

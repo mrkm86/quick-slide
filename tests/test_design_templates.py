@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from quick_slide import design_templates as dt
 from quick_slide import design_templates_legacy as legacy
@@ -286,11 +287,17 @@ class LegacyCompilerTests(unittest.TestCase):
     def test_the_isolated_legacy_compiler_reproduces_the_recorded_old_output(self):
         from legacy_templates import BRAND, GOLDEN_CONTRACT, GOLDEN_PREPARATION_SHA, GOLDEN_WRITER_SHA, legacy_doc
         import hashlib
+        from pathlib import PurePosixPath
+
+        class PosixPath(PurePosixPath):   # 固定した見本のパスは POSIX の文字列。Windows でも同じ手順で絶対パスと判定させる
+            def expanduser(self):
+                return self
         for kind in ("empty", "full"):
             raw = legacy_doc(kind)
             raw_before = copy.deepcopy(raw)
             for mode in ("presentation", "pitch"):
-                out = legacy.compile_document(raw, BRAND, mode=mode)
+                with mock.patch.object(legacy, "Path", PosixPath):
+                    out = legacy.compile_document(raw, BRAND, mode=mode)
                 self.assertEqual(out["compiler_version"], 4)
                 self.assertEqual(out["contract_sha256"], GOLDEN_CONTRACT[(kind, mode)], (kind, mode))
                 self.assertEqual(hashlib.sha256(out["files"]["writer.md"].encode()).hexdigest(), GOLDEN_WRITER_SHA[kind])
