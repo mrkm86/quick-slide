@@ -1629,7 +1629,7 @@ body[data-route="deck"] .topbar { padding: 0 var(--deck-pad); }
 .kind-card__off { font-weight: var(--font-weight-700); color: var(--color-neutral-solid-gray-700); }
 .create__kind-off { margin: calc(-1 * var(--space-1)) 0 0; color: var(--ink); line-height: var(--line-height-150); }
 .create__actions { display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
-/* 既存の PPTX の取り込み（プレゼンを選んでいるときだけ出る）。ドロップの間は欄を点線で囲み、案内の語を出す */
+/* PowerPoint取り込み。ドロップの間はホームの画像を点線で囲み、案内の語を出す */
 .create__import { margin-right: auto; }
 .create__import[hidden] { display: none; }
 .create { position: relative; }
@@ -1669,3 +1669,64 @@ label.kind-card:has(> input[type="radio"]) { display: grid; align-items: start; 
 .create__brand { display: flex; align-items: center; gap: var(--space-2); }
 .create__brand[hidden] { display: none; }
 .create__brand select { min-width: 200px; }
+
+/* 会話へ依頼する入口と依頼文作成（ADR 0029）。形式カード・役割色は既存部品を使う。 */
+.home-hero { position: relative; }
+.home-start { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-5); }
+.home-start > div { display: grid; align-content: start; gap: var(--space-2); }
+.home-start p { margin: 0; }
+.home-start .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); }
+.home-start .icon { width: 20px; height: 20px; fill: currentColor; }
+.home-import { color: var(--tone-fg); border-color: var(--tone-border); background: var(--color-surface); }
+.home-import:hover { background: var(--tone-bg); }
+.home-hero > .create__error { grid-column: 1 / -1; }
+.request-back { display: inline-flex; min-height: 44px; align-items: center; margin-bottom: var(--space-2); }
+.request-notice { padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); border: 1px solid var(--color-primitive-blue-200); border-radius: var(--border-radius-8); background: var(--hero-bg); }
+.request-composer { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); border: 1px solid var(--color-border); border-radius: var(--border-radius-16); overflow: hidden; background: var(--color-surface); }
+.request-inputs { padding: var(--space-4); display: grid; gap: var(--space-4); min-width: 0; }
+.request-field { display: grid; gap: var(--space-2); align-content: start; min-width: 0; }
+.request-field > label, .request-kind-head, .request-workflow legend, .request-preview-wrap > label { font-weight: var(--font-weight-700); }
+.request-field select, .request-field input, .request-field textarea { width: 100%; min-width: 0; }
+.request-field p { margin: 0; }
+.request-kind-head { display: flex; gap: var(--space-2); align-items: center; margin-bottom: calc(-1 * var(--space-3)); }
+.request-params { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.request-workflow { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: var(--space-3); }
+.request-workflow legend { margin-bottom: var(--space-2); }
+.request-workflow label { display: flex; align-items: flex-start; gap: var(--space-2); }
+.request-workflow small { display: block; margin-top: var(--space-1); }
+.request-output { display: flex; flex-direction: column; padding: var(--space-4); border-left: 1px solid var(--color-border); background: var(--color-neutral-solid-gray-50); min-width: 0; }
+.request-preview-wrap { flex: 1; display: flex; flex-direction: column; gap: var(--space-2); min-height: 0; }
+.request-preview { flex: 1; min-height: 320px; width: 100%; resize: vertical; font-size: var(--font-size-14); line-height: var(--line-height-170); white-space: pre-wrap; }
+.request-copy-area { display: grid; gap: var(--space-2); margin-top: var(--space-4); }
+.request-copy { width: 100%; display: flex; align-items: center; justify-content: center; gap: var(--space-2); }
+.request-copy .icon { width: 20px; height: 20px; fill: currentColor; }
+.request-status { margin: 0; overflow-wrap: anywhere; }
+.request-status:empty { display: none; }
+@media (max-width: 1100px) and (min-width: 768px) {
+  .request-composer { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+  .request-inputs, .request-output { padding: var(--space-3); }
+  .request-composer .kind-card__head { font-size: var(--font-size-16); }
+  .request-composer .kind-card__head .icon { width: 24px; height: 24px; }
+}
+@media (max-width: 767px) {
+  .home-start { flex-direction: column; }
+  .home-start .btn { width: 100%; }
+  .request-composer { grid-template-columns: minmax(0, 1fr); }
+  .request-inputs, .request-output { padding: var(--space-3); }
+  .request-params { gap: var(--space-3); }
+  .request-output { border-left: 0; border-top: 1px solid var(--color-border); }
+  .request-copy-area { order: -1; margin: 0 0 var(--space-4); }
+  .request-preview-wrap { flex: none; }
+  .request-preview { flex: none; resize: none; overflow: hidden; min-height: 160px; }
+}
+/* リンクもボタンと同じ文字色にする（通常の a:any-link の青を上書き）。 */
+.home-start a.btn--primary:any-link { color: var(--color-neutral-white); text-decoration: none; }
+.request-composer .kind-card__head { font-size: var(--font-size-16); gap: var(--space-1); }
+.request-composer .kind-card__head .icon { width: 24px; height: 24px; }
+.request-composer .kind-card__mark { width: 18px; height: 18px; }
+.request-composer .kind-card__name { white-space: nowrap; }
+.request-composer .kind-card__desc, .request-composer .kind-card__out { font-size: var(--font-size-14); }
+.request-quantity { display: flex; gap: var(--space-2); }
+.request-quantity select { flex: 1; }
+.request-quantity input { width: 84px; }
+.request-quantity input[hidden] { display: none; }

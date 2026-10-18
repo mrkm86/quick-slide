@@ -47,6 +47,11 @@ class DataRoot:
         return self.config_dir / "settings.json"
 
     @property
+    def request_builder_path(self) -> Path:
+        """会話へコピーした依頼の選択条件（本文は保存しない）。"""
+        return self.config_dir / "request-builder.json"
+
+    @property
     def hmac_key_path(self) -> Path:
         return self.config_dir / "hmac.key"
 

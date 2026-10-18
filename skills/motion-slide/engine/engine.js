@@ -261,6 +261,8 @@
   function setSfx(on, quiet) { SFX.on = on; if (bgm) bgm.muted = !on; const b = $("ms-sfx"); b.classList.toggle("on", on); b.textContent = on ? "♪ 音あり" : "♪ 消音"; if (on && !quiet) { audio(); sfx("ping"); } }
 
   function fit() {
+    // iframeの初期配置では幅・高さが0のことがある。resize通知が無くても実寸になったら描く。
+    if (!innerWidth || !innerHeight) { requestAnimationFrame(fit); return; }
     K = Math.min(innerWidth / 1920, innerHeight / 1080);
     stage.style.transform = `translate(${-960 * K}px,${-540 * K}px) scale(${K})`;
   }
