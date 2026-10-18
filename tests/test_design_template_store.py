@@ -479,6 +479,37 @@ class LegacyRowTests(Base):
         saved = self.store.overwrite_design_template(t["template_id"], fixed, expected_revision_id=t["revision_id"])
         self.assertEqual(saved["document"]["resources"][-1]["path"], "~/Documents/memo.md")
 
+    def tamper(self, t: dict, *, body: bool) -> None:
+        """旧い行の本文だけ、または保存ハッシュだけを変える（不変のトリガを外して直接書き換える）。"""
+        self.store.conn.execute("DROP TRIGGER IF EXISTS design_template_revisions_no_update")
+        if body:
+            self.store.conn.execute("UPDATE design_template_revisions SET document_json=? WHERE id=?",
+                                    (t["document_json"].replace("図は少なめにする", "書き換えた指示"), t["revision_id"]))
+        else:
+            self.store.conn.execute("UPDATE design_template_revisions SET content_sha256=? WHERE id=?", ("0" * 64, t["revision_id"]))
+
+    def test_a_tampered_old_row_stops_reading_and_saving_for_both_forms(self) -> None:
+        for kind in ("empty", "full"):
+            for body in (True, False):
+                with self.subTest(kind=kind, body=body):
+                    t = self.legacy(kind)
+                    self.tamper(t, body=body)
+                    good = {"name": "x"}
+                    for call in (lambda: self.store.get_design_template(t["template_id"]),
+                                 lambda: self.store.design_template_revisions(t["template_id"]),
+                                 lambda: self.store.overwrite_design_template(t["template_id"], good, expected_revision_id=t["revision_id"]),
+                                 lambda: self.store.duplicate_design_template(t["template_id"], expected_revision_id=t["revision_id"])):
+                        with self.assertRaises(StateError):
+                            call()
+
+    def test_a_tampered_current_form_row_also_stops(self) -> None:
+        t = self.create()
+        self.store.conn.execute("DROP TRIGGER IF EXISTS design_template_revisions_no_update")
+        self.store.conn.execute("UPDATE design_template_revisions SET document_json=replace(document_json,'図は少なめにする','改ざん') WHERE id=?",
+                                (t["revision_id"],))
+        with self.assertRaises(StateError):
+            self.store.get_design_template(t["template_id"])
+
     def test_copy_duplicate_and_the_version_list_work_on_old_rows(self) -> None:
         t = self.legacy("full")
         v2 = self.store.add_design_template_version(
@@ -718,7 +749,7 @@ class ConcurrencyAndNumberingTests(Base):
         self.assertEqual(v3["revision"], 3)
         # 件数と MAX が離れる履歴（欠番）でも MAX+1
         conn = self.store.conn
-        conn.execute("DROP TRIGGER design_template_revisions_no_update")
+        conn.execute("DROP TRIGGER IF EXISTS design_template_revisions_no_update")
         conn.execute("UPDATE design_template_revisions SET revision=9 WHERE id=?", (nxt["revision_id"],))
         conn.execute("UPDATE design_templates SET current_revision_id=? WHERE id=?", (v2["revision_id"], t["template_id"]))
         after = self.store.add_design_template_version(t["template_id"], doc(instructions="さらに次"), expected_revision_id=v2["revision_id"])
@@ -728,7 +759,7 @@ class ConcurrencyAndNumberingTests(Base):
         t = self.create()
         v2 = self.store.add_design_template_version(t["template_id"], doc(instructions="v2"), expected_revision_id=t["revision_id"])
         conn = self.store.conn
-        conn.execute("DROP TRIGGER design_template_revisions_no_update")
+        conn.execute("DROP TRIGGER IF EXISTS design_template_revisions_no_update")
         conn.execute("UPDATE design_template_revisions SET save_sequence=20 WHERE id=?", (v2["revision_id"],))
         conn.execute("UPDATE design_templates SET current_revision_id=? WHERE id=?", (t["revision_id"], t["template_id"]))
         o = self.store.overwrite_design_template(t["template_id"], doc(instructions="v1 直し"), expected_revision_id=t["revision_id"])

@@ -24,6 +24,18 @@ _RESOURCE_KEYS = {"id", "name", "kind", "path", "usage"}
 _ATTACHMENT_KEYS = {"id", "name", "file", "url", "image", "usage", "sha256"}
 
 
+def content_sha256_v3(document: dict[str, Any]) -> str:
+    """保存形式3の改訂の行に保存していた内容ハッシュ（添付も数えた4項目。当時の算法）。"""
+    def dump(obj: Any) -> str:
+        return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    files = sorted(({k: r[k] for k in ("name", "kind", "path", "usage")} for r in document["resources"]), key=dump)
+    atts = sorted(({k: r[k] for k in ("name", "sha256", "usage")} for r in document["attachments"]), key=dump)
+    sections = {"基本": {"name": document["name"], "description": document["description"], "modes": sorted(document["modes"])},
+                "構成": document["structure"], "追加指示": document["instructions"],
+                "リソース": {"files": files, "attachments": atts}}
+    return hashlib.sha256(dump(sections).encode("utf-8")).hexdigest()
+
+
 def validate_v3(document: Any) -> dict[str, Any]:
     """保存形式3の文書の検査（当時のまま）。形式1・2は扱わない（保存した文書は常に3だった）。"""
     if not isinstance(document, dict) or document.get("schema_version") != 3:

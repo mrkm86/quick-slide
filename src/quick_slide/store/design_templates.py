@@ -22,6 +22,7 @@ import hashlib
 from typing import Any
 
 from .. import design_templates as dt
+from .. import design_templates_legacy as legacy
 from ..errors import ConflictError, NotFoundError, StateError, ValidationError
 from .base import StoreBase, dump_json, load_json
 
@@ -317,7 +318,21 @@ class DesignTemplatesMixin(StoreBase):
     @staticmethod
     def _revision_doc(row: dict[str, Any]) -> dict[str, Any]:
         """作業用の v4 の文書（保存した行は書き換えない。旧添付は元のファイル名のリソースにして返す）。"""
-        return dt.convert(load_json(row["document_json"]))
+        raw = load_json(row["document_json"])
+        # 保存した形式の算法で内容ハッシュを確かめてから変換する（壊れた行を新しい形で包み直さない）
+        try:
+            version = raw.get("schema_version") if isinstance(raw, dict) else None
+            if version == dt.LEGACY_SCHEMA_VERSION:
+                actual = legacy.content_sha256_v3(raw)
+            elif version == dt.SCHEMA_VERSION:
+                actual = content_sha256(raw)
+            else:
+                actual = None
+        except (KeyError, TypeError, ValueError):
+            actual = None
+        if actual is None or actual != row["content_sha256"]:
+            raise StateError("保存済みのテンプレートの内容が、保存したときのハッシュと違っています。")
+        return dt.convert(raw)
 
     def _may_overwrite_by(self, cur: dict[str, Any], chash: str | None) -> bool:
         """この版の保存が、すべてこの会話の保存か（途中で別の会話・画面・識別子なしの保存が1つでもあれば資格を失う。

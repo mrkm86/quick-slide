@@ -87,9 +87,9 @@ def build_prompt(*, preparation_md: str, structure: str, mode_label: str, intake
         if res["usage"].strip():
             lines += ["使い方（登録時の原文）:", *_fenced("使い方", res["usage"])]
         if res.get("guide"):
-            lines += [f"説明書き（{res['guide']['name']}）:", *_fenced("資料", res["guide"]["text"])]
+            lines += [f"説明書き（{res['name']}）:", *_fenced("資料", res["guide"]["text"])]
         for r in res.get("readings") or []:
-            lines += [f"読んだファイル（{r['rel']}・{r['type']}）:", *_fenced("資料", r["text"])]
+            lines += [f"読んだテキスト（{res['name']}・{r['type']}）:", *_fenced("資料", r["text"])]
         if res["items"]:
             lines += ["画像の目録（ID | 名前 | 大きさ）:"]
             for it in res["items"]:

@@ -222,6 +222,19 @@ class LegacyConversionTests(unittest.TestCase):
             self.assertNotIn("\\", path)
             self.assertNotIn("..", path)
 
+    def test_a_missing_or_unsafe_file_name_is_explicitly_unresolved_and_never_the_display_name(self):
+        bad = ("", "   ", "dir/", "dir\\", "/", "..", "a/..", ".", "C:x.md", "c:", "~", "~root", "\\\\host\\share\\")
+        for file in bad:
+            old = self.old([{**self.ATT, "name": "/unintended/private.md", "file": file}])
+            out = convert(old)
+            path = out["resources"][-1]["path"]
+            self.assertEqual(path, dt.UNRESOLVED_PATH, repr(file))
+            self.assertIn(path, unresolved_paths(out), repr(file))
+            self.assertEqual(resource_presence(out["resources"])[-1], False)
+            with self.assertRaisesRegex(ValueError, "絶対パス"):
+                validate(old)   # 保存・取り込みでは通らない
+            self.assertEqual(out["resources"][-1]["name"], "/unintended/private.md", "表示名は名前のまま")
+
     def test_conversion_is_idempotent(self):
         once = convert(self.old([self.ATT]))
         self.assertEqual(convert(once), once)

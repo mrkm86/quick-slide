@@ -929,6 +929,17 @@ class StaticResourceTests(WriterFlowBase):
             self.assertEqual(set(row), {"resource_id", "name", "usage", "texts"})
         self.assertNotIn(str(self.tmp), json.dumps(sections, ensure_ascii=False))
 
+    def test_the_preparer_prompt_never_shows_the_original_text_file_names(self) -> None:
+        marker = "UNIQUE-ORIGINAL-NAME-7f3a"
+        (self.tmp / f"{marker}.md").write_text("原文", encoding="utf-8")
+        (self.images / f"{marker}-in-folder.md").write_text("フォルダ内の別のテキスト", encoding="utf-8")
+        rows = self.resources(("メモ", "file", self.tmp / f"{marker}.md", ""), ("資料集", "directory", self.images, ""))
+        llm = FakeLlm(GOOD)
+        self.prepare(self.new_run(rows, name="名前の印"), llm)
+        self.assertIn("読んだテキスト（メモ・text）", llm.prompts[0])
+        self.assertIn("原文", llm.prompts[0])
+        self.assertNotIn(marker, llm.prompts[0])
+
     def test_an_image_only_resource_has_empty_texts(self) -> None:
         run = self.new_run(self.resources(("画像", "file", self.images / "a.png", "")), name="画像だけ")
         tr = self.prepare(run, FakeLlm({"references": []}))

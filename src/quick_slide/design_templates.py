@@ -113,9 +113,18 @@ def _upgrade(old: dict[str, Any]) -> dict[str, Any]:
             "instructions": "\n\n".join(parts), "resources": resources, "attachments": attachments}
 
 
+# 旧添付の元のファイル名が得られないときの、明示的な「未解決」のパス（絶対パスではない。常に見つからない扱い）
+UNRESOLVED_PATH = "（ファイル名不明）"
+
+
 def _bare_name(value: Any) -> str:
-    """旧添付の `file` から、元のファイル名だけを取り出す（どんな値でも絶対パス・上位への参照にしない）。"""
-    return re.split(r"[\\/]", _text(value).strip())[-1]
+    """旧添付の `file` から、元のファイル名だけを取り出す。得られない・安全でないとき（空・末尾が区切り・`.`/`..`・
+    ドライブ名つき・`~` 始まり・絶対パス風）は `UNRESOLVED_PATH`。表示名（name）は決してパスに代用しない。"""
+    name = re.split(r"[\\/]", _text(value).strip())[-1].strip()
+    if (not name or name in (".", "..") or re.match(r"[A-Za-z]:", name) or name.startswith("~") or "\x00" in name
+            or _absolute(name) or Path(name).is_absolute() or Path(name).drive):
+        return UNRESOLVED_PATH
+    return name
 
 
 def _attachments_to_resources(old: dict[str, Any]) -> dict[str, Any]:
@@ -132,7 +141,7 @@ def _attachments_to_resources(old: dict[str, Any]) -> dict[str, Any]:
     d["schema_version"] = SCHEMA_VERSION
     d["resources"] = list(old.get("resources") or []) + [
         {"id": _text(a.get("id")), "name": _text(a.get("name")), "kind": "file",
-         "path": _bare_name(a.get("file")) or _text(a.get("name")), "usage": _text(a.get("usage"))} for a in rows]
+         "path": _bare_name(a.get("file")), "usage": _text(a.get("usage"))} for a in rows]
     return d
 
 
