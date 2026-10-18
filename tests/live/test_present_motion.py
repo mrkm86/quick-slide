@@ -10,6 +10,7 @@ import json
 from contextlib import closing
 import time
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -67,6 +68,26 @@ class MotionKeysTest(PresentLiveBase):
                             what=f"部品に押下が届く: {self.click_info}")
             finally:
                 page.call("Input.dispatchMouseEvent", {"type": "mouseReleased", **event})
+
+    def test_initial_zero_viewport_recovers_without_resize_event(self) -> None:
+        # iframeの初期化時だけ幅が0で、後から実寸になるがresize通知が来ない場合。
+        # Windows CIで舞台がscale(0)のまま残った状態を、待ち時間に依存せず再現する。
+        from quick_slide.server import present_routes
+        original = present_routes.motion_document
+        shim = """<script>
+          window.__zeroWidth = true;
+          Object.defineProperty(window, 'innerWidth', { configurable: true,
+            get: () => window.__zeroWidth ? 0 : document.documentElement.clientWidth });
+        </script>"""
+        deck = self.make("motion", "claude_code")
+        with patch.object(present_routes, "motion_document", side_effect=lambda html: original(html.replace("<head>", "<head>" + shim, 1))):
+            page = self.open(deck)
+            with closing(page.frame("#slide iframe")) as inner:
+                self.assertTrue(inner.eval("window.__zeroWidth"))
+                inner.eval("window.__zeroWidth = false")
+                inner.until("Math.abs(document.getElementById('stage').getBoundingClientRect().width - innerWidth) < 1",
+                            what="幅0で初期化した舞台が実寸へ戻る")
+                inner.raise_if_broken()
 
     def test_keys_in_editable_and_controls_do_not_turn_pages(self) -> None:
         deck = self.make("motion", "claude_code")

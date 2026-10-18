@@ -363,6 +363,7 @@
     // ここへ送るので、画面側は新しい形だけを知っていればよい
     var m = /^\/slides\/([0-9a-f-]{36})$/.exec(p);
     if (m) { return { name: "deck", deckId: m[1] }; }
+    if (p === "/create") { return { name: "create" }; }
     if (p === "/slides") { return { name: "list" }; }
     if (p === "/settings") { return { name: "settings", section: "index" }; }
     if (p === "/settings/brands") { return { name: "settings", section: "brands" }; }

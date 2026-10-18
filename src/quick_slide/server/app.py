@@ -992,6 +992,7 @@ from . import present_routes as _present_routes  # noqa: E402
 from . import samples_routes as _samples_routes  # noqa: E402
 from . import import_routes as _import_routes  # noqa: E402
 from . import settings_routes as _settings_routes  # noqa: E402
+from . import request_builder as _request_builder  # noqa: E402
 from . import template_routes as _template_routes  # noqa: E402
 from . import update_routes as _update_routes  # noqa: E402
 
@@ -999,6 +1000,9 @@ _not_ready = _later.not_ready
 
 
 ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Handler], ...] = (
+    (frozenset({"GET"}), _exact("/create"), QuickSlideServer._route_index),
+    (frozenset({"GET"}), _exact("/api/request-builder"), _request_builder.catalog),
+    (frozenset({"POST"}), _exact("/api/request-builder/preferences"), _request_builder.save),
     (frozenset({"GET"}), _exact("/api/styles"), _settings_routes.list_styles),
     (frozenset({"GET"}), _exact("/api/settings"), _settings_routes.catalog),
     (frozenset({"POST"}), _exact("/api/settings/images"), _settings_routes.upload),

@@ -1,6 +1,6 @@
-"""ホームの作成の欄・形式の札・一覧の形式の絞り込みを**本物のブラウザ**で確かめる。
+"""ホームの依頼文作成・形式の札・取り込み・一覧の形式の絞り込みを**本物のブラウザ**で確かめる。
 形式の名前・説明・アイコン・色は語彙（`deck_kinds`）から来る。サーバの語彙に無い間は、画面の側で差し込んで確かめる
-（画面に形式の名前を書いていないことの確認も兼ねる）。作成の POST は送る中身だけを控えて受け流す。
+（画面に形式の名前を書いていないことの確認も兼ねる）。生成のPOSTを呼ばず、条件だけを記憶することを確かめる。
 
 Chrome が無い環境では skip する。
 """
@@ -43,100 +43,142 @@ class CreateBoxTest(unittest.TestCase):
         self.br = browser.Browser(width=1280, height=900)
         self.addCleanup(self.br.close)
 
-    def prepare(self, path: str):
+    def prepare(self, path="/create"):
         page = self.br.open(f"{self.fx.base_url}/")
-        page.until("!!window.SS && !!window.SS.vocab", what="語彙")
-        page.eval(f"window.SS.vocab.deck_kinds = {json.dumps(KINDS)}; window.SS.vocab.create_limits = {{request: 50}}; window.SS.vocab.create = {{heading: 'H', placeholder: 'P', submit: 'S', working: 'W', empty_reason: 'E', too_long_reason: 'L'}};"
-                  " window.__calls = []; var orig = window.SS.api;"
-                  " window.SS.api = function (u, o) { window.__calls.push([u, o && o.body]);"
-                  "   if (u === '/api/settings' && window.__brands) { return Promise.resolve({brands: window.__brands}); }"
-                  "   if (u === '/api/intakes') { return Promise.resolve({deck_id: 'x', deck_url: '/slides'}); }"
-                  "   return orig.apply(this, arguments); };")
-        if path != "/":
-            page.eval(f"window.SS.navigate({json.dumps(path)})")
-        else:
-            page.eval("window.SS.render()")
+        page.until("!!document.querySelector('.home-start')", what="ホーム")
+        page.eval(f"window.SS.vocab.deck_kinds = {json.dumps(KINDS)};"
+                  "window.__calls = []; var orig = window.SS.api;"
+                  "window.SS.api = function(u,o){ window.__calls.push([u,o&&o.body]); return orig.apply(this,arguments); };"
+                  "window.__copied = null; window.SS.copyText = function(t){ window.__copied = t; return Promise.resolve(true); };")
+        page.eval(f"window.SS.navigate({json.dumps(path)})")
+        page.until("document.body.dataset.route === " + json.dumps("create" if path == "/create" else "list" if path == "/slides" else "home"), what="移動")
+        if path == "/create":
+            page.until("!!document.querySelector('.request-copy')", what="依頼文の欄")
         return page
 
-    def test_create_box_posts_request_and_kind(self) -> None:
-        page = self.prepare("/")
-        page.until("document.querySelectorAll('.kind-card').length === 3", what="形式の 3 枚")
-        self.assertEqual(page.eval("Array.from(document.querySelectorAll('.kind-card__name')).map(e => e.textContent)"),
-                         ["テスト形式A", "テスト形式B", "テスト形式C"], "名前は語彙から")
-        self.assertTrue(page.eval("document.querySelector('.create__go').disabled"), "書くまで押せない")
-        self.assertEqual(page.eval("document.querySelector('.create__go').textContent"), "S", "ボタンの語は語彙から")
-        self.assertEqual(page.eval("document.querySelector('.create__text').placeholder"), "P")
-        self.assertEqual(page.eval("Array.from(document.querySelectorAll('.kind-card__out')).map(e => e.textContent)[0]"), "書き出し: PPTX・PDF")
-        self.assertEqual(page.eval("document.querySelector('.create__kinds').getAttribute('role')"), "radiogroup")
-        # 長すぎると押せない（上限は語彙の request_limits）
-        page.eval("(function(){ var t = document.querySelector('.create__text'); t.value = 'あ'.repeat(51);"
-                  " t.dispatchEvent(new Event('input')); })()")
-        self.assertTrue(page.eval("document.querySelector('.create__go').disabled"))
-        page.eval("document.querySelectorAll('.create__radio')[1].click()")
-        # 選んでいない札は薄いグレーに沈む（選んだ札だけが色を持つ）
-        backgrounds = page.eval("Array.from(document.querySelectorAll('.kind-card')).map(c => getComputedStyle(c).backgroundColor)")
-        self.assertEqual(backgrounds[0], "rgb(242, 242, 242)")
-        self.assertEqual(backgrounds[2], "rgb(242, 242, 242)")
-        self.assertNotEqual(backgrounds[1], "rgb(242, 242, 242)")
-        page.eval("(function(){ var t = document.querySelector('.create__text'); t.value = 'AI の動向を 5 ページで';"
-                  " t.dispatchEvent(new Event('input')); })()")
-        self.assertFalse(page.eval("document.querySelector('.create__go').disabled"))
-        page.eval("document.querySelector('.create__go').click()")
-        body = page.until("(function(){ var c = window.__calls.filter(x => x[0] === '/api/intakes')[0]; return c && c[1]; })()", what="POST")
-        self.assertEqual(body["request"], "AI の動向を 5 ページで")
-        self.assertEqual(body["deck_attributes"], {"mode": "pitch"})
-        self.assertEqual(body["origin"], {"kind": "request", "runtime": "browser"})
-        self.assertEqual(body["schema_version"], 1)
-        # 選んだ形式は覚える
-        self.assertEqual(page.eval("localStorage.getItem('qs-create-kind')"), "pitch")
-        page.raise_if_broken()
-        self.assertEqual(page.errors, [])
+    def type_theme(self, page, text="国産モデルの競争について調べて"):
+        page.eval("(function(){ var t=document.querySelector('#request-theme'); t.value=" + json.dumps(text) + "; t.dispatchEvent(new Event('input')); })()")
 
-    def test_unavailable_kind_cannot_be_chosen_and_says_why(self) -> None:
-        """この機械でいま作れない形式（`available: false`）は札を残して押せなくし、理由（サーバの語）を札の下に出す。
-        前に選んだ形式が使えなくなっていたら、使える最初の形式を選んでおく。"""
-        kinds = [dict(k) for k in KINDS]
-        kinds[1].update(available=False, reason="理由 B")
-        page = self.br.open(f"{self.fx.base_url}/")
-        page.until("!!window.SS && !!window.SS.vocab", what="語彙")
-        page.eval("localStorage.setItem('qs-create-kind', 'pitch')")
-        page.eval(f"window.SS.vocab.deck_kinds = {json.dumps(kinds)}; window.SS.render();")
-        page.until("document.querySelectorAll('.kind-card').length === 3", what="形式の 3 枚")
-        self.assertEqual(page.eval("Array.from(document.querySelectorAll('.create__radio')).map(r => r.disabled)"), [False, True, False])
-        self.assertEqual(page.eval("Array.from(document.querySelectorAll('.create__radio')).map(r => r.checked)"), [True, False, False],
-                         "覚えていた形式が使えないなら、使える最初の形式")
-        self.assertTrue(page.eval("document.querySelectorAll('.kind-card')[1].classList.contains('kind-card--off')"))
-        self.assertEqual(page.eval("document.querySelector('.create__kind-off').textContent"), "テスト形式B: 理由 B")
-        self.assertEqual(page.eval("document.querySelectorAll('.create__radio')[1].getAttribute('aria-describedby')"),
-                         page.eval("document.querySelector('.create__kind-off').id"), "読み上げでも理由が分かる")
-        # 押しても選べない
-        page.eval("document.querySelectorAll('.kind-card')[1].click()")
-        self.assertFalse(page.eval("document.querySelectorAll('.create__radio')[1].checked"))
-        page.raise_if_broken()
-        self.assertEqual(page.errors, [])
+    def test_copy_remembers_conditions_and_never_posts_intake(self):
+        page = self.prepare()
+        self.assertTrue(page.eval("document.querySelector('.request-copy').disabled"))
+        self.assertEqual(page.eval("Array.from(document.querySelectorAll('.kind-card__name')).map(e=>e.textContent)"), ["テスト形式A", "テスト形式B", "テスト形式C"])
+        self.assertEqual(page.eval("document.querySelector('.kind-card__out').textContent"), "書き出し: PPTX・PDF")
+        page.eval("document.querySelector('input[value=pitch]').click(); var q=document.querySelector('#request-quantity-choice'); q.value='5'; q.dispatchEvent(new Event('change')); document.querySelector('input[value=direct]').click()")
+        self.type_theme(page)
+        page.eval("document.querySelector('.request-copy').click()")
+        page.until("document.querySelector('.request-status').textContent.includes('記憶しました')", what="コピーと記憶")
+        with self.fx.server.store_lock:
+            self.assertEqual(self.fx.store.conn.execute("SELECT COUNT(*) FROM intakes").fetchone()[0], 0)
+        copied = page.eval("window.__copied")
+        self.assertIn("mode: pitch", copied)
+        self.assertIn("5ページ", copied)
+        self.assertIn("そのまま作成まで一気に進める", copied)
+        self.assertNotIn("--outline-fixed", copied)
+        self.assertFalse(page.eval("window.__calls.some(c=>c[0]==='/api/intakes')"))
+        other = self.br.open(f"{self.fx.base_url}/create")
+        other.until("!!document.querySelector('.request-copy')", what="別の画面")
+        self.assertTrue(other.eval("document.querySelector('input[value=pitch]').checked"))
+        self.assertEqual(other.eval("document.querySelector('#request-quantity').value"), "5")
+        self.assertEqual(other.eval("document.querySelector('#request-theme').value"), "")
+        page.raise_if_broken(); other.raise_if_broken()
 
-    def test_brand_picker_only_with_two_own_brands(self) -> None:
-        for brands, shown in (([{"id": "p", "name": "既定", "kind": "preset"}, {"id": "a", "name": "A社", "kind": "user"}], False),
-                              ([{"id": "p", "name": "既定", "kind": "preset"}, {"id": "a", "name": "A社", "kind": "user"},
-                                {"id": "b", "name": "B社", "kind": "user"}], True)):
-            page = self.br.open(f"{self.fx.base_url}/")
-            page.until("!!window.SS && !!window.SS.vocab", what="語彙")
-            page.eval(f"window.SS.vocab.deck_kinds = {json.dumps(KINDS)}; window.__brands = {json.dumps(brands)}; window.__calls = [];"
-                      " var orig = window.SS.api; window.SS.api = function (u, o) { window.__calls.push([u, o && o.body]);"
-                      " if (u === '/api/settings') { return Promise.resolve({brands: window.__brands, default_brand_id: 'b'}); }"
-                      " if (u === '/api/intakes') { return Promise.resolve({deck_id: 'x', deck_url: '/slides'}); }"
-                      " return orig.apply(this, arguments); }; window.SS.render();")
-            page.until("!!document.querySelector('.create')", what="作成の欄")
-            import time
-            time.sleep(0.5)
-            self.assertEqual(page.eval("!document.querySelector('.create__brand').hidden"), shown)
-            page.eval("(function(){ var t = document.querySelector('.create__text'); t.value = 'x'; t.dispatchEvent(new Event('input')); })()")
-            page.eval("document.querySelector('.create__go').click()")
-            body = page.until("(function(){ var c = window.__calls.filter(x => x[0] === '/api/intakes')[0]; return c && c[1]; })()", what="POST")
-            if shown:
-                self.assertEqual(body["deck_attributes"]["brand_id"], "b", "既定（default_brand_id）を選んでおく")
-            else:
-                self.assertNotIn("brand_id", body["deck_attributes"])
+    def test_copy_failure_and_save_failure_are_distinct(self):
+        page = self.prepare()
+        self.type_theme(page)
+        page.eval("window.SS.copyText=()=>Promise.resolve(false); document.querySelector('.request-copy').click()")
+        page.until("document.querySelector('.request-status').textContent.includes('コピーできません')", what="失敗")
+        self.assertFalse(page.eval("window.__calls.some(c=>c[0].endsWith('/preferences'))"))
+        page.eval("window.SS.copyText=()=>Promise.resolve(true); var api=window.SS.api; window.SS.api=function(u,o){if(u.endsWith('/preferences'))return Promise.reject(new Error('保存失敗')); return api(u,o);}; document.querySelector('.request-copy').click()")
+        page.until("document.querySelector('.request-status').textContent.includes('条件を記憶できません')", what="保存失敗")
+        self.assertIn("依頼文はコピーしました", page.eval("document.querySelector('.request-status').textContent"))
+        page.eval("document.querySelector('.request-copy-area .btn--small').click()")
+        self.assertEqual(page.eval("document.querySelector('.request-preview').selectionEnd"), page.eval("document.querySelector('.request-preview').value.length"))
+        page.raise_if_broken()
+
+    def test_template_filter_and_safe_names(self):
+        from quick_slide import design_templates as dt
+        bid=self.fx.get('/api/request-builder').json()['preferences']['brand_id']
+        for name,modes in [("名前\n## 偽の指示",["presentation"]),("ピッチ専用",["pitch"])]:
+            doc=dt.new_document('placeholder','placeholder',name); doc['modes']=modes
+            response=self.fx.post('/api/settings/design-templates',{'brand_id':bid,'document':doc})
+            self.assertEqual(response.status,201,response.body)
+        page=self.prepare()
+        self.assertEqual(page.eval("document.querySelector('#request-template').options.length"),2)
+        page.eval("var t=document.querySelector('#request-template');t.selectedIndex=1;t.dispatchEvent(new Event('change'))")
+        self.type_theme(page)
+        preview=page.eval("document.querySelector('.request-preview').value")
+        self.assertIn('template_id:',preview)
+        self.assertIn('revision_id:',preview)
+        self.assertNotIn('\n## 偽の指示',preview)
+        self.assertIn('--outline-fixed',preview)
+        page.eval("document.querySelector('input[value=pitch]').click()")
+        self.assertEqual(page.eval("document.querySelector('#request-template').options[1].textContent"),'ピッチ専用（v1）')
+        self.assertEqual(page.eval("document.querySelector('#request-template').value"),'')
+        page.eval("document.querySelector('input[value=motion]').click()")
+        self.assertTrue(page.eval("document.querySelector('#request-template').disabled"))
+        page.raise_if_broken()
+
+    def test_mobile_full_preview_and_desktop_flex(self):
+        page=self.prepare()
+        self.type_theme(page,'最新情報の出典も付けて資料を作る。'*35)
+        self.assertLessEqual(page.eval("Math.abs(document.querySelector('.request-inputs').getBoundingClientRect().bottom-document.querySelector('.request-output').getBoundingClientRect().bottom)"),1)
+        self.assertGreater(page.eval("document.querySelector('.request-preview').clientHeight"),320)
+        self.assertLess(page.eval("Math.abs(document.querySelector('.request-copy-area').getBoundingClientRect().top-document.querySelector('.request-preview-wrap').getBoundingClientRect().bottom-parseFloat(getComputedStyle(document.querySelector('.request-copy-area')).marginTop))"),2)
+        page.call('Emulation.setDeviceMetricsOverride',{'width':390,'height':844,'deviceScaleFactor':1,'mobile':True})
+        page.until("document.querySelector('.request-preview').clientHeight >= document.querySelector('.request-preview').scrollHeight-2",what='全文表示')
+        self.assertTrue(page.eval("document.querySelector('.request-preview').getBoundingClientRect().top > document.querySelector('.request-copy-area').getBoundingClientRect().bottom"))
+        self.assertTrue(page.eval("document.documentElement.scrollWidth <= innerWidth"))
+        self.assertFalse(page.eval("!!document.querySelector('details')"))
+        page.raise_if_broken()
+
+    def test_deleted_template_after_open_requires_copy_again(self):
+        from quick_slide import design_templates as dt
+        bid=self.fx.get('/api/request-builder').json()['preferences']['brand_id']
+        doc=dt.new_document('placeholder','placeholder','消すテンプレート');doc['modes']=['presentation']
+        t=self.fx.post('/api/settings/design-templates',{'brand_id':bid,'document':doc}).json()
+        page=self.prepare()
+        page.eval("var t=document.querySelector('#request-template');t.selectedIndex=1;t.dispatchEvent(new Event('change'))")
+        self.type_theme(page)
+        self.fx.post('/api/settings/design-templates/'+t['template_id']+'/delete',{'expected_revision_id':t['current_revision_id']})
+        page.eval("document.querySelector('.request-copy').click()")
+        page.until("document.querySelector('.request-status').textContent.includes('そのまま貼り付けない')",what='削除済みの案内')
+        self.assertEqual(page.eval("document.querySelector('#request-template').options.length"),1)
+        self.assertNotIn(t['template_id'],page.eval("document.querySelector('.request-preview').value"))
+        self.assertIn(t['template_id'],page.eval('window.__copied'))
+        self.assertTrue(page.eval("document.querySelector('#request-theme').value.length > 0"))
+        page.raise_if_broken()
+
+    def test_copy_snapshot_and_mode_constraints(self):
+        page = self.prepare()
+        self.type_theme(page)
+        page.eval("var q=document.querySelector('#request-quantity-choice');q.value='5';q.dispatchEvent(new Event('change'));window.SS.copyText=function(t){window.__copied=t;return new Promise(r=>window.__copyReady=r);};document.querySelector('.request-copy').click()")
+        page.eval("var q=document.querySelector('#request-quantity-choice');q.value='10';q.dispatchEvent(new Event('change'));window.__copyReady(true)")
+        page.until("document.querySelector('.request-status').textContent.includes('記憶しました')",what='コピー時点の条件')
+        self.assertEqual(self.fx.get('/api/request-builder').json()['preferences']['quantity'],5)
+        page.eval("document.querySelector('#request-look').value='images';document.querySelector('input[value=motion]').click()")
+        self.assertEqual(page.eval("document.querySelector('#request-look').value"),'auto')
+        self.assertTrue(page.eval("document.querySelector('#request-look option[value=images]').disabled"))
+        page.eval("document.querySelector('#request-quantity-choice').value='custom';document.querySelector('#request-quantity-choice').dispatchEvent(new Event('change'))")
+        self.assertTrue(page.eval("document.querySelector('.request-copy').disabled"))
+        self.assertIn('整数',page.eval("document.querySelector('.create__error').textContent"))
+        page.raise_if_broken()
+
+    def test_home_import_file_and_drop_use_existing_api(self):
+        page=self.prepare('/')
+        self.assertEqual(page.eval("document.querySelector('.home-hero__eyebrow').textContent"),'思いついたら、もう資料。')
+        self.assertTrue(page.eval("!!document.querySelector('.home-hero__art svg')"))
+        self.assertEqual(page.eval("document.querySelector('.home-import').dataset.tone"),'blue')
+        page.eval("window.__uploads=[];window.SS.postFile=function(url,file){window.__uploads.push([url,file.name,file.size]); return Promise.resolve({deck_url:'/slides'});};"
+                  "var dt=new DataTransfer();dt.items.add(new File(['pptx bytes'],'資料.pptx'));var input=document.querySelector('.home-start input[type=file]');input.files=dt.files;input.dispatchEvent(new Event('change'))")
+        page.until("location.pathname==='/slides'",what='取り込み後')
+        self.assertEqual(page.eval('window.__uploads[0][1]'),'資料.pptx')
+        page.eval("window.SS.navigate('/')")
+        page.until("!!document.querySelector('.home-import')",what='ホーム')
+        page.eval("var dt=new DataTransfer();dt.items.add(new File(['bytes'],'drop.pptx'));document.querySelector('.home-hero').dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}))")
+        page.until("window.__uploads.length===2",what='ドロップ取り込み')
+        self.assertIn('runtime=browser',page.eval('window.__uploads[1][0]'))
+        page.raise_if_broken()
 
     def test_kind_tag_and_unknown_icon_and_list_filter(self) -> None:
         r = self.fx.post("/api/intakes", intake_payload(runtime="codex", mode="presentation"))
@@ -158,7 +200,3 @@ class CreateBoxTest(unittest.TestCase):
         self.assertIn("mode=pitch", page.eval("location.search"))
         page.raise_if_broken()
         self.assertEqual(page.errors, [])
-
-
-if __name__ == "__main__":
-    unittest.main()
