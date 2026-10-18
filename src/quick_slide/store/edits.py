@@ -24,7 +24,7 @@ from typing import Any
 
 from .. import oscompat
 from ..enums import EDIT_OPS, EDIT_SOURCES, require
-from ..errors import NotFoundError
+from ..errors import NotFoundError, StateError
 from .base import StoreBase, dump_json, load_json
 
 # 直しの回に引き継ぐ、デッキの描き方（モードとエンジンの引数の元）。台本係の選び方は直しごとに決め直す
@@ -32,6 +32,15 @@ from .base import StoreBase, dump_json, load_json
 # （全ページを 1 枚に描くかを保つため）。画風・一言・ブランドは回ごとに設定から決め直す（render/look.py）
 DECK_ARG_KEYS = ("mode", "style", "image_look", "images", "page_count", "purpose", "audience", "style_note",
                  "origin_runtime", "overrides")
+# デザインテンプレートの控えへの参照。直し・差し込み・再開の回が引き継ぐ（最新のブランド・テンプレートに追随しない）。
+# 同梱の見本の書き出し・取り込み（`DECK_ARG_KEYS` を使う）には入れない
+TEMPLATE_ARG_KEYS = ("template_snapshot",)
+TEMPLATE_RESTORE_REASON = ("デザインテンプレートで作った資料では、前の版への切り替えはまだできません"
+                           "（素材の控えを含めて戻す仕組みが、まだ無いためです）。")
+TEMPLATE_RESUME_REASON = ("デザインテンプレートで作る資料は、素材の準備がまだ使えないため、再開できません"
+                          "（台本を書く前に止まります）。")
+TEMPLATE_REBUILD_REASON = ("デザインテンプレートで作った資料は、設定を替えて組み直せません"
+                           "（受け付けたときのテンプレートとブランドで作ります）。新しいスライドとして頼み直してください。")
 
 
 class EditsMixin(StoreBase):
@@ -40,8 +49,11 @@ class EditsMixin(StoreBase):
         raw = self._scalar("SELECT args_json FROM runs WHERE deck_id=? ORDER BY number DESC LIMIT 1", (deck_id,))
         args = load_json(raw) or {}
         deck = self._get("decks", deck_id)
-        out = {k: args.get(k) for k in DECK_ARG_KEYS if k in args}
+        out = {k: args.get(k) for k in (*DECK_ARG_KEYS, *TEMPLATE_ARG_KEYS) if k in args}
         out["mode"] = deck["mode"]
+        ref = self.deck_template_snapshot_ref(deck_id)   # type: ignore[attr-defined]
+        if ref:   # 控えはデッキが持つ。最新の回に無くても（複製・止まった回）引き継ぐ
+            out["template_snapshot"] = ref
         return out
 
     def create_edit(self, deck_id: str, request: dict[str, Any]) -> dict[str, Any]:
@@ -52,7 +64,11 @@ class EditsMixin(StoreBase):
         require(request.get("source"), EDIT_SOURCES, "edit.source")
         with self.transaction():
             deck_args = self.deck_run_args(deck_id)
-            infographic = deck_args.get("mode") == "pitch" and deck_args.get("style") == "infographic"
+            if deck_args.get("template_snapshot") and request["op"] in ("rebuild", "restore"):
+                # 受け付けたときの控えから、最新の設定へ戻す操作は、テンプレートの回では無断で適用しない
+                raise StateError(TEMPLATE_REBUILD_REASON if request["op"] == "rebuild" else TEMPLATE_RESTORE_REASON)
+            infographic = (deck_args.get("mode") == "pitch" and deck_args.get("style") == "infographic") \
+                or bool(deck_args.get("template_snapshot"))   # 重ねずに 1 つずつ走らせるデッキ
             mine = {"kind": "edit", "request": request}
             ahead = sum(1 for other in self.open_jobs(deck_id)
                         if infographic or not self._can_overlap(mine, other))  # type: ignore[attr-defined]

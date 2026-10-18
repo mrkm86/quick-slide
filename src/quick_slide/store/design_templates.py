@@ -5,9 +5,12 @@
 - 内部の改訂の ID（`revision_id`）で引けば、上書きの前の行も一意にたどれる
 - 保存の競合は `expected_revision_id`（呼び手が見ていた current の改訂の ID）と、いまの current の一致を
   保存と同じトランザクションの中で検査する（食い違えば ConflictError。API 層が 409 にする）
-- 保存する文書は `design_templates.validate` を通した v3（id・brand_id・revision・based_on と、基本・構成・追加指示・リソース）だけ。
+- 保存する文書は `design_templates.validate` を通した v4（id・brand_id・revision・based_on と、基本・構成・追加指示・リソース）だけ。
   内部の改訂の ID・会話の HMAC・保存の種類は文書に混ぜない
-- 同じ中身の保存は何も作らない（`unchanged`）。比べるのは4項目だけを正規化したもののハッシュ
+- 保存済みの行（`document_json`・`content_sha256`）は不変。旧い形式の行は、読むときに作業用の文書へ変換するだけで、
+  UPDATE も再保存もしない（保存した形式のバイトと、その時のハッシュは元のまま）
+- 同じ中身の保存は何も作らない（`unchanged`）。比べるのは4項目だけを正規化したもののハッシュ。前（保存済みの行）も後も、
+  同じ新しい作業用の文書へ揃えて比べる（行に保存した旧いハッシュとは比べない）
 - 会話の識別子は `conversation_hash_for` で HMAC にしてからだけ持つ。生の値は残さない
 - 削除は論理削除。改訂の行は残す。プリセット（付属）のブランドの下にも作れる
 """
@@ -19,6 +22,7 @@ import hashlib
 from typing import Any
 
 from .. import design_templates as dt
+from .. import design_templates_legacy as legacy
 from ..errors import ConflictError, NotFoundError, StateError, ValidationError
 from .base import StoreBase, dump_json, load_json
 
@@ -30,15 +34,15 @@ COPY_SUFFIX = "のコピー"
 
 
 def normalized_sections(document: dict[str, Any]) -> dict[str, Any]:
-    """4項目だけを、比べられる形にする。機械の ID・版・由来・添付の URL は除く。本文は要約も空白圧縮もしない。
+    """4項目だけを、比べられる形にする。機械の ID・版・由来は除く。本文は要約も空白圧縮もしない。
+    `document` は作業用の v4（旧い形式は `dt.convert` を通してから）。
     モードの集合と、順序に意味のないリソースの並びは並べ替える（Markdown の読み込みで行の ID が変わっても同じ形になる）。"""
     files = sorted(({k: r[k] for k in ("name", "kind", "path", "usage")} for r in document["resources"]), key=dump_json)
-    attachments = sorted(({k: r[k] for k in ("name", "sha256", "usage")} for r in document["attachments"]), key=dump_json)
     return {
         SECTION_BASIC: {"name": document["name"], "description": document["description"], "modes": sorted(document["modes"])},
         SECTION_STRUCTURE: document["structure"],
         SECTION_INSTRUCTIONS: document["instructions"],
-        SECTION_RESOURCES: {"files": files, "attachments": attachments},
+        SECTION_RESOURCES: {"files": files},
     }
 
 
@@ -50,21 +54,23 @@ def changed_sections(before: dict[str, Any] | None, after: dict[str, Any]) -> li
     """前の文書から変わった項目（基本・構成・追加指示・リソース）。前が無ければ空（最初の版）。"""
     if before is None:
         return []
-    a, b = normalized_sections(before), normalized_sections(after)
+    a, b = normalized_sections(dt.convert(before)), normalized_sections(dt.convert(after))
     return [label for label in SECTION_LABELS if a[label] != b[label]]
 
 
-def _validated(document: Any, template_id: str, brand_id: str, revision: int, based_on: int | None) -> dict[str, Any]:
-    """入力の文書を v3 にして検証し、サーバが決める id・brand_id・revision・based_on を差し込んで、もう一度検証する。
-    呼び手が送ってきた id・版・由来は使わない（由来の偽装を許さない）。"""
+def _validated(document: Any, template_id: str, brand_id: str, revision: int, based_on: int | None,
+               carried: frozenset[str] = frozenset()) -> dict[str, Any]:
+    """入力の文書を v4 にして検証し、サーバが決める id・brand_id・revision・based_on を差し込んで、もう一度検証する。
+    呼び手が送ってきた id・版・由来は使わない（由来の偽装を許さない）。
+    `carried` は、保存済みの文書が持つ「旧添付から移した元のファイル名」のパス。そのまま残すものだけ絶対パスの検査を通す。"""
     if not isinstance(document, dict):
         raise ValidationError("テンプレートの保存形式を確認してください。")
     first = copy.deepcopy(document)
     first.update({"id": template_id, "brand_id": brand_id, "revision": 0, "based_on": None})
     try:
-        d = dt.validate(first)
+        d = dt.validate(first, relative_paths=carried)
         d.update({"id": template_id, "brand_id": brand_id, "revision": revision, "based_on": based_on})
-        return dt.validate(d)
+        return dt.validate(d, relative_paths=carried)
     except ValueError as exc:
         raise ValidationError(str(exc)) from None
 
@@ -185,7 +191,7 @@ class DesignTemplatesMixin(StoreBase):
                 raise ConflictError("同じ ID のテンプレートが既にあります")
             source = self._revision_doc(cur)
             source["name"] = source["name"] + COPY_SUFFIX if name is None else name
-            doc = _validated(source, tid, t["brand_id"], 1, None)
+            doc = _validated(source, tid, t["brand_id"], 1, None, dt.unresolved_paths(source))
             now, rev_id = self.now(), self.new_id()
             self._exec(
                 "INSERT INTO design_templates(id,brand_id,current_revision_id,created_at,updated_at) VALUES(?,?,?,?,?)",
@@ -311,7 +317,22 @@ class DesignTemplatesMixin(StoreBase):
 
     @staticmethod
     def _revision_doc(row: dict[str, Any]) -> dict[str, Any]:
-        return load_json(row["document_json"])
+        """作業用の v4 の文書（保存した行は書き換えない。旧添付は元のファイル名のリソースにして返す）。"""
+        raw = load_json(row["document_json"])
+        # 保存した形式の算法で内容ハッシュを確かめてから変換する（壊れた行を新しい形で包み直さない）
+        try:
+            version = raw.get("schema_version") if isinstance(raw, dict) else None
+            if version == dt.LEGACY_SCHEMA_VERSION:
+                actual = legacy.content_sha256_v3(raw)
+            elif version == dt.SCHEMA_VERSION:
+                actual = content_sha256(raw)
+            else:
+                actual = None
+        except (KeyError, TypeError, ValueError):
+            actual = None
+        if actual is None or actual != row["content_sha256"]:
+            raise StateError("保存済みのテンプレートの内容が、保存したときのハッシュと違っています。")
+        return dt.convert(raw)
 
     def _may_overwrite_by(self, cur: dict[str, Any], chash: str | None) -> bool:
         """この版の保存が、すべてこの会話の保存か（途中で別の会話・画面・識別子なしの保存が1つでもあれば資格を失う。
@@ -338,8 +359,13 @@ class DesignTemplatesMixin(StoreBase):
                 revision = int(self._scalar("SELECT MAX(revision) FROM design_template_revisions WHERE template_id=?",
                                             (template_id,))) + 1
                 based_on_rev_id, based_on = source["id"], source["revision"]
-            doc = _validated(document, template_id, t["brand_id"], revision, based_on)
-            if content_sha256(doc) == cur["content_sha256"]:
+            before = self._revision_doc(cur)
+            carried = dt.unresolved_paths(before)
+            if mode != "overwrite":
+                carried |= dt.unresolved_paths(self._revision_doc(source))
+            doc = _validated(document, template_id, t["brand_id"], revision, based_on, carried)
+            # 前も後ろも同じ新しい文書の形に揃えて比べる。行に保存した旧いハッシュとは比べない
+            if content_sha256(doc) == content_sha256(before):
                 view = self._view(cur, template=t)
                 view["unchanged"] = True
                 return view

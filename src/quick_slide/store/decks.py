@@ -135,6 +135,10 @@ class DecksMixin(StoreBase):
         """ブランド / スタイルの選択を変える（次に描く回から効く）。モードは変えない。"""
         with self.transaction():
             self._require_live_deck(deck_id)
+            if self.deck_template_snapshot_ref(deck_id):   # type: ignore[attr-defined]
+                from .edits import TEMPLATE_REBUILD_REASON
+
+                raise StateError(TEMPLATE_REBUILD_REASON)   # デザインテンプレートの回は、控えのブランドで固定
             sets, params = [], []
             if brand_revision_id is not None:
                 self._require_live_brand_revision(brand_revision_id)

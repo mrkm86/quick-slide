@@ -32,6 +32,7 @@ from typing import Any
 from .. import importing, motion
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, Engine, engine_for, engine_marker
+from ..errors import StateError
 from ..paths import DataRoot
 from ..pins import Pin
 from ..pins import resolve as resolve_pins
@@ -65,6 +66,8 @@ from ..scriptdoc import (
 from ..settings import Settings
 from ..writer import motion as MOTION_WRITER
 from ..writer import jlint as JLINT
+from ..preparation.errors import EngineInputUnsupported, PreparationStopped
+from ..preparation.service import TemplateRun, prepare_run
 from ..writer.backends import WriterFailed, ask, choose_backend
 from ..writer.prompt import ContractMissing, build_prompt
 from .research import research_manuscript
@@ -73,6 +76,13 @@ from .tools import Tools
 log = logging.getLogger("quick_slide.worker")
 # 書き出しをページごとの部品から組む時間の上限（PPTX は python-pptx・PDF はページを抜いて並べるだけ。数秒で終わる）
 ASSEMBLE_TIMEOUT_SECONDS = 120
+# デザインテンプレートで作る回は、描画（PR 7）がつながるまで、台本の確定（素材の準備と検査）で止める。
+# 古い（テンプレートなしの）経路で描いたり、「できた」ように見せたりしない
+TEMPLATE_RENDER_PENDING_MESSAGE = (
+    "デザインテンプレートを使った資料づくりは、絵を描く段がまだ使えないため、台本を確かめたところで止めました。"
+    "テンプレートの指定は受け付けた内容のまま残っています。テンプレートを使わずに作るか、対応した版を待ってください。")
+TEMPLATE_PREPARATION_PENDING_MESSAGE = TEMPLATE_RENDER_PENDING_MESSAGE   # 前の名前（試験・直しの口が使う）
+TEMPLATE_STOP_KIND = "template_render_pending"
 
 
 class Abandoned(BaseException):
@@ -182,9 +192,18 @@ def make(ctx: Context, job: dict[str, Any]) -> str:
         ctx.call(store.fail_run, run_id, message=message, failure_kind=kind, rc=rc)
         return "failed"
 
+    template = run["args"].get("template_snapshot")
+    if template and resume is not None:
+        return fail(TEMPLATE_RENDER_PENDING_MESSAGE, TEMPLATE_STOP_KIND)
     if resume == "import":
         return import_recorded(ctx, run)
     if resume is None:
+        if template:
+            try:
+                settle_look(ctx, run, previous_style=None)   # 控えから設定を確定して記録する（最新の設定は見ない）
+            except StateError as exc:   # 控えが無い・受け付けたときと違う: 別のものを使わずに止める
+                return fail(str(exc), "template_snapshot")
+            return make_template(ctx, job, run)
         settle_look(ctx, run, previous_style=None)
         # 描く前の確かめ（仕事ごとに 1 回。ピッチは Codex のログイン。書く前に見るので、描けないのに台本係の枠を使わない）
         pre = check_prerequisites(engine, tools=ctx.tools, home=ctx.root.root, cwd=run_dir, stop=ctx.stop)
@@ -309,6 +328,9 @@ def render_and_import(ctx: Context, run: dict[str, Any], script: dict[str, Any],
     """いまの台本（`data`）をエンジンで描き（deck と revise）、描いた回のフォルダへ控え、ページの絵を取り込む。"""
     store = ctx.store
     deck_id, run_id = run["deck_id"], run["id"]
+    if run["args"].get("template_snapshot"):   # テンプレートの回は、描画がつながるまで、古い経路で描かない
+        ctx.call(store.fail_run, run_id, message=TEMPLATE_RENDER_PENDING_MESSAGE, failure_kind=TEMPLATE_STOP_KIND)
+        return "failed"
     engine = engine_for(run["mode"])
     args = run["args"]
     home = ctx.root.root
@@ -550,11 +572,17 @@ def _assemble(ctx: Context, engine: Engine, run_dir: Path, pages: list[dict[str,
         shutil.rmtree(cmd_dir, ignore_errors=True)
 
 
-def check_candidate(ctx: Context, engine: Engine, run: dict[str, Any], data: dict[str, Any]):
+def check_candidate(ctx: Context, engine: Engine, run: dict[str, Any], data: dict[str, Any], *,
+                    template: TemplateRun | None = None):
     """台本の候補をエンジンの `check` に通す（非表示のページを抜いた形で）。CheckResult を返す。
+
+    テンプレートの回（`template`）は、素材の参照を除き取得済みの参照を変換した台本（`TemplateRun.convert`）を通す。
+    変換できないもの（まだ対応していないモード・役割）は `EngineInputUnsupported`（呼ぶ側が理由を言って止める）。
 
     形だけを先に見られるエンジン（モーション）は、先に `--quick`（Chrome を使わず数秒）で形の NG を返し、
     形が通ったときだけ全部の拍の検査（拍の数に比例して時間がかかる）を回す。書き直しのたびに全拍を回さない。"""
+    if template is not None:
+        data = template.convert(data)
     try:
         view, bad = engine_script_with_pictures(ctx, run["deck_id"], data, run["args"])
     except ILL.IllustrationFailed as exc:
@@ -577,8 +605,11 @@ def check_candidate(ctx: Context, engine: Engine, run: dict[str, Any], data: dic
         path.unlink(missing_ok=True)
 
 
-def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
-    """台本係に書かせ、検査に通るまで直させる（上限あり）。通った (台本の行, 台本) か、失敗の "failed"。"""
+def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any], *, template: TemplateRun | None = None):
+    """台本係に書かせ、検査に通るまで直させる（上限あり）。通った (台本の行, 台本) か、失敗の "failed"。
+
+    `template`（デザインテンプレートの回）は、台本係に `writer.md` と準備カタログを渡し（道具なし）、`_references` を
+    確かめ、選んだ素材をコピーし、変換した台本で検査し、通ったら準備の控えにする。"""
     store = ctx.store
     intake = ctx.call(store.intake, job["intake_id"])
     deck_id, run_id = run["deck_id"], run["id"]
@@ -623,6 +654,21 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
         ctx.call(store.set_run_record, run_id, {"page_pictures": [{"rel": p["rel"], "page_url": p["page_url"]} for p in pictures]})
     previous: dict[str, Any] | str | None = None
     problems: list[str] | None = None
+    if template is not None and template.resumed:
+        # 中断した回の続き: 完了した段は、控えのハッシュが合うときだけ再利用する（台本係を呼び直さない）
+        row = template.completed(lambda sid: ctx.call(store.script, sid))
+        if row is not None:
+            return row, ctx.call(store.load_script, row)
+        row = template.pending_candidate(lambda sid: ctx.call(store.script, sid))
+        if row is not None:
+            cand = ctx.call(store.load_script, row)
+            try:
+                result = check_candidate(ctx, engine, run, cand, template=template)
+            except PreparationStopped as exc:
+                return _template_stop(ctx, template, run_id, exc)
+            if result.rc == 0:
+                template.finish(row)
+                return row, cand
     for round_no in range(1, rounds + 1):
         if ctx.stop.is_set():
             return fail("サーバを止めたので、台本を書くのを中断しました。" + again, "stopped")
@@ -633,9 +679,15 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
                                   skills_dir=ctx.tools.skills_dir,
                                   previous=None if motion.is_motion(args) else previous,
                                   problems=None if motion.is_motion(args) else problems,
-                                  request=intake.get("request"), pictures=pictures)
+                                  request=intake.get("request"), pictures=pictures,
+                                  template=template.writer_sections() if template is not None else None)
         except ContractMissing as exc:
             return fail(f"エンジンの台本の決まり（{exc}）が見つかりません。導入をやり直してください。", "contract")
+        if template is not None:
+            try:
+                template.check_prompt_budget(prompt)   # 完成したプロンプト全体を、再試行のたびに測る（超えたら要約せず止める）
+            except PreparationStopped as exc:
+                return _template_stop(ctx, template, run_id, exc)
         try:
             if motion.is_motion(args):
                 def scene_progress(phase, done, total):
@@ -650,7 +702,8 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
                     previous=previous, problems=problems, progress=scene_progress)
             else:
                 data = ask(backend, exe, prompt, job_dir=run_dir / "writer" / f"round-{round_no}", env=env,
-                           timeout=ctx.settings.worker.writer_timeout_seconds, stop=ctx.stop)
+                           timeout=ctx.settings.worker.writer_timeout_seconds, stop=ctx.stop,
+                           no_tools=template is not None)
         except WriterFailed as exc:
             if exc.kind == "format":
                 if motion.is_motion(args) and isinstance(previous, dict):
@@ -670,6 +723,12 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
         for s in slides:
             s.pop("_hidden", None)   # 非表示と版の印は画面が決める（台本係は書かない）
             s.pop("_pin", None)
+        if template is not None:
+            ref_problems = template.check_script(data, fresh=True, allowed_paths={p['rel'] for p in pictures})
+            if ref_problems:
+                previous, problems = data, ref_problems
+                continue
+            data = template.stamped(data)
         script = ctx.call(store.save_script, deck_id, data, written_by="writer", writer_backend=backend,
                           intake_id=intake["id"], run_id=run_id, round_no=round_no)
         ctx.call(store.set_run_state, run_id, "checking", progress=_writer_progress(round_no, rounds, backend, "checking"))
@@ -684,12 +743,19 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
             ctx.call(store.set_script_check, script["id"], 2, own)
             previous, problems = data, own
             continue
-        result = check_candidate(ctx, engine, run, data)
+        try:
+            if template is not None:
+                template.resolve(script, data)   # 選んだ素材だけをコピーし、ページへの束縛を控える
+            result = check_candidate(ctx, engine, run, data, template=template)
+        except PreparationStopped as exc:
+            return _template_stop(ctx, template, run_id, exc)
         ctx.call(store.set_script_check, script["id"], -1 if result.rc is None else result.rc,
                  result.problems + result.warnings + jl_notes)
         if result.stopped:
             return fail("サーバを止めたので、台本を確かめるのを中断しました。" + again, "stopped")
         if result.rc == 0:
+            if template is not None:
+                template.finish(script)
             return script, data
         if result.rc == 2 and LOOK.theme_refused(result.problems):
             return fail(LOOK.BRAND_COLOR_MESSAGE, "brand", result.rc)
@@ -702,3 +768,57 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any]):
         return fail("台本を確かめられませんでした（エンジンの検査が動きませんでした）。" + DOCTOR_HINT, "check", result.rc)
     return fail(f"台本を {rounds} 回書き直しましたが、エンジンの決まりに合いませんでした。原稿を短くするか、もう一度頼んでください。",
                 "script")
+
+
+def _template_stop(ctx: Context, template: TemplateRun | None, run_id: str, exc: PreparationStopped) -> str:
+    """素材の準備・変換が止まった。理由を回の失敗にして記録に残す（古い経路・既定の絵へは落とさない）。"""
+    if template is not None:
+        template.stop(exc)
+    ctx.call(ctx.store.set_run_record, run_id, {"template_stop": {"reason": exc.code}})
+    kind = "template_unsupported" if isinstance(exc, EngineInputUnsupported) else "template_preparation"
+    ctx.call(ctx.store.fail_run, run_id, message=exc.message, failure_kind=kind)
+    return "failed"
+
+
+def make_template(ctx: Context, job: dict[str, Any], run: dict[str, Any]) -> str:
+    """デザインテンプレートの回: 素材の準備（入口の確認・読解）→ 台本 → 検査 まで。描画（PR 7）がつながるまで、ここで止める。"""
+    store = ctx.store
+    run_id = run["id"]
+    intake = ctx.call(store.intake, job["intake_id"]) if job.get("intake_id") else None
+    if intake is None:
+        ctx.call(store.fail_run, run_id, message="テンプレートの回の元の依頼が見つかりません。", failure_kind="internal")
+        return "failed"
+    if research_manuscript(ctx, job, run) is not None:   # 依頼から作るときの下調べ（素材の準備ではない）
+        return "failed"
+    available = {"claude": ctx.tools.claude_path(), "codex": ctx.tools.codex_path()}
+    try:
+        backend, why = choose_backend(ctx.settings.writer, intake["origin_runtime"], available)
+    except WriterFailed as exc:
+        ctx.call(store.fail_run, run_id, message=exc.message, failure_kind="writer_" + exc.kind)
+        return "failed"
+    exe = available[backend]
+    assert exe is not None
+    env = child_env(home=ctx.root.root, extra=ctx.tools.extra_env)
+    prep_dir = ctx.root.run_dir(run["deck_id"], run_id) / "preparation"
+    calls = {"n": 0}
+
+    def llm(prompt: str) -> dict[str, Any]:
+        calls["n"] += 1
+        return ask(backend, exe, prompt, job_dir=prep_dir / f"llm-{calls['n']}", env=env,
+                   timeout=ctx.settings.worker.writer_timeout_seconds, stop=ctx.stop, no_tools=True)
+
+    ctx.call(store.set_run_state, run_id, "writing", progress={"phase": "preparing", "writer": backend},
+             args_update={"writer": backend, "writer_reason": why})
+    try:
+        tr = prepare_run(ctx, run, llm=llm)
+    except PreparationStopped as exc:
+        return _template_stop(ctx, None, run_id, exc)
+    accepted = write_script(ctx, job, run, template=tr)
+    if isinstance(accepted, str):
+        return accepted
+    script, data = accepted
+    ctx.call(store.set_run_record, run_id, {
+        "script": {"id": script["id"], "version": script["version"], "sha256": script["sha256"]},
+        "template_stop": {"reason": "render_unavailable", "generation": tr.generation}})
+    ctx.call(store.fail_run, run_id, message=TEMPLATE_RENDER_PENDING_MESSAGE, failure_kind=TEMPLATE_STOP_KIND)
+    return "failed"

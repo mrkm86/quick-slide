@@ -26,6 +26,10 @@ from ..store.intakes import NotReadyError
 from .errors import ApiError
 from .later import NOT_READY_CODE
 
+# デザインテンプレートを使う投入の答えに添える 1 文（素材の準備がつながるまでは、台本を書く前に止まる）
+TEMPLATE_PENDING_NOTE = ("テンプレートの指定は受け付けましたが、素材の準備がまだ使えないため、台本を書く前に止まります"
+                         "（生成できる状態にはなっていません）。")
+
 if TYPE_CHECKING:
     from .app import QuickSlideServer, Request, Response
 
@@ -82,7 +86,10 @@ def route_intake(server: "QuickSlideServer", req: "Request") -> "Response":
     token = result.pop("launch_token", None)
     url = server.launch_url(result["deck_id"], result["launch_id"], token)
     del token
+    template = result.get("design_template")
     return Response.json(201, {
+        **({"design_template": template, "generation_ready": False,
+            "generation_note": TEMPLATE_PENDING_NOTE} if template else {}),
         "intake_id": result["intake_id"], "deck_id": result["deck_id"], "deck_title": result["deck_title"],
         "mode": result["mode"], "style": result["style"], "launch_id": result["launch_id"],
         "job_id": result["job_id"], "run_id": result["run_id"], "url": url, "deck_url": f"/slides/{result['deck_id']}",

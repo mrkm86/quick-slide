@@ -20,6 +20,7 @@ from ..engines import engine_for
 from ..pins import head_pins
 from ..render import workspace as W
 from ..scriptdoc import one_page, screen_pages
+from ..store.edits import TEMPLATE_REBUILD_REASON, TEMPLATE_RESTORE_REASON
 from .later import NOT_READY_REASON
 from .vocabulary import EDIT_MODE_LABELS, PIN_EXPORT_REDRAW_NOTE, SOURCE_KIND_LABELS, page_display, run_page_display
 
@@ -315,7 +316,8 @@ def edit_capabilities(row: dict[str, Any], pages: list[dict[str, Any]], args: di
     presentable = any(p.get("image_url") and not p["hidden"] for p in pages)
     structural = has and not one_page(args)
     struct_reason = pages_reason if not has else INFOGRAPHIC_PAGES_REASON
-    return {
+    templated = bool(args.get("template_snapshot"))   # デザインテンプレートの回: 前の版への切り替え・組み直しは断る
+    caps = {
         "page_instruction": cap("page_instruction", has, pages_reason),
         "pages_instruction": cap("pages_instruction", has, pages_reason),
         "deck_instruction": cap("deck_instruction", has, pages_reason),
@@ -331,3 +333,7 @@ def edit_capabilities(row: dict[str, Any], pages: list[dict[str, Any]], args: di
         "rebuild": cap("rebuild", has, pages_reason),
         "generate": {"available": False, "label": labels["generate"], "reason": NOT_READY_REASON},
     }
+    if templated:
+        caps["adopt_version"] = cap("adopt_version", False, TEMPLATE_RESTORE_REASON)
+        caps["rebuild"] = cap("rebuild", False, TEMPLATE_REBUILD_REASON)
+    return caps

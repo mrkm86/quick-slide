@@ -80,6 +80,24 @@ def list_templates(app, req):
     return _json({"brand_id": brand_id, "templates": app.store.list_design_templates(brand_id)})
 
 
+def resource_check(app, req):
+    """全テンプレート（いまの版）のリソースが、この機体にあるかだけを返す（stat だけ。中身は読まない）。--doctor が使う。
+    取り込みやブランドの移行で、ほかの機体のパスが入っていても気づけるようにする。"""
+    with app.store_lock:
+        rows = []
+        for brand in app.store.list_brands():
+            for t in app.store.list_design_templates(brand["id"]):
+                rows.append((brand["name"], t, app.store.get_design_template(t["template_id"])["document"]))
+    # ネットワーク上のパスで待たされても他の要求を止めないよう、存在の確認は鍵の外で行う
+    missing = []
+    for brand_name, t, doc in rows:
+        for res, ok in zip(doc["resources"], dt.resource_presence(doc["resources"])):
+            if not ok:
+                missing.append({"brand_name": brand_name, "template_id": t["template_id"], "template_name": t["name"],
+                                "resource_name": res["name"], "kind": res["kind"]})
+    return _json({"templates": len(rows), "resources": sum(len(doc["resources"]) for _, _, doc in rows), "missing": missing})
+
+
 @_locked
 def get_template(app, req):
     return _json(app.store.get_design_template(req.params["template_id"], revision=_revision_number(req)))
@@ -105,11 +123,14 @@ def export_markdown(app, req):
 
 
 def _compile_inputs(app, req) -> tuple[dict[str, Any], dict[str, Any], str]:
-    """保存した版と、そのとき控えたブランドの版を読む（いまのブランドではない）。鍵の中で読むのはここまで。"""
+    """保存した版と、親ブランドの最新の版を読む（保存したときのブランドの版ではない。新しい資料の投入と同じ。
+    投入済みの資料の再生とは別の用途）。鍵の中で読むのはここまで。"""
     with app.store_lock:
         view = app.store.get_design_template(req.params["template_id"], revision=_revision_number(req))
         doc = view["document"]
-        brev = app.store.brand_revision(view["brand_revision_id"])
+        brev = app.store.brand(doc["brand_id"])["current_revision"]
+        if brev is None:
+            raise ApiError(409, "brand_unavailable", "ブランドの最新の設定を確認できません。ブランドを開いて保存し直してください。")
     brand = {"id": doc["brand_id"], "current_revision_id": brev["id"], "revision": brev["revision"], "config": brev["config"],
              "assets": [{k: a[k] for k in ("asset_id", "role", "label", "sha256", "width", "height")} for a in brev["assets"]]}
     return view, brand, _query(req).get("mode") or doc["modes"][0]

@@ -1,6 +1,6 @@
 """デザインテンプレートの保存サービス。画面・取り込み・計画（dry-run）の全部がここを通る。
 
-順序: ブランドの生存 → 文書の検証 → 添付の所有・ハッシュ → 期待した改訂（競合）→ 同文の検出 → 保存。
+順序: ブランドの生存 → 文書の検証 → 期待した改訂（競合）→ 同文の検出 → 保存。
 競合・同文・版の採番は `store/design_templates.py` が同じトランザクションの中で決める。ここは入口の検査と、
 返す形（`{document, current_revision_id, action, changed_sections, message, ...}`）を作るだけで、SQL を持たない。
 
@@ -28,32 +28,17 @@ class _DryRun(Exception):
     """計画の終わり。外側のトランザクションを巻き戻すための合図（エラーではない）。"""
 
 
-def check_document(document: Any, *, allowed_attachments: list[dict[str, Any]]) -> None:
-    """文書の形と、添付の所有を確かめる。添付は旧データのもの（保存済みの文書にあるもの）だけが残せて、新しくは作れない。"""
+def check_document(document: Any) -> None:
+    """文書の形を、保存の前に確かめる（旧い形式は読み込みの変換を通す。添付は新しく作れず、旧データの添付は
+    リソースへ移した形で扱う）。絶対パスの検査は、残してよい旧データのパスを知っている保存の中（store）で行う。"""
     if not isinstance(document, dict):
         raise ValidationError("テンプレートの保存形式を確認してください。")
     probe = copy.deepcopy(document)
     probe.update({"id": "probe", "brand_id": "probe", "revision": 0, "based_on": None})
     try:
-        d = dt.validate(probe)
+        dt.validate(probe, relative_paths=True)
     except ValueError as exc:
         raise ValidationError(str(exc)) from None
-    owned = {a["id"]: a for a in allowed_attachments}
-    for row in d["attachments"]:
-        mine = owned.get(row["id"])
-        if mine is None or mine["sha256"] != row["sha256"] or mine["file"] != row["file"]:
-            raise ValidationError("添付ファイルは新しく追加できません。ファイルはリソース（パス）として登録してください。")
-
-
-def _attachments_of(store: Store, template_id: str, *revision_ids: str | None) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    views = [store.get_design_template(template_id)]
-    for rid in revision_ids:
-        if rid:
-            views.append(store.get_design_template(template_id, revision_id=rid))
-    for view in views:
-        out.extend(view["document"]["attachments"])
-    return out
 
 
 def _live_brand(store: Store, brand_id: Any) -> dict[str, Any]:
@@ -119,7 +104,7 @@ def create(store: Store, brand_id: Any, document: Any, *, template_id: str | Non
     _live_brand(store, brand_id)
     if markdown is not None:
         document = parse_markdown(markdown, brand_id=brand_id, template_id=None)
-    check_document(document, allowed_attachments=[])
+    check_document(document)
     view = store.create_design_template(brand_id, document, template_id=template_id,
                                         origin_runtime=_runtime(origin_runtime), conversation_key=conversation_key)
     return result(view, action="created", before=None)
@@ -146,11 +131,10 @@ def save(store: Store, template_id: str, document: Any, *, mode: Any, expected_r
         source = store.get_design_template(template_id, revision_id=source_revision_id)   # 他のテンプレートの改訂は NotFound
     if markdown is not None:
         document = parse_markdown(markdown, brand_id=current["brand_id"], template_id=template_id)
-        document["attachments"] = copy.deepcopy(current["document"]["attachments"])   # ファイルには添付が無い。旧データの添付は残す
     if document is None and source is None:
         raise ValidationError("保存する内容がありません。")
     if document is not None:
-        check_document(document, allowed_attachments=_attachments_of(store, template_id, source_revision_id))
+        check_document(document)
     runtime = _runtime(origin_runtime)
     before = current["document"]
     if mode == "conversation":

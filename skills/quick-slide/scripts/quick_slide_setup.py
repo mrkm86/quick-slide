@@ -475,32 +475,124 @@ def settings_listen(home: Path) -> tuple[str, int]:
 
 def check_port(rep: Report, home: Path) -> None:
     host, port = settings_listen(home)
+    settings = home / "config" / "settings.json"
+    if not 0 <= port <= 65535:
+        rep.add("port", "ポート", "ng", f"server.port の {port} は、ポートの番号ではありません（0〜65535）",
+                fix=f"{settings} の server.port を直してください")
+        return
     try:
         record = json.loads((home / "runtime" / "server.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         record = None
-    if isinstance(record, dict) and record.get("port") == port:
+    if port and isinstance(record, dict) and record.get("port") == port:
         try:
             with socket.create_connection((str(record.get("host") or "127.0.0.1"), port), timeout=1.0):
                 rep.add("port", "ポート", "ok", f"{port}（Quick Slide が動いています: {record.get('url')}）")
                 return
-        except OSError:
+        except (OSError, ValueError, TypeError):   # 壊れた記録（つなげない名前）でも診断は続ける
             pass
-    if port == 0:
-        rep.add("port", "ポート", "ok", "起動のたびに空いているポートを使う設定（server.port が 0）")
-        return
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
-    s = socket.socket(family, socket.SOCK_STREAM)
+    s = None
     try:
-        s.bind((host, port))
-        rep.add("port", "ポート", "ok", f"{host}:{port} は空いています")
+        s = socket.socket(family, socket.SOCK_STREAM)
+        s.bind((host, port))   # 0 でも、その名前で待てるかは確かめる
+        if port == 0:
+            rep.add("port", "ポート", "ok", "起動のたびに空いているポートを使う設定（server.port が 0）")
+        else:
+            rep.add("port", "ポート", "ok", f"{host}:{port} は空いています")
+    except (ValueError, TypeError):   # 設定の名前が、そもそもアドレスとして読めない（ソケットは TypeError も投げる）
+        rep.add("port", "ポート", "ng", f"{host!r}:{port} は、その名前・アドレスでは待てません",
+                fix=f"{settings} の server.host を直してください")
     except OSError as exc:
+        if s is None:   # 名前やポートの話ではなく、この機体がいまソケットを作れない
+            rep.add("port", "ポート", "warn", f"確かめられませんでした（ソケットを作れませんでした: {exc}）")
+            return
         busy = exc.errno in (errno.EADDRINUSE, errno.EACCES)
         rep.add("port", "ポート", "warn" if busy else "ng",
                 f"{host}:{port} は{'ほかのアプリが使っています' if busy else 'その名前・アドレスでは待てません'}",
-                fix=f"そのアプリを止めるか、{home / 'config' / 'settings.json'} の server.port を変えてください")
+                fix=f"そのアプリを止めるか、{settings} の server.port を変えてください")
     finally:
-        s.close()
+        if s is not None:
+            s.close()
+
+
+def _server_get(host: str, port: int, path: str, *, timeout: float = 5.0) -> dict[str, Any] | None:
+    """動いているサーバに GET する（記録の host・port に直接。表示用の URL・プロキシ・転送は使わない）。
+    200 の JSON オブジェクトでなければ None。"""
+    import http.client
+    shown = f"[{host}]" if ":" in host and not host.startswith("[") else host
+    conn = None
+    try:
+        conn = http.client.HTTPConnection(host, port, timeout=timeout)
+        conn.request("GET", path, headers={"Host": f"{shown}:{port}"})
+        resp = conn.getresponse()
+        body = resp.read()
+        if resp.status != 200:
+            return None
+    except (OSError, ValueError, http.client.HTTPException):
+        return None
+    finally:
+        if conn is not None:
+            conn.close()
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _resource_check_shape(result: dict[str, Any]) -> bool:
+    """resource-check の応答の形を確かめる（別のアプリの応答や壊れた応答を「全部ある」と読まない）。"""
+    def count(v: Any) -> bool:
+        return type(v) is int and v >= 0
+    missing = result.get("missing")
+    return (count(result.get("templates")) and count(result.get("resources")) and isinstance(missing, list)
+            and all(isinstance(m, dict) and all(isinstance(m.get(k), str) for k in ("template_name", "resource_name"))
+                    for m in missing))
+
+
+def _server_record(home: Path) -> tuple[str, int, str] | None:
+    """サーバの記録（runtime/server.json）から、つなぐ先と instance_id を読む。形が違えば None（診断は続ける）。"""
+    try:
+        record = json.loads((home / "runtime" / "server.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    host, port, instance = record.get("host"), record.get("port"), record.get("instance_id")
+    if not (isinstance(host, str) and host and host.isprintable() and not any(c.isspace() for c in host)):
+        return None
+    if not (type(port) is int and 0 < port < 65536):
+        return None
+    if not (isinstance(instance, str) and instance):
+        return None
+    return host, port, instance
+
+
+def check_template_resources(rep: Report, home: Path) -> None:
+    """デザインテンプレートのリソース（登録したファイル・フォルダ）が、この機体にあるかだけを見る。
+    データはサーバが持つので、動いているサーバに聞く（サーバを起こさない・データベースを直接開かない）。
+    見つからなくても、そのテンプレートを使う資料のほかには効かないので「注意」にとどめる。"""
+    label = "デザインテンプレートのリソース"
+    record = _server_record(home)
+    # 古い記録のポートを別のサーバが使っていることがある。記録したそのサーバだけに聞く
+    health = _server_get(*record[:2], "/api/health") if record else None
+    if record is None or health is None or health.get("instance_id") != record[2]:
+        rep.add("template_resources", label, "ok", "サーバが動いていないので確かめていません（サーバが動いているときに確かめます）")
+        return
+    result = _server_get(*record[:2], "/api/settings/design-templates/resource-check")
+    if result is None or not _resource_check_shape(result):
+        rep.add("template_resources", label, "warn", "確かめられませんでした（サーバの応答を読めませんでした）",
+                fix="Quick Slide を新しい版にしてから、もう一度確かめてください")
+        return
+    missing = result["missing"]
+    if not missing:
+        rep.add("template_resources", label, "ok",
+                f"テンプレート {result['templates']} 件・リソース {result['resources']} 件とも、この機体にあります")
+        return
+    names = "／".join(f"{m['template_name']}: {m['resource_name']}" for m in missing[:5]) + ("ほか" if len(missing) > 5 else "")
+    rep.add("template_resources", label, "warn", f"{len(missing)} 件が見つかりません（{names}）",
+            fix="設定の画面で、そのテンプレートのリソースのパスを直してください", missing=missing)
 
 
 def doctor(home: Path) -> tuple[Report, dict[str, Any]]:
@@ -517,6 +609,7 @@ def doctor(home: Path) -> tuple[Report, dict[str, Any]]:
     if os.name == "nt":
         check_home_windows(rep, home)
     check_port(rep, home)
+    check_template_resources(rep, home)
     return rep, facts
 
 

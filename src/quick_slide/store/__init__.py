@@ -29,6 +29,7 @@ from .presets import PresetsMixin
 from .runs import RunsMixin
 from .samples import SamplesMixin
 from .styles import StylesMixin
+from .template_snapshots import TemplateSnapshotsMixin
 from .views import DeckViewsMixin
 
 
@@ -43,6 +44,7 @@ class Store(
     LaunchesMixin,
     DecksMixin,
     DesignTemplatesMixin,
+    TemplateSnapshotsMixin,
     PresetsMixin,
     StylesMixin,
     BrandsMixin,

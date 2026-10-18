@@ -16,12 +16,15 @@ from pathlib import Path
 from unittest import mock
 
 from helpers import start_server
+from legacy_templates import all_rows, insert_legacy_template, stored_row
 
 from quick_slide import design_templates as dt
 from quick_slide.ids import PRESET_BRAND_ID
 from quick_slide.server import template_routes as routes
 
 BASE = "/api/settings/design-templates"
+# どの OS でも絶対パスになる、存在しない置き場
+NO_SUCH_FILE = Path(tempfile.gettempdir()).resolve() / "qs-api-no-such" / "memo.md"
 
 
 def doc(name="社内報告", **kw):
@@ -202,15 +205,95 @@ class RouteTests(Base):
         self.assertEqual(400, self.fx.post(f"{BASE}/plan", {"template_id": t["template_id"], **base, "markdown": "x"}).status)
         self.assertEqual(1, self.rows())
 
-    def test_markdown_save_keeps_legacy_attachments(self):
-        attachment = {"id": "m1", "name": "旧添付", "file": "a.md", "url": "/x", "image": False, "usage": "", "sha256": "a" * 64}
+    def legacy(self, kind="full"):
         with self.fx.server.store_lock:
-            legacy = self.fx.store.create_design_template(self.bid, doc(attachments=[attachment]))
-        t = self.fx.get(f"{BASE}/{legacy['template_id']}").json()
-        r = self.fx.post(f"{BASE}/{t['template_id']}", {"markdown": self.markdown(instructions="直した"), "mode": "new_version",
-                                                         "expected_revision_id": t["current_revision_id"]})
-        self.assertEqual(200, r.status, r.body)
-        self.assertEqual([attachment], r.json()["document"]["attachments"])
+            return insert_legacy_template(self.fx.store, self.bid, kind)
+
+    def stored(self):
+        with self.fx.server.store_lock:
+            return all_rows(self.fx.store)
+
+    def test_old_get_then_edit_and_save_converts_the_attachments_into_resources(self):
+        """旧い行を GET すると添付の欄は無く、移したリソースが返る。そのまま編集して保存でき、旧い行は書き換わらない。"""
+        old = self.legacy("full")
+        frozen = self.stored()
+        t = self.fx.get(f"{BASE}/{old['template_id']}").json()
+        self.assertEqual((t["document"]["schema_version"], "attachments" in t["document"]), (4, False))
+        moved = t["document"]["resources"][-1]
+        self.assertEqual((moved["id"], moved["name"], moved["kind"], moved["path"], moved["usage"]),
+                         ("m1", "旧添付", "file", "memo.md", "用語の見本"))
+        # 同じ文書の保存は何も作らない（保存したハッシュは旧い算法のままなので、新しい形で前後を比べる）
+        same = self.save(t, t["document"])
+        self.assertEqual((200, "unchanged"), (same.status, same.json()["action"]), same.body)
+        self.assertEqual(self.stored(), frozen)
+        # 古い画面（添付の欄つきの旧形式の文書）が同じ中身を返しても、同じく何も作らない
+        legacy_shape = {**{k: v for k, v in t["document"].items() if k != "resources"}, "schema_version": 3,
+                        "resources": t["document"]["resources"][:-1],
+                        "attachments": [{"id": "m1", "name": "旧添付", "file": "memo.md", "url": "/preview/files/m1", "image": False,
+                                         "usage": "用語の見本", "sha256": "a" * 64}]}
+        self.assertEqual("unchanged", self.save(t, legacy_shape).json()["action"])
+        # 編集すると新しい形の行が増える（旧い行は変わらない）
+        ok = self.save(t, self.revised(t, instructions="直した"))
+        self.assertEqual((200, "overwritten"), (ok.status, ok.json()["action"]), ok.body)
+        self.assertEqual(self.stored()[:len(frozen)], frozen)
+        self.assertEqual(len(self.stored()), len(frozen) + 1)
+        self.assertEqual([r["name"] for r in ok.json()["document"]["resources"]], ["画像集", "旧添付"])
+        self.assertNotIn("attachments", ok.json()["document"])
+        # 新しい相対パスのリソースは足せない（残せるのは旧添付から移した元のファイル名だけ）
+        bad = self.save(ok.json(), self.revised(ok.json(), resources=ok.json()["document"]["resources"] + [
+            {"id": "n1", "name": "新規", "kind": "file", "path": "relative.md", "usage": ""}]))
+        self.assertEqual(400, bad.status)
+        # 利用者がパスを指定し直せば、通常のリソースとして保存される
+        fixed = json.loads(json.dumps(ok.json()["document"]))
+        fixed["resources"][-1]["path"] = str(NO_SUCH_FILE)
+        again = self.save(ok.json(), fixed)
+        self.assertEqual(200, again.status, again.body)
+        self.assertEqual(str(NO_SUCH_FILE), again.json()["document"]["resources"][-1]["path"])
+        self.assertEqual(stored_row(self.fx.store, old["revision_id"]), (old["document_json"], old["content_sha256"]))
+
+    def test_old_rows_are_shown_copied_exported_and_planned_in_the_new_form_only(self):
+        old = self.legacy("full")
+        t = self.fx.get(f"{BASE}/{old['template_id']}").json()
+        new = self.save(t, self.revised(t, instructions="二版目"), mode="new_version").json()
+        frozen = self.stored()
+        revs = self.fx.get(f"{BASE}/{old['template_id']}/revisions").json()["revisions"]
+        for row in revs:
+            self.assertNotIn("attachments", row["document"])
+            self.assertEqual(row["document"]["resources"][-1]["name"], "旧添付")
+        shown = self.fx.get(f"{BASE}/{old['template_id']}?revision=1").json()
+        self.assertNotIn("attachments", shown["document"])
+        # 過去版をコピーして次の版を作る（コピー元の旧添付はリソースのまま）
+        copied = self.save(new, shown["document"], mode="new_version", source_revision_id=shown["revision_id"])
+        self.assertEqual(200, copied.status, copied.body)
+        self.assertEqual("copied", copied.json()["action"])
+        self.assertEqual(copied.json()["document"]["resources"][-1]["name"], "旧添付")
+        before = self.snapshot()
+        plan = self.fx.post(f"{BASE}/plan", {"template_id": old["template_id"], "mode": "new_version", "document": self.revised(copied.json(), instructions="計画だけ"),
+                                             "expected_revision_id": copied.json()["current_revision_id"]})
+        self.assertEqual(200, plan.status, plan.body)
+        self.assertEqual(before, self.snapshot(), "計画は何も書かない")
+        self.assertEqual(self.stored()[:len(frozen)], frozen, "旧い行は書き換わらない")
+
+    def test_markdown_export_of_an_old_row_works_and_import_needs_a_real_path(self):
+        old = self.legacy("full")
+        exported = self.fx.get(f"{BASE}/{old['template_id']}/markdown")
+        self.assertEqual(200, exported.status, "添付があっても書き出せる（通常のリソースとして）")
+        text = exported.body.decode("utf-8")
+        self.assertIn("旧添付", text)
+        self.assertNotIn("attachments", text)
+        t = self.fx.get(f"{BASE}/{old['template_id']}").json()
+        frozen = self.stored()
+        # 元のファイル名のままの Markdown は、パスが絶対でないので断る（何も書かない）
+        r = self.fx.post(f"{BASE}/{t['template_id']}", {"markdown": text, "mode": "new_version", "expected_revision_id": t["current_revision_id"]})
+        self.assertEqual(400, r.status, r.body)
+        self.assertEqual(self.stored(), frozen)
+        # パスを書き直せば、保存でき、書き出しに添付の欄は無い
+        fixed = text.replace("path: memo.md", f"path: {NO_SUCH_FILE}")
+        self.assertNotEqual(fixed, text)
+        ok = self.fx.post(f"{BASE}/{t['template_id']}", {"markdown": fixed, "mode": "new_version", "expected_revision_id": t["current_revision_id"]})
+        self.assertEqual(200, ok.status, ok.body)
+        self.assertNotIn("attachments", ok.json()["document"])
+        self.assertEqual(ok.json()["document"]["resources"][-1]["path"], str(NO_SUCH_FILE))
 
     def test_copy_accepts_a_name(self):
         t = self.create()
@@ -240,22 +323,18 @@ class RouteTests(Base):
         self.assertEqual(400, self.fx.post(BASE, {"brand_id": self.bid, "document": doc(resources=[
             {"id": "r1", "name": "相対", "kind": "file", "path": "relative.md", "usage": ""}])}).status)
 
-    def test_attachments_cannot_be_created_but_legacy_ones_survive(self):
+    def test_attachments_cannot_be_created_through_the_api(self):
         attachment = {"id": "m1", "name": "旧添付", "file": "a.md", "url": "/x", "image": False, "usage": "", "sha256": "a" * 64}
-        r = self.fx.post(BASE, {"brand_id": self.bid, "document": doc(attachments=[attachment])})
-        self.assertEqual(400, r.status)
-        # 旧データ: store へ直接入れる（API からは作れない）
-        with self.fx.server.store_lock:
-            legacy = self.fx.store.create_design_template(self.bid, doc(attachments=[attachment]))
-        t = self.fx.get(f"{BASE}/{legacy['template_id']}").json()
-        ok = self.save(t, self.revised(t, instructions="添付はそのまま"))
-        self.assertEqual(200, ok.status, ok.body)
-        forged = self.save(ok.json(), self.revised(ok.json(), attachments=[{**attachment, "sha256": "b" * 64}]))
-        self.assertEqual(400, forged.status)
-        other = self.save(ok.json(), self.revised(ok.json(), attachments=[{**attachment, "id": "m2"}]))
-        self.assertEqual(400, other.status)
-        # 添付があると Markdown に書き出せない
-        self.assertEqual(409, self.fx.get(f"{BASE}/{legacy['template_id']}/markdown").status)
+        # 新しい形式の文書は添付の欄を持たない
+        self.assertEqual(400, self.fx.post(BASE, {"brand_id": self.bid, "document": doc(attachments=[attachment])}).status)
+        # 古い形式（添付の欄あり）で新しく作ろうとしても、元のファイル名は絶対パスではないので断る
+        stale = {**doc(), "schema_version": 3, "attachments": [attachment]}
+        self.assertEqual(400, self.fx.post(BASE, {"brand_id": self.bid, "document": stale}).status)
+        self.assertEqual(0, self.rows())
+        # 空の添付の欄だけなら、古い画面の文書でも通る（欄は外れる）
+        ok = self.fx.post(BASE, {"brand_id": self.bid, "document": {**doc(), "schema_version": 3, "attachments": []}})
+        self.assertEqual(201, ok.status, ok.body)
+        self.assertNotIn("attachments", ok.json()["document"])
 
     def test_delete_hides_but_history_stays(self):
         t = self.create()
@@ -324,9 +403,9 @@ class RouteTests(Base):
         # 計画のあとに本保存しても、版は飛ばない
         self.assertEqual(2, self.save(t, self.revised(t, structure="本保存"), mode="new_version").json()["revision"])
 
-    def test_compiled_json_and_zip_use_the_recorded_brand_revision(self):
+    def test_compiled_json_and_zip_use_the_parents_latest_brand_revision(self):
         t = self.create(doc(modes=["presentation", "pitch"]))
-        with self.fx.server.store_lock:   # 保存のあとでブランドが進んでも、控えた版で作る
+        with self.fx.server.store_lock:   # 保存のあとでブランドが進めば、親の最新の版で作る（新しい資料の投入と同じ）
             store = self.fx.store
             config = json.loads(json.dumps(store.brand(self.bid)["current_revision"]["config"]))
             config["footer"] = {"text": "あとから変えた"}
@@ -335,7 +414,11 @@ class RouteTests(Base):
         self.assertEqual(200, r.status, r.body)
         j = r.json()
         self.assertEqual(("instructions_compiled", False, 1), (j["stage"], j["render_ready"], j["template_revision"]))
-        self.assertNotIn("あとから変えた", j["files"]["brand.json"])
+        self.assertIn("あとから変えた", j["files"]["brand.json"])
+        with self.fx.server.store_lock:
+            latest = self.fx.store.brand(self.bid)["current_revision_id"]
+        self.assertEqual(json.loads(j["files"]["engine-input.json"])["brand_revision_id"], latest)
+        self.assertNotEqual(latest, t["brand_revision"]["id"], "保存したときのブランドの版ではない")
         self.assertEqual(400, self.fx.get(f"{BASE}/{t['template_id']}/compiled?mode=nope").status)
         z = self.fx.get(f"{BASE}/{t['template_id']}/compiled/export?mode=pitch&revision=1")
         self.assertEqual("application/zip", z.headers["content-type"])

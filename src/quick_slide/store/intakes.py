@@ -21,6 +21,11 @@ payload の形は v1 と同じ（`schema_version`・`origin{kind,runtime,convers
 違いは `origin.runtime` だけ。依頼は原稿と同じく payload_json・events・ログに書かない。
 モード・ブランド・スタイルは依頼の文から読まない（`deck_attributes` の `mode`・`brand_id`・`style` で、原稿の道と同じ）。
 
+**デザインテンプレート**（docs/design-template-generation.md §2）: `design_template`（名前か ID）・`design_template_version`・
+`design_template_expected_revision_id`。ブランド（`brand_id`、省けば既定）の中で選び、受付のトランザクションの中で
+内部改訂・内容・親ブランドの最新の版を確定して、控え（`template_snapshots`）を残す（docs/adr/0030）。`style_id` とは一緒に使えず、モーションでは使えない。
+同一判定には確定した選択を入れる（`_request_sha`）。クライアントが控えを送ることはできない。
+
 まだ受けないもの（`NotReadyError`。サーバは 400 `not_ready` にする）: 既存のデッキへの追加
 （`append_to_deck_id`）・会話抜粋・添付・書式。黙って捨てずに断る。
 
@@ -38,11 +43,12 @@ from typing import Any
 
 from ..engines import ENGINES, IMAGE_LOOKS
 from ..enums import ORIGIN_KINDS, ORIGIN_RUNTIMES, require
-from ..errors import QuickSlideError, StateError, ValidationError
+from ..errors import QuickSlideError, SelectionError, StateError, ValidationError
 from ..ids import PRESET_BRAND_ID
 from ..security.hmac_key import conversation_hash
 from ..security.secret_scan import find_secret_like
 from .base import StoreBase, assert_no_forbidden_keys, dump_json, load_json, reject_unknown_keys
+from .template_snapshots import SELECTION_ATTRIBUTES, SNAPSHOT_ARG
 
 log = logging.getLogger("quick_slide.store.intakes")
 
@@ -50,7 +56,8 @@ PAYLOAD_KEYS = {"schema_version", "origin", "title_hint", "manuscript", "request
                 "attachments", "append_to_deck_id", "force_new_deck"}
 ORIGIN_KEYS = {"kind", "runtime", "conversation_key"}
 DECK_ATTRIBUTE_KEYS = {"purpose", "audience", "style_note", "page_count", "brand_id", "mode", "style", "image_look",
-                       "images", "outline_fixed", "style_id", "format_id", "format_values", "format_options"}
+                       "images", "outline_fixed", "style_id", "format_id", "format_values", "format_options",
+                       *SELECTION_ATTRIBUTES}
 # 形は v1 のまま残し、まだ受けない項目（値が入っていたら断る）。書式はブランドの中に持つ（P4）
 NOT_READY_ATTRIBUTES = ("format_id", "format_values", "format_options")
 MAX_PAGE_COUNT = 40
@@ -89,11 +96,12 @@ class IntakesMixin(StoreBase):
         stored = {k: v for k, v in p.items() if k not in ("manuscript", "request", "transcript_excerpt")}
         stored["origin"] = {k: v for k, v in p["origin"].items() if k != "conversation_key"}
         assert_no_forbidden_keys(stored, "intakes.payload_json")
-        asked = [p["manuscript"], p.get("title_hint"), attrs] + ([p["request"]] if p.get("request") else [])
-        request_sha = hashlib.sha256(json.dumps(asked, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
-
         with self.transaction():
             now = self.now()
+            # デザインテンプレートを選んでいれば、同じトランザクションの中で選択を確定する（確定した内部改訂・内容・ブランドの版が、
+            # 送り直しの判定にも入る。入力の名前や「最新」という文字では判定しない）
+            selection = self.resolve_design_template(attrs)
+            request_sha = self._request_sha(p, attrs, selection)
             if conv_hash is not None and not p["force_new_deck"]:
                 again = self._resent_intake(conv_hash, request_sha, now)
                 if again is not None:
@@ -102,7 +110,10 @@ class IntakesMixin(StoreBase):
                      or f"無題のスライド（{now[:10]} {now[11:16]} UTC）")
             deck = self.create_deck(
                 title, mode=attrs["mode"],
-                brand_revision_id=self._intake_brand_revision(attrs.get("brand_id")),
+                # テンプレートの回は、投入時に選んだ親ブランドの最新の改訂（控えと同じもの。以後は追随しない）と
+                # 付属の既定スタイルの改訂で固定する
+                brand_revision_id=(selection["brand_revision_id"] if selection
+                                   else self._intake_brand_revision(attrs.get("brand_id"))),
                 style_revision_id=self._intake_style_revision(attrs),
                 purpose=attrs.get("purpose") or "", audience=attrs.get("audience") or "",
             )
@@ -117,7 +128,14 @@ class IntakesMixin(StoreBase):
                 " manuscript,request,payload_json,launch_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 (intake_id, deck_id, p["origin"]["kind"], runtime, conv_hash, request_sha, p.get("title_hint"),
                  p["manuscript"], p.get("request"), dump_json(stored), launch_id, now))
-            run = self.create_run(deck_id, args=self.run_args_from_attributes(attrs, origin_runtime=runtime))
+            args = self.run_args_from_attributes(attrs, origin_runtime=runtime)
+            summary = None
+            if selection:
+                ref = self.save_template_snapshot(selection["snapshot"], selection["snapshot_sha256"])
+                args[SNAPSHOT_ARG] = ref
+                self.link_deck_template_snapshot(deck_id, ref)
+                summary = self.template_summary(selection["snapshot"], ref)
+            run = self.create_run(deck_id, args=args)
             job = self.create_job(deck_id, run_id=run["id"], intake_id=intake_id)
             self.append_event("intake_created", {
                 "intake_id": intake_id, "origin_kind": p["origin"]["kind"], "origin_runtime": runtime,
@@ -125,12 +143,24 @@ class IntakesMixin(StoreBase):
                 "style": attrs["style"], "manuscript_chars": len(p["manuscript"]),
                 "request_chars": len(p["request"]) if p.get("request") else None,
                 "has_conversation_key": conv_hash is not None,
+                **({"design_template": {k: summary[k] for k in ("template_id", "version", "revision_id")}} if summary else {}),
             }, deck_id=deck_id)
         log.info("intake %s -> deck %s (%s/%s)", intake_id, deck_id, attrs["mode"], attrs["style"])
         return {"intake_id": intake_id, "deck_id": deck_id, "deck_title": title, "mode": attrs["mode"],
                 "style": attrs["style"], "launch_id": launch_id, "launch_token": launch_token,
                 "job_id": job["id"], "run_id": run["id"], "resolution": "new", "appended": False,
-                "resolution_reason": None}
+                "resolution_reason": None, "design_template": summary}
+
+    def _request_sha(self, p: dict[str, Any], attrs: dict[str, Any], selection: dict[str, Any] | None) -> str:
+        """送り直しの判定に使うハッシュ。原稿／依頼・題・属性に、テンプレートを選んだときは**確定した選択**を足す
+        （入力した名前・版の指定・ブランドの指定の書き方は入れない。同じ内部改訂に決まれば同じ依頼になる）。"""
+        if selection is None:
+            asked = [p["manuscript"], p.get("title_hint"), attrs] + ([p["request"]] if p.get("request") else [])
+        else:
+            kept = {k: v for k, v in attrs.items() if k not in (*SELECTION_ATTRIBUTES, "brand_id")}
+            asked = [p["manuscript"], p.get("title_hint"), kept] + ([p["request"]] if p.get("request") else [])
+            asked.append({"design_template": selection["identity"]})
+        return hashlib.sha256(json.dumps(asked, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
     def create_import(self, *, filename: str, info: dict[str, Any], runtime: str, deck_id: str | None = None,
                       launch_requested_via: str | None = "start") -> dict[str, Any]:
@@ -202,13 +232,17 @@ class IntakesMixin(StoreBase):
                 "mode": run["mode"] if run else None, "style": run["args"].get("style") if run else None,
                 "launch_id": launch_id, "launch_token": launch_token, "job_id": job["id"] if job else None,
                 "run_id": run["id"] if run else None, "resolution": "resent", "appended": False,
-                "resolution_reason": None}
+                "resolution_reason": None, "design_template": self._resent_template_summary(run)}
+
+    def _resent_template_summary(self, run: dict[str, Any] | None) -> dict[str, Any] | None:
+        ref = (run or {}).get("args", {}).get(SNAPSHOT_ARG)
+        return None if not ref else self.template_summary(self.template_snapshot(ref), ref)
 
     @staticmethod
     def run_args_from_attributes(attrs: dict[str, Any], *, origin_runtime: str) -> dict[str, Any]:
         """描いた回に残す「何をどう頼まれたか」（台本係とエンジンに渡す引数の元）。原稿は入れない。"""
         overrides = {k: attrs[k] for k in ("image_look", "style_note") if attrs.get(k)}
-        if attrs.get("style_id") and attrs.get("style_said"):
+        if attrs.get("style_said") and (attrs.get("style_id") or attrs.get("design_template")):
             overrides["style"] = attrs["style"]
         return {
             "mode": attrs["mode"], "style": attrs["style"], "image_look": attrs.get("image_look"),
@@ -367,7 +401,36 @@ class IntakesMixin(StoreBase):
             raise ValidationError("deck_attributes.style_id は文字列")
         out.update(mode=mode, style=style, image_look=look, images=images, outline_fixed=outline_fixed,
                    style_id=style_id, style_said=said)
+        self._validate_template_selection(out)
         return out
+
+    @staticmethod
+    def _validate_template_selection(out: dict[str, Any]) -> None:
+        """デザインテンプレートの選び方の形（型・併用・モード）。名前の解決はトランザクションの中（`resolve_design_template`）。"""
+        for k in SELECTION_ATTRIBUTES:
+            if out.get(k) == "":
+                out[k] = None
+        wanted, version, expected = out.get("design_template"), out.get("design_template_version"), \
+            out.get("design_template_expected_revision_id")
+        if wanted is not None and (not isinstance(wanted, str) or not wanted.strip()):
+            raise SelectionError("design_template_invalid", "deck_attributes.design_template はテンプレートの名前か ID（文字列）")
+        if version is not None and (isinstance(version, bool) or not isinstance(version, int) or version < 1):
+            raise SelectionError("design_template_version_invalid", "deck_attributes.design_template_version は 1 以上の整数")
+        if expected is not None and not isinstance(expected, str):
+            raise SelectionError("design_template_invalid", "deck_attributes.design_template_expected_revision_id は文字列")
+        if wanted is None:
+            if version is not None or expected is not None:
+                raise SelectionError("design_template_required",
+                                     "テンプレートの版（design_template_version）だけは指定できません。テンプレートの名前か ID も指定してください。")
+            return
+        out["design_template"] = wanted.strip()
+        if out.get("style_id"):
+            raise SelectionError("design_template_style_conflict",
+                                 "デザインテンプレートとスタイルの ID（style_id）は一緒に指定できません。どちらか一方にしてください。")
+        if out["mode"] == "motion":
+            raise SelectionError("template_mode_unsupported",
+                                 "デザインテンプレートはモーションでは使えません。プレゼンかピッチで作ってください。",
+                                 details={"mode": "motion"})
 
     def _intake_style_revision(self, attrs: dict[str, Any]) -> str:
         """`style_id` → 会話が言った `style` にあたる付属スタイル → モードの既定のスタイル（付属）。"""
@@ -468,6 +531,8 @@ class IntakesMixin(StoreBase):
             for k in ("page_count", "purpose", "audience"):
                 if prev_args.get(k) and not args.get(k):
                     args[k] = prev_args[k]
+            if prev_args.get(SNAPSHOT_ARG):   # テンプレートの回は、最初に受け付けた控えのまま（選び直さない）
+                args[SNAPSHOT_ARG] = prev_args[SNAPSHOT_ARG]
             run = self.create_run(deck_id, args=args)
             job = self.create_job(deck_id, run_id=run["id"], intake_id=row["id"])
             self.append_event("intake_retried", {"intake_id": row["id"], "job_id": job["id"], "run_id": run["id"],

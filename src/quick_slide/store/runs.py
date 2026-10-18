@@ -251,7 +251,9 @@ class RunsMixin(StoreBase):
             deck = row["deck_id"]
             if deck not in one_page_decks:
                 args = self.deck_run_args(deck)   # type: ignore[attr-defined]
-                one_page_decks[deck] = args.get("mode") == "pitch" and args.get("style") == "infographic"
+                # 全ページ 1 枚のデッキと、デザインテンプレートのデッキ（準備の世代を資料ごとに 1 つずつ進める）は重ねない
+                one_page_decks[deck] = (args.get("mode") == "pitch" and args.get("style") == "infographic") \
+                    or bool(args.get("template_snapshot"))
             if not one_page_decks[deck] and all(self._can_overlap(row, o) for o in same):
                 return row
         return None

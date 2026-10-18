@@ -40,6 +40,8 @@ from ..pins import PinRefused, pin_source
 from ..render import illustrations as ILL
 from ..render import look as LOOK
 from ..render import workspace as W
+from ..preparation.errors import EngineInputUnsupported, PreparationStopped
+from ..preparation.service import TemplateRun, load_template_run
 from ..render.runner import DOCTOR_HINT, check_prerequisites, dependency_message
 from ..scriptdoc import (
     IMPORTED_TYPE,
@@ -76,6 +78,9 @@ from .proc import run_process
 from .pipeline import (
     Context,
     RenderPlan,
+    TEMPLATE_RENDER_PENDING_MESSAGE,
+    TEMPLATE_STOP_KIND,
+    _template_stop,
     _writer_progress,
     check_candidate,
     import_recorded,
@@ -155,6 +160,16 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
         ctx.call(store.fail_run, run_id, message=message, failure_kind=kind, rc=rc)
         return "failed"
 
+    template: TemplateRun | None = None
+    if args.get("template_snapshot"):
+        if resume is not None or op not in ("revise", "insert"):
+            # 描く段・描き直しにつながる直しは、描画（PR 7）がつながるまで、古い経路で描かずに止める
+            return fail(TEMPLATE_RENDER_PENDING_MESSAGE, TEMPLATE_STOP_KIND)
+        try:
+            template = load_template_run(ctx, run)   # 完了した準備の控え（素材の読み直し・LLM はしない）
+        except PreparationStopped as exc:
+            return _template_stop(ctx, None, run_id, exc)
+
     if resume == "import":
         return import_recorded(ctx, run)
     if resume == "render":
@@ -174,9 +189,9 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
     ctx.call(store.set_run_record, run_id, {"base": {"id": head["id"], "version": head["version"]}})
     try:
         if op == "revise":
-            result = _revise(ctx, job, run, req, data)
+            result = _revise(ctx, job, run, req, data, template)
         elif op == "insert":
-            result = _insert(ctx, job, run, req, data)
+            result = _insert(ctx, job, run, req, data, template)
         elif op == "duplicate":
             result = _duplicate(ctx, deck_id, req, data, engine.mode)
         elif op == "visibility":
@@ -198,6 +213,12 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
         return fail(exc.message, exc.kind)
     if isinstance(result, str):
         return result
+    if template is not None:
+        # テンプレートの直しも、候補の台本と準備の記録を保存したところで止める（描画が無いので、承認してページを変えない）
+        ctx.call(store.set_run_record, run_id, {"template_stop": {
+            "reason": "render_unavailable", "generation": template.generation,
+            "candidate": result.candidate["id"] if result.candidate else None}})
+        return fail(TEMPLATE_RENDER_PENDING_MESSAGE, TEMPLATE_STOP_KIND)
     try:
         with deck_turn(ctx, deck_id, "apply"):
             script = _apply(ctx, run, req, head, data, result)
@@ -376,7 +397,7 @@ def _engine_problems(problems: list[str], data: dict[str, Any]) -> list[str]:
 # --- 台本係を呼ぶ直し ------------------------------------------------------------------------------------------
 
 def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[str, Any], data: dict[str, Any],
-                 build, parse_and_apply) -> EditResult | str:
+                 build, parse_and_apply, template: TemplateRun | None = None) -> EditResult | str:
     """台本係に書かせ、確かめ、当て、検査に通るまで直させる（上限あり）。"""
     store = ctx.store
     run_id, deck_id = run["id"], run["deck_id"]
@@ -408,9 +429,15 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
             prompt = build(previous, problems)
         except ContractMissing as exc:
             return fail(f"エンジンの台本の決まり（{exc}）が見つかりません。導入をやり直してください。", "contract")
+        if template is not None:
+            try:
+                template.check_prompt_budget(prompt)   # 既存の台本・修正のエラーも含む完成したプロンプトを、再試行のたびに測る
+            except PreparationStopped as exc:
+                return _template_stop(ctx, template, run_id, exc)
         try:
             answer = ask(backend, exe, prompt, job_dir=run_dir / "writer" / f"round-{round_no}", env=env,
-                         timeout=ctx.settings.worker.writer_timeout_seconds, stop=ctx.stop)
+                         timeout=ctx.settings.worker.writer_timeout_seconds, stop=ctx.stop,
+                         no_tools=template is not None)
         except WriterFailed as exc:
             if exc.kind == "format":
                 previous, problems = "（前の答えは JSON として読めませんでした）", [
@@ -426,6 +453,13 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
             continue
         result.backend = backend
         result.written_by = "writer"
+        if template is not None:
+            result.rebase = None   # テンプレートの資料は、直しを資料ごとに 1 つずつ当てる（並列で重ねない）
+            ref_problems = template.check_script(result.data)
+            if ref_problems:
+                previous, problems = answer, ref_problems
+                continue
+            result.data = template.stamped(result.data)
         if dumps(result.data) == dumps(data):
             return result   # 台本は変わらない（絵だけを直す・変えなくてよかった）
         candidate = ctx.call(store.save_script, deck_id, result.data, written_by="writer", writer_backend=backend,
@@ -444,7 +478,12 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
             ctx.call(store.set_script_check, candidate["id"], 2, ids)
             previous, problems = answer, ids
             continue
-        checked = check_candidate(ctx, engine, run, result.data)
+        try:
+            if template is not None:
+                template.resolve(candidate, result.data)   # 新しく使う素材だけをコピーし、新しい準備の世代に控える
+            checked = check_candidate(ctx, engine, run, result.data, template=template)
+        except PreparationStopped as exc:
+            return _template_stop(ctx, template, run_id, exc)
         ctx.call(store.set_script_check, candidate["id"], -1 if checked.rc is None else checked.rc,
                  checked.problems + checked.warnings + jl_notes)
         if checked.stopped:
@@ -454,6 +493,8 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
             if extra:
                 previous, problems = answer, extra
                 continue
+            if template is not None:
+                template.finish(candidate)
             result.candidate = candidate
             return result
         if checked.rc == 2 and LOOK.theme_refused(checked.problems):
@@ -469,7 +510,8 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
                 "script")
 
 
-def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[str, Any], data: dict[str, Any]):
+def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[str, Any], data: dict[str, Any],
+            template: TemplateRun | None = None):
     deck_id = run["deck_id"]
     engine = engine_for(run["mode"])
     args = _edit_args(run["args"], req)
@@ -517,11 +559,13 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
     def build(previous, problems):
         return build_revision_prompt(engine, args, script=data, targets=targets, instruction=instruction,
                                      attachments=rels, skills_dir=ctx.tools.skills_dir, scope=req.get("scope") or "pages",
-                                     direction=direction, pictures=page_pics, previous=previous, problems=problems)
+                                     direction=direction, pictures=page_pics, previous=previous, problems=problems,
+                                     template=template.writer_sections() if template is not None else None)
 
     def parse_and_apply(answer):
         patch = parse_revision(answer, script=data, targets=keys, pictures=pictures,
-                               attachments=rels + [p["rel"] for p in page_pics], mode=engine.mode)
+                               attachments=rels + [p["rel"] for p in page_pics], mode=engine.mode,
+                               refs=template.ref_ctx if template is not None else None)
         if patch.problems:
             return None, patch.problems
         image_keys = {pp.key for pp in patch.image_changes}
@@ -545,7 +589,7 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
                           rebase=rebase if page_local else None), []
 
     ctx.call(ctx.store.set_job_note, job["id"], {"keys": keys})
-    return _writer_loop(ctx, job, run, req, data, build, parse_and_apply)
+    return _writer_loop(ctx, job, run, req, data, build, parse_and_apply, template)
 
 
 def _imported_text(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[str, Any], data: dict[str, Any],
@@ -937,7 +981,8 @@ def _overlay(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[s
     return _writer_loop(ctx, job, run, req, data, build, parse_and_apply)
 
 
-def _insert(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[str, Any], data: dict[str, Any]):
+def _insert(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[str, Any], data: dict[str, Any],
+            template: TemplateRun | None = None):
     deck_id = run["deck_id"]
     engine = engine_for(run["mode"])
     args = _edit_args(run["args"], req)
@@ -954,17 +999,18 @@ def _insert(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
     def build(previous, problems):
         return build_insert_prompt(engine, args, script=data, after=after, instruction=instruction, attachments=rels,
                                    pictures=page_pics,
-                                   skills_dir=ctx.tools.skills_dir, previous=previous, problems=problems)
+                                   skills_dir=ctx.tools.skills_dir, previous=previous, problems=problems,
+                                   template=template.writer_sections() if template is not None else None)
 
     def parse_and_apply(answer):
         pages, summary, problems = parse_insert(answer, script=data, attachments=rels + [p["rel"] for p in page_pics],
-                                                mode=engine.mode)
+                                                mode=engine.mode, refs=template.ref_ctx if template is not None else None)
         if problems:
             return None, problems
         return EditResult(data=insert_after(data, anchor, pages), plan=RenderPlan(), summary=summary,
                           routes={str(p.get("id")): "insert" for p in pages}), []
 
-    return _writer_loop(ctx, job, run, req, data, build, parse_and_apply)
+    return _writer_loop(ctx, job, run, req, data, build, parse_and_apply, template)
 
 
 # --- 台本係を呼ばない直し --------------------------------------------------------------------------------------

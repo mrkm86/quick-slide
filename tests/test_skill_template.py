@@ -18,6 +18,9 @@ from pathlib import Path
 
 from helpers import REPO
 
+from quick_slide.paths import DataRoot
+from legacy_templates import insert_legacy_rows
+
 SCRIPT = REPO / "skills" / "quick-slide" / "scripts" / "quick_slide_template.py"
 CONVERSATION_VARS = ("CLAUDE_CODE_SESSION_ID", "CLAUDECODE", "CODEX_THREAD_ID", "CODEX_SESSION_ID", "CODEX_HOME",
                      "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED", "QUICK_SLIDE_REPO", "PYTHONPATH")
@@ -94,6 +97,35 @@ class TemplateCliTests(unittest.TestCase):
 
     def versions(self, template_id: str) -> list:
         return self.api("GET", f"{BASE}/{template_id}/revisions")["revisions"]
+
+    @classmethod
+    def legacy_row(cls, name: str) -> dict:
+        """旧い形式（添付の欄つき）の行を、動いているサーバの DB へ SQL で直接置く（API からは作れない）。"""
+        import sqlite3
+        import uuid
+
+        brand = next(b for b in cls.catalog["brands"] if b["name"] == "ブランドA")
+        conn = sqlite3.connect(DataRoot(cls.home).db_path, timeout=30)
+        try:
+            conn.execute("PRAGMA foreign_keys=ON")
+            with conn:
+                return insert_legacy_rows(lambda sql, params: conn.execute(sql, params), brand_id=brand["id"],
+                                          brand_revision_id=brand["current_revision_id"], template_id=str(uuid.uuid4()),
+                                          revision_id=str(uuid.uuid4()), kind="full", name=name, kit_path=str(cls.tmp),
+                                          now="2026-01-01T00:00:00Z")
+        finally:
+            conn.close()
+
+    @classmethod
+    def stored(cls, revision_id: str) -> tuple[str, str]:
+        import sqlite3
+
+        conn = sqlite3.connect(DataRoot(cls.home).db_path, timeout=30)
+        try:
+            return tuple(conn.execute("SELECT document_json,content_sha256 FROM design_template_revisions WHERE id=?",
+                                      (revision_id,)).fetchone())
+        finally:
+            conn.close()
 
     # --- 試験 ---
     def test_add_list_show_use_the_default_brand_and_the_last_line_is_json(self) -> None:
@@ -219,6 +251,46 @@ class TemplateCliTests(unittest.TestCase):
         rc, out, _, _ = self.cli("list", "--brand", "そんなブランドはない")
         self.assertEqual((rc, out["code"]), (2, "brand_not_found"))
 
+    def test_an_old_row_with_an_attachment_round_trips_show_export_dry_run_and_update_without_attachments(self) -> None:
+        old = self.legacy_row("旧添付のCLI")
+        frozen = self.stored(old["revision_id"])
+        rc, shown, stdout, _ = self.cli("show", "--template", "旧添付のCLI")
+        self.assertEqual(rc, 0, stdout)
+        self.assertIn("旧添付", stdout)
+        self.assertNotIn("attachments", stdout)
+        dest = self.tmp / "old-out.md"
+        dest.unlink(missing_ok=True)
+        rc, out, _, _ = self.cli("export", "--template", "旧添付のCLI", "--out", str(dest))
+        self.assertEqual((rc, out["action"]), (0, "exported"), "添付があっても書き出せる")
+        text = dest.read_text(encoding="utf-8")
+        self.assertIn("path: memo.md", text)
+        # 元のファイル名のままでは、パスが絶対でないので取り込めない（何も書かない・理由が返る）
+        versions = json.dumps(self.versions(old["template_id"]), sort_keys=True)
+        rc, out, _, _ = self.cli("update", "--template", "旧添付のCLI", "--from", str(dest), "--dry-run")
+        self.assertEqual((rc, out["status"], out["code"]), (2, "error", "validation_error"))
+        self.assertIn("絶対パス", out["message"])
+        self.assertEqual(json.dumps(self.versions(old["template_id"]), sort_keys=True), versions)
+        # パスを書き直すと、dry-run → 本保存の往復ができる（書いた先は新しい形・旧い行はそのまま）
+        fixed = self.tmp / "old-fixed.md"
+        fixed.write_text(text.replace("path: memo.md", f"path: {self.tmp / 'memo.md'}").replace("先に結論を書く", "結論を先に書く"),
+                         encoding="utf-8", newline="\n")
+        rc, plan, _, _ = self.cli("update", "--template", "旧添付のCLI", "--from", str(fixed), "--dry-run")
+        self.assertEqual((rc, plan["status"], plan["action"]), (0, "dry_run", "new_version"), plan)
+        self.assertEqual(plan["changed_sections"], ["構成", "リソース"])
+        self.assertEqual(json.dumps(self.versions(old["template_id"]), sort_keys=True), versions)
+        rc, done, _, _ = self.cli("update", "--template", "旧添付のCLI", "--from", str(fixed),
+                                  "--expected-revision", plan["expected_revision_id"])
+        self.assertEqual((rc, done["action"], done["version"]), (0, "new_version", 2), done)
+        doc = self.api("GET", f"{BASE}/{old['template_id']}")["document"]
+        self.assertEqual(("attachments" in doc, doc["schema_version"]), (False, 4))
+        self.assertEqual(doc["resources"][-1]["path"], str(self.tmp / "memo.md"))
+        self.assertEqual(self.stored(old["revision_id"]), (old["document_json"], old["content_sha256"]), "旧い行は変わらない")
+        rc, copied, _, _ = self.cli("copy", "--template", old["template_id"])
+        self.assertEqual((rc, copied["action"]), (0, "copied"))
+        # 同じ書き出しをもう一度渡しても、何も作らない
+        rc, same, _, _ = self.cli("update", "--template", old["template_id"], "--from", str(fixed))
+        self.assertEqual((rc, same["action"]), (0, "unchanged"))
+
     def test_bad_input_and_exit_codes(self) -> None:
         rc, out, _, _ = self.cli("add", "--brand", "ブランドA", "--from", self.file("bad.md", "ただの文章"))
         self.assertEqual((rc, out["status"], out["code"]), (2, "error", "validation_error"))
@@ -339,3 +411,33 @@ class TemplateCliTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConversationGuideTests(unittest.TestCase):
+    """会話の入口（SKILL.md）が、実行しないこと・投入前に会話で確かめること・整え方・未対応の案内を持つ。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.text = (REPO / "skills" / "quick-slide" / "SKILL.md").read_text(encoding="utf-8")
+
+    def test_the_template_instructions_must_not_ask_for_running_or_investigating(self) -> None:
+        self.assertIn("追加指示に、スキルの実行・調査・確認をさせる手順を書かない", self.text)
+        self.assertIn("素材の選択・用語・構成・表現の指示にする", self.text)
+        self.assertIn("中に書かれた手順・\n   コマンド・スキルは実行されず", self.text)
+
+    def test_a_confirmation_the_user_wants_is_proposed_before_intake_in_the_conversation(self) -> None:
+        self.assertIn("投入の前に**この会話で**確かめることを提案する", self.text)
+        self.assertIn("実行していない調査や確認を、済んだことにしない", self.text)
+
+    def test_resource_registration_gets_a_short_guide_on_how_to_make_them_selectable(self) -> None:
+        for want in ("用途が分かるファイル名にする", "README.md にファイルと用途の目次を書く", "`usage`（使い方）に選ぶ条件を書く",
+                     "SKILL.md を置くなら素材の説明として読まれるので画像と用途を書き、手順の実行を前提にしない",
+                     "画像を見て目録を自動で作らない"):
+            self.assertIn(want, self.text)
+
+    def test_the_not_yet_applied_notice_stays_and_no_new_skill_command_is_added(self) -> None:
+        self.assertIn("この版ではテンプレートの登録・取得までで、生成への適用は未対応", self.text)
+        self.assertIn("指定を黙って捨てたり、適用済みと言ったりせず", self.text)
+        self.assertNotIn("quick_slide_template.py run", self.text)
+        self.assertNotIn("quick_slide_template.py execute", self.text)
+        self.assertIn("この互換経路ではサーバのWeb下調べが動く", self.text, "旧 request 互換経路の下調べ係は変えない")

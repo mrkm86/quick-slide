@@ -37,13 +37,15 @@ SAMPLE_TABLES = {"samples_seen", "sample_decks"}
 PREVIEW_TABLES = {"page_previews"}
 # 0011: デザインテンプレート（docs/design-template-implementation.md §3）
 TEMPLATE_TABLES = {"design_templates", "design_template_revisions"}
+# 0012: テンプレートで作る資料の控え（docs/design-template-generation.md §2.2）
+SNAPSHOT_TABLES = {"template_snapshots"}
 
 
 class MigrationTests(unittest.TestCase):
     def test_a_fresh_db_gets_exactly_the_p1_and_p2_tables(self) -> None:
         store = open_store(self)
         tables = {r[0] for r in store.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        self.assertEqual(tables, P1_TABLES | P2_TABLES | P3_TABLES | P5_TABLES | SAMPLE_TABLES | PREVIEW_TABLES | TEMPLATE_TABLES)
+        self.assertEqual(tables, P1_TABLES | P2_TABLES | P3_TABLES | P5_TABLES | SAMPLE_TABLES | PREVIEW_TABLES | TEMPLATE_TABLES | SNAPSHOT_TABLES)
         for v1_only in ("plan_revisions", "plan_pages", "batches", "batch_items", "attempts", "slide_versions",
                         "deck_revisions", "instructions", "tasks", "formats", "drafts"):
             # exports は P5 で作り直した（描いた回のファイルの記録。v1 の形ではない）

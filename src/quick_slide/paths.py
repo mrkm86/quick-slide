@@ -167,6 +167,19 @@ class DataRoot:
         """描いた回に渡した設定の控え（ブランドから作ったテーマの YAML など）。エンジンにはこのファイルを渡す。"""
         return self.run_dir(deck_id, run_id) / "settings"
 
+    def run_compilation_dir(self, deck_id: str, run_id: str) -> Path:
+        """デザインテンプレートの回のコンパイル結果（writer.md・preparation.md・style.yaml・theme.yaml・engine-input.json・
+        compilation.json など）。正本は DB の控え（template_snapshots）で、ここは控えから作り直せる写し。"""
+        return self.run_dir(deck_id, run_id) / "template"
+
+    def deck_preparations_dir(self, deck_id: str) -> Path:
+        """デザインテンプレートの素材準備の世代（デッキの中で単調に増える番号。失敗した番号も再利用しない）。"""
+        return self.deck_dir(deck_id) / "preparations"
+
+    def preparation_dir(self, deck_id: str, generation: int) -> Path:
+        """素材準備の 1 世代（入口の確認・読解・カタログ・選んだ素材のコピー・準備の控え）。"""
+        return self.deck_preparations_dir(deck_id) / f"gen-{generation:04d}"
+
     @property
     def trash_dir(self) -> Path:
         return self.root / ".trash"
