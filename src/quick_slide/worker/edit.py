@@ -429,6 +429,11 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
             prompt = build(previous, problems)
         except ContractMissing as exc:
             return fail(f"エンジンの台本の決まり（{exc}）が見つかりません。導入をやり直してください。", "contract")
+        if template is not None:
+            try:
+                template.check_prompt_budget(prompt)   # 既存の台本・修正のエラーも含む完成したプロンプトを、再試行のたびに測る
+            except PreparationStopped as exc:
+                return _template_stop(ctx, template, run_id, exc)
         try:
             answer = ask(backend, exe, prompt, job_dir=run_dir / "writer" / f"round-{round_no}", env=env,
                          timeout=ctx.settings.worker.writer_timeout_seconds, stop=ctx.stop,

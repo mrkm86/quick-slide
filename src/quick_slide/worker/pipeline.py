@@ -683,6 +683,11 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any], *, temp
                                   template=template.writer_sections() if template is not None else None)
         except ContractMissing as exc:
             return fail(f"エンジンの台本の決まり（{exc}）が見つかりません。導入をやり直してください。", "contract")
+        if template is not None:
+            try:
+                template.check_prompt_budget(prompt)   # 完成したプロンプト全体を、再試行のたびに測る（超えたら要約せず止める）
+            except PreparationStopped as exc:
+                return _template_stop(ctx, template, run_id, exc)
         try:
             if motion.is_motion(args):
                 def scene_progress(phase, done, total):

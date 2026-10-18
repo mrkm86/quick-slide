@@ -21,9 +21,8 @@ from .. import oscompat
 from .errors import PreparationStopped
 from .policy import DEFAULT_POLICY, Policy
 
-SKILL_MARKERS = ("quick-slide-read.json", "SKILL.md")
-# 通常のフォルダの説明書き（SKILL.md は skill の印なので、ここには入れない）
-GUIDE_NAMES = ("README.md", "README.txt")
+# フォルダの説明書き。最初に見つかった 1 つだけを、素材の説明として読む（書かれた手順は実行しない。docs/adr/0031）
+GUIDE_NAMES = ("SKILL.md", "README.md", "README.txt")
 TEXT_EXTS = frozenset({".md", ".markdown", ".txt"})
 JSON_EXTS = frozenset({".json"})
 YAML_EXTS = frozenset({".yaml", ".yml"})

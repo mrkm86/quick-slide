@@ -4,10 +4,13 @@
   （ID が先、次に名前の完全一致）→ 版（省けば受付時の最新）を 1 つに決める。サーバが最終の判断をする
   （CLI が名前を先に引いていても、ここで引き直す）。曖昧・別ブランド・削除済み・無い版・使えないモードは
   `SelectionError`（code・候補つき）で断る
-- 控え（`template_snapshots`・0012）: テンプレートの文書全文・内部改訂 ID・内容ハッシュと、**そのテンプレートの版を保存したときの**
-  ブランドの改訂（確定した config・資産の目録）。最新のブランドで過去のテンプレートの版を組み直さない。
+- 控え（`template_snapshots`・0012）: テンプレートの文書全文（作業用の v4）・内部改訂 ID・内容ハッシュと、**投入したときの**
+  親ブランドの最新の改訂（確定した config・資産の目録）。テンプレートを保存したときのブランドの版は使わない
+  （過去の版を選んでも最新のブランドで投入する。docs/adr/0030-template-follows-latest-brand.md）。
   不変の 1 行で、同じ内容は同じ行を共有する。描いた回は `runs.args.template_snapshot`（{snapshot_id, snapshot_sha256}）で指す
-- 控えの元になったテンプレートを後から上書き・削除しても、ブランドを更新しても、この行は変わらない
+- 控えの元になったテンプレートを後から上書き・削除しても、ブランドを更新しても、この行は変わらない。
+  投入したあとの直し・差し込み・複製・再開は、この控えをそのまま使い、最新のブランドへ解決し直さない
+- 旧い控え（文書が保存形式3・コンパイラ4）は書き換えない。読むときの変換は `dt.convert`（`snapshot_document`）
 """
 
 from __future__ import annotations
@@ -66,10 +69,11 @@ class TemplateSnapshotsMixin(StoreBase):
             raise SelectionError("template_revision_changed",
                                  "選んだあとにテンプレートが保存し直されました。内容を確かめてから、もう一度頼んでください。",
                                  details={"template_id": template["id"], "revision_id": view["revision_id"]}, status=409)
-        brand_rev = self.brand_revision(view["brand_revision_id"])
-        if brand_rev["brand_id"] != brand["id"]:
-            raise SelectionError("template_brand_mismatch", "テンプレートを保存したときのブランドを確認できません。"
-                                 "テンプレートを開いて保存し直してください。", details={"template_id": template["id"]})
+        # 親ブランドの、投入時の最新の改訂。テンプレートの保存時の brand_revision_id は履歴であって、ここでは引かない
+        brand_rev = self.brand_revision(brand["current_revision_id"]) if brand["current_revision_id"] else None
+        if brand_rev is None or brand_rev["brand_id"] != brand["id"]:
+            raise SelectionError("template_brand_mismatch", "ブランドの最新の設定を確認できません。ブランドを開いて保存し直してください。",
+                                 details={"template_id": template["id"]})
         brand_snapshot = {
             "id": brand["id"], "revision_id": brand_rev["id"], "revision": brand_rev["revision"],
             "config": brand_rev["config"],
@@ -101,7 +105,7 @@ class TemplateSnapshotsMixin(StoreBase):
             if configured and self._one("SELECT 1 FROM brands WHERE id=? AND deleted_at IS NULL", (configured,)) is None:
                 raise SelectionError("brand_not_found", "既定のブランドが見つかりません。ブランドを指定してください（設定で既定を選び直せます）。")
             brand_id = self.default_brand_id()
-        row = self._one("SELECT id,name FROM brands WHERE id=? AND deleted_at IS NULL", (brand_id,))
+        row = self._one("SELECT id,name,current_revision_id FROM brands WHERE id=? AND deleted_at IS NULL", (brand_id,))
         if row is None:
             raise SelectionError("brand_not_found", "そのブランドが見つかりません（削除された可能性があります）。ブランドを選び直してください。")
         return row

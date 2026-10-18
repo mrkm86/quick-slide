@@ -188,19 +188,24 @@ def _compile_snapshot(store: Any, root: DataRoot, run: dict[str, Any], snapshot:
     （最新の版で黙って解釈し直さない）。同じ控えの完了済みのコンパイルが前の回にあれば、それを写して使う。
     戻り値: {"files": {名前: 本文}, "record": 回の記録に残す要約}。"""
     from .. import design_templates as dt
+    from .. import design_templates_legacy as legacy
     from ..errors import StateError
 
     out_dir = root.run_compilation_dir(run["deck_id"], run["id"])
     wanted = snapshot.get("compiler_version")
     reused = _reuse_compilation(store, root, run, ref, wanted, out_dir)
     if reused is None:
-        if wanted != dt.COMPILER_VERSION:
-            raise StateError("デザインテンプレートを受け付けたときと、いまのコンパイラの版が違うため、止めました"
-                             "（最新の版で解釈し直さず、新しいスライドとして頼み直してください）。")
         b = snapshot["brand"]
         brand = {"id": b["id"], "current_revision_id": b["revision_id"], "config": b["config"], "assets": b["assets"]}
         try:
-            result = dt.compile_document(snapshot["template"]["document"], brand, mode=run["mode"])
+            if wanted == dt.COMPILER_VERSION:
+                result = dt.compile_document(dt.snapshot_document(snapshot), brand, mode=run["mode"])
+            elif wanted == legacy.COMPILER_VERSION:
+                # 旧版で受け付けた回: 控えの文書（保存したまま）を当時のアルゴリズムで作り直す。新しい版では解釈し直さない
+                result = legacy.compile_document(snapshot["template"]["document"], brand, mode=run["mode"])
+            else:
+                raise StateError("デザインテンプレートを受け付けたときと、いまのコンパイラの版が違うため、止めました"
+                                 "（最新の版で解釈し直さず、新しいスライドとして頼み直してください）。")
         except ValueError as exc:
             raise StateError(f"デザインテンプレートをコンパイルできません: {exc}") from None
         files = {k: v for k, v in result["files"].items() if v}

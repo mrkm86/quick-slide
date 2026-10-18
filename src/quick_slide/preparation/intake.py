@@ -2,6 +2,7 @@
 
 LLM は呼ばない。結果（`intake.json`）は不変の控えで、世代の入力 digest の元になる。パスそのものは控えに残さない
 （準備係・台本係にも渡さない。置き場は回の控えのスナップショットから引く）。
+読んだテキストの原文（説明書き・テキスト・JSON・YAML）は、台本係へもそのまま渡す元になる（`TemplateRun.resource_texts`）。
 """
 
 from __future__ import annotations
@@ -11,13 +12,12 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .errors import SKILL_UNSUPPORTED_MESSAGE, PreparationStopped
+from .errors import PreparationStopped
 from .policy import Policy
 from .reading import (
     GUIDE_NAMES,
     IMAGE_MEDIA,
     JSON_EXTS,
-    SKILL_MARKERS,
     SUPPORTED_WORDS,
     TEXT_EXTS,
     YAML_EXTS,
@@ -62,19 +62,15 @@ def _expand(row: dict[str, Any]) -> Path:
 def _exists(row: dict[str, Any]) -> bool:
     path = _expand(row)
     try:
-        return path.is_dir() if row["kind"] == "directory" else path.is_file()
+        # 絶対パスでないもの（旧添付から移した元のファイル名）は、起動した場所を引かず見つからないものとして扱う
+        return path.is_absolute() and (path.is_dir() if row["kind"] == "directory" else path.is_file())
     except (OSError, ValueError):
         return False
 
 
 def check_entrances(doc: dict[str, Any]) -> None:
-    """登録した全パスの入口を確かめる。一つでも欠けたら止める（任意扱いで無視しない）。スキルのフォルダは未対応で止める。"""
-    attachments = doc.get("attachments") or []
-    if attachments:
-        names = "・".join(f"「{a['name']}」" for a in attachments)
-        raise PreparationStopped(f"このテンプレートには旧形式の添付ファイル（{names}）があります。添付ファイルの読み取りは"
-                                 "まだ使えないため、素材の準備を止めました。添付をリソース（ファイル）に置き換えてください。",
-                                 "attachment_unsupported", {"names": [a["name"] for a in attachments]})
+    """登録した全パスの入口を確かめる。一つでも欠けたら止める（任意扱いで無視しない）。
+    `SKILL.md`・`quick-slide-read.json` があるフォルダも止めない（通常のフォルダとして読むだけ。何も実行しない）。"""
     resources = doc.get("resources") or []
     missing = [r["name"] for r in resources if not _exists(r)]
     if missing:
@@ -82,11 +78,6 @@ def check_entrances(doc: dict[str, Any]) -> None:
             "登録したリソースが見つかりません: " + "・".join(f"「{n}」" for n in missing)
             + "。パスを直すか、リソースから外してから、もう一度頼んでください（見つからないものを無視して進めません）。",
             "resource_missing", {"names": missing})
-    skills = [r["name"] for r in resources if r["kind"] == "directory"
-              and any(os.path.lexists(_expand(r) / m) for m in SKILL_MARKERS)]
-    if skills:
-        raise PreparationStopped(SKILL_UNSUPPORTED_MESSAGE.format(name="」「".join(skills)), "skill_unsupported",
-                                 {"names": skills})
 
 
 def _item(rel: str, info, size: int) -> dict[str, Any]:
@@ -98,7 +89,7 @@ def _read_folder(row: dict[str, Any], reader: Reader, budget: TextBudget) -> dic
     name, root, policy = row["name"], _expand(row), reader.policy
     entries = reader.inventory(root, name)
     guide = None
-    for g in GUIDE_NAMES:   # 最初に見つかった 1 つだけ（README.md が README.txt に先立つ）
+    for g in GUIDE_NAMES:   # 最初に見つかった 1 つだけ（SKILL.md → README.md → README.txt）。説明として読むだけで、実行しない
         if os.path.lexists(root / g):
             what = f"リソース「{name}」の説明書き（{g}）"
             data, sha = reader.read_bytes(root, g, policy.guide_bytes, what)

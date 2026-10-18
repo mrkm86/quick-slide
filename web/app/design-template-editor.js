@@ -5,12 +5,12 @@
   function text(tag, value, cls) { return h(tag, { text: value, class: cls }); }
   function button(label, fn, attrs) { return h("button", Object.assign({ type: "button", class: "btn btn--small", onclick: fn, text: label }, attrs || {})); }
   function empty(id, brand, name) {
-    return { schema_version: 3, id: id, brand_id: brand, revision: 0, based_on: null, name: name || "", description: "", modes: ["presentation"], structure: "", instructions: "", resources: [], attachments: [] };
+    return { schema_version: 4, id: id, brand_id: brand, revision: 0, based_on: null, name: name || "", description: "", modes: ["presentation"], structure: "", instructions: "", resources: [] };
   }
   SS.newDesignTemplate = empty;
   // 旧形式の保存文書はサーバが移して渡す。ここで移すのは画面案に埋め込んだ見本だけ。
   SS.normalizeDesignTemplate = function (item, brandId) {
-    if (item.schema_version === 3) { return item; }
+    if (item.schema_version === 4) { return item; }
     var d = empty(item.id, brandId, item.name);
     d.modes = item.modes.map(function (m) { return m === "ピッチ" ? "pitch" : "presentation"; });
     d.description = item.description || "";
@@ -227,7 +227,7 @@
     }
     var additional = area("追加指示", d.instructions, function (v) { d.instructions = v; });
     additional.querySelector("textarea").placeholder = "## やること\n\n## やらないこと（代わりにどうするかも添える）\n\n迷ったら右上の「書き方の例」を見てください。";
-    var instructionsGuide = guide("instructions", "追加指示", "## やること\n1ページで伝えることは1つにする。見出しは結論を短い文で書く。\n白地を広く取り、ブランドの基本色は見出しと図に使う。\n「イラスト素材」から、内容に合う画像を選んで使う。\n開催日が原稿にない場合は、作る前に確認する。\n\n## やらないこと\n原稿にない数字・日付・事実を作らない（足りないときは「要確認」と書く）。\n写真調にしない（平らな挿絵にする）。\n図や表が主役のページに挿絵を入れない。");
+    var instructionsGuide = guide("instructions", "追加指示", "## やること\n1ページで伝えることは1つにする。見出しは結論を短い文で書く。\n白地を広く取り、ブランドの基本色は見出しと図に使う。\n「イラスト素材」から、内容に合う画像を選んで使う。\n開催日が原稿にない場合は、日付を入れない。\n\n## やらないこと\n原稿に載っていない数字・実績を足さない（確かめが要るものは、頼む前に会話で確かめる）。\n写真調にしない（平らな挿絵にする）。\n図や表が主役のページに挿絵を入れない。");
     var structureExample = "## 表紙\n題材と、この資料で伝えたいこと。\n\n## 課題と提案\n現状の課題と、解決の方向を示す。\n\n## 補足の主張（必要な場合だけ）\nほかのページに埋もれる重要な主張があるときに追加する。\n\n## 最後に聞きたいこと\n相手に判断してほしいことを1〜3個に絞る。";
     var structure = area("構成", d.structure, function (v) { d.structure = v; });
     var structureInput = structure.querySelector("textarea");
@@ -263,45 +263,56 @@
         row.usage.trim() ? text("p", row.usage.trim(), "small muted template-row__usage") : null);
     });
     // リソースは欄が分かれているので、例は写すのではなく、名前・種類・使い方の入った行として足す（パスは各自で選ぶ）。
+    // 画像フォルダの目次の例（コピー用）。説明文やパス欄は含めず、表だけ。
+    var catalogExample = "# 画像の目次\n\n| ファイル | 用途 |\n|---|---|\n| 表紙_背景.png | 表紙の背景 |\n| 比較_図.png | 2つの案を比べるページ |\n| まとめ_背景.png | まとめの背景 |\n";
     var resourceExamples = [
-      { name: "画像フォルダ", kind: "directory", where: "~/Pictures/slide-images",
-        usage: "中の目次（README.md）を見て、ページの内容に最適な画像を1枚選ぶ。目次にない画像は使わない。合う画像がなければ画像なしにする。" },
-      { name: "ファクトチェック", kind: "directory", where: "~/.claude/skills/fact-check",
-        usage: "中の SKILL.md の手順で、台本の数字・固有名詞・日付を確かめる。確かめられないものは削らずに「要確認」と書き添える。" },
-      { name: "会社概要", kind: "file", where: "~/Documents/company-profile.md",
-        usage: "会社を紹介するページは、このファイルの内容だけで書く。載っていない実績や数字は足さない。" }];
+      { name: "画像フォルダ（ファイル名で選ぶ）", kind: "directory", sample: "表紙_背景.png・比較_図.png・まとめ_背景.png",
+        usage: "ファイル名から用途が合う画像を選ぶ。合うものがなければ画像なしにする。" },
+      { name: "画像フォルダ（目次で選ぶ）", kind: "directory", catalog: catalogExample,
+        usage: "README.md の目次を見て、内容に合う画像を選ぶ。目次にない画像は使わない。" },
+      { name: "会社概要", kind: "file", sample: "company-profile.md",
+        usage: "会社を紹介するページは、このファイルの内容だけで書く。載っていない実績や数字は足さない。" },
+      { name: "用語集", kind: "file", sample: "glossary.md",
+        usage: "用語・略語の表記はこのファイルに合わせる。書かれていない定義は作らない。" }];
+    // 目次のコピー（README.md に貼る内容）。カードを足す操作とは別。失敗したら、選んだ文字を手でコピーしてもらう。
+    function catalogBlock(ex) {
+      var pre = text("pre", ex.catalog);
+      var copy = h("button", { type: "button", class: "btn btn--icon btn--ghost template-guide__copy", "aria-label": "「" + ex.name + "」の README.md の目次をコピー", title: "コピー" }, SS.icon("content_copy"));
+      copy.addEventListener("click", function () {
+        SS.copyText(ex.catalog).then(function (ok) {
+          if (ok) { SS.toast("README.md の目次をコピーしました。"); return; }
+          var range = document.createRange(); range.selectNodeContents(pre);
+          var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+          SS.toast("コピーできませんでした。選んだ文字を ⌘C（Windows は Ctrl+C）でコピーしてください。", { kind: "error" });
+        });
+      });
+      return h("div", { class: "template-guide__catalog" }, h("div", { class: "template-guide__head" }, text("span", "README.md の例（目次）"), copy), pre);
+    }
     var resourceGuideCard = h("div", { class: "template-guide", id: "template-guide-resources", hidden: true },
       h("div", { class: "template-guide__head" }, text("span", "書き方の例")),
       resourceExamples.map(function (ex) {
         return h("div", { class: "template-guide__example" },
           h("dl", null, text("dt", "名前"), text("dd", ex.name), text("dt", "種類"), text("dd", ex.kind === "file" ? "ファイル" : "フォルダ"),
-            text("dt", "パスの例"), text("dd", ex.where), text("dt", "使い方"), text("dd", ex.usage)),
+            ex.sample ? text("dt", "ファイル名の例") : null, ex.sample ? text("dd", ex.sample) : null, text("dt", "使い方"), text("dd", ex.usage)),
+          ex.catalog ? catalogBlock(ex) : null,
           button("この例を追加", function () {
+            // 足すのは名前・種類・使い方だけ。パス・README の内容・ファイルは保存も作成もしない。
             // 例を畳んでから足す（足した行が開いて、名前の欄に移る）
             resourceGuideCard.hidden = true; resourceGuideToggle.setAttribute("aria-expanded", "false");
             refs.addRow({ name: ex.name, kind: ex.kind, usage: ex.usage });
             SS.toast("「" + ex.name + "」を追加しました。パスを指定してください。");
           }, { "aria-label": "「" + ex.name + "」の例をリソースに追加" }));
       }),
-      text("p", "追加指示から「画像フォルダ」のように名前で呼べます。例は保存されません。", "small muted"));
+      text("p", "追加指示から名前で呼べます。例は保存されません。", "small muted"));
     var resourceGuideToggle = guideToggle(resourceGuideCard);
-    var materials = h("div");
-    // 添付は前の画面で取り込んだものを残すだけ。新しいファイルは、種類「ファイル」のリソースとしてパスで指定する。
-    function redrawMaterials() {
-      SS.clear(materials);
-      if (d.attachments.length) { materials.appendChild(text("h3", "添付済みのファイル")); }
-      d.attachments.forEach(function (row, i) {
-        materials.appendChild(h("fieldset", { class: "template-row" }, text("legend", row.file),
-          removeButton(row.file + "を外す", function () { d.attachments.splice(i, 1); dirty(); redrawMaterials(); }),
-          row.image ? h("img", { class: "template-material-image", src: row.url, alt: row.name }) : null,
-          tipControl("名前", "追加指示や構成から、この名前で呼べます。ほかのリソースと異なる名前にしてください。", row.name, function (v) { row.name = v; }),
-          control("使い方（任意）", row.usage, function (v) { row.usage = v; }, true)));
-      });
-    }
-    redrawMaterials();
+    // 素材を選ぶ手がかり。画像を見て自動で目録を作る機能はない（ファイル名・形式・大きさの一覧は機械的に作る）
+    var resourceTips = ["用途が分かるファイル名にします。", "README.md に、ファイルと用途の目次を書きます。",
+      "カードの「使い方」に、選ぶ条件を書きます。",
+      "SKILL.md は素材の説明として読まれます。画像と用途を書き、手順の実行を前提にしないでください。",
+      "画像を見て自動で目録を作る機能はありません。フォルダの説明書きは SKILL.md → README.md → README.txt の順で、最初に見つかった1つを読みます。"];
     function fail(error) {
       SS.clear(errors).appendChild(text("p", error.message, "notice notice--error"));
-      var message = error.message, section = error.section || (/リソース|添付/.test(message) ? "resources" : /構成/.test(message) ? "structure" : /追加指示/.test(message) ? "instructions" : /名前|テンプレート名|形式|用途/.test(message) ? "basic" : null);
+      var message = error.message, section = error.section || (/リソース/.test(message) ? "resources" : /構成/.test(message) ? "structure" : /追加指示/.test(message) ? "instructions" : /名前|テンプレート名|形式|用途/.test(message) ? "basic" : null);
       if (section && panelNodes[section]) {
         activateTab(section);
         if (section === "resources" && !error.control) { refs.openAll(); }
@@ -325,7 +336,7 @@
             }
           });
         });
-        var resourceNames = d.resources.concat(d.attachments).map(function (r) { return r.name.trim(); });
+        var resourceNames = d.resources.map(function (r) { return r.name.trim(); });
         if (new Set(resourceNames).size !== resourceNames.length) { var error = new Error("リソースの名前は重複しないようにしてください。"); error.section = "resources"; throw error; }
         var result = await io.save({ document: Object.assign({}, d, { based_on: from }), mode: from ? "new_version" : "overwrite", source: asNew ? null : calledRow });
         calledRow = null;
@@ -401,16 +412,16 @@
       h("nav", { class: "breadcrumb", "aria-label": "現在地" }, h("a", { href: options.brandHref || "#" + options.brandPath, "data-nav": options.brandNav ? true : null, text: options.brand.name }), " › デザインテンプレート › ", item.name),
       // 幅によって並びを変えない: 題名、注意、その下に「版と状態 … 保存」の1行
       h("div", { class: "template-head" }, text("h1", "デザインテンプレートの編集"),
-        h("div", { class: "notice notice--info template-caution" }, text("p", "AI はここに書いた指示を、いつも守れるとは限りません。できあがった資料で、指示どおりになっているか確かめてください。")),
+        h("div", { class: "notice notice--info template-caution" }, text("p", "ここに書いた指示が、いつもそのとおりに反映されるとは限りません。できあがった資料で確かめてください。")),
         h("div", { class: "template-toolbar" }, h("div", { class: "template-toolbar__status" }, version, state), h("div", { class: "template-toolbar__actions menu-anchor" }, revert, h("div", { class: "template-split" }, save, saveMore)))),
       nav, errors,
       h("div", { class: "template-tab-panels" },
         panel("basic", "基本", options.brand.name + "の色・ロゴ・字体を引き継ぎます。", [control("テンプレート名", d.name, function (v) { d.name = v; }), control("用途の説明", d.description, function (v) { d.description = v; }), modes]),
         panel("structure", "構成", "資料のページの並びと、各ページで伝えることを書きます。書き方は自由です。原稿でページの並びが決まっているときは、原稿のほうを優先します。", [structureGuide.card, structure], h("div", { class: "template-section__tools" }, structure.toggle, structureGuide.toggle)),
-        panel("instructions", "追加指示", "文章の書き方も見た目も、ここにまとめて書きます。登録したリソースは「名前」で呼べます。", [instructionsGuide.card, additional], h("div", { class: "template-section__tools" }, additional.toggle, instructionsGuide.toggle)),
-        panel("resources", "リソース", "参考資料や素材を、名前を付けて登録します。フォルダを登録すると、中の説明書き（README.md など）を先に読んでから必要なファイルを選びます。", [resourceGuideCard, refs, materials,
-          // 登録したことを、スキルのプログラムを動かしてよいという許可とみなす（別の確認は出さない）。そのぶん、ここで注意を添える
-          text("p", "ここに登録したファイルやフォルダは、資料を作るときに AI が中を読み、スキルならそのプログラムも動かします。中身を確かめた、安心できるものだけを登録してください。", "small muted template-resource-caution")], resourceGuideToggle)),
+        panel("instructions", "追加指示", "文章の書き方も見た目も、ここにまとめて書きます。登録したリソースは「名前」で呼べます。", [instructionsGuide.card, text("p", "スキル・コマンド・Web の調べものは実行されません。調査や事実確認は、頼む前に会話で行ってください。", "small muted template-not-run"), additional], h("div", { class: "template-section__tools" }, additional.toggle, instructionsGuide.toggle)),
+        panel("resources", "リソース", "参考資料や素材を、名前を付けて登録します。フォルダを登録すると、中の説明書き（SKILL.md・README.md・README.txt のうち最初の1つ）を先に読んでから、必要なファイルを選びます。", [resourceGuideCard, refs,
+          text("p", "登録したファイルやフォルダは、資料を作るための素材として読みます。中に書かれた手順・コマンド・スキルは実行せず、プログラムは動かしません。", "small muted template-resource-caution")],
+          h("div", { class: "template-section__tools" }, SS.helpTip("選ばれやすくするコツ", resourceTips), resourceGuideToggle))),
       h("div", { class: "template-tab-footer" }, previous, position, next));
     // AI に渡す指示の原文は開発の確かめ用。普段の画面には出さず、URL に ?debug を付けたときだけ出す
     if (showDebug) { page.appendChild(h("details", { class: "template-debug" }, text("summary", "保存した指示を確認する（検証用）"), delivery)); }
@@ -458,10 +469,7 @@
           return h("div", { class: "template-row" }, text("p", r.name, "template-row__title"),
             h("p", { class: "small template-row__where" }, kindTag(r.kind), text("span", r.path || "パスが未指定です", r.path ? "template-version__path" : "template-row__missing")),
             r.usage.trim() ? text("p", r.usage, "small template-version__usage") : null);
-        }).concat(doc.attachments.map(function (r) {
-          return h("div", { class: "template-row" }, text("p", r.name, "template-row__title"), text("p", "添付ファイル：" + r.file, "small muted"),
-            r.usage.trim() ? text("p", r.usage, "small template-version__usage") : null);
-        }));
+        });
         // 前の版は、中身より上の「コピーして v5 を作成」から編集できる（この版も最新の版も変わらない）
         var call = latest ? null : h("div", { class: "title-row template-version-call" },
           SS.helpTip("コピーして作成", ["v" + row.revision + " の中身をコピーして編集し、v" + (item.revision + 1) + " として保存します。v" + row.revision + " と v" + item.revision + " は変わりません。"]),

@@ -23,7 +23,7 @@ payload の形は v1 と同じ（`schema_version`・`origin{kind,runtime,convers
 
 **デザインテンプレート**（docs/design-template-generation.md §2）: `design_template`（名前か ID）・`design_template_version`・
 `design_template_expected_revision_id`。ブランド（`brand_id`、省けば既定）の中で選び、受付のトランザクションの中で
-内部改訂・内容・ブランドの版を確定して、控え（`template_snapshots`）を残す。`style_id` とは一緒に使えず、モーションでは使えない。
+内部改訂・内容・親ブランドの最新の版を確定して、控え（`template_snapshots`）を残す（docs/adr/0030）。`style_id` とは一緒に使えず、モーションでは使えない。
 同一判定には確定した選択を入れる（`_request_sha`）。クライアントが控えを送ることはできない。
 
 まだ受けないもの（`NotReadyError`。サーバは 400 `not_ready` にする）: 既存のデッキへの追加
@@ -110,7 +110,8 @@ class IntakesMixin(StoreBase):
                      or f"無題のスライド（{now[:10]} {now[11:16]} UTC）")
             deck = self.create_deck(
                 title, mode=attrs["mode"],
-                # テンプレートの回は、控えのブランドの改訂（最新に追随しない）と付属の既定スタイルの改訂で固定する
+                # テンプレートの回は、投入時に選んだ親ブランドの最新の改訂（控えと同じもの。以後は追随しない）と
+                # 付属の既定スタイルの改訂で固定する
                 brand_revision_id=(selection["brand_revision_id"] if selection
                                    else self._intake_brand_revision(attrs.get("brand_id"))),
                 style_revision_id=self._intake_style_revision(attrs),

@@ -123,11 +123,14 @@ def export_markdown(app, req):
 
 
 def _compile_inputs(app, req) -> tuple[dict[str, Any], dict[str, Any], str]:
-    """保存した版と、そのとき控えたブランドの版を読む（いまのブランドではない）。鍵の中で読むのはここまで。"""
+    """保存した版と、親ブランドの最新の版を読む（保存したときのブランドの版ではない。新しい資料の投入と同じ。
+    投入済みの資料の再生とは別の用途）。鍵の中で読むのはここまで。"""
     with app.store_lock:
         view = app.store.get_design_template(req.params["template_id"], revision=_revision_number(req))
         doc = view["document"]
-        brev = app.store.brand_revision(view["brand_revision_id"])
+        brev = app.store.brand(doc["brand_id"])["current_revision"]
+        if brev is None:
+            raise ApiError(409, "brand_unavailable", "ブランドの最新の設定を確認できません。ブランドを開いて保存し直してください。")
     brand = {"id": doc["brand_id"], "current_revision_id": brev["id"], "revision": brev["revision"], "config": brev["config"],
              "assets": [{k: a[k] for k in ("asset_id", "role", "label", "sha256", "width", "height")} for a in brev["assets"]]}
     return view, brand, _query(req).get("mode") or doc["modes"][0]

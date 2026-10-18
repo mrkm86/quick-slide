@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 from helpers import open_store, temp_dir
+from legacy_templates import (GOLDEN_ROW_SHA, all_rows, insert_legacy_template, old_content_sha256, stored_row)
 
 from quick_slide import design_templates as dt
 from quick_slide.db.connection import connect
@@ -71,11 +72,12 @@ class CreateAndReadTests(Base):
                 self.create(document=bad)
         self.assertEqual((self.count_rows(), self.count_rows("design_templates")), (0, 0))
 
-    def test_old_schema_documents_are_stored_as_v3(self) -> None:
+    def test_old_schema_documents_are_stored_as_v4(self) -> None:
         old = {"schema_version": 2, "id": "x", "brand_id": "y", "revision": 0, "name": "旧形式", "modes": ["presentation"],
                "description": "", "script": {"structure": "構成の本文", "purpose": "目的"}, "drawing": {}}
         t = self.create(document=old)
-        self.assertEqual(t["document"]["schema_version"], 3)
+        self.assertEqual(t["document"]["schema_version"], 4)
+        self.assertNotIn("attachments", t["document"])
         self.assertEqual(t["document"]["structure"], "構成の本文")
         self.assertIn("目的", t["document"]["instructions"])
 
@@ -395,15 +397,101 @@ class UnchangedTests(Base):
         r = self.store.overwrite_design_template(t["template_id"], doc(instructions="図は少なめにする "), expected_revision_id=t["revision_id"])
         self.assertFalse(r["unchanged"])
 
-    def test_attachments_compare_by_hash_name_and_usage(self) -> None:
-        def att(aid, sha="a" * 64, usage="使う"):
-            return {"id": aid, "name": "画像", "file": "a.png", "url": f"/x/{aid}", "image": True, "usage": usage, "sha256": sha}
-        t = self.create(document=doc(attachments=[att("one")]))
-        self.assertTrue(self.store.overwrite_design_template(t["template_id"], doc(attachments=[att("two")]),
-                                                             expected_revision_id=t["revision_id"])["unchanged"])
-        r = self.store.overwrite_design_template(t["template_id"], doc(attachments=[att("two", sha="b" * 64)]),
-                                                 expected_revision_id=t["revision_id"])
-        self.assertFalse(r["unchanged"])
+    def test_a_document_with_an_attachments_field_is_not_a_current_document(self) -> None:
+        att = {"id": "one", "name": "画像", "file": "a.png", "url": "/x/one", "image": True, "usage": "使う", "sha256": "a" * 64}
+        with self.assertRaises(ValidationError):
+            self.create(document=doc(attachments=[att]))
+        self.assertEqual(self.count_rows(), 0)
+
+
+class LegacyRowTests(Base):
+    """保存形式3（添付の専用欄）の行は書き換えず、読むときだけ作業用の v4 にする。無変更の判定は新しい形で前後を比べる。"""
+
+    def legacy(self, kind: str = "empty") -> dict:
+        return insert_legacy_template(self.store, self.bid, kind)
+
+    def test_reading_converts_without_touching_the_stored_bytes_or_hash(self) -> None:
+        for kind in ("empty", "full"):
+            with self.subTest(kind=kind):
+                t = self.legacy(kind)
+                before = all_rows(self.store)
+                view = self.store.get_design_template(t["template_id"])
+                self.store.list_design_templates(self.bid)
+                revisions = self.store.design_template_revisions(t["template_id"])
+                self.assertEqual(all_rows(self.store), before, "読むだけでは行を書き換えない")
+                self.assertEqual(stored_row(self.store, t["revision_id"]), (t["document_json"], t["content_sha256"]))
+                self.assertEqual(json.loads(t["document_json"])["schema_version"], 3)
+                for doc_ in (view["document"], revisions[0]["document"]):
+                    self.assertEqual((doc_["schema_version"], "attachments" in doc_), (4, False))
+                names = [r["name"] for r in view["document"]["resources"]]
+                self.assertEqual(names, ["画像集"] + (["旧添付"] if kind == "full" else []))
+
+    def test_the_old_stored_hash_is_the_old_algorithm_and_is_never_recomputed(self) -> None:
+        for kind in ("empty", "full"):
+            t = self.legacy(kind)
+            self.assertEqual(t["content_sha256"], GOLDEN_ROW_SHA[kind])
+            effective = self.store.get_design_template(t["template_id"])["document"]
+            self.assertNotEqual(content_sha256(effective), t["content_sha256"], "新しい算法の値は旧い行のハッシュと違う")
+            self.assertEqual(stored_row(self.store, t["revision_id"])[1], GOLDEN_ROW_SHA[kind])
+
+    def test_a_same_content_save_makes_no_row_even_though_the_stored_hash_differs(self) -> None:
+        for kind in ("empty", "full"):
+            with self.subTest(kind=kind):
+                t = self.legacy(kind)
+                effective = self.store.get_design_template(t["template_id"])["document"]
+                before = all_rows(self.store)
+                for call in (lambda: self.store.overwrite_design_template(t["template_id"], effective, expected_revision_id=t["revision_id"]),
+                             lambda: self.store.add_design_template_version(t["template_id"], effective, expected_revision_id=t["revision_id"])):
+                    self.assertTrue(call()["unchanged"])
+                # 旧形式のまま（添付の欄つき）で送り返す古い画面も、同じ中身なら何も作らない
+                self.assertTrue(self.store.overwrite_design_template(t["template_id"], json.loads(t["document_json"]),
+                                                                     expected_revision_id=t["revision_id"])["unchanged"])
+                self.assertEqual(all_rows(self.store), before)
+
+    def test_a_real_edit_appends_a_new_row_in_the_new_form_and_keeps_the_old_one(self) -> None:
+        for kind in ("empty", "full"):
+            with self.subTest(kind=kind):
+                t = self.legacy(kind)
+                effective = self.store.get_design_template(t["template_id"])["document"]
+                before = all_rows(self.store)
+                saved = self.store.overwrite_design_template(
+                    t["template_id"], {**effective, "instructions": "直した指示"}, expected_revision_id=t["revision_id"])
+                self.assertFalse(saved["unchanged"])
+                after = all_rows(self.store)
+                self.assertEqual(after[:len(before)], before, "旧い行は1バイトも変わらない")
+                self.assertEqual(len(after), len(before) + 1)
+                new_raw, new_sha = stored_row(self.store, saved["revision_id"])
+                self.assertEqual(json.loads(new_raw)["schema_version"], 4)
+                self.assertNotIn("attachments", json.loads(new_raw))
+                self.assertEqual(new_sha, content_sha256(saved["document"]))
+                self.assertEqual(saved["document"]["resources"], effective["resources"], "移したリソースは落ちない・改名されない")
+                self.assertEqual(changed_sections(self.store.get_design_template(t["template_id"], revision_id=t["revision_id"])["document"],
+                                                  saved["document"]), ["追加指示"])
+
+    def test_an_unresolved_path_from_an_old_attachment_may_stay_but_a_new_relative_path_is_refused(self) -> None:
+        t = self.legacy("full")
+        effective = self.store.get_design_template(t["template_id"])["document"]
+        added = {**effective, "resources": effective["resources"] + [resource("new-1", "新しい", "relative-new.md")]}
+        with self.assertRaises(ValidationError):
+            self.store.overwrite_design_template(t["template_id"], added, expected_revision_id=t["revision_id"])
+        fixed = json.loads(json.dumps(effective))
+        fixed["resources"][-1]["path"] = "~/Documents/memo.md"   # 利用者がパスを指定し直す
+        saved = self.store.overwrite_design_template(t["template_id"], fixed, expected_revision_id=t["revision_id"])
+        self.assertEqual(saved["document"]["resources"][-1]["path"], "~/Documents/memo.md")
+
+    def test_copy_duplicate_and_the_version_list_work_on_old_rows(self) -> None:
+        t = self.legacy("full")
+        v2 = self.store.add_design_template_version(
+            t["template_id"], {**self.store.get_design_template(t["template_id"])["document"], "instructions": "二版目"},
+            expected_revision_id=t["revision_id"])
+        copied = self.store.copy_design_template_version(t["template_id"], t["revision_id"], expected_revision_id=v2["revision_id"])
+        self.assertEqual(copied["revision"], 3)
+        self.assertEqual(copied["document"]["resources"][-1]["name"], "旧添付")
+        dup = self.store.duplicate_design_template(t["template_id"], expected_revision_id=copied["revision_id"])
+        self.assertEqual([r["name"] for r in dup["document"]["resources"]], ["画像集", "旧添付"])
+        self.assertEqual(stored_row(self.store, t["revision_id"]), (t["document_json"], t["content_sha256"]))
+        for row in self.store.design_template_revisions(t["template_id"]):
+            self.assertNotIn("attachments", row["document"])
 
 
 class ConflictTests(Base):

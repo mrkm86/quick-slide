@@ -180,13 +180,51 @@ class ResolutionTests(Base):
         current = self.store.get_design_template(t["template_id"])["revision_id"]
         self.intake(design_template="社内報告", design_template_expected_revision_id=current)
 
-    def test_the_snapshot_uses_the_brand_revision_saved_with_the_template_not_the_latest_brand(self) -> None:
+    def test_the_snapshot_uses_the_parents_latest_brand_not_the_one_saved_with_the_template(self) -> None:
         t = self.template()
         newer = self.store.add_brand_revision(self.bid, self.config("#C8102E"))
         self.assertNotEqual(newer["id"], t["brand_revision_id"])
         r = self.intake(design_template="社内報告")
-        self.assertEqual(self.store.deck(r["deck_id"])["brand_revision_id"], t["brand_revision_id"])
-        self.assertEqual(self.snapshot_of(r["run_id"])["brand"]["revision_id"], t["brand_revision_id"])
+        self.assertEqual(self.store.deck(r["deck_id"])["brand_revision_id"], newer["id"])
+        snap = self.snapshot_of(r["run_id"])
+        self.assertEqual(snap["brand"]["revision_id"], newer["id"])
+        self.assertEqual(snap["brand"]["config"]["colors"]["primary"], "#C8102E")
+        # 保存したときのブランドの版は、履歴として残る（投入するブランド版の指定には使わない）
+        self.assertEqual(self.store.get_design_template(t["template_id"])["brand_revision_id"], t["brand_revision_id"])
+
+    def test_an_old_version_is_also_taken_with_the_latest_brand(self) -> None:
+        t = self.template()
+        v2 = self.store.add_design_template_version(t["template_id"], doc(instructions="二版目"), expected_revision_id=t["revision_id"])
+        newer = self.store.add_brand_revision(self.bid, self.config("#C8102E"))
+        r = self.intake(design_template=t["template_id"], design_template_version=1)
+        snap = self.snapshot_of(r["run_id"])
+        self.assertEqual((snap["template"]["revision"], snap["template"]["revision_id"]), (1, t["revision_id"]))
+        self.assertEqual((snap["brand"]["revision_id"], self.store.deck(r["deck_id"])["brand_revision_id"]), (newer["id"], newer["id"]))
+        self.assertNotEqual(v2["brand_revision_id"], newer["id"])
+        identity_brand = snap["brand"]["sha256"]
+        self.assertEqual(identity_brand, hashlib.sha256(json.dumps({"config": snap["brand"]["config"], "assets": snap["brand"]["assets"]},
+                                                                    ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest())
+
+    def test_a_brand_only_update_is_a_new_request_while_the_same_brand_revision_resends(self) -> None:
+        self.template()
+        a = self.intake(design_template="社内報告")
+        self.assertEqual(self.intake(design_template="社内報告")["resolution"], "resent")
+        newer = self.store.add_brand_revision(self.bid, self.config("#C8102E"))
+        b = self.intake(design_template="社内報告")
+        self.assertEqual(b["resolution"], "new")
+        self.assertNotEqual(b["deck_id"], a["deck_id"])
+        self.assertEqual(self.snapshot_of(b["run_id"])["brand"]["revision_id"], newer["id"])
+        self.assertEqual(self.snapshot_of(a["run_id"])["brand"]["revision_id"], self.brand["current_revision_id"], "前の投入の控えは変わらない")
+        c = self.intake(design_template="社内報告")
+        self.assertEqual((c["resolution"], c["deck_id"]), ("resent", b["deck_id"]))
+
+    def test_a_deleted_parent_brand_is_refused_not_replaced(self) -> None:
+        self.template()
+        self.store.delete_brand(self.bid)
+        before = self.counts()
+        with self.assertRaises(SelectionError):
+            self.intake(design_template="社内報告", brand_id=self.bid)
+        self.assertEqual(self.counts(), before)
 
     def test_the_snapshot_cannot_be_sent_by_the_client(self) -> None:
         self.template()

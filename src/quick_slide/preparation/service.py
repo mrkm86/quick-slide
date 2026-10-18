@@ -1,7 +1,8 @@
 """素材準備の共通サービス（§3.1）。`prepare_run` が、入口の確認 → 読解（準備係 LLM）までを世代として作り、`TemplateRun` を返す。
 台本係の段（検査・素材解決・控え）は `TemplateRun` の各メソッドをワーカー（台本を書く・直す）が呼ぶ。
 
-- 子プロセスは起こさない（スキルの読み取りは 6b）。LLM（`llm`）とエンジンの検査は呼ぶ側が渡す
+- 子プロセスは起こさない（資料の説明書き・テキストは読むだけで、書かれた手順は実行しない。ADR 0031）。
+  LLM（`llm`）とエンジンの検査は呼ぶ側が渡す
 - 段の印は `record.preparation`（`records.py`）。完了した段は、入力・出力ハッシュが全部合うときだけ再利用する
 - 世代の中身は `DataRoot.preparation_dir` の下に置く: `intake.json`・`resource-catalog.json`・`reading.json`・`assets.json`・
   `bindings.json`・`manifest.json`・`assets/`。ファイルは一時名へ書いてから置き換える
@@ -17,6 +18,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from .. import design_templates as dt
 from ..paths import DataRoot
 from . import llm as LLM
 from .assets import ASSETS_DIR, asset_total, link_or_copy, resolve_assets, verify_assets
@@ -36,8 +38,9 @@ INTAKE, CATALOG, READING, ASSETS, BINDINGS, MANIFEST = ("intake.json", "resource
                                                          "bindings.json", "manifest.json")
 
 
-def load_compiled(ctx: Any, run: dict[str, Any], snapshot_doc: dict[str, Any]) -> dict[str, str]:
-    """回のコンパイル控え（`writer.md`・`preparation.md`）。記録したハッシュと合わなければ使わない。"""
+def load_compiled(ctx: Any, run: dict[str, Any], snapshot_doc: dict[str, Any], *, compiler_version: Any = None) -> dict[str, str]:
+    """回のコンパイル控え（`writer.md`・`preparation.md`）。記録したハッシュと合わなければ使わない。
+    `snapshot_doc` は控えに保存したままの文書（旧い形式のこともある）、`compiler_version` は控えを作ったときの版。"""
     look = run["args"].get("look") or {}
     folder = look.get("compilation_dir")
     rec = ctx.call(ctx.store.run, run["id"]).get("record") or {}
@@ -53,17 +56,29 @@ def load_compiled(ctx: Any, run: dict[str, Any], snapshot_doc: dict[str, Any]) -
         if listed.get(name) != hashlib.sha256(text.encode("utf-8")).hexdigest():
             raise PreparationStopped(f"テンプレートのコンパイル結果（{name}）が、控えと違っています。", "compilation_changed")
         out[name] = text
-    return _without_paths(out, snapshot_doc)
+    return _without_paths(out, snapshot_doc, compiler_version)
 
 
-def _without_paths(compiled: dict[str, str], doc: dict[str, Any]) -> dict[str, str]:
+def _without_paths(compiled: dict[str, str], doc: dict[str, Any], compiler_version: Any = None) -> dict[str, str]:
     """モデルへ渡す `writer.md`・`preparation.md`。完成した Markdown を切り貼りせず、テンプレートの文書（構造化データ）から、
-    登録した実パスの無い表で組み直す。原文の構成・追加指示はそのまま。控えのコンパイル結果とパス入りで一致しなければ使わない。"""
-    from .. import design_templates as dt
+    登録した実パスの無い表で組み直す。原文の構成・追加指示はそのまま。控えのコンパイル結果と、**控えを作ったときの版の
+    アルゴリズム**で組み直したもの（パス入り）が一致しなければ使わない。モデルへ渡す側は、いまの版の指示で組む。"""
+    from .. import design_templates_legacy as legacy
 
-    d = dt.validate(doc)
-    with_paths = dt.resource_table(d)
-    if compiled["writer.md"] != dt.writer_text(d, with_paths) or compiled["preparation.md"] != dt.preparation_text(d, with_paths):
+    try:
+        d = dt.validate(doc, relative_paths=True)
+        if compiler_version == legacy.COMPILER_VERSION:
+            raw = legacy.validate_v3(doc)
+            with_paths = legacy.resource_table(raw)
+            expected = (legacy.writer_text(raw, with_paths), legacy.preparation_text(raw, with_paths))
+        elif compiler_version in (None, dt.COMPILER_VERSION):
+            with_paths = dt.resource_table(d)
+            expected = (dt.writer_text(d, with_paths), dt.preparation_text(d, with_paths))
+        else:
+            raise PreparationStopped("テンプレートを受け付けたときのコンパイラの版に対応していません。", "compilation_changed")
+    except ValueError:
+        raise PreparationStopped("控えのテンプレートの文書を読めません。", "compilation_changed") from None
+    if (compiled["writer.md"], compiled["preparation.md"]) != expected:
         raise PreparationStopped("テンプレートのコンパイル結果が、文書から組み直したものと違っています。", "compilation_changed")
     table = dt.resource_table(d, paths=False)
     return {"writer.md": dt.writer_text(d, table), "preparation.md": dt.preparation_text(d, table)}
@@ -220,9 +235,35 @@ class TemplateRun:
                                         "excluded": r["excluded"]} for r in res]}
 
     # ---- 台本係へ ----
+    def resource_texts(self) -> list[dict[str, Any]]:
+        """台本係に渡す、テキストの登録リソースの原文。この回の準備の世代の控え（`intake.json`）にある、読んだ原文だけ。
+        元のファイルは読み直さない。パス・相対パス・元のファイル名・item_id・ファイルの一覧は含めない。
+        画像だけのリソースは texts が空。JSON・YAML も再シリアライズせず、読んだ原文のまま。"""
+        out = []
+        for res in self.intake.get("resources") or []:
+            texts = []
+            if res.get("guide"):
+                texts.append({"type": "guide", "text": res["guide"]["text"]})
+            texts += [{"type": r["type"], "text": r["text"]} for r in res.get("readings") or []]
+            out.append({"resource_id": res["id"], "name": res["name"], "usage": res["usage"], "texts": texts})
+        return out
+
     def writer_sections(self) -> dict[str, Any]:
         assert self.catalog is not None
-        return {"writer_md": self.compiled["writer.md"], "catalog": self.catalog.writer_view(), "mode": self.mode}
+        return {"writer_md": self.compiled["writer.md"], "catalog": self.catalog.writer_view(), "mode": self.mode,
+                "resource_texts": self.resource_texts()}
+
+    def check_prompt_budget(self, prompt: str) -> None:
+        """台本係へ渡す完成したプロンプト（原稿・契約・指示・カタログ・原文・既存の台本・修正のエラーを全部含む）の
+        UTF-8 のバイト数を検査する。超えたら理由を示して止める（要約・切り捨てはしない）。再試行のたびに呼ぶ。"""
+        size = len(prompt.encode("utf-8"))
+        if size > self.policy.writer_prompt_bytes:
+            texts = sum(len(t["text"].encode("utf-8")) for r in self.resource_texts() for t in r["texts"])
+            raise PreparationStopped(
+                f"台本係に渡す指示が大きすぎます（{size} バイト。上限 {self.policy.writer_prompt_bytes} バイト。"
+                f"うち登録したリソースの原文は {texts} バイト）。原稿を短くするか、登録したリソースの説明書き・テキストを"
+                "整理してから、もう一度頼んでください（要約や切り捨てはしません）。", "limit_exceeded",
+                {"what": "writer_prompt", "bytes": size, "limit": self.policy.writer_prompt_bytes, "resource_text_bytes": texts})
 
     def check_script(self, data: dict[str, Any], *, fresh: bool = False, allowed_paths: set[str] | None = None) -> list[str]:
         """台本全体の参照の検査（`NG:` の行）。`fresh` は台本係の初稿そのもの（サーバの印 `_preparation` を書かせない）。"""
@@ -381,7 +422,9 @@ def prepare_run(ctx: Any, run: dict[str, Any], *, llm: LLM.Llm | None, policy: P
                 reader: Reader | None = None, boundary: Callable[[str], None] | None = None) -> TemplateRun:
     """テンプレートの回の入口の確認と読解（準備係 LLM）。止めるときは PreparationStopped（世代の記録に理由を残す）。"""
     snapshot = ctx.call(ctx.store.template_snapshot, run["args"]["template_snapshot"])
-    tr = TemplateRun(ctx, run, doc=snapshot["template"]["document"], compiled=load_compiled(ctx, run, snapshot["template"]["document"]),
+    tr = TemplateRun(ctx, run, doc=dt.snapshot_document(snapshot),
+                     compiled=load_compiled(ctx, run, snapshot["template"]["document"],
+                                            compiler_version=snapshot.get("compiler_version")),
                      reader=reader or Reader(policy), boundary=boundary)
     try:
         tr.start(llm)
@@ -418,8 +461,10 @@ def load_template_run(ctx: Any, run: dict[str, Any], *, reader: Reader | None = 
     """直し・差し込み用: デッキのいまの台本が使った準備の世代（台本 → 世代と manifest のハッシュの控え）を明示的に引く。
     その世代が壊れていれば、古い世代へ落ちずに止める。LLM・素材の再読取はしない。"""
     snapshot = ctx.call(ctx.store.template_snapshot, run["args"]["template_snapshot"])
-    tr = TemplateRun(ctx, run, doc=snapshot["template"]["document"],
-                     compiled=load_compiled(ctx, run, snapshot["template"]["document"]), reader=reader or Reader(), boundary=boundary)
+    tr = TemplateRun(ctx, run, doc=dt.snapshot_document(snapshot),
+                     compiled=load_compiled(ctx, run, snapshot["template"]["document"],
+                                            compiler_version=snapshot.get("compiler_version")),
+                     reader=reader or Reader(), boundary=boundary)
     head = ctx.call(ctx.store.head_script, run["deck_id"])
     ref_file = ctx.root.deck_preparations_dir(run["deck_id"]) / "by-script" / f"{head['id'] if head else 'none'}.json"
     try:

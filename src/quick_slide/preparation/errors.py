@@ -18,8 +18,3 @@ class EngineInputUnsupported(PreparationStopped):
 
     def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(message, "engine_input_unsupported", details)
-
-
-SKILL_UNSUPPORTED_MESSAGE = ("リソース「{name}」はスキルのフォルダ（quick-slide-read.json か SKILL.md がある）です。"
-                             "スキルの読み取りはまだ使えないため、素材の準備を止めました。"
-                             "通常のフォルダ（README.md か README.txt に使い方を書く）に置き換えるか、対応した版を待ってください。")

@@ -16,9 +16,11 @@ import unittest
 from unittest import mock
 
 from helpers import fake_tools, intake_payload, start_server, wait_until_idle
+from legacy_templates import all_rows, insert_legacy_template, repoint_to_legacy_snapshot, snapshot_bytes
 from test_template_intake import Base, doc
 
 from quick_slide import design_templates as dt
+from quick_slide import design_templates_legacy as legacy
 from quick_slide.errors import StateError
 from quick_slide.render import look as LOOK
 from quick_slide.scriptdoc import screen_pages
@@ -31,6 +33,11 @@ from quick_slide.worker.pipeline import TEMPLATE_RENDER_PENDING_MESSAGE, Context
 from quick_slide.worker.tools import Tools
 
 RED = "#C8102E"
+
+
+def dt_content_sha(document: dict) -> str:
+    from quick_slide.store.design_templates import content_sha256
+    return content_sha256(document)
 
 
 def fingerprint(store, run_id: str) -> dict:
@@ -99,6 +106,27 @@ class SnapshotSurvivesChangesTests(Base):
         later = self.store.create_edit(self.deck_id, {"op": "render", "source": "screen"})   # 直しの直しも同じ
         self.assertEqual(self.store.run(later["run"]["id"])["args"]["template_snapshot"], ref)
         self.assert_unchanged(later["run"]["id"])
+
+    def test_only_a_new_intake_takes_the_latest_brand_and_every_inherited_path_keeps_the_old_one(self) -> None:
+        """ブランドが更新されたあと、新しい投入だけが最新を使う。直し・差し込み・資料の複製は元の控えのまま（最新へ解決し直さない）。"""
+        self.accept()
+        self.change_everything()   # ブランドの色も更新される
+        deck_ref = self.store.deck_template_snapshot_ref(self.deck_id)
+        self.assertEqual(deck_ref["snapshot_id"], self.store.run(self.first["run_id"])["args"]["template_snapshot"]["snapshot_id"])
+        with mock.patch.object(Store, "resolve_design_template", side_effect=AssertionError("最新のブランドへ解決し直してはいけない")):
+            edit = self.store.create_edit(self.deck_id, {"op": "render", "source": "screen"})["run"]["id"]
+            copy = self.store.duplicate_deck(self.deck_id)
+        self.assert_unchanged(edit)
+        self.assertEqual(self.store.deck_template_snapshot_ref(copy["id"]), deck_ref, "資料の複製は元の控えを引き継ぐ")
+        self.assertEqual(self.store.deck(copy["id"])["brand_revision_id"], self.deck_before["brand_revision_id"])
+        # 新しい投入（別のテンプレートで）だけが最新のブランドを使う
+        fresh = self.template("新しい社内報告")
+        newer = self.intake(design_template=fresh["template_id"])
+        latest = self.store.brand(self.bid)["current_revision_id"]
+        self.assertEqual(fingerprint(self.store, newer["run_id"])["brand"]["revision_id"], latest)
+        self.assertNotEqual(latest, self.before["brand"]["revision_id"])
+        self.assertNotEqual(fingerprint(self.store, newer["run_id"])["theme_sha256"], self.before["theme_sha256"])
+        self.assert_unchanged(self.first["run_id"])
 
     def test_a_resumed_request_run_keeps_the_first_snapshot(self) -> None:
         self.tpl = self.template()
@@ -226,6 +254,91 @@ class SnapshotSurvivesChangesTests(Base):
         newer = self.intake(design_template=fresh["template_id"])
         self.assertNotEqual(fingerprint(self.store, newer["run_id"])["brand"]["revision_id"], self.before["brand"]["revision_id"])
         self.assert_unchanged(self.first["run_id"])
+
+
+class LegacySnapshotTests(Base):
+    """旧い版（保存形式3・コンパイラ4）が受け付けた控え。保存したバイトとハッシュのまま検証し、コンパイルも当時の算法で再現する。"""
+
+    def accept_legacy(self, kind: str):
+        self.tpl = insert_legacy_template(self.store, self.bid, kind, name=f"旧{kind}")
+        made = self.intake(design_template=f"旧{kind}")
+        self.run_id, self.deck_id = made["run_id"], made["deck_id"]
+        self.ref = repoint_to_legacy_snapshot(self.store, self.run_id, self.tpl)
+        self.frozen = (snapshot_bytes(self.store), all_rows(self.store))
+        return self.store.run(self.run_id)
+
+    def compilation_dir(self, run_id: str):
+        return self.store.root.run_compilation_dir(self.deck_id, run_id)
+
+    def raw_snapshot(self) -> dict:
+        return self.store.template_snapshot(self.ref)
+
+    def test_the_raw_snapshot_is_verified_by_its_stored_bytes_and_returned_unconverted(self) -> None:
+        for kind in ("empty", "full"):
+            with self.subTest(kind=kind):
+                self.accept_legacy(kind)
+                snap = self.raw_snapshot()
+                t = snap["template"]
+                self.assertEqual(t["document"]["schema_version"], 3)
+                self.assertEqual(bool(t["document"]["attachments"]), kind == "full")
+                self.assertEqual(t["content_sha256"], self.tpl["content_sha256"], "旧いハッシュのまま（新しい算法で再計算しない）")
+                self.assertEqual(snap["compiler_version"], 4)
+                # 変換した実効の文書は別の値。旧い控えの置き換えには使わない
+                effective = dt.snapshot_document(snap)
+                self.assertEqual(effective["schema_version"], 4)
+                self.assertEqual(snap["template"]["document"]["schema_version"], 3)
+                self.assertEqual((snapshot_bytes(self.store), all_rows(self.store)), self.frozen)
+                with self.assertRaises(StateError):
+                    self.store.template_snapshot({**self.ref, "snapshot_sha256": "0" * 64})
+
+    def test_the_old_compilation_is_rebuilt_with_the_old_algorithm_not_the_new_writer_text(self) -> None:
+        for kind in ("empty", "full"):
+            with self.subTest(kind=kind):
+                run = self.accept_legacy(kind)
+                update, record = LOOK.resolve(self.store, self.store.root, run, previous_style=None)
+                self.assertEqual(record["compilation"]["compiler_version"], 4)
+                folder = self.compilation_dir(self.run_id)
+                writer = (folder / "writer.md").read_text(encoding="utf-8")
+                self.assertNotIn("実行されない", writer, "旧版の指示は当時のまま")
+                self.assertEqual("添付ファイル（memo.md）" in writer, kind == "full")
+                snap = self.raw_snapshot()
+                b = snap["brand"]
+                expected = legacy.compile_document(snap["template"]["document"], {
+                    "id": b["id"], "current_revision_id": b["revision_id"], "config": b["config"], "assets": b["assets"]}, mode=run["mode"])
+                self.assertEqual(record["compilation"]["contract_sha256"], expected["contract_sha256"])
+                self.assertEqual(writer, expected["files"]["writer.md"])
+                self.assertEqual((snapshot_bytes(self.store), all_rows(self.store)), self.frozen, "変換した値を DB へ戻さない")
+
+    def test_a_completed_old_compilation_is_reused_by_its_recorded_hashes_even_if_the_new_compiler_would_differ(self) -> None:
+        run = self.accept_legacy("full")
+        LOOK.resolve(self.store, self.store.root, run, previous_style=None)
+        made = self.store.create_edit(self.deck_id, {"op": "render", "source": "screen"})["run"]["id"]
+        with mock.patch.object(legacy, "compile_document", side_effect=AssertionError("再コンパイルしてはいけない")), \
+                mock.patch.object(dt, "compile_document", side_effect=AssertionError("新しい版で組み直してはいけない")):
+            _, record = LOOK.resolve(self.store, self.store.root, self.store.run(made), previous_style=None)
+        self.assertEqual(record["compilation"]["compiler_version"], 4)
+        self.assertEqual((self.compilation_dir(made) / "writer.md").read_text(encoding="utf-8"),
+                         (self.compilation_dir(self.run_id) / "writer.md").read_text(encoding="utf-8"))
+
+    def test_an_unknown_compiler_version_without_a_completed_compilation_stops(self) -> None:
+        self.accept_legacy("empty")
+        repoint_to_legacy_snapshot(self.store, self.run_id, self.tpl, compiler_version=3)
+        with self.assertRaises(StateError) as cm:
+            LOOK.resolve(self.store, self.store.root, self.store.run(self.run_id), previous_style=None)
+        self.assertIn("コンパイラの版", str(cm.exception))
+
+    def test_a_new_intake_of_an_old_template_takes_the_new_form_and_leaves_the_old_snapshot(self) -> None:
+        self.accept_legacy("full")
+        payload = self.payload(design_template="旧full")
+        payload["force_new_deck"] = True
+        fresh = self.store.create_intake(payload)
+        snap = self.store.template_snapshot(self.store.run(fresh["run_id"])["args"]["template_snapshot"])
+        self.assertEqual((snap["compiler_version"], snap["template"]["document"]["schema_version"]), (dt.COMPILER_VERSION, 4))
+        self.assertNotIn("attachments", snap["template"]["document"])
+        self.assertEqual(snap["template"]["content_sha256"], dt_content_sha(snap["template"]["document"]),
+                         "新規の控えは、新しい文書に対応する新しい算法のハッシュ")
+        self.assertEqual(self.raw_snapshot()["template"]["document"]["schema_version"], 3)
+        self.assertEqual(all_rows(self.store), self.frozen[1], "旧い行は書き換えない")
 
 
 class MigrationBackfillTests(unittest.TestCase):

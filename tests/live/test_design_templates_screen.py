@@ -290,7 +290,7 @@ class EditorTests(ScreenBase):
         self.go(page, f"/settings/brands/{self.bid}/templates/{t['template_id']}", "!!document.querySelector('.template-editor')", "編集画面")
         self.assertEqual(page.eval("document.querySelector('.template-editor h1').textContent"), "デザインテンプレートの編集")
         self.assertEqual(page.eval("document.querySelector('.notice.notice--info.template-caution').textContent.trim()"),
-                         "AI はここに書いた指示を、いつも守れるとは限りません。できあがった資料で、指示どおりになっているか確かめてください。")
+                         "ここに書いた指示が、いつもそのとおりに反映されるとは限りません。できあがった資料で確かめてください。")
         self.assertEqual(page.eval("Array.from(document.querySelectorAll('.template-tab')).map(b => b.textContent)"), ["基本", "構成", "追加指示", "リソース"])
         self.assertEqual(page.eval("document.querySelector('.template-ver').textContent"), "v1")
         self.assertTrue(page.eval("document.querySelector('.template-revert').hidden"))
@@ -308,7 +308,7 @@ class EditorTests(ScreenBase):
         self.assertFalse(page.eval("document.querySelector('#template-guide-structure').hidden"))
         self.tab(page, "resources")
         self.click(page, "#template-resources .template-guide__toggle")
-        self.click(page, "#template-guide-resources button", "この例を追加")
+        self.click(page, "#template-guide-resources button", "この例を追加")   # 先頭は「画像フォルダ（ファイル名で選ぶ）」
         page.until("document.querySelectorAll('#template-resources .template-row').length === 1", what="例の行")
         self.assertTrue(page.eval("document.querySelector('#template-guide-resources').hidden"))
         self.assertEqual(page.eval("document.querySelector('#template-resources .template-row select').value"), "directory")
@@ -510,6 +510,111 @@ class EditorTests(ScreenBase):
         self.assertIsNone(page.eval("window.__y"))
         self.assertEqual(page.errors, [])
 
+    GUIDE = "#template-guide-resources"
+    README = "# 画像の目次\n\n| ファイル | 用途 |\n|---|---|\n| 表紙_背景.png | 表紙の背景 |\n| 比較_図.png | 2つの案を比べるページ |\n| まとめ_背景.png | まとめの背景 |\n"
+
+    def resources_tab(self, name="リソース案内"):
+        t = self.create(name)
+        page = self.open_editor_url(t["template_id"])
+        self.tab(page, "resources")
+        self.click(page, "#template-resources .template-guide__toggle")
+        page.until(f"!document.querySelector('{self.GUIDE}').hidden", what="書き方の例")
+        return t, page
+
+    def test_resource_examples_are_the_four_planned_ones_and_no_fact_check_skill(self) -> None:
+        _, page = self.resources_tab()
+        names = page.eval(f"Array.from(document.querySelectorAll('{self.GUIDE} .template-guide__example dd:nth-of-type(1)')).map(e => e.textContent)")
+        self.assertEqual(names, ["画像フォルダ（ファイル名で選ぶ）", "画像フォルダ（目次で選ぶ）", "会社概要", "用語集"])
+        text = page.eval(f"document.querySelector('{self.GUIDE}').textContent")
+        for want in ("表紙_背景.png・比較_図.png・まとめ_背景.png", "ファイル名から用途が合う画像を選ぶ。合うものがなければ画像なしにする。",
+                     "README.md の目次を見て、内容に合う画像を選ぶ。目次にない画像は使わない。",
+                     "用語・略語の表記はこのファイルに合わせる。書かれていない定義は作らない。"):
+            self.assertIn(want, text)
+        for gone in ("ファクトチェック", "fact-check", ".claude/skills", "SKILL.md の手順"):
+            self.assertNotIn(gone, text)
+        self.assertEqual(page.errors, [])
+
+    def test_the_catalog_copy_and_the_add_button_are_separate_and_add_leaves_the_path_empty(self) -> None:
+        t, page = self.resources_tab()
+        before = self.view(t["template_id"])["document"]
+        # 目次のコピー: 説明文・パス欄を含めず、表だけ（成功）
+        page.eval("window.__copied = null; SS.copyText = function (v) { window.__copied = v; return Promise.resolve(true); }")
+        self.click(page, f"{self.GUIDE} .template-guide__catalog .template-guide__copy")
+        page.until("window.__copied !== null", what="コピーの呼び出し")
+        self.assertEqual(page.eval("window.__copied"), self.README)
+        self.assertEqual(page.eval("document.querySelectorAll('#template-resources .template-row').length"), 0, "コピーしてもカードは足されない")
+        # コピーの失敗: 選んだ文字を手でコピーするよう案内し、カードは足さない
+        page.eval("SS.copyText = function (v) { return Promise.resolve(false); }")
+        self.click(page, f"{self.GUIDE} .template-guide__catalog .template-guide__copy")
+        page.until("document.body.textContent.includes('コピーできませんでした。選んだ文字を')", what="手動コピーの案内")
+        self.assertEqual(page.eval("window.getSelection().toString().includes('表紙_背景.png')"), True)
+        self.assertEqual(page.eval(f"document.querySelector('{self.GUIDE} .template-guide__catalog .template-guide__copy').getAttribute('aria-label')"),
+                         "「画像フォルダ（目次で選ぶ）」の README.md の目次をコピー")
+        # 「この例を追加」: 名前・種類・使い方だけ。パスは空で、README の内容もファイルも作らない
+        page.eval("Array.from(document.querySelectorAll('#template-guide-resources button')).filter(b => b.textContent.trim() === 'この例を追加')[1].click()")
+        page.until("document.querySelectorAll('#template-resources .template-row').length === 1", what="追加した行")
+        self.assertEqual(page.eval("document.querySelector('#template-resources .template-row__title').textContent"), "画像フォルダ（目次で選ぶ）")
+        self.assertEqual(page.eval("document.querySelector('#template-resources .template-row select').value"), "directory")
+        self.assertEqual(page.eval("document.querySelector('#template-resources .template-row input[type=text]:not([aria-label])').value"), "")
+        usage = page.eval("document.querySelector('#template-resources .template-row textarea').value")
+        self.assertEqual(usage, "README.md の目次を見て、内容に合う画像を選ぶ。目次にない画像は使わない。")
+        self.assertNotIn("表紙_背景", usage)
+        self.assertEqual(self.view(t["template_id"])["document"], before, "追加しただけでは保存されない")
+        self.assertEqual(page.errors, [])
+
+    def test_the_help_tip_the_notices_and_the_examples_follow_the_division_of_roles(self) -> None:
+        _, page = self.resources_tab()
+        # リソースのタブのヘルプ（？）
+        self.assertEqual(page.eval("document.querySelector('#template-resources .help-tip__button').getAttribute('aria-label')"), "選ばれやすくするコツの説明")
+        self.assertEqual(page.eval("document.querySelector('#template-resources .help-tip__button').tagName"), "SUMMARY", "キーボードで開けるネイティブの部品")
+        page.eval("document.querySelector('#template-resources .help-tip__button').click()")
+        tip = page.eval("document.querySelector('#template-resources .help-tip__panel').textContent")
+        for want in ("用途が分かるファイル名にします。", "README.md に、ファイルと用途の目次を書きます。", "カードの「使い方」に、選ぶ条件を書きます。",
+                     "SKILL.md は素材の説明として読まれます。画像と用途を書き、手順の実行を前提にしないでください。",
+                     "画像を見て自動で目録を作る機能はありません。", "SKILL.md → README.md → README.txt の順で、最初に見つかった1つを読みます。"):
+            self.assertIn(want, tip)
+        self.assertNotIn("目録が一切ない", tip)
+        # 追加指示のタブ: 薄いグレーの1行・例の「やらないこと」
+        self.tab(page, "instructions")
+        self.assertEqual(page.eval("document.querySelector('#template-instructions .template-not-run').textContent"),
+                         "スキル・コマンド・Web の調べものは実行されません。調査や事実確認は、頼む前に会話で行ってください。")
+        self.assertTrue(page.eval("document.querySelector('#template-instructions .template-not-run').classList.contains('muted')"))
+        self.click(page, "#template-instructions .template-guide__toggle")
+        example = page.eval("document.querySelector('#template-guide-instructions pre').textContent")
+        self.assertIn("原稿に載っていない数字・実績を足さない（確かめが要るものは、頼む前に会話で確かめる）", example)
+        for gone in ("作る前に確認する", "確かめる。", "AI は"):
+            self.assertNotIn(gone, example)
+        for name in ("basic", "structure", "instructions", "resources"):
+            self.assertNotIn("AI は", page.eval(f"document.querySelector('#template-{name}').textContent"), name)
+        self.assertEqual(page.errors, [])
+
+    def test_old_attachments_have_no_separate_ui_and_the_moved_card_is_marked_missing_and_editable(self) -> None:
+        from legacy_templates import insert_legacy_template
+
+        with self.fx.server.store_lock:
+            old = insert_legacy_template(self.fx.store, self.bid, "full", name="旧添付つき")
+        page = self.open_editor_url(old["template_id"])
+        self.tab(page, "resources")
+        text = page.eval("document.querySelector('#template-resources').textContent")
+        self.assertNotIn("添付済みのファイル", text)
+        self.assertFalse(page.eval("!!document.querySelector('#template-resources img.template-material-image, #template-resources fieldset')"))
+        page.until("document.querySelectorAll('#template-resources .template-row').length === 2", what="リソースの2枚のカード")
+        page.until("document.querySelectorAll('#template-resources .template-row__missing').length >= 1", what="見つかりませんの印")
+        titles = page.eval("Array.from(document.querySelectorAll('#template-resources .template-row__title')).map(e => e.textContent)")
+        self.assertEqual(titles, ["画像集", "旧添付"])
+        # 通常のリソースとして編集でき、タブを往復しても入力が残る
+        page.eval("Array.from(document.querySelectorAll('#template-resources .template-row')).find(r => r.textContent.includes('旧添付')).querySelector('button[aria-expanded]').click()")
+        page.until("!!document.querySelector('#template-resources .template-row--open')", what="開いたカード")
+        self.fill(page, "#template-resources .template-row--open input[aria-label=\"名前\"]", "旧添付（直した名前）")
+        self.tab(page, "basic")
+        self.tab(page, "resources")
+        self.assertEqual(page.eval("document.querySelector('#template-resources .template-row--open input[aria-label=\"名前\"]').value"), "旧添付（直した名前）")
+        # 版の一覧の中身にも添付の別枠は無い
+        self.click(page, ".template-ver")
+        page.until("!!document.querySelector('.template-version-detail')", what="版の中身")
+        self.assertNotIn("添付ファイル：", page.eval("document.querySelector('.template-version-detail').textContent"))
+        self.assertEqual(page.errors, [])
+
     def test_missing_resources_are_marked_on_the_card(self) -> None:
         res = [{"id": "r1", "name": "無いフォルダ", "kind": "directory", "path": str(NO_SUCH / "dir-for-test"), "usage": ""}]
         t = self.create("見つからない", resources=res)
@@ -519,9 +624,9 @@ class EditorTests(ScreenBase):
         self.assertEqual(page.eval("document.querySelector('#template-resources .template-row__summary .template-row__missing').textContent"), "見つかりません")
         # 通常の画面には、保存した指示の確認（検証用）を出さない
         self.assertFalse(page.eval("!!document.querySelector('.template-debug')"))
-        # 登録を実行の許可とみなすので、リソースのタブには注意を出す
+        # 登録したものは素材として読むだけ。実行しないことを、リソースのタブに書く
         caution = page.eval("document.querySelector('#template-resources .template-resource-caution')?.textContent || ''")
-        self.assertIn("安心できるものだけを登録してください", caution)
+        self.assertEqual(caution, "登録したファイルやフォルダは、資料を作るための素材として読みます。中に書かれた手順・コマンド・スキルは実行せず、プログラムは動かしません。")
         self.assertEqual(page.errors, [])
 
 
@@ -820,6 +925,10 @@ class PhoneTests(ScreenBase):
         self.click(page, "#template-resources .gap__add")
         self.click(page, "#template-resources .template-guide__toggle")
         self.no_overflow(page)
+        page.eval("document.querySelector('#template-resources .help-tip__button').click()")
+        self.no_overflow(page)
+        self.assertTrue(page.eval("document.querySelector('#template-resources .help-tip__panel').getBoundingClientRect().right <= window.innerWidth"))
+        self.assertTrue(page.eval("(function(){ var c = document.querySelector('#template-guide-resources .template-guide__catalog pre').getBoundingClientRect(); return c.right <= window.innerWidth; })()"))
         # 版の一覧の板も、画面の幅に収まる
         self.click(page, ".template-ver")
         page.until("!!document.querySelector('.template-version')", what="版の一覧")
