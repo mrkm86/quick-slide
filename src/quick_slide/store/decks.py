@@ -136,9 +136,8 @@ class DecksMixin(StoreBase):
         with self.transaction():
             self._require_live_deck(deck_id)
             if self.deck_template_snapshot_ref(deck_id):   # type: ignore[attr-defined]
-                from .edits import TEMPLATE_REBUILD_REASON
-
-                raise StateError(TEMPLATE_REBUILD_REASON)   # デザインテンプレートの回は、控えのブランドで固定
+                raise StateError("デザインテンプレートで作った資料は、受け付けたときのブランドとテンプレートで固定します。"
+                                 "別の設定を使うときは、新しい資料として頼み直してください。")
             sets, params = [], []
             if brand_revision_id is not None:
                 self._require_live_brand_revision(brand_revision_id)

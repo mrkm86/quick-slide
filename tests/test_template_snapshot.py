@@ -1,7 +1,7 @@
 """デザインテンプレートの控え（PR 5: docs/design-template-generation.md §2.2・§2.3）。
 
 受け付けたあとにテンプレートを上書き・削除し、ブランドを更新しても、look・直し・差し込み・再開の回は元の控えだけを使うこと
-（ハッシュで比べる）。デッキの 2 つの改訂 ID が動かず、`follow_deck_settings` を通らないこと。rebuild・前の版への切り替えを
+（ハッシュで比べる）。デッキの 2 つの改訂 ID が動かず、`follow_deck_settings` を通らないこと。前の版への切り替えを
 理由つきで断ること。素材の準備がつながるまで、台本を書く前に理由つきで止まること。テンプレートを使わない回は今までどおり。
 """
 
@@ -27,7 +27,7 @@ from quick_slide.scriptdoc import screen_pages
 from quick_slide.server.deck_routes import SCREEN_LABELS
 from quick_slide.server.page_view import edit_capabilities
 from quick_slide.store import Store
-from quick_slide.store.edits import TEMPLATE_REBUILD_REASON, TEMPLATE_RESTORE_REASON, TEMPLATE_RESUME_REASON
+from quick_slide.store.edits import TEMPLATE_RESTORE_REASON, TEMPLATE_RESUME_REASON
 from quick_slide.settings import Settings
 from quick_slide.worker.pipeline import TEMPLATE_RENDER_PENDING_MESSAGE, Context, make
 from quick_slide.worker.tools import Tools
@@ -398,7 +398,7 @@ class MigrationBackfillTests(unittest.TestCase):
         with self.assertRaises(StateError):
             store.change_deck_axes("d1", brand_revision_id=store.preset_brand_revision_id())
         with self.assertRaises(StateError):
-            store.create_edit("d1", {"op": "rebuild", "source": "screen", "changed": []})
+            store.create_edit("d1", {"op": "restore", "source": "screen"})
         copy = store.duplicate_deck("d1")
         self.assertEqual(store.deck_template_snapshot_ref(copy["id"]), ref)
         self.assertEqual(store.deck_run_args(copy["id"])["template_snapshot"], ref)
@@ -422,9 +422,9 @@ class PlainRunsUnchangedTests(Base):
         self.assertEqual(self.store.deck(first["deck_id"])["brand_revision_id"], newer["id"])
         self.assertNotIn("template", after)
 
-    def test_rebuild_and_axes_changes_still_work_for_a_plain_deck(self) -> None:
+    def test_render_and_axes_changes_still_work_for_a_plain_deck(self) -> None:
         first = self.intake()
-        made = self.store.create_edit(first["deck_id"], {"op": "rebuild", "source": "screen", "changed": []})
+        made = self.store.create_edit(first["deck_id"], {"op": "render", "source": "screen"})
         self.assertNotIn("template_snapshot", self.store.run(made["run"]["id"])["args"])
         self.store.change_deck_axes(first["deck_id"], brand_revision_id=self.store.preset_brand_revision_id())
 
@@ -442,11 +442,8 @@ class RefusalTests(Base):
         self.template()
         self.deck_id = self.intake(design_template="社内報告")["deck_id"]
 
-    def test_rebuild_and_restore_edits_are_refused_with_a_reason(self) -> None:
+    def test_restore_edits_are_refused_with_a_reason(self) -> None:
         before = self.store.conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
-        with self.assertRaises(StateError) as cm:
-            self.store.create_edit(self.deck_id, {"op": "rebuild", "source": "screen", "changed": []})
-        self.assertEqual(str(cm.exception), TEMPLATE_REBUILD_REASON)
         with self.assertRaises(StateError) as cm:
             self.store.create_edit(self.deck_id, {"op": "restore", "page": "p", "run": "r", "source": "screen",
                                                   "positions": [1]})
@@ -459,10 +456,11 @@ class RefusalTests(Base):
         row = self.store.deck(self.deck_id)
         args = {"mode": "presentation", "template_snapshot": {"snapshot_id": "x", "snapshot_sha256": "y"}}
         caps = edit_capabilities(row, [{"hidden": False}], args, labels=SCREEN_LABELS)
-        for key, reason in (("rebuild", TEMPLATE_REBUILD_REASON), ("adopt_version", TEMPLATE_RESTORE_REASON)):
-            self.assertEqual((caps[key]["available"], caps[key]["reason"]), (False, reason))
+        cap = caps["adopt_version"]
+        self.assertEqual((cap["available"], cap["reason"]), (False, TEMPLATE_RESTORE_REASON))
+        self.assertNotIn("rebuild", caps)
         plain = edit_capabilities(row, [{"hidden": False}], {"mode": "presentation"}, labels=SCREEN_LABELS)
-        self.assertTrue(plain["rebuild"]["available"] and plain["adopt_version"]["available"])
+        self.assertTrue(plain["adopt_version"]["available"])
 
 
 class ServerTests(unittest.TestCase):
@@ -504,12 +502,9 @@ class ServerTests(unittest.TestCase):
         self.assertEqual((view["planning"]["state"], view["planning"]["message"]), ("failed", TEMPLATE_RENDER_PENDING_MESSAGE))
         self.assertFalse(view["capabilities"]["resume"]["available"])
 
-    def test_rebuild_and_adopt_routes_refuse_a_template_deck(self) -> None:
+    def test_adopt_route_refuses_a_template_deck(self) -> None:
         body = self.fx.post("/api/intakes", intake_payload(design_template="プレゼン用")).json()
         wait_until_idle(self.fx, body["deck_id"])
-        r = self.fx.post(f"/api/decks/{body['deck_id']}/rebuild", {})
-        self.assertEqual((r.status, r.error_code), (409, "template_rebuild_unsupported"))
-        self.assertEqual(r.json()["error"]["message"], TEMPLATE_REBUILD_REASON)
         r = self.fx.post(f"/api/decks/{body['deck_id']}/adopt", {"choices": {"a": "b"}})
         self.assertEqual((r.status, r.error_code), (409, "template_restore_unsupported"))
 
@@ -573,9 +568,7 @@ class ServerTests(unittest.TestCase):
             with self.assertRaises(StateError):
                 store.change_deck_axes(copy, brand_revision_id=store.preset_brand_revision_id())
             with self.assertRaises(StateError):
-                store.create_edit(copy, {"op": "rebuild", "source": "screen", "changed": []})
-        r = self.fx.post(f"/api/decks/{copy}/rebuild", {})
-        self.assertEqual((r.status, r.error_code), (409, "template_rebuild_unsupported"))
+                store.create_edit(copy, {"op": "restore", "source": "screen"})
 
 
 if __name__ == "__main__":

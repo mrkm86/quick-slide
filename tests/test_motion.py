@@ -550,18 +550,6 @@ class EditTests(MotionBase):
         self.assertEqual([p["section"] for p in data["pages"]], [0, 1, 2, 3])
         self.assertEqual([p["steps"] for p in data["pages"]], [1, 2, 1, 1])
 
-    def test_rebuild_takes_the_new_brand_and_notice_says_no_chatgpt(self) -> None:
-        look = self.fx.get(f"/api/decks/{self.deck}/look").json()
-        self.assertEqual(look["mode"], "motion")
-        self.assertIn("全部の拍を開いて確かめ直す", look["notice"])
-        brand = self.brand(primary="#112233")
-        r = self.fx.post(f"/api/decks/{self.deck}/rebuild", {"brand_id": brand["id"]})
-        self.assertEqual(r.status, 200, r.body)
-        run = self.wait()
-        self.assertEqual(run["state"], "done", run["message"])
-        deck_argv = [c["argv"] for c in engine_calls(self.log) if c["argv"][0] == "deck"][-1]
-        self.assertIn("112233", Path(arg(deck_argv, "--theme")).read_text(encoding="utf-8").upper())
-
 
 class PresentTests(MotionBase):
     def setUp(self) -> None:
@@ -686,9 +674,10 @@ class ExportTests(MotionBase):
         # ページの画像の ZIP はどのモードでも書き出せる
         self.assertEqual(self.fx.post(f"/api/decks/{self.deck}/exports", {"format": "images"}).status, 201)
 
-    def test_html_export_survives_a_rebuild_with_the_same_bytes(self) -> None:
+    def test_html_export_survives_a_render_with_the_same_bytes(self) -> None:
         first = self.fx.post(f"/api/decks/{self.deck}/exports", {"format": "html"}).json()["export"]
-        self.assertEqual(self.fx.post(f"/api/decks/{self.deck}/rebuild", {}).status, 200)
+        with self.fx.server.store_lock:
+            self.fx.store.create_edit(self.deck, {"op": "render", "source": "screen"})
         wait_until_idle(self.fx, self.deck)
         again = self.fx.post(f"/api/decks/{self.deck}/exports", {"format": "html"}).json()["export"]
         self.assertNotEqual(again["run_id"], first["run_id"], "新しい回のファイルを配る")

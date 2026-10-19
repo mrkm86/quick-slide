@@ -90,9 +90,9 @@ class ReadApiTests(unittest.TestCase):
                 self.assertEqual(set(cap), {"available", "label", "reason"}, key)
                 self.assertFalse(cap["available"], key)
                 self.assertTrue(cap["reason"], key)
-            # 直す口は P3 から、書き出し・設定を替えて組み直すは P5 からある。ページが無いうちは「ページが無い」と言う
+            # 直す口は P3 から、書き出しは P5 からある。ページが無いうちは「ページが無い」と言う
             for key in ("deck_instruction", "page_instruction", "pages_instruction", "regenerate", "adopt_version",
-                        "insert_page", "reorder_pages", "duplicate_page", "page_visibility", "export", "rebuild"):
+                        "insert_page", "reorder_pages", "duplicate_page", "page_visibility", "export"):
                 self.assertEqual(caps[key]["reason"], "まだページがありません。ページができるまでお待ちください。", key)
             self.assertEqual(caps["generate"]["reason"], NOT_READY_REASON)
             self.assertEqual(caps["resume"]["reason"], "描き直すものはありません。")
