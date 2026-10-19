@@ -1097,10 +1097,8 @@ ROUTES: tuple[tuple[frozenset[str], Callable[[str], dict[str, str] | None], Hand
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/instructions"), _edit_routes.route_instructions),
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/resume"), _edit_routes.route_resume),
     (frozenset({"GET"}), _two_uuid_route("/api/decks/", "deck_id", "/jobs/", "job_id"), _edit_routes.route_job),
-    # --- 書き出し・設定を替えて組み直す（P5） ---
+    # --- 書き出し（P5） ---
     (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/exports"), _export_routes.route_create_export),
-    (frozenset({"GET"}), _uuid_route("/api/decks/", "deck_id", "/look"), _edit_routes.route_look),
-    (frozenset({"POST"}), _uuid_route("/api/decks/", "deck_id", "/rebuild"), _edit_routes.route_rebuild),
     # --- まだ無い口（ページの削除・v1 の企画の口）。口は残し、「まだ使えない」と答える ---
     (frozenset({"POST"}), _two_uuid_route("/api/decks/", "deck_id", "/pages/", "slide_id", "/remove"), _not_ready),
     (frozenset({"POST"}), _two_uuid_route("/api/decks/", "deck_id", "/instructions/", "instruction_id", "/generate"),

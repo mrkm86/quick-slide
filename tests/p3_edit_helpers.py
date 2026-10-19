@@ -100,7 +100,7 @@ class EditBase(unittest.TestCase):
             self.assertEqual(p["display"]["key"], "ready", p)
         self.assertFalse(view["live"]["working"])
 
-    def duplicate_and_rebuild(self, deck: str) -> str:
+    def duplicate_and_render(self, deck: str) -> str:
         """複製して、同じ姿か（ページ・絵・書き出し）確かめ、複製を組み直す。複製の id を返す。"""
         src_view = self.view(deck)
         r = self.fx.post(f"/api/decks/{deck}/duplicate", {"title": "写し"})
@@ -119,8 +119,8 @@ class EditBase(unittest.TestCase):
                          (self.fx.root.run_dir(deck, a["id"]) / "deck.pptx").read_bytes())
         self.assert_screen_matches_pptx(new)
         calls = self.codex_calls()
-        r = self.fx.post(f"/api/decks/{new}/rebuild", {})
-        self.assertEqual(r.status, 200, r.body)
+        with self.fx.server.store_lock:
+            self.fx.store.create_edit(new, {"op": "render", "source": "screen"})
         run = self.wait(new)
         self.assertEqual(run["state"], "done", run["message"])
         self.assertEqual(self.drawn_pages(calls), [], "複製を組み直しても絵は描き直さない（控えから引き継ぐ）")

@@ -6,11 +6,12 @@
   - プレゼン: エンジンが変わっても（ここではスタイルを替えて描かせる）、ページの画像・PPTX の部品・PDF のページは、
     その版を描いた回のもの。発表はそのページだけ、その回の HTML の区切りで見せる
   - 書き出しの部品が無い回（この仕組みの前の回）の版は、画面と発表はその版の絵、書き出しだけいまの作りで描き、注を出す
-- 印はページを直すと外れ、非表示・並べ替えでは残り、組み直し（rebuild）で全部外れる。複製の写しは印を持たない
+- 印はページを直すと外れ、非表示・並べ替えでは残る。複製の写しは印を持たない
 """
 
 from __future__ import annotations
 
+import json
 import shutil
 import sys
 import unittest
@@ -80,6 +81,13 @@ class PitchPinTests(PinBase):
         deck = self.make_deck()
         self.instruct(deck, [7], "見出しを短くして")
         self.assertEqual(self.wait(deck)["state"], "done")
+        # 過去の組み直しで保存された回にも、ページ版を切り替えて書き出せる。
+        with self.fx.server.store_lock:
+            for old in self.fx.store._all("SELECT id,args_json FROM runs WHERE deck_id=?", (deck,)):
+                args = {**json.loads(old["args_json"]), "edit": "rebuild"}
+                self.fx.store.conn.execute("UPDATE runs SET args_json=? WHERE id=?", (json.dumps(args), old["id"]))
+                self.fx.store.conn.execute("UPDATE jobs SET kind='edit',request_json=? WHERE run_id=?",
+                                           (json.dumps({"op": "rebuild", "source": "screen"}), old["id"]))
         p7 = self.page(deck, "p-seven")
         self.assertEqual([v["version"] for v in p7["versions"]], [2, 1])
         v1 = p7["versions"][1]
@@ -166,14 +174,6 @@ class PitchPinTests(PinBase):
         self.instruct(deck, [pos], "見出しを短くして")
         self.assertEqual(self.wait(deck)["state"], "done")
         self.assertIsNone(self.pin_of(deck, "p-seven"), "直したページは新しい姿（前の版を指さない）")
-        # 組み直しで全部外れる
-        p7 = self.page(deck, "p-seven")
-        self.adopt(deck, p7, next(v for v in p7["versions"] if v["version"] == 1))
-        self.assertEqual(self.wait(deck)["state"], "done")
-        self.assertTrue(self.pin_of(deck, "p-seven"))
-        self.assertEqual(self.fx.post(f"/api/decks/{deck}/rebuild", {}).status, 200)
-        self.assertEqual(self.wait(deck)["state"], "done")
-        self.assertIsNone(self.pin_of(deck, "p-seven"), "組み直しは版の印を外す")
         self.assert_screen_matches_pptx(deck)
 
 

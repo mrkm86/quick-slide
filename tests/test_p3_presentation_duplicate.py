@@ -8,10 +8,10 @@ import p3_edit_helpers as edit_helpers
 
 
 class PresentationDuplicateTests(edit_helpers.PresentationEditBase):
-    def test_duplicate_copies_pages_and_rebuild_draws_nothing(self) -> None:
+    def test_duplicate_copies_pages_and_render_draws_nothing(self) -> None:
         deck = self.make_deck()
         gens = len(self.gen_files())
-        new = self.duplicate_and_rebuild(deck)
+        new = self.duplicate_and_render(deck)
         self.assertEqual(len(self.gen_files()), gens * 2, "複製の区画に同じ絵が張られた（描いてはいない）")
         with self.fx.server.store_lock:
             ra, rb = self.fx.store.shown_run(deck), self.fx.store.shown_run(new)
@@ -38,7 +38,8 @@ class PresentationDuplicateTests(edit_helpers.PresentationEditBase):
             self.assertEqual(self.fx.get(p["image_url"]).status, 200)
         self.assertEqual(len(self.gen_files()), gens, "元の区画だけが消え、複製の区画は残る")
         calls = self.codex_calls()
-        self.assertEqual(self.fx.post(f"/api/decks/{new}/rebuild", {}).status, 200)
+        with self.fx.server.store_lock:
+            self.fx.store.create_edit(new, {"op": "render", "source": "screen"})
         self.assertEqual(self.wait(new)["state"], "done")
         self.assertEqual(self.drawn_pages(calls), [], "元を消したあとも、複製は描き直さない")
 

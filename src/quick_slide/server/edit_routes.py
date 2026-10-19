@@ -9,11 +9,9 @@
 - `POST /api/decks/<id>/pages/insert`  {after_slide_id, text, attachments?}  差し込み
 - `POST /api/decks/<id>/pages/<slide_id>/duplicate`・`/visibility` {hidden}・`/pages/reorder` {slide_ids}
 - `POST /api/decks/<id>/resume`        いまの台本で描き直す（止まった回の再開）
-- `POST /api/decks/<id>/rebuild`       {brand_id?, style_id?}  設定を替えて組み直す（P5。台本係は呼ばない）
 - `POST /api/conversations/deck`      {origin: {runtime, conversation_key}}  その会話の一番新しいスライド
 読み取り:
 - `GET /api/decks/<id>/jobs/<job_id>`  仕事の進み（会話の `--wait` が読む。ページの見出し・提案）
-- `GET /api/decks/<id>/look`           いまのブランド・スタイルと選べるもの（「設定を替えて組み直す」の材料）
 
 `lock_version` は受けるが照らさない（直しはページの id で指すので、前の直しの上に重なる。v1 の画面が送る形は保つ）。
 """
@@ -26,11 +24,10 @@ from .. import edit_kinds
 from ..engines import engine_for
 from ..enums import EDIT_SOURCES, ORIGIN_RUNTIMES
 from ..errors import NotFoundError, ValidationError
-from ..ids import PRESET_STYLE_STANDARD_ID, PRESET_STYLE_VISUAL_ID
 from ..pins import PinRefused, pin_source
 from ..scriptdoc import IMPORTED_TYPE, one_page, screen_pages, with_hidden, with_order, with_restored
 from ..security.secret_scan import find_secret_like
-from ..store.edits import TEMPLATE_REBUILD_REASON, TEMPLATE_RESTORE_REASON
+from ..store.edits import TEMPLATE_RESTORE_REASON
 from .deck_routes import NO_PAGES_REASON, _counts, _tidy, _deck_not_found, _json, _live_deck_row, card_public, deck_view
 from .errors import ApiError
 from .vocabulary import (
@@ -415,94 +412,6 @@ def route_resume(server: "QuickSlideServer", req: "Request") -> "Response":
             result = store.create_edit(deck_id, {"op": "render", "source": "screen"})
             message = "いまの台本で描き直しています。"
     return _accepted(server, deck_id, result, message)
-
-
-REBUILD_NOTICES = {
-    "presentation": "いまの台本のまま、選んだブランド（色・ロゴ・書式）と見せ方で組み直します。文章は変わりません。"
-                    "描いた絵はそのまま使います（画風が変わる見せ方を選んだときだけ、絵を描き直します）。",
-    "pitch": "いまの台本のまま、選んだブランドと見せ方で描き直します。ピッチは色や見せ方が絵の描き方に入るので、"
-             "変えたページの絵を描き直します（ChatGPT の枠を使います）。何も変えなければ描きません。",
-    "motion": "いまの台本のまま、選んだブランドの色とロゴで組み直します。文章と動きは変わりません。"
-              "全部の拍を開いて確かめ直すので、場面が多いと数分かかります（ChatGPT の枠は使いません）。",
-}
-
-
-# 組み直しで選べる見せ方（docs/adr/0009）。付属のスタイルのうち、あとから替えられる 2 つだけ。
-# 1 枚にまとめる（infographic）はデッキの最初の回で決まり替えられない。モーションは見せ方を持たない（テーマとロゴだけ）
-REBUILD_STYLES = {PRESET_STYLE_STANDARD_ID: "説明・報告（文字と図で説明する）",
-                  PRESET_STYLE_VISUAL_ID: "ビジュアル（絵で印象を残す）"}
-
-
-def _named(row: dict[str, Any]) -> dict[str, Any]:
-    return {"id": row["id"], "name": row["name"], "kind": row["kind"], "deleted": row["deleted_at"] is not None}
-
-
-def _rebuild_styles(store: Any, mode: str) -> list[dict[str, Any]]:
-    if not engine_for(mode).takes_style:
-        return []
-    rows = {t["id"]: t for t in store.list_styles()}
-    return [{**_named(rows[sid]), "name": label} for sid, label in REBUILD_STYLES.items() if sid in rows]
-
-
-def route_look(server: "QuickSlideServer", req: "Request") -> "Response":
-    """デッキのいまのブランド・スタイルと、選べるもの（「設定を替えて組み直す」の材料）。"""
-    deck_id = req.params["deck_id"]
-    with server.store_lock:
-        store = server.store
-        row = _live_deck_row(store, deck_id)
-        brand = store.brand(store.brand_revision(row["brand_revision_id"])["brand_id"])
-        style = store.style(store.style_revision(row["style_revision_id"])["style_id"])
-        brands = [_named(b) for b in store.list_brands()]
-        styles = _rebuild_styles(store, row["mode"])
-        caps = deck_view(store, deck_id)["capabilities"]
-    current = {**_named(style), "name": REBUILD_STYLES.get(style["id"], style["name"])}
-    return _json(200, {"deck_id": deck_id, "mode": row["mode"], "brand": _named(brand), "style": current,
-                       "brands": brands, "styles": styles, "notice": REBUILD_NOTICES[row["mode"]],
-                       "capability": caps["rebuild"]})
-
-
-def _pick(store: Any, kind: str, value: Any) -> str | None:
-    """選んだブランド・スタイルのいまの改訂（省けば None。消したもの・無いものは 400）。"""
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ApiError(400, "validation_error", f"{kind}_id は文字列で送ってください。")
-    try:
-        row = store.brand(value) if kind == "brand" else store.style(value)
-    except NotFoundError:
-        row = None
-    if row is None or row["deleted_at"] is not None or not row["current_revision_id"]:
-        what = "ブランド" if kind == "brand" else "スタイル"
-        raise ApiError(400, f"{kind}_not_found", f"その{what}は見つかりません（削除された可能性があります）。選び直してください。")
-    return row["current_revision_id"]
-
-
-def route_rebuild(server: "QuickSlideServer", req: "Request") -> "Response":
-    """設定を替えて組み直す（P5）: いまの台本を、デッキのいまの（か選び直した）ブランド・スタイルで描き直す。
-    台本係は呼ばない。描いた絵はキャッシュから使い回す（変わるのは組み方・色・ロゴ・書式）。"""
-    deck_id = req.params["deck_id"]
-    body = _body(req)
-    with server.store_lock:
-        store = server.store
-        row = _live_deck_row(store, deck_id)
-        if store.deck_template_snapshot_ref(deck_id):
-            raise ApiError(409, "template_rebuild_unsupported", TEMPLATE_REBUILD_REASON)
-        view = deck_view(store, deck_id)
-        cap = view["capabilities"]["rebuild"]
-        if not cap["available"]:
-            raise ApiError(409, "no_pages", cap["reason"] or NO_PAGES_REASON)
-        brand_rev = _pick(store, "brand", body.get("brand_id"))
-        style_rev = _pick(store, "style", body.get("style_id"))
-        changes = {}
-        if brand_rev is not None and brand_rev != row["brand_revision_id"]:
-            changes["brand_revision_id"] = brand_rev
-        if style_rev is not None and style_rev != row["style_revision_id"]:
-            changes["style_revision_id"] = style_rev
-        if changes:
-            store.change_deck_axes(deck_id, **changes)
-        result = store.create_edit(deck_id, {"op": "rebuild", "source": "screen",
-                                             "changed": sorted(k.split("_")[0] for k in changes)})
-    return _accepted(server, deck_id, result, "いまの設定で組み直しています。")
 
 
 def route_conversation_deck(server: "QuickSlideServer", req: "Request") -> "Response":

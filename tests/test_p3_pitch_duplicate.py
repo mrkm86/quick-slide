@@ -31,11 +31,11 @@ class PitchDuplicateTests(edit_helpers.EditBase):
         with self.fx.server.store_lock:
             self.assertEqual([d for d in store.recent_decks(50) if d.get("origin_deck_id") == deck], [])
 
-    def test_duplicate_copies_pages_and_rebuild_draws_nothing(self) -> None:
+    def test_duplicate_copies_pages_and_render_draws_nothing(self) -> None:
         deck = self.make_deck()
         self.instruct(deck, [3], "見出しを変えて")
         self.assertEqual(self.wait(deck)["state"], "done")
-        self.duplicate_and_rebuild(deck)
+        self.duplicate_and_render(deck)
 
 
 if __name__ == "__main__":

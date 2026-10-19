@@ -12,11 +12,10 @@
 | reorder | 並べ替え | 呼ばない |
 | restore | 版スタックの前の姿に切り替える（その回の台本のページの中身に戻し、ページに `_pin`＝その回の id を書く。描くときはその回の絵と書き出しの部品を使う） | 呼ばない |
 | render | いまの台本で描き直す（止まった回の再開・書き出す形式が見せる回に無いとき・描かない直しの後の組み直し） | 呼ばない |
-| rebuild | 設定を替えて組み直す（いまの台本を、いまのブランド・スタイル・書式で。版の印は全部外す。P5） | 呼ばない |
 
 **版の印（`_pin`）の決まり**（`docs/adr/0001-version-pins.md`）: 切り替えた版は、そのページの中身が変わるまで指したまま。
 直す（revise。絵だけの直しも）・分ける・複製の写しでは外れる（写しは印を持たない）。非表示・並べ替え・差し込み・
-描き直し（render）では残る。組み直し（rebuild）は利用者が頼んだ描き直しなので、全部外す（新しい版ができてよい）。
+描き直し（render）では残る。
 普段は画面の口（`edit_routes.route_adopt`）がその場で当て、ここの restore は直しの仕事が待っているときだけ通る。
 """
 
@@ -204,9 +203,6 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
             # 描き直し（再開・書き出しの形式が無いとき・描かない直しの後の組み直し）。台本はそのまま（版の印も残す）。
             # 設定（ブランド・スタイル・書式）はこの回の最初に読み直してある（settle_look）。描いた絵はキャッシュから
             result = EditResult(data=data, plan=RenderPlan())
-        elif op == "rebuild":
-            # 設定を替えて組み直す（P5）。利用者が頼んだ描き直しなので、版の印は外して全ページをいまの作りで描く
-            result = EditResult(data=without_pins(data), plan=RenderPlan())
         else:
             return fail("知らない直しです。", "edit")
     except EditRefused as exc:

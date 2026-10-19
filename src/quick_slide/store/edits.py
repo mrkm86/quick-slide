@@ -10,7 +10,6 @@
 | duplicate / visibility / reorder | ページの複製・非表示/表示・並べ替え（台本係を呼ばない） |
 | restore | 版スタックの前の姿に戻す（`page`・`run`） |
 | render | いまの台本で描き直す（止まった回の再開・書き出す形式が見せる回に無いとき） |
-| rebuild | 設定を替えて組み直す（P5。いまの台本を、いまの・選び直したブランド・スタイルで） |
 
 **1 冊に走る仕事は 1 つだけ**（`claim_job`）。待っている仕事は、走っている仕事が終わったあとのいまの台本から始める。
 """
@@ -39,8 +38,6 @@ TEMPLATE_RESTORE_REASON = ("デザインテンプレートで作った資料で�
                            "（素材の控えを含めて戻す仕組みが、まだ無いためです）。")
 TEMPLATE_RESUME_REASON = ("デザインテンプレートで作る資料は、素材の準備がまだ使えないため、再開できません"
                           "（台本を書く前に止まります）。")
-TEMPLATE_REBUILD_REASON = ("デザインテンプレートで作った資料は、設定を替えて組み直せません"
-                           "（受け付けたときのテンプレートとブランドで作ります）。新しいスライドとして頼み直してください。")
 
 
 class EditsMixin(StoreBase):
@@ -64,9 +61,9 @@ class EditsMixin(StoreBase):
         require(request.get("source"), EDIT_SOURCES, "edit.source")
         with self.transaction():
             deck_args = self.deck_run_args(deck_id)
-            if deck_args.get("template_snapshot") and request["op"] in ("rebuild", "restore"):
+            if deck_args.get("template_snapshot") and request["op"] == "restore":
                 # 受け付けたときの控えから、最新の設定へ戻す操作は、テンプレートの回では無断で適用しない
-                raise StateError(TEMPLATE_REBUILD_REASON if request["op"] == "rebuild" else TEMPLATE_RESTORE_REASON)
+                raise StateError(TEMPLATE_RESTORE_REASON)
             infographic = (deck_args.get("mode") == "pitch" and deck_args.get("style") == "infographic") \
                 or bool(deck_args.get("template_snapshot"))   # 重ねずに 1 つずつ走らせるデッキ
             mine = {"kind": "edit", "request": request}

@@ -35,9 +35,8 @@ RUN_PAGE_STATES = ("pending", "drawn", "ready", "failed")
 # ワーカーの仕事。make は「原稿から 1 冊作る」（書く → 確かめる → 描く）、edit は P3 の「直す」
 # （何をするかは jobs.request_json の op。EDIT_OPS）
 JOB_KINDS = ("make", "edit")
-# 直しの種類: ページを指定した直し・差し込み・複製・非表示/表示・並べ替え・版から戻す・描き直し（再開）・
-# 設定を替えて組み直す（P5。いまの台本をいまのブランド・スタイルで）
-EDIT_OPS = ("revise", "insert", "duplicate", "visibility", "reorder", "restore", "render", "rebuild")
+# 直しの種類: ページを指定した直し・差し込み・複製・非表示/表示・並べ替え・版から戻す・描き直し（再開）
+EDIT_OPS = ("revise", "insert", "duplicate", "visibility", "reorder", "restore", "render")
 # 書き出しの形式（P5）。images はページの画像の ZIP。html は HTML 1枚（motion だけ）
 EXPORT_FORMATS = ("pptx", "pdf", "images", "html")
 # 直しを頼んだ口

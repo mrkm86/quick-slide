@@ -1,4 +1,4 @@
-"""P5: 書き出しの配布・完全に削除したときのキャッシュの区画・設定を替えて組み直す・ブランドの字体。
+"""P5: 書き出しの配布・完全に削除したときのキャッシュの区画・ブランドの字体。
 
 エンジンはここでは偽物（`tests/fakes/fake_engine.py`。`deck.pptx`・`deck.pdf`・ページの画像を書く）。
 本物のエンジンで書き出すのは `test_p5_fresh_machine.py`（任意・ネットワークを使う）と、下の字体の試験（Chrome が要る）。
@@ -46,6 +46,48 @@ class ExportTests(Base):
 
     def export(self, deck_id: str, fmt: str):
         return self.fx.post(f"/api/decks/{deck_id}/exports", {"format": fmt})
+
+    def test_removed_rebuild_routes_and_operation_leave_the_deck_unchanged(self) -> None:
+        from quick_slide.errors import ValidationError
+
+        body, run = self.make()
+        deck = body["deck_id"]
+        with self.fx.server.store_lock:
+            before = self.fx.store.deck(deck)
+            with self.assertRaises(ValidationError):
+                self.fx.store.create_edit(deck, {"op": "rebuild", "source": "screen"})
+        for method, suffix in (("GET", "look"), ("POST", "rebuild")):
+            r = self.fx.get(f"/api/decks/{deck}/{suffix}") if method == "GET" else self.fx.post(
+                f"/api/decks/{deck}/{suffix}", {})
+            self.assertEqual(r.status, 404, r.body)
+        self.assertNotIn("rebuild", self.fx.get(f"/api/decks/{deck}").json()["capabilities"])
+        with self.fx.server.store_lock:
+            self.assertEqual(self.fx.store.deck(deck), before)
+            self.assertEqual(self.fx.store.latest_run(deck)["id"], run["id"])
+
+    def test_historical_rebuild_records_still_show_pages_and_export(self) -> None:
+        body, run = self.make()
+        deck = body["deck_id"]
+        # 旧版が保存した形を再現する。新しい依頼としては受け付けない。
+        with self.fx.server.store_lock:
+            args = {**run["args"], "edit": "rebuild"}
+            self.fx.store.conn.execute("UPDATE runs SET args_json=? WHERE id=?", (json.dumps(args), run["id"]))
+            self.fx.store.conn.execute("UPDATE jobs SET kind='edit',request_json=? WHERE run_id=?",
+                                       (json.dumps({"op": "rebuild", "source": "screen", "changed": ["brand"]}), run["id"]))
+        view = self.fx.get(f"/api/decks/{deck}").json()
+        self.assertTrue(view["pages"])
+        for page in view["pages"]:
+            self.assertTrue(page["versions"])
+            self.assertEqual(self.fx.get(page["image_url"]).status, 200)
+        with self.fx.server.store_lock:
+            self.assertEqual(self.fx.store.run(run["id"])["args"]["edit"], "rebuild")
+        for fmt in ("pptx", "pdf"):
+            r = self.export(deck, fmt)
+            self.assertEqual(r.status, 201, r.body)
+            ex = r.json()["export"]
+            self.assertEqual(ex["run_id"], run["id"])
+            self.assertEqual(self.fx.get(ex["download_url"]).body,
+                             (self.fx.root.run_dir(deck, run["id"]) / f"deck.{fmt}").read_bytes())
 
     def test_pptx_and_pdf_are_the_shown_run_files_with_the_deck_title(self) -> None:
         body, run = self.make(title="会議を半分に: 試す/計画")
@@ -181,48 +223,6 @@ class PurgeCacheTests(Base):
         self.assertFalse(mine.exists() or from_env.exists())
         self.assertTrue(theirs.is_dir() and stranger.is_dir(), "ほかのデッキの区画・印の無いフォルダは消さない")
         self.assertFalse(self.fx.root.deck_dir(deck).exists())
-
-
-class RebuildTests(Base):
-    def setUp(self) -> None:
-        self.start()
-
-    def test_rebuild_with_another_brand_redraws_without_the_writer(self) -> None:
-        body, first = self.make()
-        deck = body["deck_id"]
-        look = self.fx.get(f"/api/decks/{deck}/look").json()
-        self.assertEqual(look["mode"], "presentation")
-        self.assertIn("文章は変わりません", look["notice"])
-        self.assertTrue(look["capability"]["available"])
-        brand = self.brand(primary="#2E7D32", accent="#2E7D32", logo=False, white=False, footer="", watermark="")
-        self.assertIn(brand["id"], [b["id"] for b in self.fx.get(f"/api/decks/{deck}/look").json()["brands"]])
-        calls = len(writer_calls(self.log))
-        r = self.fx.post(f"/api/decks/{deck}/rebuild", {"brand_id": brand["id"]})
-        self.assertEqual(r.status, 200, r.body)
-        run = wait_job(self.fx, deck, r.json()["job_id"])
-        self.assertEqual(run["state"], "done", run["message"])
-        self.assertEqual(len(writer_calls(self.log)), calls, "台本係は呼ばない")
-        self.assertEqual(run["script_id"], first["script_id"], "台本は同じ版")
-        theme = Path(run["args"]["look"]["theme"]).read_text(encoding="utf-8")
-        self.assertIn('primary: "#2E7D32"', theme)
-        with self.fx.server.store_lock:
-            d = self.fx.store.deck(deck)
-            rev = self.fx.store.brand_revision(d["brand_revision_id"])
-        self.assertEqual(rev["brand_id"], brand["id"])
-        self.assertEqual(self.fx.get(f"/api/decks/{deck}/look").json()["brand"]["id"], brand["id"])
-        # 何も選ばなくても組み直せる（いまの設定のまま）
-        r = self.fx.post(f"/api/decks/{deck}/rebuild", {})
-        self.assertEqual(r.status, 200, r.body)
-        self.assertEqual(wait_job(self.fx, deck, r.json()["job_id"])["state"], "done")
-        argv = [c["argv"] for c in engine_calls(self.log) if c["argv"][0] == "deck"]
-        self.assertEqual(len(argv), 3)
-
-    def test_rebuild_refusals(self) -> None:
-        empty = self.fx.make_deck("ページの無いスライド")
-        self.assertEqual(self.fx.post(f"/api/decks/{empty['id']}/rebuild", {}).error_code, "no_pages")
-        body, _ = self.make()
-        r = self.fx.post(f"/api/decks/{body['deck_id']}/rebuild", {"brand_id": "00000000-0000-4000-8000-000000000000"})
-        self.assertEqual((r.status, r.error_code), (400, "brand_not_found"))
 
 
 class BrandFontTests(unittest.TestCase):

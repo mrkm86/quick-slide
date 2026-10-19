@@ -78,8 +78,7 @@ SCREEN_LABELS = {"page_instruction": "送信", "pages_instruction": "選んだ�
                  "regenerate": "作り直す", "adopt_version": ADOPT_LABEL, "insert_page": INSERT_PAGE_LABEL,
                  "reorder_pages": REORDER_LABEL, "duplicate_page": "このページを複製",
                  "page_visibility": "表示・非表示", "export": EXPORT_LABEL, "generate": "画像を生成",
-                 "present": "発表", "present_from_here": "ここから発表",
-                 "rebuild": "設定を替えて組み直す"}
+                 "present": "発表", "present_from_here": "ここから発表"}
 
 # `label` は画面のボタン文言（画面側に書かず、ここから渡す）
 CAPABILITIES: dict[str, Any] = {
@@ -95,7 +94,6 @@ CAPABILITIES: dict[str, Any] = {
     "adopt_version": {"available": False, "label": ADOPT_LABEL,
                       "reason": "版の切り替えはこの画面ではできません。スライドの画面で選んでください。"},
     "export": {"available": False, "label": EXPORT_LABEL, "reason": "書き出しはスライドの画面から行えます。"},
-    "rebuild": {"available": False, "label": "設定を替えて組み直す", "reason": "スライドの画面から行えます。"},
     "purge": {"available": False, "label": PURGE_LABEL, "reason": "完全に削除できるのはごみ箱の中のスライドだけです。"},
 }
 
@@ -108,7 +106,7 @@ def deck_capabilities(row: dict[str, Any], *, pages: list[dict[str, Any]] | None
                       args: dict[str, Any] | None = None, resume: dict[str, Any] | None = None) -> dict[str, Any]:
     """**スライドの画面に返る `capabilities` の正本。** 静的な表の上に、スライドの画面での答えを重ねる。
 
-    直す・版から戻す・ページの操作・書き出し・設定を替えて組み直すは、ページがあれば使える（仕事が走っていても
+    直す・版から戻す・ページの操作・書き出しは、ページがあれば使える（仕事が走っていても
     受け付けて順に並べる。書き出しは見せる回のファイルを配る）。差し込み・並べ替えは「ページが無い」が先に効く。
     """
     from .page_view import edit_capabilities
