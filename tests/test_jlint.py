@@ -88,6 +88,11 @@ class DisplayedKeysTests(unittest.TestCase):
         for where in ("result.title", "items[0].before", "items[0].after", "members[0].role", "labels[0]", "series[0].name", "x.label"):
             self.assertTrue(any(where in ln for ln in found), (where, found))
 
+    def test_table_align_is_not_displayed_text(self) -> None:
+        self.assertIn("align", jlint.HIDDEN_KEYS)
+        slide = {"id": "p-tb", "type": "table", "headline": "表", "columns": ["品目", "数"], "align": ["left", "right"], "rows": [["a", "1"]]}
+        self.assertEqual(jlint.check([slide]).ng, [])
+
     def test_top_level_role_is_a_chapter_id_and_not_checked(self) -> None:
         self.assertEqual(jlint.check([{"id": "p-a", "type": "statement", "headline": "短い", "role": "🙂"}]).ng, [])
 

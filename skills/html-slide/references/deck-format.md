@@ -125,7 +125,7 @@
 | `flow` | `items`★（`{label★, title, body, accent, badge}`・3〜5）。`label` は矢羽根の中の短い語（「課題」）。既定で最後の段を強める（濃い面と太い輪郭。`badge` を書けば、その段の頭に札が付く） |
 | `compare` | `left`★・`right`★（`{label, title, points: [文字…], image, badge}`・points は5つまで。強める側の頭に札「注目」が付く（`badge` でその語を替える）。`image` は列の上に 16:9 で、書くなら両方に＝ビフォー・アフター）・`accent`（`right` 既定／`left`／`none`）・`arrow`（既定 true） |
 | `bar-chart` | `bars`★（`{label★, value★（0以上の数）, highlight, display}`・2〜8）・`unit`（値の後ろに付ける）・`max`（軸の上限）・`note`（グラフの注記）・`callout`（`{value, text}` 右に要点） |
-| `table` | `columns`★（2〜5）・`rows`★（各行は columns と同じ数・1〜7行）・`highlight`（強める列・1から。色の地に加えて、太い縦の罫と太字で示す）・`widths`（列の幅の比） |
+| `table` | `columns`★（2〜5）・`rows`★（各行は columns と同じ数・1〜7行）・`highlight`（強める列・1から。色の地に加えて、太い縦の罫と太字で示す）・`widths`（列の幅の比）・`align`（列ごとの揃え。columns と同じ数の配列で、値は left / center / right。見出しの行も同じ揃え。省略すると 1 列目 left・残り center。数の列は right にすると桁がそろう） |
 | `bullets` | `items`★（文字か `{title, body, icon}`・2〜5。icon は書くなら全部の項目に）・`image`（脇に写真）・`side`（写真の側 `right` 既定・`left`）・`split`（写真の幅 `1/3` 既定＝格子の4列 528・`2/5`＝5列 672・`1/2`＝6列 816） |
 | `timeline` | `items`★（`{when★, title★, body}`・3〜6）・`current`（今の時期・1から。札「いま」と二重の丸で示す） |
 | `photo` | `image`★・`headline`★・`hide_text`（`layout: full` だけ。true で画像だけの扉絵。下を見る）・`layout`（`full` 既定／`left`／`right`／`band`＝上に横長の写真の帯 1920×480、下に見出しと本文。下の文字・ページ番号も出す）・`split`（left・right の写真の幅 `1/2` 既定＝960・`2/5`＝768・`1/3`＝640）・`kicker`・`body`・`caption`（写真の出典） |

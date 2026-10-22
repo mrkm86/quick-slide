@@ -46,6 +46,7 @@ render "決まりに沿った HTML: 違反なし・PPTX・段/効果/ノート�
 render "違反入りの HTML: transform・はみ出し・::before・section の外・ノートのずれを拾い、PPTX を書かずに rc=2" contract_bad
 render "timing の XML: 整形式・自動1＋クリック2・nodeType・出方の番号・wipe の向き・data-delay・段の番号を詰める" timing_xml
 render "文字の枠: 1行は折り返さず真ん中・複数行は幅で折り返し・行送り pt 固定・余白0・上揃え・ぶら下げなし・文節折りだけ改行を固定" text_frames
+render "表の align: 折り返す右寄せ・中央寄せのセルの段落の揃えと右端・中心（改行を固定する経路・固定しない経路とも）が HTML と合う" table_align
 render "verify: ノートの［クリック］とクリックの数のずれを rc=2" verify_mismatch
 render "verify --odp: LibreOffice の読み取りの効果の数が report と一致（soffice が無ければ飛ばす）" verify_odp
 render "from_video: 1文=1クリック・型の出すものは自動・html-video の印と知らない印・章カードの前後はフェード" from_video_rules
@@ -131,6 +132,7 @@ deck "DADS: 色の役（primary・mark・decor・strong・rule・bar・faint・�
 deck "DADS: 組んだ HTML の文字は段・行高は段・角丸は段・影は elevation-2 だけ・雛形の余白は 8 の倍数" dads_scale_rhythm
 deck "字体: 既定は Noto Sans JP・ファイルが分からなければ游ゴシックに落ちる（警告にしない）・字体の上下の幅を 1em に縮める" font_default_and_fallback
 deck "下の文字は1行（22px → 20px）・入らなければ透かしがあるとき rc=2・無ければ警告" footer_one_line
+deck "表の align: 省略は今どおり（1列目左・残り中央）・列ごとの揃え・highlight と併用・数の違い・未知の値・配列でない値は rc=2" table_align
 deck "型の構造: 強める項目は色だけで示さない（札 badge・太い輪郭・縦の罫と太字・二重の丸・象限の枠）・badge は強める項目にだけ" dads_emphasis_not_by_color
 deck "matrix: 名前は点・ほかの名前・区切り線と重ならないようにずらす・点どうしが重なれば rc=2" dads_matrix_overlap
 deck "line-chart: 点の形と線種で系列を区別・線の端に名前・入らなければ凡例に線種と点の形も写す" dads_line_chart_marks
