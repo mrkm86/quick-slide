@@ -31,7 +31,7 @@ VISIBLE_KEYS = frozenset({
     "caption", "quote", "badge", "takeaway", "source", "contact", "display", "meta", "number", "by", "position",
     "when", "before", "after", "delta", "tag", "name", "role", "initials", "low", "high", "bad_label", "good_label",
     "items", "points", "side", "left", "right", "center", "callout", "bars", "columns", "rows", "labels", "series",
-    "members", "x", "y", "quadrants", "result", "group", "legend",
+    "members", "x", "y", "quadrants", "result", "group", "legend", "summary",
 })
 # 表示しない（台本のキーのうち、文字ではないもの）。`TYPES` の全キーはどちらかに入っている（試験で確かめる）
 HIDDEN_KEYS = frozenset({

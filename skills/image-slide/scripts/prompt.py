@@ -48,7 +48,9 @@ TYPE_NOTES = {
     "table": "表。columns を見出し、rows を本文の行にする。セルの文字は与えられたとおり。"
              "highlight（1から数えた列）の列を、色の面に加えて太字と太い縦の線で目立たせる。数値は右揃え。セルが {text, tone} のときは text を描き、tone（good＝緑・warn＝黄・bad＝赤）の淡い地と濃い同系色の文字にする。"
              "legend は表の下に1行で、色見本（小さな角丸の四角。tone と同じ色。dim は表の薄い行と同じ灰）と説明の text を左から並べる。"
-             "色の意味は legend の text でも読めるようにし、書いていない色は足さない",
+             "色の意味は legend の text でも読めるようにし、書いていない色は足さない。"
+             "summary があれば、見出しと表の間に、小さな数字のカード（1〜4枚）を横一列に同じ幅で並べる。各カードは label（小さく）・value と unit（大きく）・delta（▲▼→ を添えた増減の札。"
+             "trend が up・down・flat で記号、tone が good＝緑・bad＝赤・neutral＝灰の色）・note（小さく）を描き、group があればその label を札にして淡い色の面にする。カードは表より目立たせすぎず、表も全部描く",
     "bullets": "箇条書き。items を上から順に。title があれば太字、body はその説明。image があれば添えるビジュアル",
     "timeline": "時期と出来事。items を時期の順に。when は時期、title と body は出来事。current（1から数えた番号）の時期を、二重の丸と小さな札「いま」で目立たせる",
     "photo": "写真や絵が主役の1枚。image がそのビジュアルで、headline を重ねるか添える。caption は出典（小さく）",

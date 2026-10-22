@@ -2193,6 +2193,119 @@ def case_no_morph():
     assert "退役" in row and "`fade`（既定）" in row, row
 
 
+def _sum_table(summary, **kw):
+    return {"type": "table", "headline": "h", "columns": ["a", "b", "c"], "rows": [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]], "summary": summary, **kw}
+
+
+def _sum_card(i, **kw):
+    return {"label": f"指標{i}", "value": str(i), "unit": "件", **kw}
+
+
+def case_table_summary():
+    """table の summary: 1〜4枚・幅は本文を枚数で等分・カードは段1・表と凡例は段2・誤りは位置付きで rc=2・書かなければ今のまま。"""
+    cws = {1: 1680, 2: 816, 3: 528, 4: 384}
+    for n in (1, 2, 3, 4):
+        s = _secs(build(one(_sum_table([_sum_card(i) for i in range(n)]), ["", "", ""]), f"ts-{n}")[0])[0]
+        assert [int(w) for w in re.findall(r'class="kpi" style="width:(\d+)px; padding:24px"', s)] == [cws[n]] * n, f"{n}枚は本文の幅を等分"
+        assert re.findall(r'class="kpi" [^>]*data-step="(\d)" data-fx="pop"', s) == ["1"] * n, "カードは段1で順に出る"
+        assert 'class="table" style="left:120px; top:' in s and re.search(r'class="table"[^>]*data-step="2"', s), "表は段2"
+        assert s.index('class="row"') < s.index('class="table"'), "カードは表の上"
+    msgs = {"0": [], "5": [_sum_card(i) for i in range(5)]}
+    expect_error(one(_sum_table(msgs["0"])), "ts-zero", "summary は 1〜4 個（0 個）")
+    expect_error(one(_sum_table(msgs["5"])), "ts-five", "summary は 1〜4 個（5 個）")
+    expect_error(one(_sum_table("x")), "ts-str", "summary は配列で書く")
+    for key in ("accent", "badge"):
+        expect_error(one(_sum_table([_sum_card(1), _sum_card(2, **{key: True})])), f"ts-{key}", "summary の 2 個目の accent / badge は使えない")
+    expect_error(one(_sum_table([_sum_card(1, color="red")])), "ts-key", "summary の 1 個目に知らないキー: color")
+    expect_error(one(_sum_table([{"label": "a"}])), "ts-value", "summary の 1 個目に value が無い")
+    expect_error(one(_sum_table([_sum_card(1, trend="rise")])), "ts-trend", "summary の 1 個目の trend は up / down / flat")
+    expect_error(one(_sum_table([_sum_card(1, tone="warn")])), "ts-tone", "summary の 1 個目の tone は good / bad / neutral")
+    expect_error(one(_sum_table([_sum_card(1, group={"label": "x"})])), "ts-group", "summary の 1 個目の group は label と tone")
+    # tone・trend・delta・group は kpi と同じ見た目
+    full = [_sum_card(1, delta="+3", trend="up"), _sum_card(2, delta="−1", trend="up", tone="bad"), _sum_card(3, group={"label": "自動", "tone": "b"}), _sum_card(4)]
+    s = _secs(build(one(_sum_table(full)), "ts-look")[0])[0]
+    assert re.findall(r'class="kpi-delta tone-(\w+)"', s) == ["good", "bad"] and ">▲ +3<" in s and ">▲ −1<" in s
+    assert 'class="kpi group-b"' in s and 'class="chip group group-b">自動<' in s
+    # 4枚で delta が1行に入らなければ全部のカードの段が下がり（同じ役は同じ大きさ）、下げても入らなければ rc=2
+    wide = [_sum_card(i, delta="+3件（前月比 6件増）", trend="up") for i in range(4)]
+    s = _secs(build(one(_sum_table(wide)), "ts-drop")[0])[0]
+    sizes = set(re.findall(r'class="kpi-delta[^"]*" style="font-size:(\d+)px', s))
+    assert sizes == {"24"}, f"delta は 24px まで下りる: {sizes}"
+    s0 = _secs(build(one(_sum_table([_sum_card(i, delta="+3件", trend="up") for i in range(4)])), "ts-nodrop")[0])[0]
+    assert set(re.findall(r'class="kpi-delta[^"]*" style="font-size:(\d+)px', s0)) == {"28"}, "入るなら下げない"
+    expect_error(one(_sum_table([_sum_card(i, delta="あ" * 14) for i in range(4)])), "ts-wide", "summary の 1 個目の delta")
+    expect_error(one(_sum_table([_sum_card(i, value="9" * 14) for i in range(4)])), "ts-longvalue", "summary の 1 個目の value が長すぎて入らない")
+    # 高さ: 帯は min(384, 使える高さ) まで。表の下の凡例・source・takeaway を含めて入らなければ rc=2（縮める所を言う）
+    tight = _sum_table([_sum_card(i, note="注" * 28) for i in range(4)], rows=[["1", "2", "3"]] * 7, legend=[{"tone": "good", "text": "良"}], source="x", takeaway="結論",
+                       kicker="k", sub="リード文を長く" * 6)
+    expect_error(one(tight), "ts-tight", "summary を置くと表が入らない", "rows を減らす", "summary の label・note を短くする")
+    # 複合: group・tone・align・dim・legend・source・takeaway を全部書いても組めて、最小の行の高さ（52px）を守る
+    combo = _sum_table([_sum_card(1, delta="+3", trend="up", group={"label": "自動", "tone": "a"}), _sum_card(2, tone="bad", delta="x")],
+                       rows=[["1", "2", {"text": "3", "tone": "warn"}]], align=["left", "right", "center"], dim_rows=[1], highlight=2,
+                       legend=[{"tone": "warn", "text": "注意"}, {"tone": "dim", "text": "見送り"}], source="出典", takeaway="結論")
+    path = build(one(combo), "ts-combo")[0]
+    s = _secs(path)[0]
+    rhs = [int(v) for v in re.findall(r'class="tr th?" style="height:(\d+)px', s)]
+    assert rhs and min(rhs) >= 52, rhs
+    y = lambda cls: float(re.search(rf'class="{cls}"[^>]*?top:([\d.]+)px', s).group(1))
+    assert y("table") > y("row") + 100 and y("tone-legend") > y("table") and y("source") > y("tone-legend"), "上から 帯 → 表 → 凡例 → source"
+    assert "結論" in s, "takeaway も入る（帯は s.bottom を上げてあるので二重に引かない）"
+    # takeaway なしなら 3 行まで入る（上の組と同じ帯・凡例・source）
+    no_take = {k: v for k, v in combo.items() if k != "takeaway"}
+    s3 = _secs(build(one(dict(no_take, rows=[["1", "2", "3"]] * 3, dim_rows=[2])), "ts-combo3")[0])[0]
+    assert min(int(v) for v in re.findall(r'class="tr th?" style="height:(\d+)px', s3)) >= 52
+    # summary を書かない table は今までどおり: 1クリック・kpi の部品もカードの行も出ない・段は 1 だけ
+    old = _secs(build(one({k: v for k, v in _sum_table([]).items() if k != "summary"}, ["", ""]), "ts-old")[0])[0]
+    assert "kpi" not in old and 'class="row"' not in old
+    assert set(re.findall(r'data-step="(\d+)"', old)) == {"0", "1"}, "表は段1だけ（見出しは 0）"
+
+
+def case_table_summary_big():
+    """summary のある小さな表を大きく組むと、カードの文字は上るが上限（数字 64・label と delta 36・note 28）と帯の上限 384px を守り、表と重ならない（group 混在でも）。"""
+    plain = [_sum_card(1, delta="+1", trend="up"), _sum_card(2, delta="−1", trend="down")]
+    mixed = [_sum_card(1, delta="+1", trend="up", note="短い", group={"label": "自動", "tone": "a"}), _sum_card(2, delta="−1", trend="down")]
+    caps = {"value": 64, "label": 36, "delta": 36, "note": 28}
+    for name, summary in (("plain", plain), ("mixed", mixed)):
+        small = {"type": "table", "headline": "h", "columns": ["a", "b"], "rows": [["1", "2"]], "summary": summary}
+        s = _secs(build(one(small, ["", "", ""]), f"tsb-{name}")[0])[0]
+        sizes = lambda role: [int(v) for v in re.findall(rf'class="kpi-{role}[^"]*" style="font-size:(\d+)px', s)]
+        for role, cap in caps.items():
+            got = sizes(role)
+            assert not got or (max(got) <= cap and len(set(got)) == 1), (name, role, got)
+        if name == "plain":
+            assert sizes("label")[0] > 28, "小さな表は大きく組まれる（この試験が上限を見る意味がある）"
+        y = lambda cls: float(re.search(rf'class="{cls}"[^>]*?top:([\d.]+)px', s).group(1))
+        band = y("table") - T.SUMMARY_GAP - y("row")
+        assert 0 < band <= T.SUMMARY_MAX_H, f"{name}: 帯の高さが上限を越えた: {band}"
+        heights = [float(v) for v in re.findall(r'class="kpi[^"]*" style="[^"]*?height:([\d.]+)px', s)]
+        assert all(h <= T.SUMMARY_MAX_H for h in heights), (name, heights)
+
+
+def case_table_summary_clicks():
+    """summary のある table の段の数: 2クリック（summary なしは1）・属性・ノートの［クリック］・handout・steps: false・talk の照合。"""
+    tbl = _sum_table([_sum_card(1), _sum_card(2)], legend=[{"tone": "good", "text": "良"}], source="出典")
+    plain = {k: v for k, v in tbl.items() if k not in ("summary", "legend")}
+    sc = {"title": "t", "slides": [dict(tbl, talk=["a", "b", "c"]), dict(plain, talk=["a", "b"])]}
+    path, info = build(sc, "tsc")
+    assert [i["clicks"] for i in info["slides"]] == [2, 1], info["slides"]
+    secs = parse(path)
+    assert sorted({v for v in secs[0]["steps"] if v >= 1}) == [1, 2] and sorted({v for v in secs[1]["steps"] if v >= 1}) == [1]
+    assert secs[0]["notes"].count("［クリック］") == 2 and secs[1]["notes"].count("［クリック］") == 1
+    assert all(f in T.FX for sec in secs for f in sec["fx"]) and all(sec["nested"] == 0 for sec in secs)
+    s = _secs(path)[0]
+    assert len(re.findall(r'data-step="2"', s)) == 2, "段2は表と凡例"
+    expect_error({"title": "t", "slides": [dict(tbl, talk=["a", "b"])]}, "tsc-talk", "table", "talk が 2 個", "3 個")
+    sc2 = {"title": "t", "slides": [dict(tbl, talk=["a", "b", "c"])], "mode": "handout"}
+    hpath, hinfo = build(sc2, "tsc-handout")
+    html = hpath.read_text(encoding="utf-8")
+    assert hinfo["slides"][0]["clicks"] == 0 and "data-step=" not in html and "data-fx=" not in html, "handout は動きなし"
+    assert 'class="kpi"' in html and 'class="table"' in html
+    flat = dict(tbl, steps=False, talk=["全部"])
+    fpath, finfo = build({"title": "t", "slides": [flat]}, "tsc-flat")
+    assert finfo["slides"][0]["clicks"] == 0 and set(parse(fpath)[0]["steps"]) == {0}, "steps: false は全部 step 0"
+    expect_error({"title": "t", "slides": [dict(tbl, steps=False, talk=["a", "b", "c"])]}, "tsc-flat-bad", "talk が 3 個", "クリック 0 回")
+
+
 CASES = {k[5:]: v for k, v in globals().items() if k.startswith("case_")}
 
 
