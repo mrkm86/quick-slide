@@ -1712,6 +1712,21 @@ def case_dads_emphasis_not_by_color():
     assert s.index('class="mx-ylab"') < s.index('class="mx-item"') < s.index("mx-quad") if "mx-quad" in s else True, "読む順は 軸 → 項目 → 象限名"
 
 
+def case_table_align():
+    """table の align: 列ごとの揃えを th・td の両方に当てる。省略時は今どおり（1列目 left・残り center）。数・値が悪ければ rc=2。"""
+    base = {"type": "table", "headline": "h", "columns": ["a", "b", "c"], "rows": [["1", "2", "3"], ["4", "5", "6"]]}
+    def tds(sc, name):
+        return re.findall(r'class="td(?: hl)?" style="width:[\d.]+px; justify-content:([a-z-]+)"><div style="font-size:\d+px; text-align:([a-z]+);', _secs(build(one(sc), name)[0])[0])
+    default = tds(base, "al-default")
+    assert default == [("flex-start", "left"), ("center", "center"), ("center", "center")] * 3, default
+    assert tds(dict(base, align=["left", "center", "center"]), "al-same") == default, "明示しても省略時と同じ"
+    got = tds(dict(base, align=["center", "right", "left"], highlight=2), "al-mixed")
+    assert got == [("center", "center"), ("flex-end", "right"), ("flex-start", "left")] * 3, got
+    msg = "align は columns と同じ数の配列で、値は left / center / right のどれか"
+    for bad, n in (([], "al-empty"), (["left", "right"], "al-short"), (["left", "right", "middle"], "al-value"), ("right", "al-str"), ([1, 2, 3], "al-int"), ([["left"], "right", "center"], "al-list")):
+        expect_error(one(dict(base, align=bad)), n, msg)
+
+
 def case_dads_matrix_overlap():
     """matrix: 名前は点・ほかの名前・区切り線と重ならないようにずらす。点どうしが重なる・置けないときは rc=2。"""
     base = {"type": "matrix", "headline": "h", "x": {"label": "x"}, "y": {"label": "y"}}

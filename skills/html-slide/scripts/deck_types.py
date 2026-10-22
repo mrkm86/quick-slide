@@ -1136,6 +1136,9 @@ def callout_box(s: Slide, callout: dict, top: float, height: float, anim: str) -
     return f'<div class="callout" style="{box(col_x(9), top, CALLOUT_W, height)}" {anim}>{inner}</div>'
 
 
+TABLE_ALIGNS = {"left": "flex-start", "center": "center", "right": "flex-end"}   # 列の揃え → justify-content
+
+
 def t_table(s: Slide):
     """表: 見出しの行＋2〜7行。highlight（列の番号・1から）の列を強める。表は1クリックでまとめて出る。"""
     head, top = header(s)
@@ -1156,6 +1159,9 @@ def t_table(s: Slide):
         s.err("widths は columns と同じ数の正の数")
     total = sum(weights)
     cws = [CW * v / total for v in weights]
+    aligns = s.spec.get("align", ["left"] + ["center"] * (len(cols) - 1))
+    if not isinstance(aligns, list) or len(aligns) != len(cols) or not all(isinstance(a, str) and a in TABLE_ALIGNS for a in aligns):
+        s.err("align は columns と同じ数の配列で、値は left / center / right のどれか")
     note_h = 40 if s.text("source") else 0
     rh = min(s.gap(112), int((s.bottom - top - note_h) / (len(rows) + 1)) // 8 * 8)     # 行の高さ（大きく組むときは上限を広げる）
     fs0 = 28 if rh >= 64 else 24                       # 表のセルは Std-28N-150（下限 24）。行が低ければ 24
@@ -1172,8 +1178,7 @@ def t_table(s: Slide):
             bold = r == 0 or c == 0 or on
             fs, _ = s.fit("table-th" if r == 0 else "table-td", v, fs0, cws[c] - (56 if on else 48),
                           what=f"表の {r} 行目 {c + 1} 列目" if r else f"columns の {c + 1} 個目", lines=max_lines, lh=1.5, min_size=24, bold=bold)
-            align = "flex-start" if c == 0 else "center"
-            tal = "left" if c == 0 else "center"
+            align, tal = TABLE_ALIGNS[aligns[c]], aligns[c]
             weight = " font-weight:700;" if bold else ""
             cells.append(f'<div class="td{" hl" if on else ""}" style="width:{px(cws[c])}; justify-content:{align}">'
                          f'<div style="font-size:{fs}px; text-align:{tal};{weight}">{rich(v)}</div></div>')
@@ -2751,7 +2756,7 @@ TYPES = {
     "flow": (t_flow, HEAD_KEYS | {"items"}, True),
     "compare": (t_compare, HEAD_KEYS | {"left", "right", "accent", "arrow"}, True),
     "bar-chart": (t_bar_chart, HEAD_KEYS | {"bars", "unit", "note", "max", "callout"}, True),
-    "table": (t_table, HEAD_KEYS | {"columns", "rows", "highlight", "widths"}, True),
+    "table": (t_table, HEAD_KEYS | {"columns", "rows", "highlight", "widths", "align"}, True),
     "photo": (t_photo, {"image", "layout", "split", "kicker", "headline", "body", "caption", "hide_text"}, False),
     "quote": (t_quote, {"quote", "by", "position", "kicker", "source", "layout", "image"}, True),
     "bullets": (t_bullets, HEAD_KEYS | {"items", "image", "side", "split"}, True),

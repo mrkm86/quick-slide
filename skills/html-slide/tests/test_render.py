@@ -149,6 +149,48 @@ def t_text_frames():
             check(bp.get("wrap") == "none" and bp.get("anchor") == "ctr", f"1行の bodyPr: {dict(bp.attrib)}")
 
 
+def t_table_align():
+    """table の align: 折り返す右寄せ・中央寄せのセルが、PPTX でも HTML の文字の右端・中央に合う（右へ遊びを足してずれない）。"""
+    import deck
+    cols = ["項目", "右", "中央", "数"]
+    long_ = "これは折り返して二行以上になるセルの文章です"
+    sc = {"title": "t", "slides": [{"id": "t1", "type": "table", "headline": "揃え", "columns": cols, "align": ["left", "right", "center", "right"],
+                                    "widths": [0.6, 1.4, 1.4, 0.6], "rows": [["A", long_, long_, "10/01"], ["B", "短い", "短い", "7日"]]}]}
+    src = TMP / "align.json"
+    src.write_text(json.dumps(sc, ensure_ascii=False), encoding="utf-8")
+    html = deck.build_html(src, TMP / "align")[0]
+    out = TMP / "align" / "deck.pptx"
+    render.render(Path(html), out)
+    x = slide_xml(out, 1)
+    boxes = {}
+    for sp in x.xpath("//p:sp[p:txBody]", namespaces=NS):
+        text = "".join(sp.xpath(".//a:t/text()", namespaces=NS))
+        off, ext = sp.xpath(".//a:off", namespaces=NS)[0], sp.xpath(".//a:ext", namespaces=NS)[0]
+        lo = int(off.get("x")) / pptx_writer.PX
+        boxes.setdefault(text, []).append((lo, lo + int(ext.get("cx")) / pptx_writer.PX, sp.xpath(".//a:pPr/@algn", namespaces=NS)[0]))
+    wrapped = sorted(boxes[long_])
+    check(wrapped[0][2] == "r" and wrapped[1][2] == "ctr", f"折り返すセルの段落の揃え: {wrapped}")
+    # 右寄せの列（1210px 付近）の右端は、その列の「短い」「見出し」の文字の右端と同じ（TEXT_PAD ぶんの遊びを除く）
+    short = min(boxes["短い"])[1] - pptx_writer.TEXT_PAD
+    check(abs(wrapped[0][1] - short) <= 1, f"右寄せの折り返しの右端 {wrapped[0][1]} が1行の右端 {short} とずれた")
+    mid = (wrapped[1][0] + wrapped[1][1]) / 2
+    short_mid = sum(max(boxes["短い"])[:2]) / 2
+    check(abs(mid - short_mid) <= 1, f"中央寄せの折り返しの中心 {mid} が1行の中心 {short_mid} とずれた")
+    # deck の表の折り返しは改行を固定する経路（pin）を通る。固定しない複数行の経路（WRAP_SLACK）も、右端・中心を HTML の箱に合わせ続ける
+    plain = []
+    for k, al in enumerate(("r", "ctr", "l")):
+        plain.append({"type": "text", "unit": None, "rect": {"x": 200, "y": 100 + 200 * k, "w": 400, "h": 120}, "lines": 2, "align": al,
+                      "runs": [{"text": "折り返して二行になる文章", "size": 32}]})
+    pptx_writer.write({"slides": [{"id": "s1", "prims": plain, "units": {}}]}, TMP / "align-plain.pptx")
+    got = {}
+    for sp in slide_xml(TMP / "align-plain.pptx", 1).xpath("//p:sp[p:txBody]", namespaces=NS):
+        off, ext = sp.xpath(".//a:off", namespaces=NS)[0], sp.xpath(".//a:ext", namespaces=NS)[0]
+        lo = int(off.get("x")) / pptx_writer.PX
+        got[sp.xpath(".//a:pPr/@algn", namespaces=NS)[0]] = (lo, lo + int(ext.get("cx")) / pptx_writer.PX)
+    check(abs(got["r"][1] - 600) <= 0.5, f"固定しない右寄せの右端 {got['r'][1]} が箱の右端 600 とずれた")
+    check(abs(sum(got["ctr"]) / 2 - 400) <= 0.5, f"固定しない中央寄せの中心 {sum(got['ctr']) / 2} が箱の中心 400 とずれた")
+
+
 def t_verify_mismatch():
     """verify: ノートの［クリック］とクリックの数のずれを rc=2 で拾う。合っていれば rc=0。"""
     prims = [{"type": "rect", "unit": "u1", "rect": {"x": 10, "y": 10, "w": 50, "h": 50}, "fill": {"hex": "00ff00", "a": 1}}]
