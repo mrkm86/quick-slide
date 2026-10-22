@@ -240,6 +240,20 @@
       .td.hl div { font-weight: 700; }
       .tr.th .td.hl { background-color: var(--accent-strong); }
       .tr.th .td.hl div { color: var(--on-accent); }
+      .td.tone-good { background-color: var(--tone-good-bg); }
+      .td.tone-warn { background-color: var(--tone-warn-bg); }
+      .td.tone-bad { background-color: var(--tone-bad-bg); }
+      .td.tone-good div, .td.tone-good em { color: var(--tone-good-text); }
+      .td.tone-warn div, .td.tone-warn em { color: var(--tone-warn-text); }
+      .td.tone-bad div, .td.tone-bad em { color: var(--tone-bad-text); }
+      .tr.dim .td div, .tr.dim .td em { color: var(--muted); }
+      .tone-legend { position: absolute; display: flex; align-items: center; height: 33px; }
+      .tone-legend-item { display: flex; align-items: center; margin-right: 40px; }
+      .tone-legend-swatch { width: 24px; height: 24px; margin-right: 16px; border: 2px solid var(--muted); border-radius: 4px; background-color: var(--muted); }
+      .tone-legend-text { line-height: 1.5; color: var(--muted); white-space: nowrap; }
+      .tone-legend-item.tone-good .tone-legend-swatch { background-color: var(--tone-good-bg); border-color: var(--tone-good-text); }
+      .tone-legend-item.tone-warn .tone-legend-swatch { background-color: var(--tone-warn-bg); border-color: var(--tone-warn-text); }
+      .tone-legend-item.tone-bad .tone-legend-swatch { background-color: var(--tone-bad-bg); border-color: var(--tone-bad-text); }
 
       /* 写真 */
       .scrim { position: absolute; display: flex; flex-direction: column; background-color: var(--scrim); border-radius: 12px; padding: 48px 56px; }

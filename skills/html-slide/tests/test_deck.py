@@ -1921,6 +1921,96 @@ def case_table_align():
         expect_error(one(dict(base, align=bad)), n, msg)
 
 
+def case_table_tone_dim_legend():
+    """table のセルの tone・dim_rows・legend: 地と文字色の class・退かせた行は tone を外す・凡例は表と source の間・誤りは位置付きで rc=2。"""
+    base = {"type": "table", "headline": "h", "columns": ["a", "b", "c"], "rows": [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]}
+    rows = [["1", "2", {"text": "3日", "tone": "good"}], ["4", {"text": 5, "tone": "warn"}, {"text": "6日", "tone": "bad"}], ["7", "8", {"text": "**9**日", "tone": "bad"}]]
+    legend = [{"tone": "good", "text": "予定どおり"}, {"tone": "warn", "text": "1週間"}, {"tone": "bad", "text": "2週間"}, {"tone": "dim", "text": "見送り"}]
+    full = dict(base, rows=rows, dim_rows=[3, 3], highlight=3, legend=legend, source="注記")
+    s = _secs(build(one(full), "tdl-full")[0])[0]
+    cells = re.findall(r'class="td(?: hl)? tone-(good|warn|bad)"', s)
+    assert cells == ["good", "warn", "bad"], f"セルの tone の class（退かせた3行目の bad は付かない）: {cells}"
+    assert re.findall(r'class="tone-legend-item tone-(\w+)"', s) == ["good", "warn", "bad", "dim"], "凡例の見本の class"
+    assert s.count('class="tr dim"') == 1 and s.count(" dim\"") == 1, "dim_rows の重複は1行にまとまる"
+    assert 'class="td hl tone-good"' in s and ">5<" in s, "highlight の列でも tone（地は tone が勝つ。罫と太字は hl のまま）・数のセルは num_label"
+    assert s.count('class="tone-legend-item') == 4 and 'data-name="色の凡例"' in s and s.index('class="table"') < s.index('class="tone-legend"') < s.index('class="source"'), "表 → 凡例 → source"
+    css = deck.TEMPLATE.read_text(encoding="utf-8")
+    for t_ in ("good", "warn", "bad"):
+        assert re.search(rf"\.td\.tone-{t_} \{{ background-color: var\(--tone-{t_}-bg\)", css) and f".td.tone-{t_} div, .td.tone-{t_} em {{ color: var(--tone-{t_}-text)" in css
+        assert f".tone-legend-item.tone-{t_} .tone-legend-swatch {{ background-color: var(--tone-{t_}-bg); border-color: var(--tone-{t_}-text)" in css
+    assert ".tr.dim .td div, .tr.dim .td em { color: var(--muted); }" in css, "退かせた行は em も muted"
+    y = lambda cls, h: float(re.search(rf'class="{cls}" style="(?:left:\d+px; )?top:([\d.]+)px', h).group(1))
+    tbl_top = y("table", s)
+    rh = float(re.search(r'class="tr th" style="height:(\d+)px', s).group(1))
+    assert y("tone-legend", s) == round(tbl_top + rh * 4 + 16) and y("source", s) == round(tbl_top + rh * 4 + 16 + 48), "凡例は表の下16px・source は凡例の分48pxずれる"
+    # 旧台本: tone・dim・legend が無ければ class も凡例も付かず、source は表の下16px
+    old = _secs(build(one(dict(base, source="注記")), "tdl-old")[0])[0]
+    assert "tone-" not in old and "tr dim" not in old and "tone-legend" not in old, "書かなければ何も足さない"
+    rh0 = float(re.search(r'class="tr th" style="height:(\d+)px', old).group(1))
+    assert y("source", old) == round(y("table", old) + rh0 * 4 + 16), "凡例なしの source の位置は今までどおり"
+    assert rh < rh0 or rh == rh0, "凡例ぶんだけ行は低くなるか、同じ"
+    # 凡例は表の行を低くしても入る。3 色すべて使うとき・使わない色を書くのも通る（凡例に未使用の色を許す）
+    build(one(dict(base, legend=[{"tone": "dim", "text": "使っていない"}])), "tdl-unused")
+    # rc=2: セル・列・dim_rows・legend（型の悪い値でも例外を漏らさない）
+    cell = lambda v: dict(base, rows=[["1", "2", "3"], ["4", v, "6"], ["7", "8", "9"]])
+    for v, name, word in (({"text": "x", "tone": "info"}, "c-tone", "表の 2 行目 2 列目: tone は good / warn / bad のどれか"),
+                          ({"text": "x", "tone": 1}, "c-tone-int", "tone は good / warn / bad のどれか"),
+                          ({"text": "x", "tone": ["good"]}, "c-tone-list", "tone は good / warn / bad のどれか"),
+                          ({"tone": "good"}, "c-notext", "表の 2 行目 2 列目: text は文字列か数"),
+                          ({"text": True, "tone": "good"}, "c-bool", "text は文字列か数"),
+                          ({"text": ["a"], "tone": "good"}, "c-list", "text は文字列か数"),
+                          ({"text": {"a": 1}}, "c-dict", "text は文字列か数"),
+                          ({"text": "x", "colour": "good"}, "c-key", "知らないキー: colour")):
+        expect_error(one(cell(v)), name, word)
+    expect_error(one(dict(base, columns=["a", {"text": "b", "tone": "good"}, "c"])), "c-col", "columns の 2 個目にセルのオブジェクトは書けない")
+    for v, name, word in ((5, "d-out", "dim_rows の 5 は rows（3 行）の外"), (0, "d-zero", "dim_rows の 0 は rows（3 行）の外"), (True, "d-bool", "整数でない"),
+                          ("2", "d-str", "整数でない"), (1.5, "d-float", "整数でない"), ([1], "d-nest", "整数でない"), (None, "d-none", "整数でない")):
+        expect_error(one(dict(base, dim_rows=[v])), name, word)
+    expect_error(one(dict(base, dim_rows="1")), "d-notlist", "dim_rows は行の番号")
+    # 書いたキーの null は未指定と分けて rc=2（セルの tone は行・列つき、ほかはキー名つき）
+    expect_error(one(cell({"text": "b", "tone": None})), "c-tone-null", "表の 2 行目 2 列目: tone は good / warn / bad のどれか")
+    expect_error(one(dict(base, dim_rows=None)), "d-null", "dim_rows は行の番号")
+    expect_error(one(dict(base, legend=None)), "l-null", "legend は 1〜4 個")
+    build(one(dict(base, dim_rows=[])), "d-empty")
+    ok = {"tone": "warn", "text": "注意"}
+    for lg, name, word in (([], "l-empty", "legend は 1〜4 個"), ([ok] * 5, "l-five", "legend は 1〜4 個"), ("warn", "l-str", "legend は 1〜4 個"), ({"tone": "warn"}, "l-dict", "legend は 1〜4 個"),
+                           ([ok, {"tone": "info", "text": "x"}], "l-tone", "legend の 2 個目: tone は good / warn / bad / dim のどれか"),
+                           ([ok, {"tone": "dim"}], "l-notext", "legend の 2 個目は tone と text のオブジェクト"),
+                           ([{"tone": "warn", "text": ""}], "l-empty-text", "legend の 1 個目: text は空でない"),
+                           ([{"tone": "warn", "text": 3}], "l-int-text", "text は空でない"),
+                           ([{"tone": "warn", "text": "a", "color": "x"}], "l-extra", "legend の 1 個目は tone と text"),
+                           (["warn"], "l-item-str", "legend の 1 個目は tone と text"),
+                           ([{"tone": "warn", "text": "あ" * 40}] * 3, "l-wide", "legend が1行に入らない")):
+        expect_error(one(dict(base, legend=lg)), name, word)
+    expect_error(one({"type": "line-chart", "headline": "h", "labels": ["1", "2"], "series": [{"values": [1, 2]}], "legend": [ok]}), "l-line", "legend")
+    expect_error(one({"type": "cards", "headline": "h", "items": [{"title": "a"}, {"title": "b"}], "legend": [ok]}), "l-cards", "legend")
+    # 行が低すぎて最小の文字（24px・行高 1.5・上下 16px＝52px）が入らないときは rc=2。見出しを小さく組み直せば入るなら、そちらで入れる
+    long_head = {"kicker": "k", "headline": "見出しを長くして二行にする、さらに長くして確かめる文章を書く、まだ続けて二行に収める",
+                 "sub": "リード文も長くして二行にする。リード文も長くして二行にする。リード文も長くする。"}
+    tight = dict(base, **long_head, rows=[["1", "2", "3"]] * 7, legend=legend[:1], source="注記", takeaway="結論")
+    msg = expect_error(one(tight), "tdl-tight", "表が入らない", "文字 24px が入らない")
+    assert "legend" in msg and "rows" in msg, msg
+    packed = dict(base, rows=[["1", "2", "3"]] * 7, source="x", takeaway="t", kicker="k", sub="リード文を長く" * 6)
+    for sc, name in ((packed, "tdl-packed"), (dict(packed, rows=[["1", "2", "3"]] * 5, legend=legend[:2]), "tdl-packed-lg")):
+        rhs = [int(v) for v in re.findall(r'class="tr th?" style="height:(\d+)px', _secs(build(one(sc), name)[0])[0])]
+        assert rhs and min(rhs) >= 52, f"最小の行の高さ 52px を割った: {rhs}"
+
+
+def case_table_tone_contrast_all_themes():
+    """セルの tone の文字×地は 4.5:1・凡例の枠×地は 3:1・薄い行の muted×highlight の地は 4.5:1（全テーマ）。壊せば contrast_problems が拾う。"""
+    import deck_palette as DP
+    for name in ("default", "forest", "warm"):
+        pal = deck.palette(deck.load_theme(deck.THEMES / f"{name}.yaml"))
+        for t_ in ("good", "warn", "bad"):
+            assert DP.ratio(pal[f"tone-{t_}-text"], pal[f"tone-{t_}-bg"]) >= 4.5, (name, t_, "セルの文字")
+            assert DP.ratio(pal[f"tone-{t_}-text"], pal["bg"]) >= 3.0, (name, t_, "凡例の枠")
+        for g in ("bg", "surface", "accent-soft"):
+            assert DP.ratio(pal["muted"], pal[g]) >= 4.5, (name, g, "薄い行の文字")
+        assert not DP.contrast_problems(pal), name
+        broken = dict(pal, **{"tone-warn-text": pal["tone-warn-bg"]})
+        assert DP.contrast_problems(broken), "tone の文字を地と同じにしたら拾う"
+
+
 def case_dads_matrix_overlap():
     """matrix: 名前は点・ほかの名前・区切り線と重ならないようにずらす。点どうしが重なる・置けないときは rc=2。"""
     base = {"type": "matrix", "headline": "h", "x": {"label": "x"}, "y": {"label": "y"}}

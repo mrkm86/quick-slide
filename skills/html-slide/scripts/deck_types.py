@@ -559,6 +559,39 @@ def source_line(s: Slide, y=BODY_BOTTOM + 8, on_dark=False, width=CW):
     return f'<div class="source" style="top:{px(y)}; width:{px(width)}; font-size:{fs}px;{col}" data-name="出典">{esc(src)}</div>'
 
 
+LEGEND_TONES = ("good", "warn", "bad", "dim")      # 色の凡例の語彙。dim は表の dim_rows（薄くした行）に当たる
+LEGEND_H, LEGEND_SWATCH, LEGEND_GAP, LEGEND_TEXT_GAP = 48, 24, 40, 16    # 凡例の予約高（文字1行 33 と前後の余裕）・見本の1辺・項目の間・見本と文字の間
+
+
+def tone_legend(s: Slide, y, *, width=CW) -> tuple[str, int]:
+    """色の凡例（色見本＋説明の1行）。台本の legend が無ければ ("", 0)。あれば (HTML, 予約する高さ)。
+
+    legend は 1〜4 項目の {tone, text}（どちらも必須）。見本は tone の地＋tone の文字色の枠（dim は muted）、文字は source と同じ 22px・muted。
+    1行に入らなければ縮めず rc=2。表以外の型は legend を許さない（build_slide の未知のキー）。
+    """
+    if "legend" not in s.spec:
+        return "", 0
+    raw = s.spec["legend"]                              # 書いたなら null も配列でないものとして rc=2（未指定とは分ける）
+    if not isinstance(raw, list) or not 1 <= len(raw) <= 4:
+        s.err(f"legend は 1〜4 個の配列（{len(raw) if isinstance(raw, list) else '配列でない'}）")
+    items, total = [], 0
+    for i, it in enumerate(raw, 1):
+        where = f"legend の {i} 個目"
+        if not isinstance(it, dict) or set(it) != {"tone", "text"}:
+            s.err(f"{where}は tone と text のオブジェクト（{{\"tone\": \"warn\", \"text\": \"1週間を過ぎた\"}}）")
+        if not isinstance(it["tone"], str) or it["tone"] not in LEGEND_TONES:
+            s.err(f"{where}: tone は {' / '.join(LEGEND_TONES)} のどれか")
+        if not isinstance(it["text"], str) or not it["text"].strip() or "\n" in it["text"]:
+            s.err(f"{where}: text は空でない1行の文字列")
+        total += LEGEND_SWATCH + LEGEND_TEXT_GAP + text_width(it["text"], 22) + (LEGEND_GAP if i > 1 else 0)
+        items.append((it["tone"], it["text"].strip()))
+    if total > width * SAFE:
+        s.err("legend が1行に入らない。text を短くするか項目を減らす")
+    cells = "".join(f'<div class="tone-legend-item tone-{tone}"><div class="tone-legend-swatch"></div>'
+                    f'<div class="tone-legend-text" style="font-size:22px">{esc(text)}</div></div>' for tone, text in items)
+    return (f'<div class="tone-legend" style="{box(X0, y, width)}" {s.anim(1, "fade", 0, "色の凡例")}>{cells}</div>', LEGEND_H)
+
+
 def chevron(w, h, depth, first, fill, stroke=None, sw=0) -> str:
     """矢羽根の形（SVG の polygon）。first は左の切り欠きなし。stroke があれば、辺の内側に収まる線で縁取る（面が地と 3:1 にならないとき）。"""
     m = sw / 2
@@ -1139,8 +1172,30 @@ def callout_box(s: Slide, callout: dict, top: float, height: float, anim: str) -
 TABLE_ALIGNS = {"left": "flex-start", "center": "center", "right": "flex-end"}   # 列の揃え → justify-content
 
 
+TABLE_CELL_TONES = ("good", "warn", "bad")        # セルの評価（文字と地の色は tone-… の役）
+
+
+def _table_cell(s: Slide, v, where: str):
+    """表のセル → (表示する文字, tone か None)。文字・数、または {text, tone}。"""
+    tone = None
+    if isinstance(v, dict):
+        extra = sorted(str(k) for k in set(v) - {"text", "tone"})
+        if extra:
+            s.err(f"{where}: セルのオブジェクトに知らないキー: {', '.join(extra)}（使えるのは text と tone）")
+        has_tone, tone, v = "tone" in v, v.get("tone"), v.get("text")
+        if v is None or isinstance(v, bool) or not isinstance(v, (str, int, float)):
+            s.err(f"{where}: text は文字列か数")
+        if has_tone and (not isinstance(tone, str) or tone not in TABLE_CELL_TONES):
+            s.err(f"{where}: tone は {' / '.join(TABLE_CELL_TONES)} のどれか")
+    return (v if isinstance(v, str) else num_label(v)), tone
+
+
 def t_table(s: Slide):
-    """表: 見出しの行＋2〜7行。highlight（列の番号・1から）の列を強める。表は1クリックでまとめて出る。"""
+    """表: 見出しの行＋2〜7行。highlight（列の番号・1から）の列を強める。表は1クリックでまとめて出る。
+
+    セルは文字・数か {text, tone}（good・warn・bad の淡い地＋濃い文字）。dim_rows（行の番号・1から）は行を muted で退かせる（tone より優先）。
+    legend は表の下の色の凡例（1〜4項目）。表 → 凡例 → source の順。
+    """
     head, top = header(s)
     cols = s.spec.get("columns")
     rows = s.spec.get("rows")
@@ -1151,6 +1206,22 @@ def t_table(s: Slide):
     for i, r in enumerate(rows, 1):
         if not isinstance(r, list) or len(r) != len(cols):
             s.err(f"rows の {i} 行目の数が columns（{len(cols)} 列）と合わない")
+    for c, v in enumerate(cols, 1):
+        if isinstance(v, dict):
+            s.err(f"columns の {c} 個目にセルのオブジェクトは書けない（tone は rows のセルに書く）")
+    cells_of = [[_table_cell(s, v, f"表の {r} 行目 {c} 列目") for c, v in enumerate(row, 1)] for r, row in enumerate(rows, 1)]
+    cells_of.insert(0, [(v if isinstance(v, str) else num_label(v), None) for v in cols])
+    dims: set[int] = set()
+    if "dim_rows" in s.spec:                           # 書いたなら null も rc=2（未指定とは分ける）
+        dim = s.spec["dim_rows"]
+        if not isinstance(dim, list):
+            s.err("dim_rows は行の番号（1から）の配列")
+        for n in dim:
+            if isinstance(n, bool) or not isinstance(n, int):
+                s.err(f"dim_rows の {n!r} は整数でない（行の番号を 1 から書く）")
+            if not 1 <= n <= len(rows):
+                s.err(f"dim_rows の {n} は rows（{len(rows)} 行）の外")
+        dims = set(dim)
     hl = s.spec.get("highlight")
     if hl is not None and (not isinstance(hl, int) or not 1 <= hl <= len(cols)):
         s.err(f"highlight は 1〜{len(cols)} の整数")
@@ -1162,30 +1233,36 @@ def t_table(s: Slide):
     aligns = s.spec.get("align", ["left"] + ["center"] * (len(cols) - 1))
     if not isinstance(aligns, list) or len(aligns) != len(cols) or not all(isinstance(a, str) and a in TABLE_ALIGNS for a in aligns):
         s.err("align は columns と同じ数の配列で、値は left / center / right のどれか")
-    note_h = 40 if s.text("source") else 0
-    rh = min(s.gap(112), int((s.bottom - top - note_h) / (len(rows) + 1)) // 8 * 8)     # 行の高さ（大きく組むときは上限を広げる）
+    legend_h = tone_legend(s, 0)[1]                    # 検査と予約の高さ。置く位置は行の高さが決まってから
+    footer_h = legend_h + (40 if s.text("source") else 0)
+    rh = min(s.gap(112), int((s.bottom - top - footer_h) / (len(rows) + 1)) // 8 * 8)     # 行の高さ（大きく組むときは上限を広げる）
+    if rh < 24 * 1.5 + 16:                             # 最小の文字 24px・行高 1.5・上下 16px が入らない
+        s.err(f"表が入らない（行の高さ {rh}px では文字 24px が入らない）。rows を減らすか、legend・source を外す")
     fs0 = 28 if rh >= 64 else 24                       # 表のセルは Std-28N-150（下限 24）。行が低ければ 24
     fs0 = s.g(fs0, 45)
     while fs0 > 24 and fs0 * 1.5 + 16 > rh:            # 1行が行の高さに入る段まで
         fs0 = step_down(fs0)
     max_lines = max(1, int((rh - 16) / (fs0 * 1.5)))
     out = []
-    for r, row in enumerate([cols] + rows):
+    for r, row in enumerate(cells_of):
         cells = []
-        for c, v in enumerate(row):
-            v = num_label(v) if not isinstance(v, str) else v
+        dimmed = r in dims                             # 行の番号は 1 から（見出しの行は数えない）
+        for c, (v, tone) in enumerate(row):
             on = hl == c + 1                                  # 強める列は太字と太い縦の罫（色の地だけにしない）
             bold = r == 0 or c == 0 or on
             fs, _ = s.fit("table-th" if r == 0 else "table-td", v, fs0, cws[c] - (56 if on else 48),
                           what=f"表の {r} 行目 {c + 1} 列目" if r else f"columns の {c + 1} 個目", lines=max_lines, lh=1.5, min_size=24, bold=bold)
             align, tal = TABLE_ALIGNS[aligns[c]], aligns[c]
             weight = " font-weight:700;" if bold else ""
-            cells.append(f'<div class="td{" hl" if on else ""}" style="width:{px(cws[c])}; justify-content:{align}">'
+            kind = f" tone-{tone}" if tone and not dimmed else ""     # 退かせた行は tone の地も文字色も付けない
+            cells.append(f'<div class="td{" hl" if on else ""}{kind}" style="width:{px(cws[c])}; justify-content:{align}">'
                          f'<div style="font-size:{fs}px; text-align:{tal};{weight}">{rich(v)}</div></div>')
-        out.append(f'<div class="tr{" th" if r == 0 else ""}" style="height:{px(rh)}">' + "".join(cells) + "</div>")
-    s.need, s.avail = rh * (len(rows) + 1) + note_h, s.bottom - top
+        out.append(f'<div class="tr{" th" if r == 0 else ""}{" dim" if dimmed else ""}" style="height:{px(rh)}">' + "".join(cells) + "</div>")
+    s.need, s.avail = rh * (len(rows) + 1) + footer_h, s.bottom - top
+    end = top + rh * (len(rows) + 1) + 16
+    legend, _ = tone_legend(s, end)
     return [head, f'<div class="table" style="{box(X0, top, CW)}" {s.anim(1, "fade", 0, "表")}>' + "".join(out) + "</div>",
-            source_line(s, top + rh * (len(rows) + 1) + 16)]
+            legend, source_line(s, end + legend_h)]
 
 
 def t_photo(s: Slide):
@@ -2825,7 +2902,7 @@ TYPES = {
     "flow": (t_flow, HEAD_KEYS | {"items"}, True),
     "compare": (t_compare, HEAD_KEYS | {"left", "right", "accent", "arrow"}, True),
     "bar-chart": (t_bar_chart, HEAD_KEYS | {"bars", "unit", "note", "max", "callout"}, True),
-    "table": (t_table, HEAD_KEYS | {"columns", "rows", "highlight", "widths", "align"}, True),
+    "table": (t_table, HEAD_KEYS | {"columns", "rows", "highlight", "widths", "align", "dim_rows", "legend"}, True),
     "photo": (t_photo, {"image", "layout", "split", "kicker", "headline", "body", "caption", "hide_text"}, False),
     "quote": (t_quote, {"quote", "by", "position", "kicker", "source", "layout", "image"}, True),
     "bullets": (t_bullets, HEAD_KEYS | {"items", "image", "side", "split"}, True),

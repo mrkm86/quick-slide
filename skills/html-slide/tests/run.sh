@@ -52,6 +52,7 @@ render "verify --odp: LibreOffice の読み取りの効果の数が report と�
 render "from_video: 1文=1クリック・型の出すものは自動・html-video の印と知らない印・章カードの前後はフェード" from_video_rules
 render "kpi: 増減の札の塗り・文字色と group のカードの面・枠・札が PPTX に写る・3枚は高さいっぱい" kpi_tone_group
 render "kpi: 増減の札の枠が PPTX に写る・札あり／なしが混ざる行で数字の上端がそろう（3枚・4枚・強い look）" kpi_chip_align
+render "table: セルの tone の地・文字色・薄い行の文字色・凡例の見本（角丸・塗り・枠）と文字が PPTX に写る" table_tone_dim_legend
 render "r1-1 兄弟の z-index を描画順に並べる・flex の order は rc=2" r1_zorder
 render "r1-2 縦の動画は rc=2（縦の動画は未対応）" r1_portrait
 render "r1-3 自動で折り返した所の単語の間の空白を残す・改行を固定するときは行末の空白を落とす" r1_wrap_spaces
@@ -124,6 +125,8 @@ deck "group の a・b・c はテーマを変えても同じ（c は固定の青�
 deck "kpi: 強い look と全テーマ・主色違いでも増減の札の文字×札の地は 4.5:1" kpi_tone_chip_strong
 deck "kpi: look（強める箱・線の面）に増減の札と group の面が潰されない" kpi_look_priority
 deck "kpi: tone・group を書かない旧台本は札も色も付かず、4枚は高さを固定しない" kpi_old_scripts_same
+deck "table: セルの tone・dim_rows・legend（class・凡例の位置と順・書かなければ何も足さない・誤りは位置付きで rc=2・最小の行の高さ）" table_tone_dim_legend
+deck "table: tone の文字×地 4.5:1・凡例の枠×地 3:1・薄い行の muted×地 4.5:1（全テーマ）・壊せば contrast_problems が拾う" table_tone_contrast_all_themes
 deck "outline と role は読み飛ばし、警告も出さない（ADR 0004）" outline_role_ignored
 deck "スタイルの YAML の誤り（知らないキー・型・変化形・値・動き・無いファイル）は rc=2・組み込みと雛形は読める" style_validation
 deck "visual: 画像のあるページだけ hero／台本が勝つ／split・collage の条件／動きの既定（1枚目・handout は fade）" style_apply

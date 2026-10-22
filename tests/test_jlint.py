@@ -95,6 +95,16 @@ class DisplayedKeysTests(unittest.TestCase):
         slide = {"id": "p-tb", "type": "table", "headline": "表", "columns": ["品目", "数"], "align": ["left", "right"], "rows": [["a", "1"]]}
         self.assertEqual(jlint.check([slide]).ng, [])
 
+    def test_table_legend_text_is_checked_and_dim_rows_is_not(self) -> None:
+        self.assertIn("legend", jlint.VISIBLE_KEYS)
+        self.assertIn("dim_rows", jlint.HIDDEN_KEYS)
+        slide = {"id": "p-tb", "type": "table", "headline": "表", "columns": ["品目", "数"], "dim_rows": [1], "rows": [["a", {"text": "🙂 1", "tone": "warn"}]],
+                 "legend": [{"tone": "warn", "text": "✅ 注意"}, {"tone": "dim", "text": "見送り"}]}
+        found = jlint.check([slide]).ng
+        self.assertEqual(len(found), 2, found)
+        for where in ("rows[0][1].text", "legend[0].text"):
+            self.assertTrue(any(where in ln for ln in found), (where, found))
+
     def test_top_level_role_is_a_chapter_id_and_not_checked(self) -> None:
         self.assertEqual(jlint.check([{"id": "p-a", "type": "statement", "headline": "短い", "role": "🙂"}]).ng, [])
 

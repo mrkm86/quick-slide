@@ -191,6 +191,53 @@ def t_table_align():
     check(abs(sum(got["ctr"]) / 2 - 400) <= 0.5, f"固定しない中央寄せの中心 {sum(got['ctr']) / 2} が箱の中心 400 とずれた")
 
 
+def t_table_tone_dim_legend():
+    """table: セルの tone の地・文字色、薄くした行の文字色、凡例の見本（塗り・枠・角丸）と文字（見本の右・重ならない）が PPTX に写る。"""
+    import deck
+    pal = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
+    up = lambda h: h[1:].upper()
+    rows = [["資料", "完了", {"text": "3日", "tone": "good"}], ["写真", "進行", {"text": "9日", "tone": "warn"}],
+            ["表紙", "進行", {"text": "20日", "tone": "bad"}], ["帯", "見送り", {"text": "12日", "tone": "warn"}], ["目次", "見送り", "5日"]]
+    legend = [{"tone": "good", "text": "予定どおり"}, {"tone": "warn", "text": "1週間を過ぎた"}, {"tone": "bad", "text": "2週間を過ぎた"}, {"tone": "dim", "text": "見送り"}]
+    sc = TMP / "tone.json"
+    sc.write_text(json.dumps({"title": "t", "slides": [{"type": "table", "headline": "h", "columns": ["品目", "状態", "経過"], "rows": rows, "highlight": 3,
+                                                       "dim_rows": [4, 5], "legend": legend, "source": "注記"}]}, ensure_ascii=False), encoding="utf-8")
+    html, _ = deck.build_html(sc, TMP / "tone-deck")
+    out = TMP / "tone.pptx"
+    render.render(html, out)
+    x = slide_xml(out, 1)
+    fills = {c.upper() for c in x.xpath("//p:sp/p:spPr/a:solidFill/a:srgbClr/@val", namespaces=NS)}
+    for role in ("tone-good-bg", "tone-warn-bg", "tone-bad-bg"):
+        check(up(pal[role]) in fills, f"セルの地 {role} が PPTX に無い")
+    color_of = lambda word: x.xpath(f"//p:sp[.//a:t='{word}']//a:rPr/a:solidFill/a:srgbClr/@val", namespaces=NS)[0].upper()
+    for word, role in (("3日", "tone-good-text"), ("9日", "tone-warn-text"), ("20日", "tone-bad-text")):
+        check(color_of(word) == up(pal[role]), f"{word} の文字色 {color_of(word)} が {role} でない")
+    for word in ("帯", "見送り", "12日", "5日", "目次"):        # 薄くした行（4・5 行目）は tone があっても muted。1 列目の太字は残す
+        check(color_of(word) == up(pal["muted"]), f"薄い行の {word} の文字色が muted でない: {color_of(word)}")
+    check(color_of("資料") == up(pal["ink"]), "薄くしない行は ink のまま")
+    check(color_of("12日") != up(pal["tone-warn-text"]), "薄い行に tone の文字色が残った")
+    bold = x.xpath("//p:sp[.//a:t='帯']//a:rPr/@b", namespaces=NS)
+    check(bold == ["1"], f"薄い行の 1 列目の太字が消えた: {bold}")
+    shapes = {}                                                   # 凡例の部品: 名前の通し番号 → (種類, 塗り, 枠, x, 幅, y, 文字)
+    for sp in x.xpath("//p:sp[starts-with(p:nvSpPr/p:cNvPr/@name, '色の凡例/')]", namespaces=NS):
+        n = int(sp.xpath("p:nvSpPr/p:cNvPr/@name", namespaces=NS)[0].split("/")[1])
+        g = lambda path: (sp.xpath(path, namespaces=NS) or [None])[0]
+        shapes[n] = (g(".//a:prstGeom/@prst"), (g("p:spPr/a:solidFill/a:srgbClr/@val") or "").upper(), (g("p:spPr/a:ln/a:solidFill/a:srgbClr/@val") or "").upper(),
+                     int(g(".//a:off/@x")), int(g(".//a:ext/@cx")), int(g(".//a:off/@y")), "".join(sp.xpath(".//a:t/text()", namespaces=NS)))
+    check(len(shapes) == 8, f"凡例の部品の数: {len(shapes)}")
+    want = [("tone-good-bg", "tone-good-text"), ("tone-warn-bg", "tone-warn-text"), ("tone-bad-bg", "tone-bad-text"), ("muted", "muted")]
+    for k, (bgk, linek) in enumerate(want):
+        sw, tx = shapes[2 * k], shapes[2 * k + 1]
+        check(sw[0] == "roundRect" and sw[1] == up(pal[bgk]) and sw[2] == up(pal[linek]), f"{k + 1} 個目の見本（角丸・塗り・枠）: {sw}")
+        check(tx[6] == legend[k]["text"] and tx[3] >= sw[3] + sw[4], f"{k + 1} 個目の文字が見本の右にない: {sw} {tx}")
+        check(tx[1] == "" and color_of(legend[k]["text"]) == up(pal["muted"]), f"{k + 1} 個目の説明の文字色")
+        if k:
+            prev = shapes[2 * k - 1]
+            check(sw[3] >= prev[3] + prev[4], f"項目が重なる: {prev} {sw}")
+    src_y = int(x.xpath("//p:sp[.//a:t='注記']//a:off/@y", namespaces=NS)[0])
+    check(src_y > shapes[7][5], "source が凡例の下にない")
+
+
 def t_verify_mismatch():
     """verify: ノートの［クリック］とクリックの数のずれを rc=2 で拾う。合っていれば rc=0。"""
     prims = [{"type": "rect", "unit": "u1", "rect": {"x": 10, "y": 10, "w": 50, "h": 50}, "fill": {"hex": "00ff00", "a": 1}}]
