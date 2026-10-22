@@ -377,13 +377,13 @@ def case_line_chart_svg():
 
 
 def _sizes(html: str, cls: str) -> list[int]:
-    return [int(x) for x in re.findall(rf'class="{cls}"[^>]*?font-size:(\d+)px', html)]
+    return [int(x) for x in re.findall(rf'class="{cls}(?: [\w-]+)*"[^>]*?font-size:(\d+)px', html)]
 
 
 def case_fit_size_applied():
     """Codex r2 #3: fit() が縮めた大きさを、その要素の font-size に書く（KPI のラベル・増減・注記・表紙の日付など）。"""
     kp = {"type": "kpi", "headline": "h", "items": [
-        {"label": "A" * 23, "value": "1", "delta": "B" * 24, "note": "注" * 34}, {"label": "b", "value": "2"}, {"label": "c", "value": "3"}]}
+        {"label": "A" * 23, "value": "1", "delta": "B" * 22, "note": "注" * 22}, {"label": "b", "value": "2"}, {"label": "c", "value": "3"}]}
     path, _ = build(one(kp, ["", ""]), "fit-kpi")
     html = path.read_text(encoding="utf-8")
     lab, dl, nt = _sizes(html, "kpi-label"), _sizes(html, "kpi-delta"), _sizes(html, "kpi-note")
@@ -1207,6 +1207,178 @@ def case_r4_annotate_kpi_fit():
     assert labels and max(labels) < 28, labels
 
 
+def _kpi3(items, **kw):
+    return {"type": "kpi", "headline": "h", "items": items, **kw}
+
+
+def _kpi_html(spec, name, **kw):
+    return build(one(spec, ["", ""]), name, **kw)[0].read_text(encoding="utf-8")
+
+
+def case_kpi_tone_group():
+    """kpi の増減の札（tone）・カードの種類分け（group）・3枚の高さ: 既定の対応・上書き・誤りは rc=2・group なしの見た目は今のまま。"""
+    pal = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
+    base = [{"label": "a", "value": "1", "delta": "−4", "trend": "down"}, {"label": "b", "value": "2", "delta": "+3", "trend": "up"},
+            {"label": "c", "value": "3", "delta": "±0", "trend": "flat"}]
+    html = _kpi_html(_kpi3(base), "kt-default")
+    assert re.findall(r'class="kpi-delta tone-(\w+)"', html) == ["bad", "good", "neutral"], "trend から tone が決まる"
+    assert ">▼ −4<" in html and ">▲ +3<" in html and ">→ ±0<" in html, "記号は trend のまま"
+    over = [dict(base[0], tone="good"), dict(base[1], tone="bad"), dict(base[2], tone="bad")]
+    html = _kpi_html(_kpi3(over), "kt-over")
+    assert re.findall(r'class="kpi-delta tone-(\w+)"', html) == ["good", "bad", "bad"], "tone が trend に勝つ"
+    assert ">▼ −4<" in html and ">▲ +3<" in html, "tone を変えても記号は変わらない"
+    html = _kpi_html(_kpi3([{"label": "a", "value": "1", "delta": "x"}, {"label": "b", "value": "2", "tone": "bad"}, {"label": "c", "value": "3"}]), "kt-none")
+    assert re.findall(r'class="kpi-delta tone-(\w+)"', html) == ["neutral"] and "tone-bad" not in html.split("</style>")[1], "trend なしは neutral・delta なしは札なし"
+    for v in ("warn", "red", 3, ["good"]):
+        expect_error(one(_kpi3([dict(base[0], tone=v)] + base[1:])), "kt-bad-tone", "items の 1 個目", "tone は good / bad / neutral")
+    for v in ("rise", [], {}, ["up"], {"up": 1}, True, 3):         # 型の違う trend も例外を漏らさず、位置付きの DeckError（rc=2）
+        expect_error(one(_kpi3([dict(base[0], trend=v)] + base[1:])), "kt-bad-trend", "items の 1 個目", "trend は up / down / flat")
+    for v in ([], {}, True, 3):
+        expect_error(one(_kpi3([dict(base[0], tone=v)] + base[1:])), "kt-bad-tone-type", "items の 1 個目", "tone は good / bad / neutral")
+    expect_error(one(_kpi3([dict(base[0], group={"label": "自動", "tone": []})] + base[1:])), "kt-bad-gtone-type", "items の 1 個目", "group.tone は a / b / c")
+    expect_error(one(_kpi3([dict(base[0], group={"label": "自動", "tone": {}})] + base[1:])), "kt-bad-gtone-type2", "items の 1 個目", "group.tone は a / b / c")
+    # 3枚はカードが使える高さいっぱい・中身は縦の中央。4枚は中身の高さのまま
+    html = _kpi_html(_kpi3(base), "kt-fill")
+    hs = re.findall(r'class="kpi" style="width:\d+px; height:(\d+)px; justify-content:center"', html)
+    assert len(hs) == 3 and len(set(hs)) == 1 and int(hs[0]) > 600, hs
+    html = _kpi_html(_kpi3(base + [{"label": "d", "value": "4"}]), "kt-four")
+    assert "justify-content:center" not in html.split("</style>")[1] and 'class="kpi" style="width:' in html
+    # group: 札は必ず出る・同じ group は同じ面と札・書かないカードは今のまま
+    g = lambda lab, tn: {"label": lab, "tone": tn}
+    items = [{"label": "a", "value": "1", "group": g("自動", "a")}, {"label": "b", "value": "2", "group": g("自動", "a")},
+             {"label": "c", "value": "3", "group": g("手作業", "b")}, {"label": "d", "value": "4"}]
+    html = _kpi_html(_kpi3(items), "kt-group")
+    body = html.split("</style>")[1]
+    assert re.findall(r'class="kpi( group-\w)?"', body) == [" group-a", " group-a", " group-b", ""], "group を書かないカードは .kpi のまま"
+    assert body.count('class="chip group group-a">自動<') == 2 and body.count('class="chip group group-b">手作業<') == 1
+    assert 'class="chip' not in body.split('class="kpi" style=')[1], "group のないカードに札は付かない"
+    bad = lambda it, *words: expect_error(one(_kpi3([it] + base[1:])), "kt-bad-group", "items の 1 個目", *words)
+    row = {"label": "a", "value": "1"}
+    bad(dict(row, group="自動"), "group は label と tone のオブジェクト")
+    bad(dict(row, group={"label": "自動"}), "group は label と tone のオブジェクト")
+    bad(dict(row, group={"label": "自動", "tone": "a", "x": 1}), "group は label と tone のオブジェクト")
+    bad(dict(row, group={"label": "", "tone": "a"}), "group.label は空でない")
+    bad(dict(row, group={"label": 3, "tone": "a"}), "group.label は空でない")
+    bad(dict(row, group={"label": "自動", "tone": "d"}), "group.tone は a / b / c のどれか")
+    bad(dict(row, group={"label": "とても長い札の語です", "tone": "a"}), "group.label は短く")
+    bad(dict(row, group={"label": "自動", "tone": "a"}, accent=True), "accent と group は同時に書けない")
+    # 強める指標と group のあるカードが並んでもよい（同じカードでなければ）
+    _kpi_html(_kpi3([dict(row, accent=True), dict(row, group=g("自動", "a")), dict(row)]), "kt-mix")
+    # 共有検査: 要約の帯（accent を許さない）でも同じ位置づけで検査する
+    s = T.Slide(1, {"summary": [{"label": "a", "value": "1", "accent": True}]}, pal, False, TMP, [])
+    try:
+        T._kpi_items(s, "summary", lo=1, hi=4, allow_accent=False)
+        raise AssertionError("allow_accent=False で accent が通った")
+    except T.DeckError as e:
+        assert "summary の 1 個目に知らないキー: accent" in str(e), e
+    s = T.Slide(1, {"summary": [{"label": "a", "value": "1", "tone": "bad", "group": g("自動", "c")}]}, pal, False, TMP, [])
+    assert T._kpi_items(s, "summary", lo=1, hi=4, allow_accent=False)[0]["tone"] == "bad"
+
+
+def case_kpi_role_sizes():
+    """kpi: 同じ役（label・value・unit・delta・note）の文字は、長短を混ぜても全部のカードで同じ大きさ。高さは上限を守る。"""
+    long = {"label": "a" * 10, "value": "1", "unit": "件", "delta": "B" * 14, "trend": "up", "note": "注" * 34}      # 3枚では delta・note が元の大きさから下りる
+    long4 = dict(long, delta="B" * 8, note="注" * 20)                                                                # 4枚でも下りる長さ
+    short = {"label": "b", "value": "2", "unit": "件", "delta": "+1", "trend": "up", "note": "短い"}
+    for name, items in (("kr-three", [long, short, dict(short)]), ("kr-four", [long4, short, dict(short), dict(short)])):
+        html = _kpi_html(_kpi3(items), name)
+        body = html.split("</style>")[1]
+        for role in ("label", "value", "unit", "delta", "note"):
+            sizes = re.findall(rf'class="kpi-{role}[^"]*" style="font-size:(\d+)px', body)
+            assert len(sizes) == len(items) and len(set(sizes)) == 1, (name, role, sizes)
+            if role in ("delta", "note"):
+                assert int(sizes[0]) < (36 if role == "delta" else 28), (name, role, sizes, "長い方に合わせて下りている")
+        hs = [float(x) for x in re.findall(r'class="kpi" style="width:\d+px; height:(\d+)px', body)]
+        assert all(h <= T.BODY_BOTTOM for h in hs), hs
+    # 共通の組版を直接呼んでも、role_prefix 付きの役が s.seen に残り、高さ（内容）は上限以内
+    pal = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
+    s = T.Slide(1, {}, pal, False, TMP, [])
+    tiles, tallest = T._kpi_tiles(s, [long, short, dict(short)], key="summary", total_width=T.CW, gap=T.GUTTER, vmax=96, drop=0, height_cap=900,
+                                  pad=T.CALLOUT_PAD, role_prefix="sum")
+    assert {"sum-label", "sum-value", "sum-delta", "sum-note"} <= set(s.seen), s.seen
+    # 最も高いのが通常カードで、強調カードが同じ行にあるとき: 枠の差（4px − 2px）の上余白も返す内容高に入る（余白なしの組みより 2px 高い）
+    def tall_of(accent):
+        s2 = T.Slide(1, {}, pal, False, TMP, [])
+        its = [{"label": "a", "value": "1", **({"accent": True} if accent else {"group": {"label": "x", "tone": "a"}})}, {"label": "b", "value": "2", "note": "note"}, {"label": "c", "value": "3"}]
+        return T._kpi_tiles(s2, its, key="items", total_width=T.CW, gap=T.GUTTER, vmax=96, drop=0, height_cap=900, pad=T.CALLOUT_PAD)[1]
+    assert tall_of(True) == tall_of(False) + (4 - T.BORDER), (tall_of(True), tall_of(False))
+    assert tallest <= 900 and len(tiles) == 3
+    s.caps = {k: min(v) for k, v in s.seen.items()}               # build_slide が組み直すのと同じ。そろえた後の高さは上の組みより低いか同じ
+    s.seen = {}
+    tiles2, tallest2 = T._kpi_tiles(s, [long, short, dict(short)], key="summary", total_width=T.CW, gap=T.GUTTER, vmax=96, drop=0, height_cap=900,
+                                    pad=T.CALLOUT_PAD, role_prefix="sum")
+    assert tallest2 <= tallest and all(len(set(v)) == 1 for v in s.seen.values()), s.seen
+
+
+def case_group_c_fixed():
+    """group の a・b・c は、テーマを変えても同じ（c はテーマの主色ではなく固定の青）。a/b/c は重ならず、文字 4.5:1・枠 3:1。"""
+    th = deck.load_theme(deck.THEMES / "default.yaml")
+    themes = [deck.load_theme(deck.THEMES / f"{n}.yaml") for n in ("default", "forest", "warm")] + \
+             [th | {"primary": c} for c in ("#197a4b", "#c54600", "#264af4")]          # 主色が緑・橙・青のテーマ
+    cs = set()
+    for i, tv in enumerate(themes):
+        p = deck.palette(tv)
+        assert deck.contrast_problems(p) == [], (i, deck.contrast_problems(p))
+        for role in ("bg", "text", "rule"):
+            vals = [p[f"group-{g}-{role}"] for g in "abc"]
+            assert len(set(vals)) == 3, (i, role, vals)                # a/b/c の組が重ならない
+        for g in "abc":
+            assert deck.ratio(p[f"group-{g}-text"], p[f"group-{g}-bg"]) >= 4.5 and deck.ratio(p[f"group-{g}-rule"], p[f"group-{g}-bg"]) >= 3.0, (i, g)
+        if tv.get("background", "#ffffff") == "#ffffff":
+            cs.add(tuple(p[f"group-c-{r}"] for r in ("bg", "text", "rule")))
+        # c は青系（b が R より大きい）で、a（緑）・b（橙）と色相が離れる
+        r, g_, b = (int(p["group-c-rule"][k:k + 2], 16) for k in (1, 3, 5))
+        assert b > r and b > g_, (i, p["group-c-rule"])
+    assert len(cs) == 1, f"白い地なら、テーマを変えても a/b/c の対応は変わらない: {cs}"
+
+
+def case_kpi_tone_chip_strong():
+    """強い look（emphasis: strong）と全テーマ・主色違いの組み合わせでも、増減の札の文字 × 札の地は 4.5:1（札は自前の地を持つ）。"""
+    th = deck.load_theme(deck.THEMES / "default.yaml")
+    st = _style("tone-strong", "name: x\nlook: {emphasis: strong, surface: line}\n")
+    kpi = _kpi3([{"label": "a", "value": "1", "accent": True, "delta": "+1", "trend": "up"},
+                 {"label": "b", "value": "2", "delta": "−1", "trend": "down"}, {"label": "c", "value": "3", "delta": "±0", "trend": "flat"}])
+    variants = [(n, deck.THEMES / f"{n}.yaml") for n in ("default", "forest", "warm")]
+    for name, color in (("green", "#197a4b"), ("orange", "#c54600"), ("blue", "#264af4"), ("red", "#e60012")):
+        f = TMP / f"tone-strong-{name}.yaml"
+        f.write_text(f'background: "#ffffff"\nink: "#333333"\nprimary: "{color}"\n', encoding="utf-8")
+        variants.append((name, f))
+    for name, f in variants:
+        html = _kpi_html(kpi, f"kt-strong-{name}", theme=str(f), style=st)
+        root = {m.group(1): m.group(2) for m in re.finditer(r"--([\w-]+):\s*(#[0-9a-f]{6})", html.split("</style>")[0])}
+        assert "kpi hl" in html and re.findall(r'class="kpi-delta tone-(\w+)"', html) == ["good", "bad", "neutral"], name
+        for tone in ("good", "bad", "neutral"):
+            r = deck.ratio(root[f"tone-{tone}-text"], root[f"tone-{tone}-bg"])
+            assert r >= 4.5, (name, tone, r)
+        assert ".kpi.hl div:where(:not(.kpi-delta))" in html, "強める箱の文字色の一括指定から増減の札を外している"
+
+
+def case_kpi_look_priority():
+    """look（emphasis: strong・surface: line）でも、増減の札の色と group のカードの面は look に潰されない。"""
+    import deck_style as DS
+    css = DS.look_css({"emphasis": "strong", "surface": "line"})
+    assert ".kpi.hl div:where(:not(.kpi-delta))" in css, "強める箱の文字色の一括指定から増減の札を外す"
+    tpl = deck.TEMPLATE.read_text(encoding="utf-8")
+    sty = tpl.split("<style>")[1].split("</style>")[0]
+    for tone in ("good", "bad", "neutral"):
+        assert f".kpi-delta.tone-{tone} {{ background-color: var(--tone-{tone}-bg); color: var(--tone-{tone}-text); border-color: var(--tone-{tone}-text); }}" in sty
+    for g in "abc":
+        assert f".kpi.group-{g} {{ background-color: var(--group-{g}-bg); border-color: var(--group-{g}-rule); }}" in sty
+    kpi = _kpi3([{"label": "a", "value": "1", "accent": True, "delta": "+1", "trend": "up"}, {"label": "b", "value": "2", "group": {"label": "自動", "tone": "a"}},
+                 {"label": "c", "value": "3"}])
+    html = _kpi_html(kpi, "kt-look", style="visual")
+    assert "kpi-delta tone-good" in html and "group-a" in html
+
+
+def case_kpi_old_scripts_same():
+    """tone・group を書かない旧台本: 増減の札とカードの高さ以外（面・文字の大きさ・順・段の数）は変わらない。4枚の高さも今のまま。"""
+    kpi = _kpi3([{"label": "a", "value": "1", "unit": "件", "note": "n"}, {"label": "b", "value": "2"}, {"label": "c", "value": "3"}, {"label": "d", "value": "4"}])
+    html = _kpi_html(kpi, "kt-old4")
+    body = html.split("</style>")[1]
+    assert len(re.findall(r'class="kpi" style="width:\d+px" data-step="1"', body)) == 4, "4枚は高さを固定しない・1クリック"
+    assert "tone-" not in body and "group" not in body and "chip" not in body, "何も書かなければ札も色も付かない"
+
+
 def case_r4_line_breaks_everywhere():
     """Codex r4 #4・#5: 改行は KPI の label・連絡先の名前などでも <br> になる。強調は改行をまたげる。属性とノートは改行のまま。"""
     assert T.rich("**1行目\n2行目**") == "<em>1行目<br>2行目</em>"
@@ -1594,6 +1766,28 @@ def case_dads_palette():
     assert deck.palette(th) == deck.palette(dict(th))
     dflt = deck.palette(th)
     assert (dflt["primary"], dflt["primary-mark"], dflt["tint"]) == ("#006f83", "#008da6", "#e9f7f9"), dflt
+    # 増減の札（tone）とカードの種類分け（group）の役: 実際の色同士で文字 4.5・枠 3。非白の地・surface・ブランドの色でも成り立つ
+    roles = [f"tone-{x}-{y}" for x in ("good", "warn", "bad", "neutral") for y in ("bg", "text")] + \
+            [f"group-{x}-{y}" for x in "abc" for y in ("bg", "text", "rule")]
+    assert all(r in dflt for r in roles) and dflt["tone-neutral-bg"] == dflt["surface"]
+    themes = [th, th | {"background": "#fbf6ec", "surface": "#efe7d6"}, th | {"primary": "#e60012"}, th | {"primary": "#f5a623", "accent": "#399dd1"}]
+    for i, tv in enumerate(themes):
+        p = deck.palette(tv)
+        assert deck.contrast_problems(p) == [], (i, deck.contrast_problems(p))
+        for x in ("good", "warn", "bad"):
+            assert deck.ratio(p[f"tone-{x}-text"], p[f"tone-{x}-bg"]) >= 4.5 and deck.ratio(p[f"tone-{x}-text"], p["bg"]) >= 4.5, (i, x)
+        for x in "abc":
+            assert all(deck.ratio(p[fg], p[f"group-{x}-bg"]) >= 4.5 for fg in ("ink", "muted", "accent-text", f"group-{x}-text")), (i, x)
+            assert deck.ratio(p[f"group-{x}-rule"], p[f"group-{x}-bg"]) >= 3.0 and deck.ratio(p[f"group-{x}-rule"], p["bg"]) >= 3.0, (i, x)
+    for role, bad in (("tone-warn-text", "#d9c26a"), ("tone-bad-bg", "#cc9999"), ("group-b-text", "#f0a060"), ("group-c-rule", "#e9f7f9")):
+        broken = dict(dflt, **{role: bad})                      # 色を故意に壊すと contrast_problems が拾う
+        assert any(role in m for m in deck.contrast_problems(broken)), role
+    # 増減の札の輪郭: 札の置かれる面（通常・group・強調の淡い面）に tone の枠が 3:1、強い look の面には札の地が 3:1
+    for face in ("bg", "surface", "accent-soft", "group-a-bg", "group-b-bg", "group-c-bg"):
+        broken = dict(dflt, **{face: dflt["tone-good-text"]})
+        assert any(f"tone-good-text（{dflt['tone-good-text']}）× {face}" in m for m in deck.contrast_problems(broken)), face
+    broken = dict(dflt, **{"accent-strong": dflt["tone-bad-bg"]})
+    assert any("tone-bad-bg" in m and "accent-strong" in m for m in deck.contrast_problems(broken)), "強い look の面と札の地"
 
 
 def _css_values(text: str, prop: str) -> list[str]:

@@ -1569,11 +1569,48 @@ def t_summary(s: Slide):
 
 
 TRENDS = {"up": "▲ ", "down": "▼ ", "flat": "→ "}
+KPI_TONES = ("good", "bad", "neutral")           # 増減の評価。省けば trend から（up＝good・down＝bad・それ以外＝neutral）
+TREND_TONE = {"up": "good", "down": "bad"}
+GROUP_TONES = ("a", "b", "c")                    # カードの種類分け。順序も評価も持たない
+GROUP_LABEL_W = 192                              # 札の語の幅の上限（badge と同じ・24B）
+DELTA_PAD_X, DELTA_PAD_Y = 16, 8                 # 増減の札（ピル）の余白
+DELTA_BORDER = 2                                 # 増減の札の枠（tone の文字色。地の淡い色だけでは札が面に消える）
+
+
+def _kpi_items(s: Slide, key: str, *, lo: int, hi: int, allow_accent: bool) -> list[dict]:
+    """kpi・要約の帯が共有する指標の検査。許可キー・必須（label・value）・trend・tone・group を確かめた items を返す。
+
+    allow_accent なら accent・badge も許す（badge の規則は badge_of）。group は {label, tone}（両方必須）。強める札と group は同時に置かない。
+    """
+    fields = ("label", "value", "unit", "delta", "trend", "note", "tone", "group") + (("accent", "badge") if allow_accent else ())
+    its = s.items(key, lo, hi, fields, required=("label", "value"))
+    for i, it in enumerate(its):
+        where = f"{key} の {i + 1} 個目"
+        if it.get("trend") is not None and (not isinstance(it["trend"], str) or it["trend"] not in TRENDS):
+            s.err(f"{where}の trend は up / down / flat のどれか")
+        if it.get("tone") is not None and (not isinstance(it["tone"], str) or it["tone"] not in KPI_TONES):
+            s.err(f"{where}の tone は {' / '.join(KPI_TONES)} のどれか")
+        g = it.get("group")
+        if g is None:
+            continue
+        if not isinstance(g, dict) or set(g) != {"label", "tone"}:
+            s.err(f"{where}の group は label と tone のオブジェクト（{{\"label\": \"自動\", \"tone\": \"a\"}}）")
+        if not isinstance(g["label"], str) or not g["label"].strip():
+            s.err(f"{where}の group.label は空でない文字で書く")
+        if not isinstance(g["tone"], str) or g["tone"] not in GROUP_TONES:
+            s.err(f"{where}の group.tone は {' / '.join(GROUP_TONES)} のどれか")
+        if text_width(g["label"].strip(), 24, True) > GROUP_LABEL_W:
+            s.err(f"{where}の group.label は短く（全角6字くらいまで）: {g['label']}")
+        if it.get("accent"):
+            s.err(f"{where}: accent と group は同時に書けない（強める札と種類の札は1枚に1つ）")
+    return its
 
 
 def t_kpi(s: Slide):
     """指標の並び: 同格の数字3〜4（ラベル・数字・単位・前年比などの増減）。まとめて1クリックで出る。accent: true の1つを強める。
 
+    増減は淡い地の札（ピル）。色は tone（省けば trend から）、記号 ▲▼→ は trend で変えない。group は種類の札と淡い地。
+    3枚のときはカードを使える高さいっぱいに伸ばし、中身を縦の中央に置く。
     image があれば、上に横長の写真の帯（高さ KPI_BAND_H・現場の写真）を敷き、見出しと数字はその下に置く
     """
     pre = []
@@ -1583,68 +1620,100 @@ def t_kpi(s: Slide):
         head, top = header(s, top=KPI_BAND_H + 48)
     else:
         head, top = header(s)
-    its = s.items("items", 3, 4, ("label", "value", "unit", "delta", "trend", "note", "accent", "badge"), required=("label", "value"))
-    n, gap = len(its), GUTTER
-    cw = (CW - gap * (n - 1)) // n         # 整数に切り下げる（px() が丸めて上げると、並べた行が版の幅を越える）
-    for i, it in enumerate(its):
-        if it.get("trend") is not None and it["trend"] not in TRENDS:
-            s.err(f"items の {i + 1} 個目の trend は up / down / flat のどれか")
+    its = _kpi_items(s, "items", lo=3, hi=4, allow_accent=True)
+    n = len(its)
     avail = s.bottom - top
     vmax = (96 if n == 3 else 80) if not pre else (80 if n == 3 else 64)
     vmax = s.g(vmax, 120 if n == 3 else 96)             # 数字は 3 つなら 120・4 つなら 96 まで（大きく組むとき）
     for drop in range(0, 6):                    # カードの高さが入るまで、全部のカードの文字を同じだけ段を下りる
-        tiles, tallest = _kpi_tiles(s, its, cw, vmax, drop)
+        tiles, tallest = _kpi_tiles(s, its, key="items", total_width=CW, gap=GUTTER, vmax=vmax, drop=drop, height_cap=avail,
+                                    pad=CALLOUT_PAD, fill_height=avail if n == 3 else None)
         if tallest <= avail:
             s.need, s.avail = tallest, avail
             break
     else:
         s.err(f"数字のカードが高すぎて入らない（{tallest:.0f}px > {avail:.0f}px。label・note を短くするか見出しを1行にする）")
-    return pre + [head, f'<div class="center" style="{box(X0, top, CW, avail)}"><div class="row" style="gap:{gap}px">'
+    return pre + [head, f'<div class="center" style="{box(X0, top, CW, avail)}"><div class="row" style="gap:{GUTTER}px">'
                   + "".join(tiles) + "</div></div>", source_line(s)]
 
 
-def _kpi_tiles(s: Slide, its, cw, vmax, drop):
-    """kpi のカード（文字は段を drop だけ下りる）。(HTML の列, 一番高いカードの高さの見積もり) を返す。
+def _kpi_tiles(s: Slide, its, *, key, total_width, gap, vmax, drop, height_cap, pad, fill_height=None, step=1, role_prefix="kpi"):
+    """指標のカード（文字は段を drop だけ下りる）。(HTML の列, 内容の高さの見積もり) を返す。kpi と、表の上の要約の帯が共有する。
 
+    幅は total_width を枚数で等分（gap を引いて整数に切り下げる。px() が丸めて上げると、並べた行が版の幅を越える）。
+    内容の高さは一番高い1枚（余白・枠・札・増減・注記を含む）。height_cap を越えたら、それ以上は組まず、その時点の高さを返す
+    （呼ぶ側が段を下げて組み直す）。fill_height があれば、カードをその高さに伸ばして中身を縦の中央に置く（内容の高さは変わらない）。
+    pad はカードの内側の余白。step は出る段・role_prefix は s.fit の役の名前（同じ役の文字は全部のカードでそろう）。
     ラベル・増減は Std-28B-150・数字は Ext-96B-100（4 つなら 80）・単位は数字のおよそ 4 割・注記は Std-22N-150
     """
+    n = len(its)
+    cw = (total_width - gap * (n - 1)) // n
     tiles, tallest = [], 0.0
+    chips = any(it.get("accent") or it.get("group") for it in its)     # 札が1つでもあれば全部のカードに札の領域を置く（数字の上端をそろえる）
+    label_hs, hs = [], []
+    for role in [r for r in s.seen if r.startswith(f"{role_prefix}-")]:
+        del s.seen[role]                                 # 段を下りて組み直すたびに、この役の記録は取り直す
     for i, it in enumerate(its):
-        where = f"items の {i + 1} 個目"
+        where = f"{key} の {i + 1} 個目"
         label, value, unit = s.text("label", spec=it), s.text("value", spec=it), s.text("unit", spec=it)
         delta, note, trend = s.text("delta", spec=it), s.text("note", spec=it), it.get("trend")
-        hl = bool(it.get("accent"))
-        iw = inner_w(cw, hl)
-        ls, ln = s.fit("kpi-label", label, step_down(s.g(28, 36), drop, 24), iw, what=f"{where}の label", lines=2, lh=1.5, min_size=24, bold=True)
-        vsz = step_down(vmax, drop, 57)
+        hl, grp = bool(it.get("accent")), it.get("group")
+        edge = 2 * (pad + (4 if hl else BORDER))        # カードの上下（と左右）の余白と枠の合計
+        iw = cw - edge
+        ls, ln = s.fit(f"{role_prefix}-label", label, step_down(s.g(28, 36), drop, 24), iw, what=f"{where}の label", lines=2, lh=1.5, min_size=24, bold=True)
+        vsz = min(step_down(vmax, drop, 57), s.caps.get(f"{role_prefix}-value", vmax))
         for vs in (v for v in SCALE if v <= vsz):          # 数字と単位が1行に入る段まで下りる
             uw = text_width(unit, _unit_size(vs), True) + 16 if unit else 0
             if count_lines(value, vs, iw - uw, True) == 1:
                 break
             if vs <= 45:
                 s.err(f"{where}の value が長すぎて入らない（{vsz}px から 45px まで下りても 1 行を越える。幅 {iw - uw:.0f}px）: {plain(value)}")
+        s.seen.setdefault(f"{role_prefix}-value", []).append(vs)      # 単位は数字の段から決まるので、数字がそろえば単位もそろう
         us = _unit_size(vs)
-        h = box_pad(hl) + ln * ls * 1.5 + 16 + vs * (1.0 if vs >= 96 else 1.4)
+        h = edge + ln * ls * 1.5 + 16 + vs * (1.0 if vs >= 96 else 1.4)
         vlh = 1.0 if vs >= 96 else 1.4
         badge = badge_of(s, it, hl, where)          # 強める指標は札（badge か「注目」）を頭に
-        if badge:
+        tag = chip(badge) if badge else (chip(grp["label"].strip(), f"group group-{grp['tone']}") if grp else "")   # 種類の札は必ず出す
+        if chips:
+            tag = tag or f'<div style="height:{CHIP_H + 16}px; flex:none"></div>'     # 札のないカードにも同じ高さの空き
             h += CHIP_H + 16
-        inner = (chip(badge) if badge else "") + (f'<div class="kpi-label" style="font-size:{ls}px">{esc(label)}</div>'
-                 f'<div class="bn-row" style="margin-top:16px"><div class="kpi-value" style="font-size:{vs}px; line-height:{vlh}">{esc(value)}</div>'
-                 + (f'<div class="kpi-unit" style="font-size:{us}px; line-height:{vlh}">{esc(unit)}</div>' if unit else "") + "</div>")
+        label_hs.append(ln * ls * 1.5)
+        inner = tag + (f'<div class="{role_prefix}-label" style="font-size:{ls}px{{LABEL_MIN}}">{esc(label)}</div>'
+                       f'<div class="bn-row" style="margin-top:16px"><div class="{role_prefix}-value" style="font-size:{vs}px; line-height:{vlh}">{esc(value)}</div>'
+                       + (f'<div class="{role_prefix}-unit" style="font-size:{us}px; line-height:{vlh}">{esc(unit)}</div>' if unit else "") + "</div>")
         if delta:
             d = TRENDS.get(trend, "") + delta
-            ds, _ = fit(d, step_down(s.g(28, 36), drop, 24), iw, what=f"{where}の delta", lines=1, lh=1.5, min_size=24, bold=True)
-            inner += f'<div class="kpi-delta" style="font-size:{ds}px">{esc(d)}</div>'
-            h += 16 + ds * 1.5
+            ds, _ = s.fit(f"{role_prefix}-delta", d, step_down(s.g(28, 36), drop, 24), iw - 2 * (DELTA_PAD_X + DELTA_BORDER), what=f"{where}の delta", lines=1, lh=1.5, min_size=24, bold=True)
+            tone = it.get("tone") or TREND_TONE.get(trend, "neutral")
+            inner += f'<div class="{role_prefix}-delta tone-{tone}" style="font-size:{ds}px">{esc(d)}</div>'
+            h += 16 + ds * 1.5 + 2 * (DELTA_PAD_Y + DELTA_BORDER)
         if note:
-            ns, nn = fit(note, s.g(22, 28), iw, what=f"{where}の note", lines=2, lh=1.5, min_size=22)
-            inner += f'<div class="kpi-note" style="font-size:{ns}px">{esc(note)}</div>'
+            ns, nn = s.fit(f"{role_prefix}-note", note, step_down(s.g(22, 28), drop, 22), iw, what=f"{where}の note", lines=2, lh=1.5, min_size=22)
+            inner += f'<div class="{role_prefix}-note" style="font-size:{ns}px">{esc(note)}</div>'
             h += 8 + nn * ns * 1.5
+        hs.append(h)
         tallest = max(tallest, h)
-        cls = "kpi hl" if hl else "kpi"
-        tiles.append(f'<div class="{cls}" style="width:{px(cw)}" {s.anim(1, "pop", 150 * i, f"指標{i + 1}", item=True)}>{inner}</div>')
-    return tiles, tallest
+        cls = f"{role_prefix}" + (" hl" if hl else "") + (f" group-{grp['tone']}" if grp else "")
+        tiles.append((cls, cw, inner, i, hl))
+        if tallest > height_cap:
+            break
+    fill = f"; height:{px(fill_height)}; justify-content:center" if fill_height else ""
+    label_min, pts = "", [""] * len(tiles)
+    if chips:
+        # 札のある行は、ラベルの領域も行で共通にし（数字の上端がそろう）、3枚の伸ばしは縦の中央ではなく上から置く
+        # （中身の高さが違うカードでも数字がそろう。一番高い中身を中央に置いた位置が上端）。強める箱は枠が太いので、上の余白で差を埋める
+        hmax = max(label_hs)
+        label_min = f"; min-height:{px(hmax)}"
+        bs = [4 if t[4] else BORDER for t in tiles]
+        bmax = max(bs)
+        hs = [h + hmax - lh + bmax - b for h, lh, b in zip(hs, label_hs, bs)]     # 枠の細いカードの上の余白（強める箱との差）も内容の高さに入れる
+        tallest = max(hs)
+        top = max(0.0, (fill_height - tallest) / 2) if fill_height else 0.0
+        pts = [f"; padding-top:{px(top + pad + bmax - b)}" if top or bmax != b else "" for b in bs]
+        if fill_height:
+            fill = f"; height:{px(fill_height)}; justify-content:flex-start"
+    return [f'<div class="{cls}" style="width:{px(cw)}{fill}{pt}" {s.anim(step, "pop", 150 * i, f"指標{i + 1}", item=True)}>{inner.replace("{LABEL_MIN}", label_min, 1)}</div>'
+            for (cls, cw, inner, i, _), pt in zip(tiles, pts)], tallest
 
 
 def _nice_max(v: float) -> float:

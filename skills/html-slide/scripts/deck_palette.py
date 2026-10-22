@@ -115,7 +115,46 @@ def base_palette(t: dict) -> dict:
         p[f"{name}-strong"] = k["strong"]
         p[f"on-{name}"] = white if ratio(white, k["strong"]) >= 4.5 else ink
     p.update(SEMANTIC)
+    p.update(_tone_roles(p))
     return p
+
+
+TONES = ("good", "warn", "bad")
+TONE_BASE = {"good": "success", "warn": "warning-yellow", "bad": "error"}
+GROUPS = ("a", "b", "c")
+GROUP_C_LIGHT, GROUP_C_DARK = KC.PRIMITIVE["blue"][6], KC.PRIMITIVE["blue"][9]    # c は a（緑）・b（橙）と色相の離れた青。テーマの色に依らない固定
+
+
+def _tone_roles(p: dict) -> dict:
+    """増減・セルの評価の色（tone-…）と、カードの種類分けの色（group-…）。どちらも不透明な色で、実際の地に対して作る。
+
+      tone-{good,warn,bad}-bg   … 意味の色（-1）を地に 0.08 で混ぜた淡い地。tone-…-text … 同じ色の濃い側（-2）。tone の地・地の上で 4.5:1
+      tone-neutral-bg / -text   … surface と、その上で 4.5:1 にした muted
+      group-{a,b,c}-bg          … a＝success・b＝warning-orange・c＝blue（DADS のプリミティブ・テーマに依らず固定）を地に混ぜた淡い地（ink・muted・accent-text が 4.5:1 になる濃さまで薄める）
+      group-…-text              … 札の文字と枠。group の地・地の上で 4.5:1。group-…-rule … カードの枠。group の地・地の上で 3:1
+    """
+    bg, surface = p["bg"], p["surface"]
+    out = {}
+    for tone in TONES:
+        base = TONE_BASE[tone]
+        tbg = mix(SEMANTIC[f"{base}-1"], 0.08, bg)
+        out[f"tone-{tone}-bg"] = tbg
+        out[f"tone-{tone}-text"] = _darken(SEMANTIC[f"{base}-2"], [tbg, bg], 4.5)
+    out["tone-neutral-bg"] = surface
+    out["tone-neutral-text"] = _darken(p["muted"], [surface, bg], 4.5)
+    for g, (light, dark) in zip(GROUPS, (("success-1", "success-2"), ("warning-orange-1", "warning-orange-2"),
+                                         (GROUP_C_LIGHT, GROUP_C_DARK))):
+        light, dark = SEMANTIC.get(light, light), SEMANTIC.get(dark, dark)
+        alpha = 0.08
+        while True:
+            gbg = mix(light, alpha, bg)
+            if alpha <= 0.01 or all(ratio(p[fg], gbg) >= 4.5 for fg in ("ink", "muted", "accent-text")):
+                break
+            alpha = round(alpha - 0.01, 2)
+        out[f"group-{g}-bg"] = gbg
+        out[f"group-{g}-text"] = _darken(dark, [gbg, bg], 4.5)
+        out[f"group-{g}-rule"] = _darken(light, [gbg, bg], 3.0)
+    return out
 
 
 # 検査する組み合わせ。文字は大きさによらず 4.5（DADS は大きな文字の緩和を使わない）。図形・罫・枠は 3
@@ -138,6 +177,17 @@ def contrast_problems(p: dict) -> list[str]:
     for g in ("bg", "surface", "accent-soft"):
         need.append(("accent-mark", g, 3.0))
     need += [("primary-strong", "bg", 3.0), ("accent-strong", "bg", 3.0)]    # 面の境
+    for tone in TONES:                          # 増減・セルの評価: 文字 × その地。同じ色は凡例の枠にも使うので、地の上で 3
+        need += [(f"tone-{tone}-text", f"tone-{tone}-bg", 4.5), (f"tone-{tone}-text", "bg", 3.0)]
+    need += [("tone-neutral-text", "tone-neutral-bg", 4.5), ("tone-neutral-text", "bg", 3.0)]
+    for tone in (*TONES, "neutral"):            # 増減の札の輪郭: tone の色の枠が、札の置かれる面（通常・強調の淡い面・group）に対して 3。強い look の面（accent-strong）の上では枠が札の地と同じ色になるので、札の地が 3
+        for g in ("bg", "surface", "accent-soft", *(f"group-{x}-bg" for x in GROUPS)):
+            need.append((f"tone-{tone}-text", g, 3.0))
+        need.append((f"tone-{tone}-bg", "accent-strong", 3.0))
+    for g in GROUPS:                            # カードの種類分け: 地の上の本文・札の文字・枠
+        for fg in ("ink", "muted", "accent-text", f"group-{g}-text"):
+            need.append((fg, f"group-{g}-bg", 4.5))
+        need += [(f"group-{g}-text", "bg", 4.5), (f"group-{g}-rule", f"group-{g}-bg", 3.0), (f"group-{g}-rule", "bg", 3.0)]
     bad = []
     for fg, g, n in need:
         r = ratio(p[fg], p[g])
