@@ -1,6 +1,6 @@
 {
   "name": "quick-slide",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "会話から日本語スライドを作り、ページを指定して直し、PPTX・PDF・HTML に書き出す。quick-slide は会話の入口、quick-slide-setup は初回導入、quick-slide-update は更新と診断。presentation・pitch・motion の3形式。",
   "author": {
     "name": "Quick Slide"
