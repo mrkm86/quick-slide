@@ -102,7 +102,7 @@
 | `equation` | 式で言い切る（A＋B＋C＝D・構成要素とその結果）。要素2〜4と答え | 要素の数＋1 |
 | `hub` | 中心と周り（司令塔と道具・1つの仕組みと関わる人や部品 3〜6） | 1 |
 | `pairs` | よくない例 → よい例 を 2〜4 組（直し方・やり方の違い） | 組の数 |
-| `notice` | 補足・注意・決まりごとを、種類（お知らせ・完了・注意・重要）つきの枠で 1〜3 個（DADS の注釈ブロック） | 枠の数 |
+| `notice` | 補足・注意・決まりごとを、種類（お知らせ・完了・注意・重要）つきの枠で 1〜4 個（DADS の注釈ブロック） | 枠の数 |
 | `deflist` | 用語と説明・項目と内容の対を、左右 2 列で 3〜8 行（DADS の説明リスト）。比べるなら `table` | 行の数 |
 | `steps` | 手順の進み具合（済・いま・これから）を、番号の丸と札で見せる。横 3〜5 段・縦 3〜6 段（DADS のステップナビゲーション）。順番の説明だけなら `flow` | 段の数 |
 
@@ -141,7 +141,7 @@
 | `equation` | `items`★（`{title★, body, icon}`・2〜4）・`result`★（`{title★, body, icon}`・答え。主役の色で塗った箱。`body` は札になる）。見出しは大きく出る |
 | `hub` | `center`★（`{title★, body, icon}`・中心の丸）・`items`★（`{title★, body, icon, tag}`・3〜6。左右に分けて並べ、中心と線でつなぐ。title・body・tag はそれぞれ1行）。見出しは大きく出る |
 | `pairs` | `items`★（`{label★, before★, after★, icon}`・2〜4。label は何の話か・before はよくない例・after はよい例。どれも短く）・`bad_label`（既定「NG」）・`good_label`（既定「OK」）。札には×・チェックのアイコンが付く。見出しは大きく出る |
-| `notice` | `items`★（`{kind, label, title★, body, points}`・1〜3）。`kind` は `info`（お知らせ・既定）／`success`（完了）／`warning`（注意）／`error`（重要）で、アイコン・種類の語・枠の色が決まる（`label` を書けばその語）。`points` は短い箇条（4つまで）。1つずつクリックで出る。見出しの下に枠を縦に並べる |
+| `notice` | `items`★（`{kind, label, title★, body, points}`・1〜4）。`kind` は `info`（お知らせ・既定）／`success`（完了）／`warning`（注意）／`error`（重要）で、アイコン・種類の語・枠の色が決まる（`label` を書けばその語）。`points` は短い箇条（4つまで）。`label_style`（一番外）は `icon`（アイコン＋語の行・既定）か `chip`（頭の行をアイコンでなく kind の色の札にする。語は残る）。4個のときは枠の余白と文字を詰めるので、題は1〜2行・本文は短く。1つずつクリックで出る。見出しの下に枠を縦に並べる |
 | `deflist` | `items`★（`{term★, body★, icon}`・3〜8）。左に用語（太字）・右に説明。用語の列は格子の 3 列（長ければ 4 列）で固定。`icon` は書くなら全部の行に。1行ずつクリックで出る |
 | `steps` | `items`★（`{title★, body, state}`・横 3〜5・縦 3〜6）・`current`（いま何段目か・1から。それより前が済・後ろがこれから）・`layout`（`row` 既定＝横／`column`＝縦）。`state`（`done`＝済・`current`＝いま・`todo`＝これから）を段ごとに書けば `current` より優先。どちらも無ければ rc=2。状態は丸の形（済は塗り・いまは二重の輪・これからは白に枠）・札の語・線（済は実線・これからは破線）で示す。1段ずつクリックで出る |
 | `matrix` | `x`★・`y`★（`{label★, low, high}`）・`items`★（`{label★, x★, y★（0〜100）, accent}`・1〜8。accent の点は二重の輪。名前どうし・区切り線との重なりはずらし、置けなければ rc=2＝x・y を離す）・`quadrants`（`{title, body}` を 左上・右上・左下・右下 の順に4つ）・`focus`（淡く塗る象限・同じ順で1〜4）・`callout`（`{title, text}` 右に要点） |

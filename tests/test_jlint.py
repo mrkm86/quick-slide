@@ -95,6 +95,11 @@ class DisplayedKeysTests(unittest.TestCase):
         slide = {"id": "p-tb", "type": "table", "headline": "表", "columns": ["品目", "数"], "align": ["left", "right"], "rows": [["a", "1"]]}
         self.assertEqual(jlint.check([slide]).ng, [])
 
+    def test_notice_label_style_is_not_displayed_text(self) -> None:
+        self.assertIn("label_style", jlint.HIDDEN_KEYS)
+        slide = {"id": "p-nt", "type": "notice", "headline": "お知らせ", "label_style": "chip", "items": [{"kind": "info", "label": "対策", "title": "担当を割り振る"}]}
+        self.assertEqual(jlint.check([slide]).ng, [])
+
     def test_table_legend_text_is_checked_and_dim_rows_is_not(self) -> None:
         self.assertIn("legend", jlint.VISIBLE_KEYS)
         self.assertIn("dim_rows", jlint.HIDDEN_KEYS)

@@ -2576,9 +2576,14 @@ def lead_icon_box(size: int) -> int:
     return 32 if size <= 28 else 40 if size <= 32 else 48 if size <= 36 else 56
 
 
-def _notice_boxes(s: Slide, its, drop: int, avail: float, gap: int):
-    """notice の枠の HTML の列と、全部の高さの見積もり。文字は段を drop だけ下りる。"""
+NOTICE_LABEL_STYLES = ("icon", "chip")     # label の見せ方: icon＝アイコン＋語の行（既定）／chip＝kind の色の札
+
+
+def _notice_boxes(s: Slide, its, drop: int, avail: float, gap: int, chip_style: bool):
+    """notice の枠の HTML の列と、全部の高さの見積もり。文字は段を drop だけ下りる。4個のときは余白と出発点の大きさを詰める。"""
     n = len(its)
+    pad = 12 if n == 4 else 24                         # 枠の上下の余白（24 は CSS の既定。4個のときだけ書く）
+    pad_style = f' style="padding:{pad}px 40px"' if n == 4 else ""
     iw = CW - 2 * BORDER - 16 - 80                     # 枠・色帯 16・左右の余白 40
     boxes, total = [], 0.0
     for i, it in enumerate(its):
@@ -2591,17 +2596,23 @@ def _notice_boxes(s: Slide, its, drop: int, avail: float, gap: int):
         pts = it.get("points") or []
         if not isinstance(pts, list) or len(pts) > 4 or not all(isinstance(x, str) and x.strip() for x in pts):
             s.err(f"{where}の points は 4 つまでの文字の配列")
-        ls, _ = s.fit("nt-label", label, step_down(28, drop, 24), iw - 56, what=f"{where}の label", lines=1, lh=1.5, min_size=24, bold=True)
-        ib = lead_icon_box(ls)
-        head_h = max(ib, ls * 1.5)
-        ts, tn = s.fit("nt-title", it["title"], step_down(s.g(45 if n == 1 else 36 if n == 2 else 32, 48), drop, 28), iw, what=f"{where}の title",
+        if chip_style:                                 # 札は 24B 固定（chip の文字の大きさ）。入らなければ rc=2
+            s.fit("nt-label", label, 24, iw - 48, what=f"{where}の label", lines=1, lh=1.0, min_size=24, bold=True)
+            head_h = CHIP_H
+            head = chip(label, "notice-tag").replace('<div class="chip ', f'<div style="color:{strong}; border-color:{strong}" class="chip ', 1)
+        else:
+            ls, _ = s.fit("nt-label", label, step_down(24 if n == 4 else 28, drop, 24), iw - 56, what=f"{where}の label", lines=1, lh=1.5, min_size=24, bold=True)
+            ib = lead_icon_box(ls)
+            head_h = max(ib, ls * 1.5)
+            head = (f'<div style="display:flex; width:{ib}px; height:{ib}px; margin-right:16px; flex:none">{ICON.svg(icon, ib, strong)}</div>'
+                    f'<div class="nt-label" style="font-size:{ls}px; color:{strong}">{esc(label)}</div>')
+        ts, tn = s.fit("nt-title", it["title"], step_down(s.g(45 if n == 1 else 36 if n == 2 else 32 if n == 3 else 28, 48), drop, 28), iw, what=f"{where}の title",
                        lines=2, lh=1.4, min_size=28, bold=True, tidy=True)
-        inner = [f'<div class="nt-head"><div style="display:flex; width:{ib}px; height:{ib}px; margin-right:16px; flex:none">{ICON.svg(icon, ib, strong)}</div>'
-                 f'<div class="nt-label" style="font-size:{ls}px; color:{strong}">{esc(label)}</div></div>',
+        inner = [f'<div class="nt-head">{head}</div>',
                  f'<div class="nt-title" style="font-size:{ts}px">{rich(it["title"])}</div>']
         h = head_h + 8 + tn * ts * 1.4
         if body:
-            bs, bn = s.fit("nt-body", body, step_down(s.g(32 if n == 1 else 28, 45), drop, 24), iw, under="nt-title", what=f"{where}の body",
+            bs, bn = s.fit("nt-body", body, step_down(s.g(32 if n == 1 else 24 if n == 4 else 28, 45), drop, 24), iw, under="nt-title", what=f"{where}の body",
                            lines=3, lh=1.6, min_size=24)
             inner.append(f'<div class="nt-body" style="font-size:{bs}px">{rich(body)}</div>')
             h += 8 + bn * bs * 1.6
@@ -2611,25 +2622,31 @@ def _notice_boxes(s: Slide, its, drop: int, avail: float, gap: int):
             inner.append(f'<div class="nt-point"><div class="nt-mark" style="background-color:{line}; margin-top:{(ps * 1.5 - 16) / 2:.0f}px"></div>'
                          f'<div class="nt-text" style="font-size:{ps}px">{rich(p_)}</div></div>')
             h += 8 + pn * ps * 1.5
-        h += 2 * 24 + 2 * BORDER
+        h += 2 * pad + 2 * BORDER
         total += h
         boxes.append(f'<div class="notice" style="width:{px(CW)}; border-color:{line}" {s.anim(i + 1, "rise", 0, f"お知らせ{i + 1}", item=True)}>'
-                     f'<div class="nt-band" style="background-color:{line}"></div><div class="nt-main">' + "".join(inner) + "</div></div>")
+                     f'<div class="nt-band" style="background-color:{line}"></div><div class="nt-main"{pad_style}>' + "".join(inner) + "</div></div>")
     return boxes, total + gap * (n - 1)
 
 
 def t_notice(s: Slide):
-    """お知らせの枠（DADS の注釈ブロック）: 補足・注意・決まりごとを、種類（info・success・warning・error）つきの枠で1〜3個。
+    """お知らせの枠（DADS の注釈ブロック）: 補足・注意・決まりごとを、種類（info・success・warning・error）つきの枠で1〜4個。
 
     枠（意味の色の -1・2px）と左の色帯の白い面に、アイコン＋種類の語（label）・題・本文（短い箇条 points も）。色だけで種類を示さない。
-    1個ずつクリックで出る。全部が入るまで、文字を同じだけ段で下りる。
+    label_style: chip なら、頭の行をアイコンでなく kind の色の札（白地に色の輪郭と文字・語は残る）にする。省略は icon（アイコン＋語）。
+    4個のときは枠の上下の余白・枠のあいだ・文字の出発点を詰める。1個ずつクリックで出る。全部が入るまで、文字を同じだけ段で下りる。
     """
     head, top = header(s)
-    its = s.items("items", 1, 3, ("kind", "label", "title", "body", "points"), required=("title",))
-    gap, avail = 24, s.bottom - top
+    its = s.items("items", 1, 4, ("kind", "label", "title", "body", "points"), required=("title",))
+    style = "icon"
+    if "label_style" in s.spec:                        # 書いたなら null も rc=2（未指定とは分ける）
+        style = s.spec["label_style"]
+        if not isinstance(style, str) or style not in NOTICE_LABEL_STYLES:
+            s.err(f"label_style は {' / '.join(NOTICE_LABEL_STYLES)} のどれか（{style!r}）")
+    gap, avail = 12 if len(its) == 4 else 24, s.bottom - top
     for drop in range(4):
         s.seen = {}                                    # 組んだ大きさの記録は、段を下りるたびに取り直す
-        boxes, total = _notice_boxes(s, its, drop, avail, gap)
+        boxes, total = _notice_boxes(s, its, drop, avail, gap, style == "chip")
         if total <= avail + 0.5:
             break
     else:
@@ -2968,7 +2985,7 @@ TYPES = {
     "equation": (t_equation, HEAD_KEYS | {"items", "result"}, True),
     "hub": (t_hub, HEAD_KEYS | {"center", "items"}, True),
     "pairs": (t_pairs, HEAD_KEYS | {"items", "bad_label", "good_label"}, True),
-    "notice": (t_notice, HEAD_KEYS | {"items"}, True),
+    "notice": (t_notice, HEAD_KEYS | {"items", "label_style"}, True),
     "deflist": (t_deflist, HEAD_KEYS | {"items"}, True),
     "steps": (t_steps, HEAD_KEYS | {"items", "current", "layout"}, True),
 }

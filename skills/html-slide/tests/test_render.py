@@ -631,6 +631,47 @@ def t_bar_tone():
         check(up(pal[f"bar-{t}-text"]) in runs, f"bar-{t}-text の値の文字色が PPTX に無い")
 
 
+def t_notice_four():
+    """notice: 4個の枠（枠・色帯・札・文字）が PPTX に写る。label_style: chip は角丸の札（白地・kind の色の輪郭と文字）、既定はアイコン。"""
+    import deck
+    import deck_types as T
+    pal = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
+    items = [{"kind": "error", "label": "課題", "title": "返信に平均 3 日かかっていた"},
+             {"kind": "warning", "label": "原因", "title": "担当の割り振りが決まっていなかった"},
+             {"kind": "info", "label": "対策", "title": "受付の時点で担当を自動で割り振る"},
+             {"kind": "success", "label": "アクション", "title": "来月から割り振りの表を運用する", "body": "月末に件数と返信までの日数を見直す"}]
+    up = lambda v: (pal[v[len("var(--"):-1]] if v.startswith("var(") else v)[1:].upper()
+    for style in ("chip", "icon"):
+        sc = TMP / f"nt-{style}.json"
+        slide = {"type": "notice", "headline": "h", "items": items}
+        if style == "chip":
+            slide["label_style"] = "chip"
+        sc.write_text(json.dumps({"title": "t", "slides": [slide]}, ensure_ascii=False), encoding="utf-8")
+        html, _ = deck.build_html(sc, TMP / f"nt-{style}-deck")
+        out = TMP / f"nt-{style}.pptx"
+        render.render(html, out)
+        x = slide_xml(out, 1)
+        for it in items:
+            line, strong = T.NOTICE_KINDS[it["kind"]][2:]
+            check(up(line) in {c.upper() for c in x.xpath("//a:ln/a:solidFill/a:srgbClr/@val", namespaces=NS)}, f"{style}: {it['kind']} の枠の色が無い")
+            check(up(line) in {c.upper() for c in x.xpath("//p:sp/p:spPr/a:solidFill/a:srgbClr/@val", namespaces=NS)}, f"{style}: {it['kind']} の色帯が無い")
+            word = x.xpath(f"//p:sp[.//a:t='{it['label']}']", namespaces=NS)
+            check(len(word) == 1, f"{style}: 語「{it['label']}」が PPTX に無い")
+            check(word[0].xpath(".//a:rPr/a:solidFill/a:srgbClr/@val", namespaces=NS)[0].upper() == up(strong), f"{style}: 語の色が {it['kind']} の色でない")
+            for t_ in (it["title"],):
+                check(x.xpath(f"//p:sp[.//a:t='{t_}']", namespaces=NS), f"{style}: 題が無い")
+        round_ = x.xpath("//p:sp[p:spPr/a:prstGeom/@prst='roundRect']", namespaces=NS)
+        if style == "chip":
+            check(len(round_) == 4, f"札は 4 つの角丸: {len(round_)}")
+            for sp, it in zip(round_, items):
+                strong = up(T.NOTICE_KINDS[it["kind"]][3])
+                check(sp.xpath("p:spPr/a:solidFill/a:srgbClr/@val", namespaces=NS)[0].upper() == "FFFFFF", "札の地は白")
+                check(sp.xpath("p:spPr/a:ln/a:solidFill/a:srgbClr/@val", namespaces=NS)[0].upper() == strong, "札の輪郭は kind の色")
+            check(not x.xpath("//p:pic | //p:sp[.//a:custGeom]", namespaces=NS), "札のとき、アイコンの図形が出ている")
+        else:
+            check(not round_ and (x.xpath("//p:pic | //p:sp[.//a:custGeom]", namespaces=NS)), "既定は角丸の札なし・アイコンあり")
+
+
 TESTS = {k[2:]: v for k, v in dict(globals()).items() if k.startswith("t_")}
 
 if __name__ == "__main__":
