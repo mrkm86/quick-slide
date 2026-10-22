@@ -604,6 +604,33 @@ def t_kpi_chip_align():
                 check(lines[bg] == up(pal[f"tone-{tone}-text"]), f"{name}: {tone} の増減の札の枠が PPTX に無い・色が違う: {lines}")
 
 
+def t_bar_tone():
+    """bar-chart: 棒の塗り・値の文字色・値 0 の札（16px の角丸）が PPTX に写る。tone なしと neutral は灰のまま。"""
+    import deck
+    pal = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
+    tones = ("good-strong", "good", "good-soft", "warn", "bad")
+    bars = [{"label": f"b{i}", "value": 10 - i, "tone": t} for i, t in enumerate(tones)] + \
+           [{"label": "z", "value": 0, "tone": "bad"}, {"label": "n", "value": 4, "tone": "neutral"}, {"label": "p", "value": 4}]
+    sc = TMP / "bar.json"
+    sc.write_text(json.dumps({"title": "t", "slides": [{"type": "bar-chart", "headline": "h", "bars": bars}]}, ensure_ascii=False), encoding="utf-8")
+    html, _ = deck.build_html(sc, TMP / "bar-deck")
+    out = TMP / "bar.pptx"
+    render.render(html, out)
+    x = slide_xml(out, 1)
+    up = lambda h: h[1:].upper()
+    fills = {}                                       # 棒の塗りの色 → 高さ（EMU）の並び
+    for sp in x.xpath("//p:sp[p:spPr/a:solidFill/a:srgbClr]", namespaces=NS):
+        fills.setdefault(sp.xpath("p:spPr/a:solidFill/a:srgbClr/@val", namespaces=NS)[0].upper(), []).append(int(sp.xpath("p:spPr/a:xfrm/a:ext/@cy", namespaces=NS)[0]))
+    for t in tones:
+        check(up(pal[f"bar-{t}"]) in fills, f"bar-{t} の塗りが PPTX に無い: {sorted(fills)}")
+    check(len(fills[up(pal["bar"])]) == 2, f"灰の棒は neutral と tone なしの 2 本: {fills[up(pal['bar'])]}")
+    zero = [h for h in fills[up(pal["bar-bad"])] if h < 100 * 12700]
+    check(len(zero) == 1 and abs(zero[0] / 12700 - 16 * 0.5) < 0.6, f"値 0 の札は高さ 16px（8pt）: {[h / 12700 for h in zero]}")
+    runs = {c.upper() for c in x.xpath("//a:rPr/a:solidFill/a:srgbClr/@val", namespaces=NS)}
+    for t in ("good-strong", "warn", "bad"):
+        check(up(pal[f"bar-{t}-text"]) in runs, f"bar-{t}-text の値の文字色が PPTX に無い")
+
+
 TESTS = {k[2:]: v for k, v in dict(globals()).items() if k.startswith("t_")}
 
 if __name__ == "__main__":

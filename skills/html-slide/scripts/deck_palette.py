@@ -116,6 +116,7 @@ def base_palette(t: dict) -> dict:
         p[f"on-{name}"] = white if ratio(white, k["strong"]) >= 4.5 else ink
     p.update(SEMANTIC)
     p.update(_tone_roles(p))
+    p.update(_bar_roles(p))
     return p
 
 
@@ -157,6 +158,43 @@ def _tone_roles(p: dict) -> dict:
     return out
 
 
+BAR_TONES = ("good-strong", "good", "good-soft", "warn", "bad")     # 棒の色の段。neutral（と省略）は灰（bar）
+BAR_TONE_BASE = {"good-strong": "success", "good": "success", "good-soft": "success", "warn": "warning-yellow", "bad": "error"}
+BAR_GOOD_NEED = {"good-soft": 3.0, "good": 4.5, "good-strong": 7.0}                # 良い側の 3 段が地に対して満たす下限。幅は色相を保った明度の違いで作る
+
+
+def _lighten(color: str, grounds: list[str], need: float) -> str:
+    """color の色相・彩度を保ち、どの地の上でも need 以上を保てる一番明るい色（初めから満たさなければ _darken で満たす）。"""
+    x = _darken(color, grounds, need)
+    L, c, h = KC.to_oklch(x)
+    while L < 1:
+        y = KC.from_oklch(L + 0.004, c, h)
+        if not all(ratio(y, g) >= need - 1e-9 for g in grounds):
+            break
+        L, x = L + 0.004, y
+    return x
+
+
+def _bar_roles(p: dict) -> dict:
+    """棒の色の段（bar-…）と、その値の文字色（bar-…-text）。棒は地（bg・surface）の上で 3:1 以上、値の文字は 4.5:1。
+
+      bar-good-soft   … success-1 を、地の上で 3:1 を割らない所まで淡くした色。bar-good … 同じ色相で 4.5:1。bar-good-strong … 同じ色相で 7:1
+      bar-warn・bar-bad … warning-yellow-1・error-1 を地の上で 3:1 に（足りなければ濃く）
+      bar-…-text      … 意味の色の濃い側（-2）を地の上で 4.5:1 に。良い側の 3 段は同じ文字色
+    """
+    grounds = [p["bg"], p["surface"]]
+    out = {}
+    soft = _lighten(SEMANTIC["success-1"], grounds, 3.0)
+    for tone in BAR_TONES:
+        base = BAR_TONE_BASE[tone]
+        if tone in BAR_GOOD_NEED:
+            out[f"bar-{tone}"] = soft if tone == "good-soft" else _darken(soft, grounds, BAR_GOOD_NEED[tone])
+        else:
+            out[f"bar-{tone}"] = _darken(SEMANTIC[f"{base}-1"], grounds, 3.0)
+        out[f"bar-{tone}-text"] = _darken(SEMANTIC[f"{base}-2"], grounds, 4.5)
+    return out
+
+
 # 検査する組み合わせ。文字は大きさによらず 4.5（DADS は大きな文字の緩和を使わない）。図形・罫・枠は 3
 TEXT_GROUNDS = ("bg", "surface", "tint", "accent-soft")
 
@@ -188,6 +226,9 @@ def contrast_problems(p: dict) -> list[str]:
         for fg in ("ink", "muted", "accent-text", f"group-{g}-text"):
             need.append((fg, f"group-{g}-bg", 4.5))
         need += [(f"group-{g}-text", "bg", 4.5), (f"group-{g}-rule", f"group-{g}-bg", 3.0), (f"group-{g}-rule", "bg", 3.0)]
+    for tone in BAR_TONES:                      # 棒の塗り × 棒の置かれる地は 3、値の文字 × 同じ地は 4.5
+        for g in ("bg", "surface"):
+            need += [(f"bar-{tone}", g, 3.0), (f"bar-{tone}-text", g, 4.5)]
     bad = []
     for fg, g, n in need:
         r = ratio(p[fg], p[g])

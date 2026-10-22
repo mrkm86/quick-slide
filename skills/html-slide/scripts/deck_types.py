@@ -1109,11 +1109,22 @@ def t_compare(s: Slide):
             source_line(s)]
 
 
+BAR_TONES = ("good-strong", "good", "good-soft", "warn", "bad")     # 棒の色の段（deck_palette.BAR_TONES と同じ）
+BAR_TONE_WORDS = BAR_TONES + ("neutral",)
+BAR_ZERO_TILE = 16.0                                                # 値 0 の有彩色の棒（0 の札）の高さ
+
+
 def t_bar_chart(s: Slide):
-    """棒グラフ: 値から高さを計算して図形で描く。highlight の棒を accent に。棒はまとめて1クリックで下から出る。"""
+    """棒グラフ: 値から高さを計算して図形で描く。highlight の棒を accent に。棒はまとめて1クリックで下から出る。
+
+    tone（good-strong / good / good-soft / warn / bad）の棒はその段の色。値の文字も段の色。highlight と同時なら色は tone・強調はラベルの太字だけ。
+    値 0 の有彩色の棒は、高さ 16px の短い帯（0 の札）で軸に残す。neutral と省略は今の灰（highlight も今のまま）。
+    """
     head, top = header(s)
-    bars = s.items("bars", 2, 8, ("label", "value", "highlight", "display"), required=("label", "value"))
+    bars = s.items("bars", 2, 8, ("label", "value", "highlight", "display", "tone"), required=("label", "value"))
     for i, b in enumerate(bars):
+        if b.get("tone") is not None and (not isinstance(b["tone"], str) or b["tone"] not in BAR_TONE_WORDS):
+            s.err(f"bars の {i + 1} 個目の tone は {' / '.join(BAR_TONE_WORDS)} のどれか")
         if isinstance(b["value"], bool) or not isinstance(b["value"], (int, float)) or b["value"] < 0:
             s.err(f"bars の {i + 1} 個目の value は 0 以上の数で書く（{b['value']!r}）")
     unit, note = s.text("unit", default=""), s.text("note")
@@ -1135,18 +1146,20 @@ def t_bar_chart(s: Slide):
     bw = min(s.gap(160), slot * 0.56)
     parts = [head, f'<div class="baseline" style="{box(X0, base, right - X0)}" {s.anim(0, "fade", 200, "グラフの軸")}></div>']
     for i, b in enumerate(bars):
-        hl = bool(b.get("highlight"))
+        tone = b.get("tone") if b.get("tone") in BAR_TONES else None      # neutral と省略は同じ（灰）
+        hl = bool(b.get("highlight")) and not tone                        # 有彩色の tone があれば色は tone。強調はラベルの太字だけ
+        bold = bool(b.get("highlight"))
         shown = s.text("display", spec=b) or f"{num_label(b['value'])}{unit}"
         vs, _ = s.fit("bar-value", shown, vs0, slot - 16, what=f"bars の {i + 1} 個目の表示", lines=1, lh=1.4, min_size=24, bold=True)
-        bh = max(4.0, b["value"] / vmax * plot_h)
+        bh = max(BAR_ZERO_TILE if tone and not b["value"] else 4.0, b["value"] / vmax * plot_h)
         gx = X0 + i * slot
         color = "; color:var(--accent-text)" if hl else ""
         parts.append(f'<div class="bar-group" style="{box(gx, base - bh - vh, slot, bh + vh)}" '
                      f'{s.anim(1, "wipe-up", 120 * i, f"棒{i + 1}")}>'
-                     f'<div class="bar-value" style="font-size:{vs}px{color}" data-name="値{i + 1}">{esc(shown)}</div>'
-                     f'<div class="bar{" hl" if hl else ""}" style="width:{px(bw)}; height:{px(bh)}"></div></div>')
-        ls, _ = s.fit("bar-label", b["label"], s.g(28, 32), slot - 16, what=f"bars の {i + 1} 個目の label", lines=1, lh=1.5, min_size=22, bold=hl)
-        parts.append(f'<div class="bar-label{" hl" if hl else ""}" style="{box(gx, base + 16, slot)} font-size:{ls}px" '
+                     f'<div class="bar-value{f" tone-{tone}" if tone else ""}" style="font-size:{vs}px{color}" data-name="値{i + 1}">{esc(shown)}</div>'
+                     f'<div class="bar{" hl" if hl else ""}{f" tone-{tone}" if tone else ""}" style="width:{px(bw)}; height:{px(bh)}"></div></div>')
+        ls, _ = s.fit("bar-label", b["label"], s.g(28, 32), slot - 16, what=f"bars の {i + 1} 個目の label", lines=1, lh=1.5, min_size=22, bold=bold)
+        parts.append(f'<div class="bar-label{" hl" if hl else " bold" if bold else ""}" style="{box(gx, base + 16, slot)} font-size:{ls}px" '
                      f'{s.anim(0, "fade", 200, f"項目{i + 1}")}>{esc(b["label"])}</div>')
     if note:
         ns, _ = fit(note, 22, right - X0, what="note", lines=1, lh=1.5, min_size=22)
