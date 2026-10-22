@@ -135,7 +135,7 @@
 | `figure` | `image`★（`object-fit: contain` で縮めて全体を見せる。余りは地の色）・`caption`（図のすぐ下に1行） |
 | `closing` | `items`（次の一手 `{title, body}`・0〜4）・`contact`（文字・配列・`{label, name, lines}`）。どちらかは必須・`image`（右に写真 768×1080。次の一手と連絡先は左に縦に積む。ページ番号は出さない） |
 | `summary` | `headline`★（結論）・`points`★（`{title★, body, value}`・2〜3）・`label`（根拠の番号の前の語。既定「根拠」）。`kicker` は省くと「結論」 |
-| `kpi` | `items`★（`{label★, value★, unit, delta（前年比など）, trend（up・down・flat → ▲▼→）, note, accent, badge}`・3〜4。accent の指標の頭に札「注目」が付く）・`image`（上に現場の写真の帯 1920×296。見出しと数字はその下） |
+| `kpi` | `items`★（`{label★, value★, unit, delta（前年比など。淡い地の札になる）, trend（up・down・flat → ▲▼→）, tone（good・bad・neutral。増減の札の色）, note, accent, badge, group}`・3〜4。accent の指標の頭に札「注目」が付く）・`image`（上に現場の写真の帯 1920×296。見出しと数字はその下）。`tone` を省くと trend から決まる（up＝good 緑・down＝bad 赤・flat と trend なし＝neutral 灰）。増えるほど悪い数字（滞留日数など）は `tone: bad` で上書きする。▲▼→ は trend のまま変わらない（色だけで示さない）。`delta` が無ければ札は出ない。`group` は `{label★, tone★}`: カードの種類分けで、tone は `a`（緑系）・`b`（橙系）・`c`（青系）。どれもテーマを変えても同じ色。同じ group のカードは同じ淡い地と枠・同じ札（label は全角6字くらいまで）になる。**札は必ず出る**。評価の良し悪しとは関係がない。group を書かないカードはいつもの面のまま（一部のカードだけに書いてよい）。`accent` と `group` は同時に書けない（rc=2）。3枚のときはカードが使える高さいっぱいに伸び、中身は縦の中央に並ぶ |
 | `line-chart` | `labels`★（横軸の時点・3〜12）・`series`★（`{name, values★（labels と同じ数）, highlight}`・1〜3。2本以上は `name` 必須。線は点の形（丸・四角・ひし形）と線種（実線・破線・点線）を台本の順に変え、線の端に名前と最後の値を出す。名前が長くて入らないときだけ凡例）・`unit`・`min`（既定 0。負の値があれば必須）・`max`（省くと切りのよい上限）・`note`・`callout`（`{value, text}`）・`value_labels`（`all`／`last`／`none`。既定は1本で8時点までなら all、ほかは last） |
 | `team` | `members`★（`{name★, role, note, image, initials}`・2〜6）。`image` が無ければ `initials`（省くと名前の1文字目）の丸。5〜6人は3人ずつ2段 |
 | `equation` | `items`★（`{title★, body, icon}`・2〜4）・`result`★（`{title★, body, icon}`・答え。主役の色で塗った箱。`body` は札になる）。見出しは大きく出る |

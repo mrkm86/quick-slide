@@ -365,6 +365,44 @@ def t_r3_img_alt():
     check(descr == ["宅配の箱が並んだ玄関"], f"PPTX の descr: {descr}")
 
 
+def t_kpi_tone_group():
+    """kpi: 増減の札の塗り・文字色と、group のカードの面・枠・札が PPTX に写る。3枚はカードが使える高さいっぱい。"""
+    import deck
+    pal = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
+    items = [{"label": "a", "value": "1", "delta": "−4", "trend": "down"}, {"label": "b", "value": "2", "delta": "+3", "trend": "up"},
+             {"label": "c", "value": "3", "delta": "±0", "trend": "flat", "group": {"label": "手作業", "tone": "b"}}]
+    sc = TMP / "kpi.json"
+    sc.write_text(json.dumps({"title": "t", "slides": [{"type": "kpi", "headline": "h", "items": items}]}, ensure_ascii=False), encoding="utf-8")
+    html, _ = deck.build_html(sc, TMP / "kpi-deck")
+    out = TMP / "kpi.pptx"
+    render.render(html, out)
+    x = slide_xml(out, 1)
+    up = lambda h: h[1:].upper()
+    fills = {}                                       # 角丸の塗りの色 → 高さ（EMU）の並び
+    for sp in x.xpath("//p:sp[.//a:prstGeom/@prst='roundRect']", namespaces=NS):
+        fill = sp.xpath("p:spPr/a:solidFill/a:srgbClr/@val", namespaces=NS)
+        fills.setdefault(fill[0].upper() if fill else None, []).append(int(sp.xpath("p:spPr/a:xfrm/a:ext/@cy", namespaces=NS)[0]))
+    for role in ("tone-bad-bg", "tone-good-bg", "tone-neutral-bg", "group-b-bg"):
+        check(up(pal[role]) in fills, f"{role} の塗りが PPTX に無い: {sorted(k for k in fills if k)}")
+    runs = {c.upper() for c in x.xpath("//a:rPr/a:solidFill/a:srgbClr/@val", namespaces=NS)}
+    for role in ("tone-bad-text", "tone-good-text", "tone-neutral-text", "group-b-text"):
+        check(up(pal[role]) in runs, f"{role} の文字色が PPTX に無い")
+    check(up(pal["group-b-rule"]) in {c.upper() for c in x.xpath("//a:ln/a:solidFill/a:srgbClr/@val", namespaces=NS)}, "group の枠の色が無い")
+    tall = max(fills[up(pal["group-b-bg"])])
+    # 強める箱（look: emphasis strong）: 面の上の札は面と反対の色・増減の札は tone の色のまま
+    sty = TMP / "strong.yaml"
+    sty.write_text("name: strong-line\ndescription: 試験\nlook:\n  emphasis: strong\n  surface: line\n", encoding="utf-8")
+    items2 = [{"label": "a", "value": "1", "accent": True, "delta": "+1", "trend": "up"}] + items[1:]
+    sc.write_text(json.dumps({"title": "t", "slides": [{"type": "kpi", "headline": "h", "items": items2}]}, ensure_ascii=False), encoding="utf-8")
+    html, _ = deck.build_html(sc, TMP / "kpi-deck2", style=str(sty))
+    render.render(html, TMP / "kpi2.pptx")
+    x2 = slide_xml(TMP / "kpi2.pptx", 1)
+    color_of = lambda word: x2.xpath(f"//p:sp[.//a:t='{word}']//a:rPr/a:solidFill/a:srgbClr/@val", namespaces=NS)[0].upper()
+    check(color_of("注目") == up(pal["accent-strong"]), f"強める箱の札の文字が面と同じ色: {color_of('注目')}")
+    check(color_of("▲ +1") == up(pal["tone-good-text"]), f"強める箱の増減の札が tone の色でない: {color_of('▲ +1')}")
+    check(tall > 330 * 12700, f"3枚のカードが高さいっぱいに伸びていない: {tall / 12700:.0f}pt")   # 版は 1080px＝540pt。使える高さは 700px 余り
+
+
 TESTS = {k[2:]: v for k, v in dict(globals()).items() if k.startswith("t_")}
 
 if __name__ == "__main__":

@@ -148,6 +148,10 @@
       .chip.done .chip-t { color: var(--primary-text); }
       .chip.todo { background-color: var(--bg); color: var(--ink); border: 2px solid var(--rule); }
       .chip.line { background-color: var(--bg); color: var(--ink); border: 2px solid var(--rule); }
+      .chip.group { background-color: var(--bg); border: 2px solid; }
+      .chip.group-a { color: var(--group-a-text); border-color: var(--group-a-text); }
+      .chip.group-b { color: var(--group-b-text); border-color: var(--group-b-text); }
+      .chip.group-c { color: var(--group-c-text); border-color: var(--group-c-text); }
       .chips { display: flex; align-items: center; margin-bottom: 24px; }
       .chips .cmp-chip { margin-bottom: 0; }
       .chips .chip { margin-bottom: 0; margin-left: 16px; }
@@ -295,7 +299,13 @@
       .kpi-value { line-height: 1.0; font-weight: 700; }
       .kpi-unit { line-height: 1.0; font-weight: 700; margin-left: 16px; }
       .kpi.hl .kpi-value, .kpi.hl .kpi-unit { color: var(--accent-text); }
-      .kpi-delta { font-size: 28px; line-height: 1.5; font-weight: 700; margin-top: 16px; }
+      .kpi.group-a { background-color: var(--group-a-bg); border-color: var(--group-a-rule); }
+      .kpi.group-b { background-color: var(--group-b-bg); border-color: var(--group-b-rule); }
+      .kpi.group-c { background-color: var(--group-c-bg); border-color: var(--group-c-rule); }
+      .kpi-delta { align-self: flex-start; font-size: 28px; line-height: 1.5; font-weight: 700; margin-top: 16px; padding: 8px 16px; border-radius: 9999px; }
+      .kpi-delta.tone-good { background-color: var(--tone-good-bg); color: var(--tone-good-text); }
+      .kpi-delta.tone-bad { background-color: var(--tone-bad-bg); color: var(--tone-bad-text); }
+      .kpi-delta.tone-neutral { background-color: var(--tone-neutral-bg); color: var(--tone-neutral-text); }
       .kpi-note { font-size: 22px; line-height: 1.5; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
 
       /* 折れ線（目盛り線は白の地の上だけの罫 rule-weak） */

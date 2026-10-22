@@ -168,7 +168,7 @@ def look_css(look: dict) -> str:
         css.append(".band { display: none; }")
     if look.get("emphasis") == "strong":
         css.append(f"{HL} {{ background-color: var(--accent-strong); border-color: var(--accent-strong); }}")
-        css.append(f".card.hl div, .cmp.hl div, .kpi.hl div, .card.hl em, .cmp.hl em, .kpi.hl em {{ color: var(--on-accent); }}")
+        css.append(f".card.hl div, .cmp.hl div, .kpi.hl div:where(:not(.kpi-delta)), .card.hl em, .cmp.hl em, .kpi.hl em {{ color: var(--on-accent); }}")   # 増減の札は tone の色のまま（:where で優先度は元のまま。札の色の規則に勝たない）
         css.append(".card.hl .card-bar, .cmp.hl .cmp-dot { background-color: var(--on-accent); }")
         css.append(".kpi.hl .kpi-value, .kpi.hl .kpi-unit { color: var(--on-accent); }")   # 型の CSS の方が強いので名指しで上書き
         css.append(".cmp.hl .cmp-chip { background-color: var(--on-accent); color: var(--accent-strong); }")

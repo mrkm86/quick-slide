@@ -49,6 +49,7 @@ render "文字の枠: 1行は折り返さず真ん中・複数行は幅で折り
 render "verify: ノートの［クリック］とクリックの数のずれを rc=2" verify_mismatch
 render "verify --odp: LibreOffice の読み取りの効果の数が report と一致（soffice が無ければ飛ばす）" verify_odp
 render "from_video: 1文=1クリック・型の出すものは自動・html-video の印と知らない印・章カードの前後はフェード" from_video_rules
+render "kpi: 増減の札の塗り・文字色と group のカードの面・枠・札が PPTX に写る・3枚は高さいっぱい" kpi_tone_group
 render "r1-1 兄弟の z-index を描画順に並べる・flex の order は rc=2" r1_zorder
 render "r1-2 縦の動画は rc=2（縦の動画は未対応）" r1_portrait
 render "r1-3 自動で折り返した所の単語の間の空白を残す・改行を固定するときは行末の空白を落とす" r1_wrap_spaces
@@ -115,6 +116,12 @@ deck "注釈の印の位置（cover は枠・contain は描いた画像の %）�
 deck "台本の改行は <br>・行数に数える" line_breaks
 deck "Codex r4 #2・#3 注釈6件と画像つき KPI の2行見出しでも、件数と高さから字を縮めて入れる" r4_annotate_kpi_fit
 deck "Codex r4 #4・#5 改行は全部の文字の欄で <br>・強調は改行をまたげる" r4_line_breaks_everywhere
+deck "kpi: 増減の札の tone（trend から決まる・上書き・誤りは rc=2）・group（札は必ず出る・同じ group は同じ面・一部だけ・accent と同時は rc=2）・3枚の高さ" kpi_tone_group
+deck "kpi: 同じ役（label・value・unit・delta・note）の文字は長短を混ぜても全部のカードでそろい、高さは上限を守る" kpi_role_sizes
+deck "group の a・b・c はテーマを変えても同じ（c は固定の青）・重ならず文字 4.5:1・枠 3:1" group_c_fixed
+deck "kpi: 強い look と全テーマ・主色違いでも増減の札の文字×札の地は 4.5:1" kpi_tone_chip_strong
+deck "kpi: look（強める箱・線の面）に増減の札と group の面が潰されない" kpi_look_priority
+deck "kpi: tone・group を書かない旧台本は札も色も付かず、4枚は高さを固定しない" kpi_old_scripts_same
 deck "outline と role は読み飛ばし、警告も出さない（ADR 0004）" outline_role_ignored
 deck "スタイルの YAML の誤り（知らないキー・型・変化形・値・動き・無いファイル）は rc=2・組み込みと雛形は読める" style_validation
 deck "visual: 画像のあるページだけ hero／台本が勝つ／split・collage の条件／動きの既定（1枚目・handout は fade）" style_apply

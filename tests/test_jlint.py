@@ -82,10 +82,12 @@ class DisplayedKeysTests(unittest.TestCase):
             {"id": "p-tm", "type": "team", "headline": "人", "members": [{"name": "A", "role": "🎉 長"}]},
             {"id": "p-ln", "type": "line-chart", "headline": "推移", "labels": ["🙂 1月"], "series": [{"name": "🙂 A", "values": [1]}]},
             {"id": "p-mx", "type": "matrix", "headline": "位置", "x": {"label": "🙂 横"}, "items": []},
+            {"id": "p-kp", "type": "kpi", "headline": "数", "items": [{"label": "a", "value": "1", "group": {"label": "🙂 自動", "tone": "a"}}]},
         ]
         found = jlint.check(slides).ng
-        self.assertEqual(len(found), 7, found)
-        for where in ("result.title", "items[0].before", "items[0].after", "members[0].role", "labels[0]", "series[0].name", "x.label"):
+        self.assertEqual(len(found), 8, found)
+        for where in ("result.title", "items[0].before", "items[0].after", "members[0].role", "labels[0]", "series[0].name", "x.label",
+                      "items[0].group.label"):
             self.assertTrue(any(where in ln for ln in found), (where, found))
 
     def test_top_level_role_is_a_chapter_id_and_not_checked(self) -> None:
