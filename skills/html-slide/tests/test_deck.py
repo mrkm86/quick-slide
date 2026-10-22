@@ -1296,6 +1296,12 @@ def case_kpi_role_sizes():
     tiles, tallest = T._kpi_tiles(s, [long, short, dict(short)], key="summary", total_width=T.CW, gap=T.GUTTER, vmax=96, drop=0, height_cap=900,
                                   pad=T.CALLOUT_PAD, role_prefix="sum")
     assert {"sum-label", "sum-value", "sum-delta", "sum-note"} <= set(s.seen), s.seen
+    # 最も高いのが通常カードで、強調カードが同じ行にあるとき: 枠の差（4px − 2px）の上余白も返す内容高に入る（余白なしの組みより 2px 高い）
+    def tall_of(accent):
+        s2 = T.Slide(1, {}, pal, False, TMP, [])
+        its = [{"label": "a", "value": "1", **({"accent": True} if accent else {"group": {"label": "x", "tone": "a"}})}, {"label": "b", "value": "2", "note": "note"}, {"label": "c", "value": "3"}]
+        return T._kpi_tiles(s2, its, key="items", total_width=T.CW, gap=T.GUTTER, vmax=96, drop=0, height_cap=900, pad=T.CALLOUT_PAD)[1]
+    assert tall_of(True) == tall_of(False) + (4 - T.BORDER), (tall_of(True), tall_of(False))
     assert tallest <= 900 and len(tiles) == 3
     s.caps = {k: min(v) for k, v in s.seen.items()}               # build_slide が組み直すのと同じ。そろえた後の高さは上の組みより低いか同じ
     s.seen = {}
@@ -1355,7 +1361,7 @@ def case_kpi_look_priority():
     tpl = deck.TEMPLATE.read_text(encoding="utf-8")
     sty = tpl.split("<style>")[1].split("</style>")[0]
     for tone in ("good", "bad", "neutral"):
-        assert f".kpi-delta.tone-{tone} {{ background-color: var(--tone-{tone}-bg); color: var(--tone-{tone}-text); }}" in sty
+        assert f".kpi-delta.tone-{tone} {{ background-color: var(--tone-{tone}-bg); color: var(--tone-{tone}-text); border-color: var(--tone-{tone}-text); }}" in sty
     for g in "abc":
         assert f".kpi.group-{g} {{ background-color: var(--group-{g}-bg); border-color: var(--group-{g}-rule); }}" in sty
     kpi = _kpi3([{"label": "a", "value": "1", "accent": True, "delta": "+1", "trend": "up"}, {"label": "b", "value": "2", "group": {"label": "自動", "tone": "a"}},
@@ -1776,6 +1782,12 @@ def case_dads_palette():
     for role, bad in (("tone-warn-text", "#d9c26a"), ("tone-bad-bg", "#cc9999"), ("group-b-text", "#f0a060"), ("group-c-rule", "#e9f7f9")):
         broken = dict(dflt, **{role: bad})                      # 色を故意に壊すと contrast_problems が拾う
         assert any(role in m for m in deck.contrast_problems(broken)), role
+    # 増減の札の輪郭: 札の置かれる面（通常・group・強調の淡い面）に tone の枠が 3:1、強い look の面には札の地が 3:1
+    for face in ("bg", "surface", "accent-soft", "group-a-bg", "group-b-bg", "group-c-bg"):
+        broken = dict(dflt, **{face: dflt["tone-good-text"]})
+        assert any(f"tone-good-text（{dflt['tone-good-text']}）× {face}" in m for m in deck.contrast_problems(broken)), face
+    broken = dict(dflt, **{"accent-strong": dflt["tone-bad-bg"]})
+    assert any("tone-bad-bg" in m and "accent-strong" in m for m in deck.contrast_problems(broken)), "強い look の面と札の地"
 
 
 def _css_values(text: str, prop: str) -> list[str]:

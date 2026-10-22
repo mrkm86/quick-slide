@@ -50,6 +50,7 @@ render "verify: ノートの［クリック］とクリックの数のずれを 
 render "verify --odp: LibreOffice の読み取りの効果の数が report と一致（soffice が無ければ飛ばす）" verify_odp
 render "from_video: 1文=1クリック・型の出すものは自動・html-video の印と知らない印・章カードの前後はフェード" from_video_rules
 render "kpi: 増減の札の塗り・文字色と group のカードの面・枠・札が PPTX に写る・3枚は高さいっぱい" kpi_tone_group
+render "kpi: 増減の札の枠が PPTX に写る・札あり／なしが混ざる行で数字の上端がそろう（3枚・4枚・強い look）" kpi_chip_align
 render "r1-1 兄弟の z-index を描画順に並べる・flex の order は rc=2" r1_zorder
 render "r1-2 縦の動画は rc=2（縦の動画は未対応）" r1_portrait
 render "r1-3 自動で折り返した所の単語の間の空白を残す・改行を固定するときは行末の空白を落とす" r1_wrap_spaces

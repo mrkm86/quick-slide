@@ -180,6 +180,10 @@ def contrast_problems(p: dict) -> list[str]:
     for tone in TONES:                          # 増減・セルの評価: 文字 × その地。同じ色は凡例の枠にも使うので、地の上で 3
         need += [(f"tone-{tone}-text", f"tone-{tone}-bg", 4.5), (f"tone-{tone}-text", "bg", 3.0)]
     need += [("tone-neutral-text", "tone-neutral-bg", 4.5), ("tone-neutral-text", "bg", 3.0)]
+    for tone in (*TONES, "neutral"):            # 増減の札の輪郭: tone の色の枠が、札の置かれる面（通常・強調の淡い面・group）に対して 3。強い look の面（accent-strong）の上では枠が札の地と同じ色になるので、札の地が 3
+        for g in ("bg", "surface", "accent-soft", *(f"group-{x}-bg" for x in GROUPS)):
+            need.append((f"tone-{tone}-text", g, 3.0))
+        need.append((f"tone-{tone}-bg", "accent-strong", 3.0))
     for g in GROUPS:                            # カードの種類分け: 地の上の本文・札の文字・枠
         for fg in ("ink", "muted", "accent-text", f"group-{g}-text"):
             need.append((fg, f"group-{g}-bg", 4.5))

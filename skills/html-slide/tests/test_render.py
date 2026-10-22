@@ -403,6 +403,44 @@ def t_kpi_tone_group():
     check(tall > 330 * 12700, f"3枚のカードが高さいっぱいに伸びていない: {tall / 12700:.0f}pt")   # 版は 1080px＝540pt。使える高さは 700px 余り
 
 
+def t_kpi_chip_align():
+    """kpi: 増減の札に tone の色の枠が付き（PPTX の線）、札のあるカードとないカードが混ざる行でも数字の上端がそろう（3枚・4枚・強い look）。"""
+    import deck
+    pal = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
+    up = lambda h: h[1:].upper()
+    three = [{"label": "受付件数", "value": "11", "unit": "件", "delta": "+12%", "trend": "up", "note": "前月比", "group": {"label": "自動", "tone": "a"}},
+             {"label": "処理にかかった時間の平均", "value": "22", "delta": "−4分", "trend": "down"},
+             {"label": "手戻り", "value": "33", "group": {"label": "手作業", "tone": "b"}}]
+    strong = TMP / "align-strong.yaml"
+    strong.write_text("name: strong\ndescription: 試験\nlook:\n  emphasis: strong\n  surface: line\n", encoding="utf-8")
+    cases = {"three": (three, None), "four": (three + [{"label": "d", "value": "44", "delta": "±0", "trend": "flat"}], None),
+             "strong": ([dict(three[0], accent=True, group=None)] + three[1:], str(strong))}
+    for name, (items, style) in cases.items():
+        items = [{k: v for k, v in it.items() if v is not None} for it in items]
+        sc = TMP / f"align-{name}.json"
+        sc.write_text(json.dumps({"title": "t", "slides": [{"type": "kpi", "headline": "h", "items": items}]}, ensure_ascii=False), encoding="utf-8")
+        html, _ = deck.build_html(sc, TMP / f"align-deck-{name}", **({"style": style} if style else {}))
+        out = TMP / f"align-{name}.pptx"
+        render.render(html, out)
+        x = slide_xml(out, 1)
+        ys = [int(x.xpath(f"//p:sp[.//a:t='{it['value']}']/p:spPr/a:xfrm/a:off/@y", namespaces=NS)[0]) for it in items]
+        check(len(set(ys)) == 1, f"{name}: 数字の上端がそろわない: {ys}")
+        # 増減の札: 角丸の枠が tone の文字色（強い look の面の上では札の地の色）
+        lines = {}
+        for sp in x.xpath("//p:sp[.//a:prstGeom/@prst='roundRect']", namespaces=NS):
+            fill = sp.xpath("p:spPr/a:solidFill/a:srgbClr/@val", namespaces=NS)
+            ln = sp.xpath("p:spPr/a:ln/a:solidFill/a:srgbClr/@val", namespaces=NS)
+            if fill:
+                lines[fill[0].upper()] = ln[0].upper() if ln else None
+        for tone in ("good", "bad"):
+            bg = up(pal[f"tone-{tone}-bg"])
+            check(bg in lines, f"{name}: {tone} の増減の札の塗りが PPTX に無い: {lines}")
+            if name == "strong" and tone == "good":
+                check(lines[bg] in (None, bg), f"{name}: 濃い面の上の札に、面に沈む色の枠が付いている: {lines[bg]}")   # 札の地の色が輪郭
+            else:
+                check(lines[bg] == up(pal[f"tone-{tone}-text"]), f"{name}: {tone} の増減の札の枠が PPTX に無い・色が違う: {lines}")
+
+
 TESTS = {k[2:]: v for k, v in dict(globals()).items() if k.startswith("t_")}
 
 if __name__ == "__main__":
