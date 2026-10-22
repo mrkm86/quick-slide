@@ -491,6 +491,80 @@ def t_kpi_tone_group():
     check(color_of("▲ +1") == up(pal["tone-good-text"]), f"強める箱の増減の札が tone の色でない: {color_of('▲ +1')}")
     check(tall > 330 * 12700, f"3枚のカードが高さいっぱいに伸びていない: {tall / 12700:.0f}pt")   # 版は 1080px＝540pt。使える高さは 700px 余り
 
+def t_table_summary():
+    """table の summary: カード（地・枠・札・増減の札・文字）と表・凡例が PPTX に写る。カードは表の上・同じ幅で並び、段は 1→2 の2クリック。"""
+    import deck
+    pal = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
+    up = lambda h: h[1:].upper()
+    summary = [{"label": "今月の改善", "value": "9", "unit": "件", "delta": "+3件", "trend": "up"},
+               {"label": "累計", "value": "15", "unit": "件", "delta": "−1件", "trend": "down", "group": {"label": "全体", "tone": "b"}},
+               {"label": "着手中", "value": "4", "unit": "件", "note": "来月に持ち越す"}]
+    sc = TMP / "sum.json"
+    sc.write_text(json.dumps({"title": "t", "slides": [{"type": "table", "headline": "h", "summary": summary, "columns": ["日付", "内容"],
+                                                       "rows": [["10/02", "手順を減らした"], ["10/09", "項目を見直した"]],
+                                                       "legend": [{"tone": "good", "text": "効果あり"}], "source": "注記", "talk": ["", "", ""]}]}, ensure_ascii=False), encoding="utf-8")
+    html, _ = deck.build_html(sc, TMP / "sum-deck")
+    out = TMP / "sum.pptx"
+    rep = render.render(html, out)
+    check(rep["totals"]["steps"] == 2 and rep["totals"]["notes_clicks"] == 2, f"クリックの数: {rep['totals']}")
+    x = slide_xml(out, 1)
+    cards = [sp for sp in x.xpath("//p:sp", namespaces=NS) if re.fullmatch(r"指標\d/0", sp.xpath("p:nvSpPr/p:cNvPr/@name", namespaces=NS)[0])]
+    geo = lambda sp: [int(v) for v in sp.xpath("p:spPr/a:xfrm/a:off/@x | p:spPr/a:xfrm/a:off/@y | p:spPr/a:xfrm/a:ext/@cx | p:spPr/a:xfrm/a:ext/@cy", namespaces=NS)]
+    boxes = [geo(sp) for sp in cards if sp.xpath(".//a:prstGeom/@prst", namespaces=NS) == ["roundRect"] and sp.xpath("p:spPr/a:ln", namespaces=NS)]
+    check(len(boxes) == 3, f"カードの地と枠が3枚ぶん無い: {len(boxes)}")
+    check(len({b[2] for b in boxes}) == 1 and len({b[3] for b in boxes}) == 1 and len({b[1] for b in boxes}) == 1, f"カードの幅・高さ・上端がそろわない: {boxes}")
+    xs = sorted(b[0] for b in boxes)
+    check(abs((xs[1] - xs[0]) - (xs[2] - xs[1])) <= 1 and xs[1] - xs[0] > boxes[0][2], f"カードが等間隔に並ばない: {xs}")
+    fills = {c.upper() for c in x.xpath("//p:sp/p:spPr/a:solidFill/a:srgbClr/@val", namespaces=NS)}
+    for role in ("tone-good-bg", "tone-bad-bg", "group-b-bg"):
+        check(up(pal[role]) in fills, f"{role} の塗りが PPTX に無い")
+    check(up(pal["group-b-rule"]) in {c.upper() for c in x.xpath("//a:ln/a:solidFill/a:srgbClr/@val", namespaces=NS)}, "group の枠の色が無い")
+    runs = {c.upper() for c in x.xpath("//a:rPr/a:solidFill/a:srgbClr/@val", namespaces=NS)}
+    for role in ("tone-good-text", "tone-bad-text", "group-b-text"):
+        check(up(pal[role]) in runs, f"{role} の文字色が無い")
+    texts = "".join(x.xpath("//a:t/text()", namespaces=NS))
+    for word in ("今月の改善", "累計", "全体", "▲ +3件", "▼ −1件", "来月に持ち越す", "10/09", "項目を見直した", "効果あり", "注記"):
+        check(word in texts, f"{word} が PPTX に無い")
+    card_bottom = max(b[1] + b[3] for b in boxes)
+    y_of = lambda word: int(x.xpath(f"//p:sp[.//a:t='{word}']//a:off/@y", namespaces=NS)[0])
+    check(y_of("日付") >= card_bottom, "表がカードの下に来ていない")
+    check(y_of("効果あり") > y_of("10/09") and y_of("注記") > y_of("効果あり"), "表 → 凡例 → source の順でない")
+    check(boxes[0][3] <= 384 * 12700 / 2, f"カードの帯の高さがページの半分（1080px の半分未満）を越えた: {boxes[0][3] / 12700:.0f}pt")
+
+
+
+def t_table_summary_chip_mix():
+    """table の summary: 札（group）のあるカードとないカードが混ざる帯でも、数字の上端・増減の札の上端がそろい、帯は上限内で表と重ならない（2〜4枚）。"""
+    import deck
+    g = lambda tone: {"label": "自動", "tone": tone}
+    cards = [{"label": "受付件数", "value": "11", "unit": "件", "delta": "+12%", "trend": "up", "group": g("a")},
+             {"label": "平均時間", "value": "22", "unit": "分", "delta": "−4分", "trend": "down"},
+             {"label": "手戻り", "value": "33", "unit": "件", "note": "前月比", "group": g("b")},
+             {"label": "満足度", "value": "44", "unit": "点", "delta": "±0", "trend": "flat"}]
+    for n in (2, 3, 4):
+        summary = cards[:n]
+        sc = TMP / f"sum-mix{n}.json"
+        sc.write_text(json.dumps({"title": "t", "slides": [{"type": "table", "headline": "h", "summary": summary, "columns": ["日付", "内容"],
+                                                           "rows": [["10/02", "手順を減らした"], ["10/09", "項目を見直した"]]}]}, ensure_ascii=False), encoding="utf-8")
+        html, _ = deck.build_html(sc, TMP / f"sum-mix-deck{n}")
+        out = TMP / f"sum-mix{n}.pptx"
+        render.render(html, out)
+        x = slide_xml(out, 1)
+        y_of = lambda word: int(x.xpath(f"//p:sp[.//a:t='{word}']/p:spPr/a:xfrm/a:off/@y", namespaces=NS)[0])
+        ys = [y_of(c["value"]) for c in summary]
+        check(len(set(ys)) == 1, f"{n}枚: 数字の上端がそろわない: {ys}")
+        mark = {"up": "▲ ", "down": "▼ ", "flat": "→ "}
+        dys = {y_of(mark[c["trend"]] + c["delta"]) for c in summary if c.get("delta")}
+        check(len(dys) <= 1, f"{n}枚: 増減の札の上端がそろわない: {dys}")
+        boxes = []
+        for sp in x.xpath("//p:sp", namespaces=NS):
+            if re.fullmatch(r"指標\d/0", sp.xpath("p:nvSpPr/p:cNvPr/@name", namespaces=NS)[0]) and sp.xpath("p:spPr/a:ln", namespaces=NS) \
+                    and sp.xpath(".//a:prstGeom/@prst", namespaces=NS) == ["roundRect"]:
+                boxes.append([int(v) for v in sp.xpath("p:spPr/a:xfrm/a:off/@y | p:spPr/a:xfrm/a:ext/@cy", namespaces=NS)])
+        check(len(boxes) == n and len({b[0] for b in boxes}) == 1 and len({b[1] for b in boxes}) == 1, f"{n}枚: カードの上端・高さがそろわない: {boxes}")
+        check(boxes[0][1] <= 384 * 12700 / 2, f"{n}枚: 帯が上限を越えた: {boxes[0][1] / 12700:.0f}pt")
+        check(y_of("日付") >= boxes[0][0] + boxes[0][1], f"{n}枚: 表が帯と重なる")
+
 
 def t_kpi_chip_align():
     """kpi: 増減の札に tone の色の枠が付き（PPTX の線）、札のあるカードとないカードが混ざる行でも数字の上端がそろう（3枚・4枚・強い look）。"""

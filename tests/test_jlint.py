@@ -105,6 +105,16 @@ class DisplayedKeysTests(unittest.TestCase):
         for where in ("rows[0][1].text", "legend[0].text"):
             self.assertTrue(any(where in ln for ln in found), (where, found))
 
+    def test_table_summary_cards_are_checked(self) -> None:
+        self.assertIn("summary", jlint.VISIBLE_KEYS)
+        slide = {"id": "p-ts", "type": "table", "headline": "表", "columns": ["品目", "数"], "rows": [["a", "1"]],
+                 "summary": [{"label": "🙂 今月", "value": "9", "unit": "件", "delta": "✅ +3", "trend": "up", "note": "📌 先月比",
+                              "group": {"label": "🚀 全体", "tone": "a"}}]}
+        found = jlint.check([slide]).ng
+        self.assertEqual(len(found), 4, found)
+        for where in ("summary[0].label", "summary[0].delta", "summary[0].note", "summary[0].group.label"):
+            self.assertTrue(any(where in ln for ln in found), (where, found))
+
     def test_top_level_role_is_a_chapter_id_and_not_checked(self) -> None:
         self.assertEqual(jlint.check([{"id": "p-a", "type": "statement", "headline": "短い", "role": "🙂"}]).ng, [])
 

@@ -563,7 +563,7 @@ LEGEND_TONES = ("good", "warn", "bad", "dim")      # 色の凡例の語彙。dim
 LEGEND_H, LEGEND_SWATCH, LEGEND_GAP, LEGEND_TEXT_GAP = 48, 24, 40, 16    # 凡例の予約高（文字1行 33 と前後の余裕）・見本の1辺・項目の間・見本と文字の間
 
 
-def tone_legend(s: Slide, y, *, width=CW) -> tuple[str, int]:
+def tone_legend(s: Slide, y, *, width=CW, step=1) -> tuple[str, int]:
     """色の凡例（色見本＋説明の1行）。台本の legend が無ければ ("", 0)。あれば (HTML, 予約する高さ)。
 
     legend は 1〜4 項目の {tone, text}（どちらも必須）。見本は tone の地＋tone の文字色の枠（dim は muted）、文字は source と同じ 22px・muted。
@@ -589,7 +589,7 @@ def tone_legend(s: Slide, y, *, width=CW) -> tuple[str, int]:
         s.err("legend が1行に入らない。text を短くするか項目を減らす")
     cells = "".join(f'<div class="tone-legend-item tone-{tone}"><div class="tone-legend-swatch"></div>'
                     f'<div class="tone-legend-text" style="font-size:22px">{esc(text)}</div></div>' for tone, text in items)
-    return (f'<div class="tone-legend" style="{box(X0, y, width)}" {s.anim(1, "fade", 0, "色の凡例")}>{cells}</div>', LEGEND_H)
+    return (f'<div class="tone-legend" style="{box(X0, y, width)}" {s.anim(step, "fade", 0, "色の凡例")}>{cells}</div>', LEGEND_H)
 
 
 def chevron(w, h, depth, first, fill, stroke=None, sw=0) -> str:
@@ -1195,6 +1195,8 @@ def t_table(s: Slide):
 
     セルは文字・数か {text, tone}（good・warn・bad の淡い地＋濃い文字）。dim_rows（行の番号・1から）は行を muted で退かせる（tone より優先）。
     legend は表の下の色の凡例（1〜4項目）。表 → 凡例 → source の順。
+    summary は見出しと表の間の数字のカードの帯（1〜4枚。kpi と同じ指標・accent と badge は無し）。幅は本文を枚数で等分。
+    カードは1クリック目に順に出て、表と凡例は2クリック目（summary が無ければ表は1クリック）。
     """
     head, top = header(s)
     cols = s.spec.get("columns")
@@ -1233,10 +1235,17 @@ def t_table(s: Slide):
     aligns = s.spec.get("align", ["left"] + ["center"] * (len(cols) - 1))
     if not isinstance(aligns, list) or len(aligns) != len(cols) or not all(isinstance(a, str) and a in TABLE_ALIGNS for a in aligns):
         s.err("align は columns と同じ数の配列で、値は left / center / right のどれか")
+    top0, band, sum_h, tstep = top, "", 0, 1
+    if "summary" in s.spec:                            # 数字のカードの帯。表・凡例・source はその下で組む（takeaway は s.bottom が引いてある）
+        band, sum_h = _table_summary(s, top)
+        top += sum_h + SUMMARY_GAP
+        tstep = 2
     legend_h = tone_legend(s, 0)[1]                    # 検査と予約の高さ。置く位置は行の高さが決まってから
     footer_h = legend_h + (40 if s.text("source") else 0)
     rh = min(s.gap(112), int((s.bottom - top - footer_h) / (len(rows) + 1)) // 8 * 8)     # 行の高さ（大きく組むときは上限を広げる）
     if rh < 24 * 1.5 + 16:                             # 最小の文字 24px・行高 1.5・上下 16px が入らない
+        if band:
+            s.err(f"summary を置くと表が入らない（行の高さ {rh}px では文字 24px が入らない）。rows を減らすか、summary の label・note を短くする")
         s.err(f"表が入らない（行の高さ {rh}px では文字 24px が入らない）。rows を減らすか、legend・source を外す")
     fs0 = 28 if rh >= 64 else 24                       # 表のセルは Std-28N-150（下限 24）。行が低ければ 24
     fs0 = s.g(fs0, 45)
@@ -1258,11 +1267,37 @@ def t_table(s: Slide):
             cells.append(f'<div class="td{" hl" if on else ""}{kind}" style="width:{px(cws[c])}; justify-content:{align}">'
                          f'<div style="font-size:{fs}px; text-align:{tal};{weight}">{rich(v)}</div></div>')
         out.append(f'<div class="tr{" th" if r == 0 else ""}{" dim" if dimmed else ""}" style="height:{px(rh)}">' + "".join(cells) + "</div>")
-    s.need, s.avail = rh * (len(rows) + 1) + footer_h, s.bottom - top
+    s.need, s.avail = (sum_h + SUMMARY_GAP if band else 0) + rh * (len(rows) + 1) + footer_h, s.bottom - top0
     end = top + rh * (len(rows) + 1) + 16
-    legend, _ = tone_legend(s, end)
-    return [head, f'<div class="table" style="{box(X0, top, CW)}" {s.anim(1, "fade", 0, "表")}>' + "".join(out) + "</div>",
+    legend, _ = tone_legend(s, end, step=tstep)
+    return [head, band, f'<div class="table" style="{box(X0, top, CW)}" {s.anim(tstep, "fade", 0, "表")}>' + "".join(out) + "</div>",
             legend, source_line(s, end + legend_h)]
+
+
+SUMMARY_MAX_H, SUMMARY_GAP, SUMMARY_PAD, SUMMARY_VMAX = 384, 32, 24, 64      # 帯の内容の高さの上限（ページの半分未満）・表との間・カードの余白・数字の上限
+
+
+def _table_summary(s: Slide, top) -> tuple[str, int]:
+    """表の上の数字のカードの帯。(HTML, 帯の高さ) を返す。カードは1クリック目に順に出る。
+
+    幅は本文をガターを引いて枚数で等分。全部のカードを同じ段で組み、帯の高さの上限（SUMMARY_MAX_H と使える高さの小さい方）に入る段まで下りる。
+    帯は使える高さいっぱいには伸ばさない。accent・badge は小さな帯に札が詰まるので使えない。
+    """
+    raw = s.spec["summary"]
+    for i, it in enumerate(raw if isinstance(raw, list) else [], 1):
+        if isinstance(it, dict) and {"accent", "badge"} & set(it):
+            s.err(f"summary の {i} 個目の accent / badge は使えない（強める札は kpi で）")
+    its = _kpi_items(s, "summary", lo=1, hi=4, allow_accent=False)
+    cap = min(SUMMARY_MAX_H, s.bottom - top)
+    for drop in range(0, 6):
+        tiles, tallest = _kpi_tiles(s, its, key="summary", total_width=CW, gap=GUTTER, vmax=SUMMARY_VMAX, drop=drop, height_cap=cap,
+                                    pad=SUMMARY_PAD, role_prefix="tsum")
+        if tallest <= cap:
+            break
+    else:
+        s.err(f"summary のカードが高すぎて入らない（{tallest:.0f}px > {cap:.0f}px）。label・note を短くするか、見出しを1行にする")
+    h = math.ceil(tallest)
+    return f'<div class="row" style="position:absolute; {box(X0, top, CW)} gap:{GUTTER}px">' + "".join(tiles) + "</div>", h
 
 
 def t_photo(s: Slide):
@@ -1720,7 +1755,8 @@ def _kpi_tiles(s: Slide, its, *, key, total_width, gap, vmax, drop, height_cap, 
     幅は total_width を枚数で等分（gap を引いて整数に切り下げる。px() が丸めて上げると、並べた行が版の幅を越える）。
     内容の高さは一番高い1枚（余白・枠・札・増減・注記を含む）。height_cap を越えたら、それ以上は組まず、その時点の高さを返す
     （呼ぶ側が段を下げて組み直す）。fill_height があれば、カードをその高さに伸ばして中身を縦の中央に置く（内容の高さは変わらない）。
-    pad はカードの内側の余白。step は出る段・role_prefix は s.fit の役の名前（同じ役の文字は全部のカードでそろう）。
+    pad はカードの内側の余白（CALLOUT_PAD と違えば style で上書きする）。step は出る段・role_prefix は s.fit の役の名前
+    （同じ役の文字は全部のカードでそろう。CSS の class は kpi のまま）。
     ラベル・増減は Std-28B-150・数字は Ext-96B-100（4 つなら 80）・単位は数字のおよそ 4 割・注記は Std-22N-150
     """
     n = len(its)
@@ -1755,26 +1791,26 @@ def _kpi_tiles(s: Slide, its, *, key, total_width, gap, vmax, drop, height_cap, 
             tag = tag or f'<div style="height:{CHIP_H + 16}px; flex:none"></div>'     # 札のないカードにも同じ高さの空き
             h += CHIP_H + 16
         label_hs.append(ln * ls * 1.5)
-        inner = tag + (f'<div class="{role_prefix}-label" style="font-size:{ls}px{{LABEL_MIN}}">{esc(label)}</div>'
-                       f'<div class="bn-row" style="margin-top:16px"><div class="{role_prefix}-value" style="font-size:{vs}px; line-height:{vlh}">{esc(value)}</div>'
-                       + (f'<div class="{role_prefix}-unit" style="font-size:{us}px; line-height:{vlh}">{esc(unit)}</div>' if unit else "") + "</div>")
+        inner = tag + (f'<div class="kpi-label" style="font-size:{ls}px{{LABEL_MIN}}">{esc(label)}</div>'
+                       f'<div class="bn-row" style="margin-top:16px"><div class="kpi-value" style="font-size:{vs}px; line-height:{vlh}">{esc(value)}</div>'
+                       + (f'<div class="kpi-unit" style="font-size:{us}px; line-height:{vlh}">{esc(unit)}</div>' if unit else "") + "</div>")
         if delta:
             d = TRENDS.get(trend, "") + delta
             ds, _ = s.fit(f"{role_prefix}-delta", d, step_down(s.g(28, 36), drop, 24), iw - 2 * (DELTA_PAD_X + DELTA_BORDER), what=f"{where}の delta", lines=1, lh=1.5, min_size=24, bold=True)
             tone = it.get("tone") or TREND_TONE.get(trend, "neutral")
-            inner += f'<div class="{role_prefix}-delta tone-{tone}" style="font-size:{ds}px">{esc(d)}</div>'
+            inner += f'<div class="kpi-delta tone-{tone}" style="font-size:{ds}px">{esc(d)}</div>'
             h += 16 + ds * 1.5 + 2 * (DELTA_PAD_Y + DELTA_BORDER)
         if note:
             ns, nn = s.fit(f"{role_prefix}-note", note, step_down(s.g(22, 28), drop, 22), iw, what=f"{where}の note", lines=2, lh=1.5, min_size=22)
-            inner += f'<div class="{role_prefix}-note" style="font-size:{ns}px">{esc(note)}</div>'
+            inner += f'<div class="kpi-note" style="font-size:{ns}px">{esc(note)}</div>'
             h += 8 + nn * ns * 1.5
         hs.append(h)
         tallest = max(tallest, h)
-        cls = f"{role_prefix}" + (" hl" if hl else "") + (f" group-{grp['tone']}" if grp else "")
+        cls = "kpi" + (" hl" if hl else "") + (f" group-{grp['tone']}" if grp else "")
         tiles.append((cls, cw, inner, i, hl))
         if tallest > height_cap:
             break
-    fill = f"; height:{px(fill_height)}; justify-content:center" if fill_height else ""
+    fill = (f"; padding:{pad}px" if pad != CALLOUT_PAD else "") + (f"; height:{px(fill_height)}; justify-content:center" if fill_height else "")
     label_min, pts = "", [""] * len(tiles)
     if chips:
         # 札のある行は、ラベルの領域も行で共通にし（数字の上端がそろう）、3枚の伸ばしは縦の中央ではなく上から置く
@@ -1788,7 +1824,7 @@ def _kpi_tiles(s: Slide, its, *, key, total_width, gap, vmax, drop, height_cap, 
         top = max(0.0, (fill_height - tallest) / 2) if fill_height else 0.0
         pts = [f"; padding-top:{px(top + pad + bmax - b)}" if top or bmax != b else "" for b in bs]
         if fill_height:
-            fill = f"; height:{px(fill_height)}; justify-content:flex-start"
+            fill = fill.replace("justify-content:center", "justify-content:flex-start")
     return [f'<div class="{cls}" style="width:{px(cw)}{fill}{pt}" {s.anim(step, "pop", 150 * i, f"指標{i + 1}", item=True)}>{inner.replace("{LABEL_MIN}", label_min, 1)}</div>'
             for (cls, cw, inner, i, _), pt in zip(tiles, pts)], tallest
 
@@ -2902,7 +2938,7 @@ TYPES = {
     "flow": (t_flow, HEAD_KEYS | {"items"}, True),
     "compare": (t_compare, HEAD_KEYS | {"left", "right", "accent", "arrow"}, True),
     "bar-chart": (t_bar_chart, HEAD_KEYS | {"bars", "unit", "note", "max", "callout"}, True),
-    "table": (t_table, HEAD_KEYS | {"columns", "rows", "highlight", "widths", "align", "dim_rows", "legend"}, True),
+    "table": (t_table, HEAD_KEYS | {"columns", "rows", "highlight", "widths", "align", "dim_rows", "legend", "summary"}, True),
     "photo": (t_photo, {"image", "layout", "split", "kicker", "headline", "body", "caption", "hide_text"}, False),
     "quote": (t_quote, {"quote", "by", "position", "kicker", "source", "layout", "image"}, True),
     "bullets": (t_bullets, HEAD_KEYS | {"items", "image", "side", "split"}, True),
