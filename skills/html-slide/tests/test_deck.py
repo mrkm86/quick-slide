@@ -1967,6 +1967,10 @@ def case_table_tone_dim_legend():
                           ("2", "d-str", "整数でない"), (1.5, "d-float", "整数でない"), ([1], "d-nest", "整数でない"), (None, "d-none", "整数でない")):
         expect_error(one(dict(base, dim_rows=[v])), name, word)
     expect_error(one(dict(base, dim_rows="1")), "d-notlist", "dim_rows は行の番号")
+    # 書いたキーの null は未指定と分けて rc=2（セルの tone は行・列つき、ほかはキー名つき）
+    expect_error(one(cell({"text": "b", "tone": None})), "c-tone-null", "表の 2 行目 2 列目: tone は good / warn / bad のどれか")
+    expect_error(one(dict(base, dim_rows=None)), "d-null", "dim_rows は行の番号")
+    expect_error(one(dict(base, legend=None)), "l-null", "legend は 1〜4 個")
     build(one(dict(base, dim_rows=[])), "d-empty")
     ok = {"tone": "warn", "text": "注意"}
     for lg, name, word in (([], "l-empty", "legend は 1〜4 個"), ([ok] * 5, "l-five", "legend は 1〜4 個"), ("warn", "l-str", "legend は 1〜4 個"), ({"tone": "warn"}, "l-dict", "legend は 1〜4 個"),

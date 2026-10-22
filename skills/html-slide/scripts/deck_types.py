@@ -569,9 +569,9 @@ def tone_legend(s: Slide, y, *, width=CW) -> tuple[str, int]:
     legend は 1〜4 項目の {tone, text}（どちらも必須）。見本は tone の地＋tone の文字色の枠（dim は muted）、文字は source と同じ 22px・muted。
     1行に入らなければ縮めず rc=2。表以外の型は legend を許さない（build_slide の未知のキー）。
     """
-    raw = s.spec.get("legend")
-    if raw is None:
+    if "legend" not in s.spec:
         return "", 0
+    raw = s.spec["legend"]                              # 書いたなら null も配列でないものとして rc=2（未指定とは分ける）
     if not isinstance(raw, list) or not 1 <= len(raw) <= 4:
         s.err(f"legend は 1〜4 個の配列（{len(raw) if isinstance(raw, list) else '配列でない'}）")
     items, total = [], 0
@@ -1182,10 +1182,10 @@ def _table_cell(s: Slide, v, where: str):
         extra = sorted(str(k) for k in set(v) - {"text", "tone"})
         if extra:
             s.err(f"{where}: セルのオブジェクトに知らないキー: {', '.join(extra)}（使えるのは text と tone）")
-        tone, v = v.get("tone"), v.get("text")
+        has_tone, tone, v = "tone" in v, v.get("tone"), v.get("text")
         if v is None or isinstance(v, bool) or not isinstance(v, (str, int, float)):
             s.err(f"{where}: text は文字列か数")
-        if tone is not None and (not isinstance(tone, str) or tone not in TABLE_CELL_TONES):
+        if has_tone and (not isinstance(tone, str) or tone not in TABLE_CELL_TONES):
             s.err(f"{where}: tone は {' / '.join(TABLE_CELL_TONES)} のどれか")
     return (v if isinstance(v, str) else num_label(v)), tone
 
@@ -1211,9 +1211,9 @@ def t_table(s: Slide):
             s.err(f"columns の {c} 個目にセルのオブジェクトは書けない（tone は rows のセルに書く）")
     cells_of = [[_table_cell(s, v, f"表の {r} 行目 {c} 列目") for c, v in enumerate(row, 1)] for r, row in enumerate(rows, 1)]
     cells_of.insert(0, [(v if isinstance(v, str) else num_label(v), None) for v in cols])
-    dim = s.spec.get("dim_rows")
     dims: set[int] = set()
-    if dim is not None:
+    if "dim_rows" in s.spec:                           # 書いたなら null も rc=2（未指定とは分ける）
+        dim = s.spec["dim_rows"]
         if not isinstance(dim, list):
             s.err("dim_rows は行の番号（1から）の配列")
         for n in dim:
