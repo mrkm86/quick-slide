@@ -55,6 +55,7 @@ render "kpi: 増減の札の枠が PPTX に写る・札あり／なしが混ざ�
 render "table: セルの tone の地・文字色・薄い行の文字色・凡例の見本（角丸・塗り・枠）と文字が PPTX に写る" table_tone_dim_legend
 render "table: summary のカード（地・枠・札・増減の札・文字）と表・凡例が PPTX に写り、カードは表の上で同じ幅・段は2クリック" table_summary
 render "table: summary で札（group）のあるカードとないカードが混ざる帯でも、数字・増減の札の上端がそろい、帯は上限内で表と重ならない" table_summary_chip_mix
+render "bar-chart: 棒の tone の塗り・値の文字色・値 0 の札が PPTX に写る・灰の棒はそのまま" bar_tone
 render "r1-1 兄弟の z-index を描画順に並べる・flex の order は rc=2" r1_zorder
 render "r1-2 縦の動画は rc=2（縦の動画は未対応）" r1_portrait
 render "r1-3 自動で折り返した所の単語の間の空白を残す・改行を固定するときは行末の空白を落とす" r1_wrap_spaces
@@ -67,6 +68,7 @@ render "r1-9 show の対象の中の単位は対象と同じクリックで出�
 render "r2-2 重ね順の文脈を作らない親の中の z-index は rc=2（section の直下と文脈を作る親の中は通す）" r2_zindex_context
 render "r2-8 color: transparent の文字は出さない" r2_transparent_text
 render "r3-5 img の alt を PPTX の代替テキスト（descr）に・切り抜きは小数4桁" r3_img_alt
+render "notice: 4個の枠（枠・色帯・語の色）が PPTX に写る・label_style: chip は白地に kind の色の輪郭の角丸の札でアイコンなし" notice_four
 
 # --- deck ---
 deck() { run "$1" python3 "$DIR/test_deck.py" "$2"; }
@@ -123,6 +125,7 @@ deck "Codex r4 #2・#3 注釈6件と画像つき KPI の2行見出しでも、�
 deck "Codex r4 #4・#5 改行は全部の文字の欄で <br>・強調は改行をまたげる" r4_line_breaks_everywhere
 deck "kpi: 増減の札の tone（trend から決まる・上書き・誤りは rc=2）・group（札は必ず出る・同じ group は同じ面・一部だけ・accent と同時は rc=2）・3枚の高さ" kpi_tone_group
 deck "kpi: 同じ役（label・value・unit・delta・note）の文字は長短を混ぜても全部のカードでそろい、高さは上限を守る" kpi_role_sizes
+deck "bar-chart: 棒の tone（5段＋neutral・誤りは rc=2・highlight と同時・値 0 の札・全部 0・note/callout）・tone なしと neutral は旧台本と同じ" bar_tone
 deck "group の a・b・c はテーマを変えても同じ（c は固定の青）・重ならず文字 4.5:1・枠 3:1" group_c_fixed
 deck "kpi: 強い look と全テーマ・主色違いでも増減の札の文字×札の地は 4.5:1" kpi_tone_chip_strong
 deck "kpi: look（強める箱・線の面）に増減の札と group の面が潰されない" kpi_look_priority
@@ -154,6 +157,7 @@ deck "matrix: 名前は点・ほかの名前・区切り線と重ならないよ
 deck "line-chart: 点の形と線種で系列を区別・線の端に名前・入らなければ凡例に線種と点の形も写す" dads_line_chart_marks
 deck "DOM 順（hub は中心 → 周り・pairs は札 → 文）・pairs の札は語とアイコン・takeaway はアイコンつき" dads_reading_order
 deck "新しい型（notice・deflist・steps）: 種類・状態を形と語で示す・クリックは枠・行・段ごと・誤りは rc=2" dads_new_types
+deck "notice の4個と label_style: 4個は余白を詰めて収まる・入らなければ rc=2・chip は kind の色の札（語は残る・4.5:1と3:1）・1〜3個で書かない台本は今のまま・誤りは rc=2" notice_four
 deck "モーフは退役（ADR 0023）: 切り替えは fade・none だけ・台本とスタイルの morph は fade で描いて警告・PPTX にモーフを書かない" no_morph
 deck "退役の仕組み（RETIRED_TYPES・RETIRED_LOOKS）: 描いて警告・deck-format に載せない・surface: white は line と同じ" retired
 

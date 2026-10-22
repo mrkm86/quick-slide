@@ -1779,6 +1779,17 @@ def case_dads_palette():
         for x in "abc":
             assert all(deck.ratio(p[fg], p[f"group-{x}-bg"]) >= 4.5 for fg in ("ink", "muted", "accent-text", f"group-{x}-text")), (i, x)
             assert deck.ratio(p[f"group-{x}-rule"], p[f"group-{x}-bg"]) >= 3.0 and deck.ratio(p[f"group-{x}-rule"], p["bg"]) >= 3.0, (i, x)
+    # 棒の色の段（bar-…）: 良い側 3 段が別の色・濃い順。非白の地・surface・ブランドの色でも棒 3:1・値の文字 4.5:1
+    for i, tv in enumerate(themes):
+        p = deck.palette(tv)
+        g = [p[f"bar-{t}"] for t in ("good-soft", "good", "good-strong")]
+        assert len(set(g)) == 3 and deck.ratio(g[0], p["bg"]) < deck.ratio(g[1], p["bg"]) < deck.ratio(g[2], p["bg"]), (i, g)
+        for t in ("good-strong", "good", "good-soft", "warn", "bad"):
+            for ground in ("bg", "surface"):
+                assert deck.ratio(p[f"bar-{t}"], p[ground]) >= 3.0 and deck.ratio(p[f"bar-{t}-text"], p[ground]) >= 4.5, (i, t, ground)
+    for role, bad in (("bar-warn", "#e0cf8a"), ("bar-good-text", "#7fc9a0")):
+        broken = dict(dflt, **{role: bad})
+        assert any(role in m for m in deck.contrast_problems(broken)), role
     for role, bad in (("tone-warn-text", "#d9c26a"), ("tone-bad-bg", "#cc9999"), ("group-b-text", "#f0a060"), ("group-c-rule", "#e9f7f9")):
         broken = dict(dflt, **{role: bad})                      # 色を故意に壊すと contrast_problems が拾う
         assert any(role in m for m in deck.contrast_problems(broken)), role
@@ -1788,6 +1799,44 @@ def case_dads_palette():
         assert any(f"tone-good-text（{dflt['tone-good-text']}）× {face}" in m for m in deck.contrast_problems(broken)), face
     broken = dict(dflt, **{"accent-strong": dflt["tone-bad-bg"]})
     assert any("tone-bad-bg" in m and "accent-strong" in m for m in deck.contrast_problems(broken)), "強い look の面と札の地"
+
+
+def _bar_html(bars, name, **extra):
+    return build(one({"type": "bar-chart", "headline": "h", "unit": "件", "bars": bars} | extra), name)[0].read_text(encoding="utf-8")
+
+
+def case_bar_tone():
+    """bar-chart の棒の tone: 5段＋neutral・誤りは rc=2・highlight と同時は色が tone・値 0 の札・tone なしと neutral は旧台本と同じ。"""
+    tones = ("good-strong", "good", "good-soft", "warn", "bad")
+    bars = [{"label": f"b{i}", "value": 10 - i, "tone": t} for i, t in enumerate(tones)]
+    body = _bar_html(bars, "bt-all").split("</style>")[1]
+    assert re.findall(r'class="bar tone-([\w-]+)"', body) == list(tones) and re.findall(r'class="bar-value tone-([\w-]+)"', body) == list(tones)
+    assert all(f'>b{i}<' in body for i in range(5)), "label は必ず出る"
+    # 誤り: 位置付きの rc=2。型の違う値も例外を漏らさない
+    for v in ("red", "Good", "", 3, True, [], {}, ["good"]):
+        expect_error(one({"type": "bar-chart", "headline": "h", "bars": [dict(bars[0], tone=v), bars[1]]}), "bt-bad", "bars の 1 個目の tone は",
+                     "good-strong / good / good-soft / warn / bad / neutral のどれか")
+    # tone なし・neutral は同じ（灰・highlight もそのまま）。旧台本と同じ HTML（棒の部分）
+    old = [{"label": "A", "value": 9, "highlight": True}, {"label": "B", "value": 5}, {"label": "C", "value": 0}]
+    neu = [dict(b, tone="neutral") for b in old]
+    a, b = (_bar_html(x, n, note="n", callout={"value": "9", "text": "x"}).split("</style>")[1] for x, n in ((old, "bt-old"), (neu, "bt-neu")))
+    assert a == b and "tone-" not in a and 'class="bar hl"' in a and 'class="bar"' in a and 'class="bar-label hl"' in a and "var(--accent-text)" in a
+    assert 'height:4px' in a, "値 0 の灰の棒は今の 4px の線"
+    # highlight と有彩色 tone: 色は tone・accent の色は解く・ラベルは太字
+    mix = _bar_html([{"label": "A", "value": 9, "tone": "good", "highlight": True}, {"label": "B", "value": 3, "highlight": True}], "bt-hl").split("</style>")[1]
+    assert 'class="bar tone-good"' in mix and 'class="bar-label bold"' in mix and 'class="bar hl"' in mix and 'class="bar-label hl"' in mix
+    assert mix.count("var(--accent-text)") == 1, "accent の色は tone のない highlight の棒だけ"
+    # 値 0 の札: 有彩色だけ 16px・全部 0 でも組める・note・callout と一緒でも組める
+    zero = _bar_html([{"label": "a", "value": 0, "tone": "warn"}, {"label": "b", "value": 0}, {"label": "c", "value": 0, "tone": "neutral"}], "bt-zero",
+                     note="注", callout={"value": "0", "text": "t"}).split("</style>")[1]
+    hs = re.findall(r'class="bar[^"]*" style="width:\d+px; height:([\d.]+)px"', zero)
+    assert hs == ["16", "4", "4"], hs
+    # 良い側の 3 段は別の色・濃い順・棒は地（bg・surface）で 3:1・値の文字は 4.5:1
+    for th in ("default", "forest", "warm"):
+        pal = deck.palette(deck.load_theme(deck.THEMES / f"{th}.yaml"))
+        g = [pal[f"bar-{t}"] for t in ("good-soft", "good", "good-strong")]
+        assert len(set(g)) == 3 and deck.ratio(g[0], pal["bg"]) < deck.ratio(g[1], pal["bg"]) < deck.ratio(g[2], pal["bg"]), (th, g)
+        assert set(T.BAR_TONES) == set(deck.DP.BAR_TONES)
 
 
 def _css_values(text: str, prop: str) -> list[str]:
@@ -2110,7 +2159,7 @@ def case_dads_new_types():
     assert ">重要<" in _secs(build(one({"type": "notice", "headline": "h", "items": [{"kind": "error", "title": "x"}]}), "nt-err")[0])[0]
     assert ">できた<" in _secs(build(one({"type": "notice", "headline": "h", "items": [{"title": "x", "label": "できた"}]}), "nt-label")[0])[0]
     for bad, words in (({"type": "notice", "headline": "h", "items": [{"kind": "nazo", "title": "x"}]}, "kind"),
-                       ({"type": "notice", "headline": "h", "items": [{"title": "x"}] * 4}, "1〜3"),
+                       ({"type": "notice", "headline": "h", "items": [{"title": "x"}] * 5}, "1〜4"),
                        ({"type": "notice", "headline": "h", "items": [{"title": "x", "points": ["a"] * 5}]}, "points"),
                        ({"type": "notice", "headline": "h", "items": [{"kind": "info"}]}, "title"),
                        ({"type": "notice", "headline": "h", "items": [{"title": "x"}], "takeaway": "t"}, "知らないキー")):
@@ -2144,6 +2193,61 @@ def case_dads_new_types():
     # 台本の talk は 段の数 + 1（クリックは枠・行・段ごと）
     build(one(notice, talk=["入り", "1", "2", "3"]), "nt-talk")
     build(one(dl, talk=["入り", "1", "2", "3", "4"]), "dl-talk")
+
+
+def case_notice_four():
+    """notice の4個と label_style（#49）: 4個は余白・枠のあいだ・題の出発点を詰めて1ページに収まり、入らなければ rc=2。
+    chip は頭の行をアイコンでなく kind の色の札にする（語は残る・札の文字は地に 4.5:1・輪郭は 3:1）。1〜3個で label_style を書かない台本は今のまま。"""
+    four = [{"kind": "error", "label": "課題", "title": "返信に平均 3 日かかっていた"},
+            {"kind": "warning", "label": "原因", "title": "担当の割り振りが決まっていなかった"},
+            {"kind": "info", "label": "対策", "title": "受付の時点で担当を自動で割り振る"},
+            {"kind": "success", "label": "アクション", "title": "来月から割り振りの表を運用する", "body": "月末に件数と返信までの日数を見直す"}]
+    nt = lambda items, **kw: {"type": "notice", "headline": "返信が遅れた件", "items": items, **kw}
+    path, info = build(one(nt(four)), "nt4")
+    s = _secs(path)[0]
+    assert info["slides"][0]["clicks"] == 4 and s.count('class="notice"') == 4 and s.count("<svg") >= 4
+    assert s.count('padding:12px 40px') == 4 and "gap:12px" in s, "4個は余白と枠のあいだを詰める"
+    for word in ("課題", "原因", "対策", "アクション"):
+        assert f">{word}<" in s
+    for var in ("var(--error-1)", "var(--warning-orange-1)", "var(--primary-mark)", "var(--success-1)"):
+        assert var in s, f"4つの枠の色が分かれる: {var}"
+    assert len({re.search(r'border-color:([^"]+)"', b).group(1) for b in s.split('class="notice"')[1:]}) == 4
+    only = [dict(it) for it in four]
+    for it in only:
+        it.pop("body", None)
+    s = _secs(build(one(nt(only, label_style="chip")), "nt4-chip-only")[0])[0]
+    assert s.count('class="notice"') == 4 and s.count("notice-tag") == 4 and "<svg" not in s, "title だけの4枠・札はアイコンを出さない"
+    # chip: 語は札に残り、アイコンは出ない。札の色は kind の -2（文字）で、同じ色の輪郭
+    s = _secs(build(one(nt(four, label_style="chip")), "nt4-chip")[0])[0]
+    tags = re.findall(r'<div style="color:([^;]+); border-color:([^"]+)" class="chip notice-tag">([^<]+)</div>', s)
+    assert [(c, b, w) for c, b, w in tags] == [(c, c, w) for c, w in zip(("var(--error-2)", "var(--warning-orange-2)", "var(--primary-text)", "var(--success-2)"),
+                                                                      ("課題", "原因", "対策", "アクション"))], tags
+    assert "nt-label" not in s and "<svg" not in s
+    # 札の色: 地（枠の白い面）の上で、文字 4.5:1・輪郭 3:1
+    pal = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
+    for kind, (_, _, line, strong) in T.NOTICE_KINDS.items():
+        role = strong[len("var(--"):-1]
+        assert deck.ratio(pal[role], "#ffffff") >= 4.5, (kind, role)
+        assert deck.ratio(pal[role], "#ffffff") >= 3.0, (kind, role)
+        assert strong in s, (kind, "札の色")
+    # 札の既定の語（label を省くと kind の語）
+    s = _secs(build(one(nt([{"kind": "success", "title": "x"}], label_style="chip")), "nt4-chip-dflt")[0])[0]
+    assert ">完了<" in s and "notice-tag" in s
+    # 個数によらず選べる・icon は書かないのと同じ HTML
+    for n in (1, 2, 3, 4):
+        base = _secs(build(one(nt(four[:n])), f"nt-base{n}")[0])[0]
+        same = _secs(build(one(nt(four[:n], label_style="icon")), f"nt-icon{n}")[0])[0]
+        assert base == same, f"label_style: icon は書かないのと同じ（{n}個）"
+        assert "notice-tag" not in base
+        assert "notice-tag" in _secs(build(one(nt(four[:n], label_style="chip")), f"nt-chip{n}")[0])[0]
+        if n < 4:
+            assert 'padding:' not in base.split('class="nt-main"', 1)[1].split(">", 1)[0] and "gap:24px" in base, f"1〜3個は余白も枠のあいだも今のまま（{n}個）"
+    # 入らなければ rc=2 で、縮める所が分かる
+    long = [dict(it, title="とても長い題を二行に折り返すくらいまで書いてみる" * 2, body="本文も長く書く" * 12, points=["箇条を書く"] * 4) for it in four]
+    expect_error(one(nt(long)), "nt4-over", "入らない", "短く")
+    for bad in ("nazo", "", None, 1, ["chip"], True):
+        expect_error(one(nt(four, label_style=bad)), "nt-ls-bad", "label_style")
+    expect_error(one(nt([dict(four[3], label="とても長い種類の語を札に入れる" * 8)], label_style="chip")), "nt-ls-wide", "label")
 
 
 def case_retired():

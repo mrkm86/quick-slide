@@ -102,7 +102,7 @@
 | `equation` | 式で言い切る（A＋B＋C＝D・構成要素とその結果）。要素2〜4と答え | 要素の数＋1 |
 | `hub` | 中心と周り（司令塔と道具・1つの仕組みと関わる人や部品 3〜6） | 1 |
 | `pairs` | よくない例 → よい例 を 2〜4 組（直し方・やり方の違い） | 組の数 |
-| `notice` | 補足・注意・決まりごとを、種類（お知らせ・完了・注意・重要）つきの枠で 1〜3 個（DADS の注釈ブロック） | 枠の数 |
+| `notice` | 補足・注意・決まりごとを、種類（お知らせ・完了・注意・重要）つきの枠で 1〜4 個（DADS の注釈ブロック） | 枠の数 |
 | `deflist` | 用語と説明・項目と内容の対を、左右 2 列で 3〜8 行（DADS の説明リスト）。比べるなら `table` | 行の数 |
 | `steps` | 手順の進み具合（済・いま・これから）を、番号の丸と札で見せる。横 3〜5 段・縦 3〜6 段（DADS のステップナビゲーション）。順番の説明だけなら `flow` | 段の数 |
 
@@ -124,7 +124,7 @@
 | `cards` | `items`★（`{label, title★, body, accent, image, icon, badge}`・2〜4）。`accent: true` の1枚を強める（頭に札「注目」が付く。`badge` でその語を替える）。`image` はカードの上に 16:9 で、書くなら全部のカードに |
 | `flow` | `items`★（`{label★, title, body, accent, badge}`・3〜5）。`label` は矢羽根の中の短い語（「課題」）。既定で最後の段を強める（濃い面と太い輪郭。`badge` を書けば、その段の頭に札が付く） |
 | `compare` | `left`★・`right`★（`{label, title, points: [文字…], image, badge}`・points は5つまで。強める側の頭に札「注目」が付く（`badge` でその語を替える）。`image` は列の上に 16:9 で、書くなら両方に＝ビフォー・アフター）・`accent`（`right` 既定／`left`／`none`）・`arrow`（既定 true） |
-| `bar-chart` | `bars`★（`{label★, value★（0以上の数）, highlight, display}`・2〜8）・`unit`（値の後ろに付ける）・`max`（軸の上限）・`note`（グラフの注記）・`callout`（`{value, text}` 右に要点） |
+| `bar-chart` | `bars`★（`{label★, value★（0以上の数）, highlight, display, tone}`・2〜8。`tone` は `good-strong`・`good`・`good-soft`（良い側の濃い・中・淡）／`warn`／`bad`／`neutral`。`neutral` と省略は今の灰。色は棒と値の文字に付き、`label` は必ず出る。`highlight` と同時なら色は `tone`・強調はラベルの太字だけ。有彩色の `tone` で値が 0 の棒は、軸の上に高さ 16px の短い帯（0 の札）で残る。量の高さではない）・`unit`（値の後ろに付ける）・`max`（軸の上限）・`note`（グラフの注記）・`callout`（`{value, text}` 右に要点） |
 | `table` | `columns`★（2〜5）・`rows`★（各行は columns と同じ数・1〜7行）・`highlight`（強める列・1から。色の地に加えて、太い縦の罫と太字で示す）・`widths`（列の幅の比）・`align`（列ごとの揃え。columns と同じ数の配列で、値は left / center / right。見出しの行も同じ揃え。省略すると 1 列目 left・残り center。数の列は right にすると桁がそろう）・セルは文字・数のほかに `{"text": "20日", "tone": "warn"}`（`text` 必須・`tone` は `good` / `warn` / `bad`。淡い地＋濃い文字。見出しの行 `columns` には書けない。しきい値の判定は台本を書く側で行い、エンジンは色を付けるだけ）・`dim_rows`（薄くする行の番号の配列・1から。見出しの行は数えない。文字を `muted` にする。`tone` を書いたセルでも薄くするほうが優先で、地も付かない。1列目・`highlight` の列の太字は残る。重複はまとまる）・`legend`（色の凡例。1〜4 項目の `{tone, text}`・どちらも必須。`tone` は `good` / `warn` / `bad` / `dim`（`dim` は `dim_rows` の薄い行）。表の下に「色見本＋説明」を1行で並べ、`source` はその下。1行に入らなければ rc=2。書いていない色を載せてもよい）。**色だけで意味を伝えない:** `tone`・`dim_rows` を使うときは `legend` で色の意味を文字でも書く（`source` は出典・注記に使う）。`legend` は `table` だけ）・`summary`（見出しと表の間の数字のカードの帯。**1〜4 枚**で、各カードは `kpi` の `items` と同じ `label`★・`value`★・`unit`・`delta`・`trend`・`note`・`tone`・`group`（意味も見た目も `kpi` と同じ）。`accent`・`badge` は使えない。幅は本文の幅を枚数で等分（間は溝）。カードの高さの上限は 384px と使える高さの小さいほう。入らなければ全部のカードの文字を同じだけ小さくし、それでも入らなければ rc=2。表・`legend`・`source` はその下に組み、残りの高さに入らなければ rc=2。**2 クリック**: カードが1クリック目に順に出て、表と `legend` が2クリック目。`summary` を書かない表は1クリック。**`summary`・`legend`・`source`・`takeaway` を併用すると、内容によって表の行がかなり限られる**（帯・凡例・source・結論の帯が高さを使うため）。明細が多いときはページを分ける。入らなければ rc=2 で、縮める所を言う） |
 | `bullets` | `items`★（文字か `{title, body, icon}`・2〜5。icon は書くなら全部の項目に）・`image`（脇に写真）・`side`（写真の側 `right` 既定・`left`）・`split`（写真の幅 `1/3` 既定＝格子の4列 528・`2/5`＝5列 672・`1/2`＝6列 816） |
 | `timeline` | `items`★（`{when★, title★, body}`・3〜6）・`current`（今の時期・1から。札「いま」と二重の丸で示す） |
@@ -141,7 +141,7 @@
 | `equation` | `items`★（`{title★, body, icon}`・2〜4）・`result`★（`{title★, body, icon}`・答え。主役の色で塗った箱。`body` は札になる）。見出しは大きく出る |
 | `hub` | `center`★（`{title★, body, icon}`・中心の丸）・`items`★（`{title★, body, icon, tag}`・3〜6。左右に分けて並べ、中心と線でつなぐ。title・body・tag はそれぞれ1行）。見出しは大きく出る |
 | `pairs` | `items`★（`{label★, before★, after★, icon}`・2〜4。label は何の話か・before はよくない例・after はよい例。どれも短く）・`bad_label`（既定「NG」）・`good_label`（既定「OK」）。札には×・チェックのアイコンが付く。見出しは大きく出る |
-| `notice` | `items`★（`{kind, label, title★, body, points}`・1〜3）。`kind` は `info`（お知らせ・既定）／`success`（完了）／`warning`（注意）／`error`（重要）で、アイコン・種類の語・枠の色が決まる（`label` を書けばその語）。`points` は短い箇条（4つまで）。1つずつクリックで出る。見出しの下に枠を縦に並べる |
+| `notice` | `items`★（`{kind, label, title★, body, points}`・1〜4）。`kind` は `info`（お知らせ・既定）／`success`（完了）／`warning`（注意）／`error`（重要）で、アイコン・種類の語・枠の色が決まる（`label` を書けばその語）。`points` は短い箇条（4つまで）。`label_style`（一番外）は `icon`（アイコン＋語の行・既定）か `chip`（頭の行をアイコンでなく kind の色の札にする。語は残る）。4個のときは枠の余白と文字を詰めるので、題は1〜2行・本文は短く。1つずつクリックで出る。見出しの下に枠を縦に並べる |
 | `deflist` | `items`★（`{term★, body★, icon}`・3〜8）。左に用語（太字）・右に説明。用語の列は格子の 3 列（長ければ 4 列）で固定。`icon` は書くなら全部の行に。1行ずつクリックで出る |
 | `steps` | `items`★（`{title★, body, state}`・横 3〜5・縦 3〜6）・`current`（いま何段目か・1から。それより前が済・後ろがこれから）・`layout`（`row` 既定＝横／`column`＝縦）。`state`（`done`＝済・`current`＝いま・`todo`＝これから）を段ごとに書けば `current` より優先。どちらも無ければ rc=2。状態は丸の形（済は塗り・いまは二重の輪・これからは白に枠）・札の語・線（済は実線・これからは破線）で示す。1段ずつクリックで出る |
 | `matrix` | `x`★・`y`★（`{label★, low, high}`）・`items`★（`{label★, x★, y★（0〜100）, accent}`・1〜8。accent の点は二重の輪。名前どうし・区切り線との重なりはずらし、置けなければ rc=2＝x・y を離す）・`quadrants`（`{title, body}` を 左上・右上・左下・右下 の順に4つ）・`focus`（淡く塗る象限・同じ順で1〜4）・`callout`（`{title, text}` 右に要点） |

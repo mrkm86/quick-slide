@@ -58,7 +58,7 @@ TYPES = {
     "equation": (HEAD_KEYS | {"items", "result"}, True, ("headline", "items", "result")),
     "hub": (HEAD_KEYS | {"center", "items"}, True, ("headline", "center", "items")),
     "pairs": (HEAD_KEYS | {"items", "bad_label", "good_label"}, True, ("headline", "items")),
-    "notice": (HEAD_KEYS | {"items"}, True, ("headline", "items")),
+    "notice": (HEAD_KEYS | {"items", "label_style"}, True, ("headline", "items")),
     "deflist": (HEAD_KEYS | {"items"}, True, ("headline", "items")),
     "steps": (HEAD_KEYS | {"items", "current", "layout"}, True, ("headline", "items")),
 }
@@ -83,6 +83,7 @@ LAYOUT_KEYS = {
     "line-chart": {"min", "max", "value_labels"},
     "compare": {"arrow"},
     "steps": {"layout"},
+    "notice": {"label_style"},
 }
 
 

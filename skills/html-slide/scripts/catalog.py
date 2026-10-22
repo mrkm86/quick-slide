@@ -212,6 +212,16 @@ def variants() -> list[dict]:
             {"kind": "info", "title": "試行は11月から、2部署で始める", "body": "ほかの部署は結果を見てから決める"},
             {"kind": "warning", "title": "25分で終わらなくても、会議は閉じる", "points": ["残りは次回か文書に", "議題が無い会議は開かない"]},
             {"kind": "error", "title": "議事録に個人名は書かない", "body": "役割で書き換える"}]}, "3つ・種類つき"),
+        V("notice", {"headline": "問い合わせの返信が遅れた件", "items": [
+            {"kind": "error", "label": "課題", "title": "返信に平均 3 日かかっていた"},
+            {"kind": "warning", "label": "原因", "title": "担当の割り振りが決まっていなかった"},
+            {"kind": "info", "label": "対策", "title": "受付の時点で担当を自動で割り振る"},
+            {"kind": "success", "label": "アクション", "title": "来月から割り振りの表を運用する", "body": "月末に件数と返信までの日数を見直す"}]}, "4つ・課題→原因→対策→アクション"),
+        V("notice", {"headline": "問い合わせの返信が遅れた件", "label_style": "chip", "items": [
+            {"kind": "error", "label": "課題", "title": "返信に平均 3 日かかっていた"},
+            {"kind": "warning", "label": "原因", "title": "担当の割り振りが決まっていなかった"},
+            {"kind": "info", "label": "対策", "title": "受付の時点で担当を自動で割り振る"},
+            {"kind": "success", "label": "アクション", "title": "来月から割り振りの表を運用する", "body": "月末に件数と返信までの日数を見直す"}]}, "4つ・label を札で"),
         V("notice", {"headline": "設定は**完了**している", "items": [{"kind": "success", "title": "次の画面から使える", "body": "やり直しは要らない"}]}, "1つ"),
         V("deflist", {"headline": "この資料で使う言葉は、**4つ**だけ", "items": [
             {"term": "定例会議", "body": "曜日と時間を決めて繰り返す会議"}, {"term": "25分ルール", "body": "30分の枠でも25分で閉じる"},

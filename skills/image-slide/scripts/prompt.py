@@ -70,7 +70,7 @@ TYPE_NOTES = {
     "pairs": "対。items の各組で、label（何の話か）の横に before（よくない例）→ after（よい例）を矢印でつなぐ。"
              "before は控えめに、after は目立たせる。bad_label・good_label は各箱に添える小さな札（既定は NG と OK）。"
              "札には、NG には×、OK にはチェックのアイコンを添える",
-    "notice": "お知らせの枠。items の各項目を、枠線で囲んだ1つの枠にする（1〜3個）。kind（info＝お知らせ・success＝完了・warning＝注意・error＝重要）で、"
+    "notice": "お知らせの枠。items の各項目を、枠線で囲んだ1つの枠にする（1〜4個）。kind（info＝お知らせ・success＝完了・warning＝注意・error＝重要）で、"
               "アイコンと種類の語と枠の色を変える（label を書けばその語）。種類は色だけでなく、アイコンと語でも示す。"
               "枠の中は、種類の語・title（題）・body（本文）・points（短い箇条）の順",
     "deflist": "用語と説明。items の各行は、左に term（用語・太字）、右に body（説明）の2列。行と行の間は線で区切る。用語の列は幅をそろえる",
@@ -92,7 +92,8 @@ LAYOUT_WORDS = ("配置のキーの意味: layout＝置き方（split＝片側�
                 "tone＝全面の写真の上の幕（light＝明るい幕に濃い文字・dark＝暗い幕に白い文字）、side＝写真の側、"
                 "split＝写真の幅（1/2・2/5・1/3）、fit＝cover は枠いっぱいに切り抜く・contain は切らずに全体を見せる、"
                 "widths＝表の列の幅の比、align＝表の列ごとの文字の揃え（left・center・right。columns と同じ順）、dim_rows＝表の薄くする行の番号（1から数えた行。その行の文字を薄い灰にする。番号は描かない）、min・max＝グラフの軸の下限・上限、value_labels＝値を添える点（all・last・none）、"
-                "arrow＝false なら真ん中の矢印を置かない")
+                "arrow＝false なら真ん中の矢印を置かない、"
+                "label_style＝お知らせの枠の頭の見せ方（chip なら、アイコンは描かず、種類の語を kind の色の角の丸い札で添える。icon または書かないならアイコンと語の行）")
 
 MANDATORY = """製品の譲れない条項（作風や個別の指示とぶつかっても、こちらを優先する）:
 - 日本語のプレゼン用スライドを1枚、横長 16:9 で描く。資料全体の一覧ではなく、このページ1枚だけを描く
