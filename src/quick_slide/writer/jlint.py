@@ -31,12 +31,12 @@ VISIBLE_KEYS = frozenset({
     "caption", "quote", "badge", "takeaway", "source", "contact", "display", "meta", "number", "by", "position",
     "when", "before", "after", "delta", "tag", "name", "role", "initials", "low", "high", "bad_label", "good_label",
     "items", "points", "side", "left", "right", "center", "callout", "bars", "columns", "rows", "labels", "series",
-    "members", "x", "y", "quadrants", "result", "group",
+    "members", "x", "y", "quadrants", "result", "group", "legend",
 })
 # 表示しない（台本のキーのうち、文字ではないもの）。`TYPES` の全キーはどちらかに入っている（試験で確かめる）
 HIDDEN_KEYS = frozenset({
     "type", "id", "talk", "transition", "steps", "fx", "image", "layout", "text_side", "tone", "motif", "split", "hide_text",
-    "highlight", "current", "accent", "arrow", "max", "min", "widths", "align", "fit", "value_labels", "focus", "takeaway_icon",
+    "highlight", "current", "accent", "arrow", "max", "min", "widths", "align", "dim_rows", "fit", "value_labels", "focus", "takeaway_icon",
 })
 # 一番外では表示しない（章の ID）が、入れ子の中では表示する（team の members[].role は肩書き）
 NESTED_ONLY_KEYS = frozenset({"role"})

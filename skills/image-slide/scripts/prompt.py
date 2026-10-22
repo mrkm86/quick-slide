@@ -46,7 +46,9 @@ TYPE_NOTES = {
                   "highlight が真の系列を強調色で太く。2本以上なら、系列ごとに点の形（丸・四角・ひし形）と線の種類（実線・破線）を変え、"
                   "線の端に name を添える。callout は要点、note は注記",
     "table": "表。columns を見出し、rows を本文の行にする。セルの文字は与えられたとおり。"
-             "highlight（1から数えた列）の列を、色の面に加えて太字と太い縦の線で目立たせる。数値は右揃え",
+             "highlight（1から数えた列）の列を、色の面に加えて太字と太い縦の線で目立たせる。数値は右揃え。セルが {text, tone} のときは text を描き、tone（good＝緑・warn＝黄・bad＝赤）の淡い地と濃い同系色の文字にする。"
+             "legend は表の下に1行で、色見本（小さな角丸の四角。tone と同じ色。dim は表の薄い行と同じ灰）と説明の text を左から並べる。"
+             "色の意味は legend の text でも読めるようにし、書いていない色は足さない",
     "bullets": "箇条書き。items を上から順に。title があれば太字、body はその説明。image があれば添えるビジュアル",
     "timeline": "時期と出来事。items を時期の順に。when は時期、title と body は出来事。current（1から数えた番号）の時期を、二重の丸と小さな札「いま」で目立たせる",
     "photo": "写真や絵が主役の1枚。image がそのビジュアルで、headline を重ねるか添える。caption は出典（小さく）",
@@ -87,7 +89,7 @@ LAYOUT_WORDS = ("配置のキーの意味: layout＝置き方（split＝片側�
                 "collage＝大1枚＋小2枚・portrait＝脇に丸い人物写真・plain＝写真なし・graphic＝写真の代わりに幾何学の図形で飾る・row＝段を横に並べる／column＝縦に並べる）、motif＝graphic の図柄（circles＝重なる円・grid＝点の格子と四角・bands＝斜めの帯・blocks＝色の面の組み合わせ）、text_side＝文字を置く側、"
                 "tone＝全面の写真の上の幕（light＝明るい幕に濃い文字・dark＝暗い幕に白い文字）、side＝写真の側、"
                 "split＝写真の幅（1/2・2/5・1/3）、fit＝cover は枠いっぱいに切り抜く・contain は切らずに全体を見せる、"
-                "widths＝表の列の幅の比、align＝表の列ごとの文字の揃え（left・center・right。columns と同じ順）、min・max＝グラフの軸の下限・上限、value_labels＝値を添える点（all・last・none）、"
+                "widths＝表の列の幅の比、align＝表の列ごとの文字の揃え（left・center・right。columns と同じ順）、dim_rows＝表の薄くする行の番号（1から数えた行。その行の文字を薄い灰にする。番号は描かない）、min・max＝グラフの軸の下限・上限、value_labels＝値を添える点（all・last・none）、"
                 "arrow＝false なら真ん中の矢印を置かない")
 
 MANDATORY = """製品の譲れない条項（作風や個別の指示とぶつかっても、こちらを優先する）:
