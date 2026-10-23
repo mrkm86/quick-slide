@@ -94,6 +94,11 @@ def variants() -> list[dict]:
             {"label": "営業利益", "value": "96", "unit": "億円", "delta": "前年比 +12%", "trend": "up"},
             {"label": "利益率", "value": "7.7", "unit": "%", "delta": "0.3ポイント上昇", "trend": "up"},
             {"label": "受注残", "value": "880", "unit": "億円", "delta": "横ばい", "trend": "flat"}]}, "4つ"),
+        V("kpi", {"headline": "会議の時間は、**週6時間**から半分になった", "items": [
+            {"label": "会議の時間", "value": "2.8", "unit": "時間／週", "delta": "前は6.0", "trend": "down", "accent": True},
+            {"label": "1回の長さ", "value": "26", "unit": "分", "delta": "前は48分", "trend": "down"},
+            {"label": "全社の会議の時間", "value": "5.8", "unit": "時間／週", "reference": True},
+            {"label": "全社の1回の長さ", "value": "60", "unit": "分", "delta": "前は62分", "trend": "down", "reference": True}]}, "参考つき"),
         V("kpi", {"headline": "4週目は、**3つの数字**がそろって下がった", "image": im("s12-image.png"), "items": [
             {"label": "会議の時間", "value": "2.8", "unit": "時間／週", "delta": "前は6.0", "trend": "down", "accent": True},
             {"label": "1回の長さ", "value": "26", "unit": "分", "delta": "前は48分", "trend": "down"},

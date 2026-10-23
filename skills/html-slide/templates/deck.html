@@ -152,6 +152,7 @@
       .chip.group-a { color: var(--group-a-text); border-color: var(--group-a-text); }
       .chip.group-b { color: var(--group-b-text); border-color: var(--group-b-text); }
       .chip.group-c { color: var(--group-c-text); border-color: var(--group-c-text); }
+      .chip.ref { background-color: var(--bg); color: var(--ref-text); border: 2px solid var(--ref-text); }   /* 参考の札: 退いた色の語と枠（色だけで示さない） */
       .chip.notice-tag { background-color: #ffffff; border: 2px solid; margin-bottom: 0; }   /* notice の札: 枠の白い面に kind の色（-2）の輪郭と文字 */
       .chips { display: flex; align-items: center; margin-bottom: 24px; }
       .chips .cmp-chip { margin-bottom: 0; }
@@ -328,6 +329,8 @@
       .kpi.group-a { background-color: var(--group-a-bg); border-color: var(--group-a-rule); }
       .kpi.group-b { background-color: var(--group-b-bg); border-color: var(--group-b-rule); }
       .kpi.group-c { background-color: var(--group-c-bg); border-color: var(--group-c-rule); }
+      .kpi.ref { background-color: var(--ref-bg); border: 2px dashed var(--ref-rule); }   /* 参考: 退いた地・点線の枠・一段薄い文字（ラベル・数字・単位） */
+      .kpi.ref .kpi-label, .kpi.ref .kpi-value, .kpi.ref .kpi-unit { color: var(--ref-text); }
       .kpi-delta { align-self: flex-start; font-size: 28px; line-height: 1.5; font-weight: 700; margin-top: 16px; padding: 8px 16px; border: 2px solid; border-radius: 9999px; }   /* 枠は tone の文字色（地の淡い色だけでは面に消える） */
       .kpi-delta.tone-good { background-color: var(--tone-good-bg); color: var(--tone-good-text); border-color: var(--tone-good-text); }
       .kpi-delta.tone-bad { background-color: var(--tone-bad-bg); color: var(--tone-bad-text); border-color: var(--tone-bad-text); }

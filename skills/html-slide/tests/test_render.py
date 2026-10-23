@@ -566,6 +566,41 @@ def t_table_summary_chip_mix():
         check(y_of("日付") >= boxes[0][0] + boxes[0][1], f"{n}枚: 表が帯と重なる")
 
 
+def t_kpi_reference():
+    """kpi・table summary の reference: 参考のカードの地・点線の枠（PPTX の prstDash）・札・文字の濃さ・灰の増減の札が PPTX に写り、主役と混ぜても数字の上端がそろう。"""
+    import deck
+    pal = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
+    up = lambda h: h[1:].upper()
+    items = [{"label": "自動で処理", "value": "1200", "unit": "件", "delta": "+35%", "trend": "up", "note": "前月比"},
+             {"label": "処理時間", "value": "4", "delta": "-60%", "trend": "down", "tone": "good"},
+             {"label": "手作業で処理", "value": "180", "unit": "件", "delta": "+9%", "trend": "up", "tone": "bad", "reference": True},
+             {"label": "手作業の時間", "value": "25", "reference": True}]
+    docs = {"kpi": {"type": "kpi", "headline": "h", "items": items},
+            "summary": {"type": "table", "headline": "h", "columns": ["a", "b"], "rows": [["1", "2"]], "summary": items[1:]}}
+    for name, slide in docs.items():
+        sc = TMP / f"ref-{name}.json"
+        sc.write_text(json.dumps({"title": "t", "slides": [slide]}, ensure_ascii=False), encoding="utf-8")
+        html, _ = deck.build_html(sc, TMP / f"ref-deck-{name}")
+        out = TMP / f"ref-{name}.pptx"
+        render.render(html, out)
+        x = slide_xml(out, 1)
+        vals = [it["value"] for it in (items if name == "kpi" else items[1:])]
+        ys = [int(x.xpath(f"//p:sp[.//a:t='{v}']/p:spPr/a:xfrm/a:off/@y", namespaces=NS)[0]) for v in vals]
+        check(len(set(ys)) == 1, f"{name}: 数字の上端がそろわない: {ys}")
+        dashed = [sp for sp in x.xpath("//p:sp[.//a:prstGeom/@prst='roundRect']", namespaces=NS) if sp.xpath("p:spPr/a:ln/a:prstDash/@val", namespaces=NS) == ["dash"]]
+        check(len(dashed) == 2, f"{name}: 点線の枠が参考のカードの数（2）だけ無い: {len(dashed)}")
+        for sp in dashed:
+            check(sp.xpath("p:spPr/a:solidFill/a:srgbClr/@val", namespaces=NS)[0].upper() == up(pal["ref-bg"]), f"{name}: 参考の地の色が違う")
+            check(sp.xpath("p:spPr/a:ln/a:solidFill/a:srgbClr/@val", namespaces=NS)[0].upper() == up(pal["ref-rule"]), f"{name}: 参考の枠の色が違う")
+        color_of = lambda word: x.xpath(f"//p:sp[.//a:t='{word}']//a:rPr/a:solidFill/a:srgbClr/@val", namespaces=NS)[0].upper()
+        check(len(x.xpath("//a:t[text()='参考']", namespaces=NS)) == 2, f"{name}: 参考の札の語が2つ無い")
+        check(color_of("参考") == up(pal["ref-text"]), f"{name}: 札の文字色: {color_of('参考')}")
+        label = "手作業で処理" if name == "kpi" else "手作業の時間"
+        check(color_of(label) == up(pal["ref-text"]) and color_of(label) != up(pal["ink"]), f"{name}: 参考のラベルの文字が薄くない")
+        check(color_of("▲ +9%") == up(pal["tone-neutral-text"]), f"{name}: 参考の増減の札が灰でない: {color_of('▲ +9%')}")
+        check(color_of("▼ -60%") == up(pal["tone-good-text"]), f"{name}: 主役の増減の札の色が変わった")
+
+
 def t_kpi_chip_align():
     """kpi: 増減の札に tone の色の枠が付き（PPTX の線）、札のあるカードとないカードが混ざる行でも数字の上端がそろう（3枚・4枚・強い look）。"""
     import deck

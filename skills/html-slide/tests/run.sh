@@ -52,6 +52,7 @@ render "verify --odp: LibreOffice の読み取りの効果の数が report と�
 render "from_video: 1文=1クリック・型の出すものは自動・html-video の印と知らない印・章カードの前後はフェード" from_video_rules
 render "kpi: 増減の札の塗り・文字色と group のカードの面・枠・札が PPTX に写る・3枚は高さいっぱい" kpi_tone_group
 render "kpi: 増減の札の枠が PPTX に写る・札あり／なしが混ざる行で数字の上端がそろう（3枚・4枚・強い look）" kpi_chip_align
+render "kpi・table summary: 参考のカードの地・点線の枠・札・文字の濃さ・灰の増減の札が PPTX に写り、主役と混ぜても数字の上端がそろう" kpi_reference
 render "table: セルの tone の地・文字色・薄い行の文字色・凡例の見本（角丸・塗り・枠）と文字が PPTX に写る" table_tone_dim_legend
 render "table: summary のカード（地・枠・札・増減の札・文字）と表・凡例が PPTX に写り、カードは表の上で同じ幅・段は2クリック" table_summary
 render "table: summary で札（group）のあるカードとないカードが混ざる帯でも、数字・増減の札の上端がそろい、帯は上限内で表と重ならない" table_summary_chip_mix
@@ -131,6 +132,7 @@ deck "group の a・b・c はテーマを変えても同じ（c は固定の青�
 deck "kpi: 強い look と全テーマ・主色違いでも増減の札の文字×札の地は 4.5:1" kpi_tone_chip_strong
 deck "kpi: look（強める箱・線の面）に増減の札と group の面が潰されない" kpi_look_priority
 deck "kpi: tone・group を書かない旧台本は札も色も付かず、4枚は高さを固定しない" kpi_old_scripts_same
+deck "kpi・table summary: reference（参考の class と札・増減は灰・混ぜても上端がそろう・全部が参考でも可・accent/group/true 以外は rc=2・全テーマで文字 4.5:1・枠 3:1）" kpi_reference
 deck "table: セルの tone・dim_rows・legend（class・凡例の位置と順・書かなければ何も足さない・誤りは位置付きで rc=2・最小の行の高さ）" table_tone_dim_legend
 deck "table: tone の文字×地 4.5:1・凡例の枠×地 3:1・薄い行の muted×地 4.5:1（全テーマ）・壊せば contrast_problems が拾う" table_tone_contrast_all_themes
 deck "table: summary（1〜4枚・幅は等分・段1と段2・accent/badge と範囲外は rc=2・文字の段が下りる・高さ不足は rc=2・旧台本は今のまま）" table_summary
