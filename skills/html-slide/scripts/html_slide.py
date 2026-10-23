@@ -7,6 +7,7 @@
     revise      生成の枠の絵1枚を指示で直す（微修正＝今の絵を土台に・作り直し＝渡さない）。直したら deck を組み直す
     check       台本（--script）か HTML（--html）を検査する。PPTX は作らない
     deck        台本 → HTML → PPTX・PDF・ページの画像・サムネイル（--format で選ぶ）→ 照合 → inspect.md
+    review      台本 → review.html（全ページ・目次・メモ・検査結果。止まらずに全ページを描く。--wishes で希望の一覧・ADR 0028）
     assemble    ページごとの部品（PPTX の部品 JSON・PDF の何ページ目か）を並べて、PPTX・PDF を 1 本ずつ書く（ADR 0024）
     render      決まりに沿った HTML → PPTX
     import      既存の PPTX → 取り込みの台本（html 型のページ）・画像・テーマ・報告（ADR 0025）。deck に渡せば組める
@@ -473,6 +474,32 @@ def cmd_deck(a) -> int:
     return rc or out_rc or fill_rc
 
 
+def cmd_review(a) -> int:
+    """台本 → review.html（全ページ・目次・メモ・検査結果。ページの誤りで止まらず、理由を出して残りを描く・ADR 0028）。"""
+    import review
+    script = Path(a.script).expanduser().resolve()
+    out = (Path(a.out).expanduser() if a.out else out_root() / script.stem / "review").resolve()
+    wishes = None
+    if a.wishes is not None:
+        wishes = (out / "wishes.md") if a.wishes is True else Path(a.wishes).expanduser().resolve()
+    reserved = {out / n for n in ("review.html", "review.html.tmp", "deck.html")}      # review が書く HTML と、その一時ファイル
+    made = reserved | {out / "wishes.md.tmp"}
+    if wishes:
+        tmp = wishes.with_name(wishes.name + ".tmp")
+        if {wishes, tmp} & reserved or wishes == out or out / "assets" in (wishes, *wishes.parents) or out / "assets" in tmp.parents:
+            print(f"NG: --wishes の書き出し先 {wishes} が review の出力（review.html・deck.html・assets/）と重なる（別のパスにする）", file=sys.stderr)
+            return 2
+        made |= {wishes, tmp}
+    if script in made or script.parent == out / "assets" or out / "assets" in script.parents:
+        print(f"NG: 台本 {script} が出力のファイルと重なる（--out か --wishes を別の場所にする）", file=sys.stderr)
+        return 2
+    if lacking_browser():           # 検査は Chrome で行う。検査済みのふりをしない
+        return 4
+    if a.watch:
+        return review.watch(script, out, a, wishes)
+    return review.generate(script, out, a, wishes)
+
+
 def cmd_assemble(a) -> int:
     """ページごとの部品を並べて PPTX と PDF を書く（版の違うページを混ぜた書き出し。ADR 0024）。
 
@@ -674,6 +701,19 @@ def main(argv=None) -> int:
                     help="作り直し（今の絵を渡さずに描き直す。テイストを変えるとき）。付けなければ微修正（今の絵を土台に、指示だけ直す）")
     rv.add_argument("--note", help="直す指示（文）")
     rv.add_argument("--attach", action="append", help="参考画像（何枚でも。キャラ・土台と合わせて5枚まで）")
+    rw = sub.add_parser("review", help="台本 → review.html（全ページ・目次・メモ・検査結果を並べて見る。ページの誤りで止まらない）")
+    rw.add_argument("--script", required=True)
+    rw.add_argument("--out", help="出力フォルダ（省略時は config の out:/<台本の名前>/review）")
+    rw.add_argument("--watch", action="store_true", help="台本が変わるたびに作り直す（ブラウザは再読み込みで反映・Ctrl+C で終わる）")
+    rw.add_argument("--wishes", nargs="?", const=True, default=None, metavar="PATH",
+                    help="全ページの _wish を台本順の Markdown に書き出す（パスを省けば出力フォルダの wishes.md）")
+    rw.add_argument("--theme")
+    rw.add_argument("--style", help=style_help)
+    rw.add_argument("--mode", choices=("talk", "handout"))
+    rw.add_argument("--logo")
+    rw.add_argument("--logo-position", choices=list(deck.LOGO_POSITIONS), default="bottom-right")
+    rw.add_argument("--watermark")
+    rw.add_argument("--image-look", choices=list(G.IMAGE_LOOKS), help=LOOK_HELP)
     asm = sub.add_parser("assemble", help="ページごとの部品を並べて PPTX・PDF を書く（版の違うページを混ぜた書き出し）")
     asm.add_argument("--manifest", required=True, help="組み立ての指示（JSON。形は cmd_assemble の説明）")
     asm.add_argument("--out", required=True, help="deck.pptx・deck.pdf を書くフォルダ")
@@ -697,7 +737,7 @@ def main(argv=None) -> int:
     try:
         return {"images": cmd_images, "catalog": cmd_catalog, "check": cmd_check, "deck": cmd_deck, "render": cmd_render,
                 "from-video": cmd_from_video, "verify": cmd_verify, "fill": cmd_fill, "revise": cmd_revise,
-                "assemble": cmd_assemble, "import": cmd_import}[a.cmd](a)
+                "assemble": cmd_assemble, "import": cmd_import, "review": cmd_review}[a.cmd](a)
     except R.RenderError as e:
         print(f"NG: {e}", file=sys.stderr)
         return e.rc

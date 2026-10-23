@@ -1,0 +1,99 @@
+<!doctype html>
+<!-- html-slide のレビュー画面の雛形（ADR 0028）。差し込み口は scripts/review.py が埋める。
+     スライドの見た目（CSS・字体）はここに持たない: 1 ページごとに iframe の srcdoc で、deck と同じ文書（deck.py の組み）を入れる。
+     素材（assets/）と字体はフォルダの中のものを読む。ファイルだけを動かすと外れる -->
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{TITLE}} — レビュー</title>
+    <style>
+      :root { --bg: #f4f5f7; --panel: #fff; --ink: #1a1a1a; --muted: #595959; --line: #c8ccd2; --accent: #1a4fc4;
+              --err: #b3261e; --warn: #8a5a00; --ok: #1d6f42; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, "Hiragino Sans", "Yu Gothic", sans-serif; }
+      header.top { position: sticky; top: 0; z-index: 2; background: var(--panel); border-bottom: 1px solid var(--line);
+                   padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; }
+      header.top h1 { font-size: 18px; margin: 0; }
+      header.top .meta { color: var(--muted); font-size: 14px; }
+      header.top button { font: inherit; font-size: 14px; padding: 2px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; }
+      .layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; padding: 16px; align-items: start; }
+      nav.toc { position: sticky; top: 56px; max-height: calc(100vh - 72px); overflow: auto; background: var(--panel);
+                border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; font-size: 14px; }
+      nav.toc summary { font-weight: 700; cursor: pointer; }
+      nav.toc ol { list-style: none; margin: 8px 0 0; padding: 0; }
+      nav.toc li { padding: 2px 0; }
+      nav.toc a { color: var(--ink); text-decoration: none; }
+      nav.toc a:hover { text-decoration: underline; }
+      .no { display: inline-block; min-width: 2em; font-weight: 700; color: var(--accent); }
+      .badge { display: inline-block; font-size: 12px; line-height: 1.5; padding: 0 8px; border-radius: 8px; border: 1px solid; margin-left: 4px; }
+      .badge.ok { color: var(--ok); } .badge.err { color: var(--err); } .badge.warn { color: var(--warn); }
+      .pages { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+      details.page { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+      details.page > summary { cursor: pointer; padding: 8px 16px; font-weight: 700; }
+      details.page.is-ok > summary { color: var(--muted); font-weight: 400; }
+      .id { color: var(--muted); font-weight: 400; font-size: 14px; }
+      .body { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; padding: 0 16px 16px; align-items: start; }
+      .stage { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--line); background: #8a8f99; }
+      .stage iframe { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; transform: scale(var(--s, 0.3)); }
+      body.actual .stage { aspect-ratio: auto; height: 1082px; overflow: auto; }
+      body.actual .stage iframe { transform: none; }
+      .side h3 { font-size: 14px; margin: 12px 0 4px; color: var(--muted); }
+      .side h3:first-child { margin-top: 0; }
+      .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+      .none { color: var(--muted); margin: 0; font-size: 14px; }
+      table.checks { border-collapse: collapse; width: 100%; font-size: 13px; }
+      table.checks th, table.checks td { border-top: 1px solid var(--line); padding: 2px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+      table.checks th { color: var(--muted); font-weight: 400; }
+      tr.lv-error td:first-child { color: var(--err); font-weight: 700; }
+      tr.lv-warn td:first-child { color: var(--warn); font-weight: 700; }
+      .docchecks { background: var(--panel); border: 1px solid var(--err); border-radius: 12px; padding: 8px 16px; }
+      .docchecks h2 { font-size: 16px; margin: 0 0 4px; }
+      @media (max-width: 1100px) {
+        .layout { grid-template-columns: minmax(0, 1fr); }
+        nav.toc { position: static; max-height: none; }
+        .body { grid-template-columns: minmax(0, 1fr); }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <h1>{{TITLE}}</h1>
+      <span class="meta">{{SUMMARY}}・作った時刻 {{STAMP}}（台本を直したら再読み込み）</span>
+      <button type="button" id="actual">等倍で見る</button>
+      <button type="button" id="openall">全部開く</button>
+    </header>
+    <div class="layout">
+      <nav class="toc"><details open><summary>目次</summary><ol>{{TOC}}</ol></details></nav>
+      <main class="pages">
+{{DOCCHECKS}}
+{{PAGES}}
+      </main>
+    </div>
+    <script>
+      function fit() {
+        document.querySelectorAll(".stage").forEach(function (st) {
+          st.style.setProperty("--s", String(st.clientWidth / 1920));
+        });
+      }
+      window.addEventListener("resize", fit);
+      window.addEventListener("load", fit);
+      document.querySelectorAll("details.page").forEach(function (d) { d.addEventListener("toggle", fit); });
+      document.getElementById("actual").addEventListener("click", function () {
+        document.body.classList.toggle("actual");
+        fit();
+      });
+      document.getElementById("openall").addEventListener("click", function () {
+        document.querySelectorAll("details.page").forEach(function (d) { d.open = true; });
+        fit();
+      });
+      document.querySelectorAll("nav.toc a").forEach(function (a) {
+        a.addEventListener("click", function () {
+          var d = document.querySelector(a.getAttribute("href"));
+          if (d) { d.open = true; fit(); }
+        });
+      });
+      fit();
+    </script>
+  </body>
+</html>

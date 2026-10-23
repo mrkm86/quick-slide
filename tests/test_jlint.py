@@ -90,6 +90,12 @@ class DisplayedKeysTests(unittest.TestCase):
                       "items[0].group.label"):
             self.assertTrue(any(where in ln for ln in found), (where, found))
 
+    def test_review_notes_are_not_displayed_text(self) -> None:
+        # 台本のページに書くレビューの注記（html-slide の review）は、画面に出る文ではない
+        slides = [{"id": "p1", "type": "statement", "headline": "まず結論です",
+                   "_memo": "✅ 狙い", "_wish": "🚫 全面の絵にしたい", "_ok": True}]
+        self.assertEqual(jlint.segments(slides), jlint.segments([{"id": "p1", "type": "statement", "headline": "まず結論です"}]))
+
     def test_table_align_is_not_displayed_text(self) -> None:
         self.assertIn("align", jlint.HIDDEN_KEYS)
         slide = {"id": "p-tb", "type": "table", "headline": "表", "columns": ["品目", "数"], "align": ["left", "right"], "rows": [["a", "1"]]}

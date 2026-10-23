@@ -429,8 +429,19 @@ def fit_logo_plates(html_path, info) -> None:
     lg["pages"] = pages
 
 
+def error_section(no: int, spec, why: str) -> str:
+    """review で、組めなかったページの代わりに置く枠（理由を出す）。deck の出力には入らない。"""
+    kind = spec.get("type") if isinstance(spec, dict) else None
+    return (f'    <section data-slide data-type="error" data-transition="none">\n'
+            f'      <div class="center" style="left: 120px; top: 120px; width: 1680px; height: 840px; gap: 24px;">\n'
+            f'        <div style="font-size: 48px; line-height: 1.4; font-weight: 700;">{no}枚目を描けない{T.esc_plain("（" + str(kind) + "）") if kind else ""}</div>\n'
+            f'        <div style="font-size: 28px; line-height: 1.6; white-space: pre-wrap;">{T.esc_plain(why)}</div>\n'
+            f'      </div>\n'
+            f'      <aside class="notes"></aside>\n    </section>')
+
+
 def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, style=None, logo=None, logo_position=None,
-               watermark=None, image_look=None):
+               watermark=None, image_look=None, page_errors=None):
     """台本 → <out_dir>/deck.html と assets/。(html のパス, build 情報の dict) を返す。誤りは DeckError。
 
     build 情報: {"title", "mode", "theme", "html", "warnings": [文…], "images": [枠…],
@@ -442,6 +453,9 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
     image_look は生成の枠の画風（photo・illustration・handdrawn）。省けばスタイルの image_look（ADR 0011）
     logo はロゴの画像のパス。logo_position（bottom-right 既定・bottom-left・top-right）の角から順に、空いている所に置く
     （fit_logo_plates）
+    page_errors（review 用）に dict を渡すと、ページごとの誤り（DeckError）で止まらず、{何枚目: 理由} をそこへ集めて、そのページには
+    理由を出す枠（error_section）を置いて残りを組む。そのページが途中まで足した素材・枠・警告・色の使用は捨てる。
+    写真の上の文字の読みやすさ（資料全体の検査）の誤りは 0 番に入れる。テーマ・字体・台本全体の誤りは、これまでどおり DeckError
     watermark は透かしの文字。全ページ（表紙・写真も）の中央下の端に置く。PPTX では一番上の、選べない部品になる（ADR 0009）
     """
     script_path = pathlib.Path(script_path).expanduser().resolve()
@@ -499,64 +513,79 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
     sections, info_slides = [], []
     chapter = 0
     for no, spec in enumerate(sc["slides"], 1):
-        if not isinstance(spec, dict):
-            raise DeckError(f"{no}枚目: スライドはオブジェクトで書く")
-        spec, styled = DS.apply(sty, dict(spec), no, mode)
-        if spec.get("type") == "section":
-            chapter += 1
-            spec["_auto_number"] = chapter
-        if spec.get("type") in ("cover", "section"):
-            spec["_motif_seed"] = sc.get("title") or script_path.stem   # layout: graphic の図柄の既定（資料の中でそろえる）
-        steps_on = spec.get("steps", True)
-        if not isinstance(steps_on, bool):
-            raise DeckError(f"{no}枚目（{spec.get('type')}）: steps は true か false")
-        s = T.Slide(no, spec, pal, flat=not steps_on, script_dir=script_path.parent, assets=assets,
-                    placeholder=placeholder, slots=slots, warnings=img_warns, overlays=used_overlays,
-                    still=(mode == "handout"), image_look=image_look,   # 配る資料は動きなし（読む・直す・PDF にする用）
-                    gen_dir=gen_dir)
-        parts, chrome = T.build_slide(s)
-        if s.chars and not s.chars_used:
-            img_warns.append(f"{no}枚目（{spec['type']}）: _characters を描き込む枠が無い（prompt だけの画像の枠に描く。"
-                             "持ち込みの絵と枠の無いページには描かない）")
-        if spec["type"] in sty.get("expects_images", ()) and not spec.get("image"):
-            img_warns.append(f"{no}枚目（{spec['type']}）: スタイル {sty['name']} では画像を置く型だが、image が無い"
-                             "（prompt を書けば Codex で描いて埋める）")
-        clicks = s.clicks if steps_on else 0
-        imported = getattr(s, "imported", False)
-        # 取り込んだページは talk の代わりに notes（元の PPTX のノート）を持てる。［クリック］の数は照合しない（ADR 0025）
-        talk = [spec["notes"] or ""] if imported and "notes" in spec and "talk" not in spec else talk_lines(no, spec, clicks)
-        tr = spec.get("transition") or "fade"
-        if tr in RETIRED_TRANSITIONS:
-            img_warns.append(f"{no}枚目（{spec.get('type')}）: transition: {tr} は退役した（ブラウザで再現できない・{RETIRED_TRANSITIONS[tr]} に替えて描く）。台本から外す")
-            tr = RETIRED_TRANSITIONS[tr]
-        if tr not in TRANSITIONS:
-            raise DeckError(f"{no}枚目（{spec.get('type')}）: transition は {' / '.join(TRANSITIONS)} のどれか")
-        if mode == "handout":
-            tr = "none"                                         # 切り替えの効果も付けない（1枚ずつめくって読む）
-        if chrome and not getattr(s, "no_band", False):          # 上に写真の帯を置く型は、上の帯を出さない
-            parts.insert(0, '<div class="band" data-keep="band" data-name="上の帯"></div>')
-        if chrome:
-            if footer:
-                fs = (f' style="{"font-size: 20px; " if footer_px == 20 else ""}'
-                      f'{"width: %dpx;" % (FOOTER_END_WITH_NO - FOOTER_LEFT) if numbers else ""}"') if (numbers or footer_px == 20) else ""   # 中央下の番号の手前まで
-                parts.append(f'<div class="footer" data-keep="footer" data-name="下の文字"{fs}>{T.esc(footer)}</div>')
-            if numbers:
-                parts.append(f'<div class="pageno" data-keep="pageno" data-name="ページ番号">{no}</div>')
-        if watermark:                                            # 全ページ・一番上（ロゴは後から足すが、重ならない）
-            parts.append(f'<div class="watermark" data-keep="watermark" data-name="透かし">{T.esc(watermark)}</div>')
-        notes = (CLICK.join(talk) if mode == "talk" else "\n".join(x for x in talk if x))
-        body = "\n      ".join(parts)
-        extra = ""
-        if imported:
-            extra = " data-imported" + (f' style="{T.esc_plain(s.section_style)}"' if getattr(s, "section_style", None) else "")
-        sections.append(f'    <section data-slide data-type="{spec["type"]}" data-transition="{tr}"{extra}>\n      {body}\n'
-                        f'      <aside class="notes">{T.esc_plain(notes)}</aside>\n    </section>')
-        info_slides.append({"no": no, "type": spec["type"], "styled": styled,
-                            "clicks": clicks if mode == "talk" else 0, "transition": tr})
+        state = (len(assets), len(slots), len(img_warns), dict(used_overlays))
+        try:
+            if not isinstance(spec, dict):
+                raise DeckError(f"{no}枚目: スライドはオブジェクトで書く")
+            spec, styled = DS.apply(sty, dict(spec), no, mode)
+            if spec.get("type") == "section":
+                chapter += 1
+                spec["_auto_number"] = chapter
+            if spec.get("type") in ("cover", "section"):
+                spec["_motif_seed"] = sc.get("title") or script_path.stem   # layout: graphic の図柄の既定（資料の中でそろえる）
+            steps_on = spec.get("steps", True)
+            if not isinstance(steps_on, bool):
+                raise DeckError(f"{no}枚目（{spec.get('type')}）: steps は true か false")
+            s = T.Slide(no, spec, pal, flat=not steps_on, script_dir=script_path.parent, assets=assets,
+                        placeholder=placeholder, slots=slots, warnings=img_warns, overlays=used_overlays,
+                        still=(mode == "handout"), image_look=image_look,   # 配る資料は動きなし（読む・直す・PDF にする用）
+                        gen_dir=gen_dir)
+            parts, chrome = T.build_slide(s)
+            if s.chars and not s.chars_used:
+                img_warns.append(f"{no}枚目（{spec['type']}）: _characters を描き込む枠が無い（prompt だけの画像の枠に描く。"
+                                 "持ち込みの絵と枠の無いページには描かない）")
+            if spec["type"] in sty.get("expects_images", ()) and not spec.get("image"):
+                img_warns.append(f"{no}枚目（{spec['type']}）: スタイル {sty['name']} では画像を置く型だが、image が無い"
+                                 "（prompt を書けば Codex で描いて埋める）")
+            clicks = s.clicks if steps_on else 0
+            imported = getattr(s, "imported", False)
+            # 取り込んだページは talk の代わりに notes（元の PPTX のノート）を持てる。［クリック］の数は照合しない（ADR 0025）
+            talk = [spec["notes"] or ""] if imported and "notes" in spec and "talk" not in spec else talk_lines(no, spec, clicks)
+            tr = spec.get("transition") or "fade"
+            if tr in RETIRED_TRANSITIONS:
+                img_warns.append(f"{no}枚目（{spec.get('type')}）: transition: {tr} は退役した（ブラウザで再現できない・{RETIRED_TRANSITIONS[tr]} に替えて描く）。台本から外す")
+                tr = RETIRED_TRANSITIONS[tr]
+            if tr not in TRANSITIONS:
+                raise DeckError(f"{no}枚目（{spec.get('type')}）: transition は {' / '.join(TRANSITIONS)} のどれか")
+            if mode == "handout":
+                tr = "none"                                         # 切り替えの効果も付けない（1枚ずつめくって読む）
+            if chrome and not getattr(s, "no_band", False):          # 上に写真の帯を置く型は、上の帯を出さない
+                parts.insert(0, '<div class="band" data-keep="band" data-name="上の帯"></div>')
+            if chrome:
+                if footer:
+                    fs = (f' style="{"font-size: 20px; " if footer_px == 20 else ""}'
+                          f'{"width: %dpx;" % (FOOTER_END_WITH_NO - FOOTER_LEFT) if numbers else ""}"') if (numbers or footer_px == 20) else ""   # 中央下の番号の手前まで
+                    parts.append(f'<div class="footer" data-keep="footer" data-name="下の文字"{fs}>{T.esc(footer)}</div>')
+                if numbers:
+                    parts.append(f'<div class="pageno" data-keep="pageno" data-name="ページ番号">{no}</div>')
+            if watermark:                                            # 全ページ・一番上（ロゴは後から足すが、重ならない）
+                parts.append(f'<div class="watermark" data-keep="watermark" data-name="透かし">{T.esc(watermark)}</div>')
+            notes = (CLICK.join(talk) if mode == "talk" else "\n".join(x for x in talk if x))
+            body = "\n      ".join(parts)
+            extra = ""
+            if imported:
+                extra = " data-imported" + (f' style="{T.esc_plain(s.section_style)}"' if getattr(s, "section_style", None) else "")
+            sections.append(f'    <section data-slide data-type="{spec["type"]}" data-transition="{tr}"{extra}>\n      {body}\n'
+                            f'      <aside class="notes">{T.esc_plain(notes)}</aside>\n    </section>')
+            info_slides.append({"no": no, "type": spec["type"], "styled": styled,
+                                "clicks": clicks if mode == "talk" else 0, "transition": tr})
+        except DeckError as e:
+            if page_errors is None:
+                raise
+            # 止まらずに描く（review）。この回が途中まで足した素材・画像の枠・警告・色の使用を捨てる。章の番号は台本の順で数えたまま
+            del assets[state[0]:], slots[state[1]:], img_warns[state[2]:]
+            used_overlays.clear()
+            used_overlays.update(state[3])
+            page_errors[no] = str(e)
+            sections.append(error_section(no, spec, str(e)))
+            info_slides.append({"no": no, "type": "error", "styled": {}, "clicks": 0, "transition": "none"})
 
     bad = overlay_problems(pal, used_overlays)
     if bad:
-        raise DeckError(f"テーマ {th['name']} の色で、写真の上の文字が読めない:\n  " + "\n  ".join(bad))
+        why = f"テーマ {th['name']} の色で、写真の上の文字が読めない:\n  " + "\n  ".join(bad)
+        if page_errors is None:
+            raise DeckError(why)
+        page_errors[0] = why
     if any(x["origin"] == "generated" and x["exists"] for x in slots):
         K.area("html-slide", cfg, script_path.parent)              # 使った時刻を書く（上限で消す順は、古く使った区画から）
     out_dir.mkdir(parents=True, exist_ok=True)
