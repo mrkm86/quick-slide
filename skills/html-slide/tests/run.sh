@@ -69,6 +69,7 @@ render "r2-2 重ね順の文脈を作らない親の中の z-index は rc=2（se
 render "r2-8 color: transparent の文字は出さない" r2_transparent_text
 render "r3-5 img の alt を PPTX の代替テキスト（descr）に・切り抜きは小数4桁" r3_img_alt
 render "notice: 4個の枠（枠・色帯・語の色）が PPTX に写る・label_style: chip は白地に kind の色の輪郭の角丸の札でアイコンなし" notice_four
+render "notice の look.radius: 枠と白い面が角丸の図形で PPTX に写り、色帯は別の四角を出さない・書かなければ角丸なし" notice_radius
 
 # --- deck ---
 deck() { run "$1" python3 "$DIR/test_deck.py" "$2"; }
@@ -158,6 +159,7 @@ deck "line-chart: 点の形と線種で系列を区別・線の端に名前・�
 deck "DOM 順（hub は中心 → 周り・pairs は札 → 文）・pairs の札は語とアイコン・takeaway はアイコンつき" dads_reading_order
 deck "新しい型（notice・deflist・steps）: 種類・状態を形と語で示す・クリックは枠・行・段ごと・誤りは rc=2" dads_new_types
 deck "notice の4個と label_style: 4個は余白を詰めて収まる・入らなければ rc=2・chip は kind の色の札（語は残る・4.5:1と3:1）・1〜3個で書かない台本は今のまま・誤りは rc=2" notice_four
+deck "look.radius は notice の枠・式の答えの箱・NG／OK の箱にも効く: square 4px・round 32px・standard は今のまま・notice の地と帯は kind の色" look_radius_boxes
 deck "モーフは退役（ADR 0023）: 切り替えは fade・none だけ・台本とスタイルの morph は fade で描いて警告・PPTX にモーフを書かない" no_morph
 deck "退役の仕組み（RETIRED_TYPES・RETIRED_LOOKS）: 描いて警告・deck-format に載せない・surface: white は line と同じ" retired
 

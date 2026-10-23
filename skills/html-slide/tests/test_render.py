@@ -672,6 +672,25 @@ def t_notice_four():
             check(not round_ and (x.xpath("//p:pic | //p:sp[.//a:custGeom]", namespaces=NS)), "既定は角丸の札なし・アイコンあり")
 
 
+def t_notice_radius():
+    """notice の look.radius: 枠と白い面が角丸で、色帯は別の四角を出さない（PPTX では帯が角から出ない）。radius を書かないと角丸なし。"""
+    import deck
+    items = [{"kind": k, "title": "題"} for k in ("info", "success", "warning", "error")]
+    got = {}
+    for r in ("round", "default"):
+        sty = TMP / f"nt-{r}.yaml"
+        sty.write_text(f"name: nt-{r}\ndescription: x\nlook:\n  radius: {r}\n", encoding="utf-8")
+        sc = TMP / f"nt-{r}.json"
+        sc.write_text(json.dumps({"title": "t", "slides": [{"type": "notice", "headline": "h", "items": items}]}, ensure_ascii=False), encoding="utf-8")
+        html, _ = deck.build_html(sc, TMP / f"nt-{r}-deck", style=str(sty))
+        out = TMP / f"nt-{r}.pptx"
+        render.render(html, out)
+        x = slide_xml(out, 1)
+        got[r] = (len(x.xpath("//p:sp[p:spPr/a:prstGeom/@prst='roundRect']", namespaces=NS)), len(x.xpath("//p:sp[p:spPr/a:prstGeom/@prst='rect']", namespaces=NS)))
+    check(got["default"][0] == 0, f"default: 角丸なし: {got['default']}")
+    check(got["round"][0] == 8 and got["round"][1] == got["default"][1] - 8, f"round: 枠と白い面が各4つの角丸になり、帯の四角は出ない: {got}")
+
+
 TESTS = {k[2:]: v for k, v in dict(globals()).items() if k.startswith("t_")}
 
 if __name__ == "__main__":
