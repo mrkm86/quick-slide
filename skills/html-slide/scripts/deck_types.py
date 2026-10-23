@@ -2624,8 +2624,8 @@ def _notice_boxes(s: Slide, its, drop: int, avail: float, gap: int, chip_style: 
             h += 8 + pn * ps * 1.5
         h += 2 * pad + 2 * BORDER
         total += h
-        boxes.append(f'<div class="notice" style="width:{px(CW)}; border-color:{line}" {s.anim(i + 1, "rise", 0, f"お知らせ{i + 1}", item=True)}>'
-                     f'<div class="nt-band" style="background-color:{line}"></div><div class="nt-main"{pad_style}>' + "".join(inner) + "</div></div>")
+        boxes.append(f'<div class="notice" style="width:{px(CW)}; border-color:{line}; background-color:{line}" {s.anim(i + 1, "rise", 0, f"お知らせ{i + 1}", item=True)}>'
+                     f'<div class="nt-band"></div><div class="nt-main"{pad_style}>' + "".join(inner) + "</div></div>")
     return boxes, total + gap * (n - 1)
 
 

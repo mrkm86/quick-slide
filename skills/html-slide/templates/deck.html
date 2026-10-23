@@ -377,9 +377,9 @@
       .callout-title { font-size: 36px; line-height: 1.4; font-weight: 700; color: var(--accent-text); word-break: auto-phrase; }
       /* お知らせの枠（DADS の注釈ブロック・ADR 0021）: 白い面・意味の色の枠 2px と左の色帯 16。種類はアイコン＋語でも示す */
       .col { display: flex; flex-direction: column; }
-      .notice { display: flex; flex-direction: row; flex: none; background-color: #ffffff; border: 2px solid var(--rule); }
+      .notice { display: flex; flex-direction: row; flex: none; background-color: var(--rule); border: 2px solid var(--rule); }   /* 地と枠は kind の色（左の帯の色）。白い面は .nt-main。帯は幅だけ持つ（角を丸めても帯が角から出ず、PPTX でも同じ形） */
       .nt-band { width: 16px; flex: none; align-self: stretch; }
-      .nt-main { display: flex; flex-direction: column; flex: 1; padding: 24px 40px; }
+      .nt-main { display: flex; background-color: #ffffff; flex-direction: column; flex: 1; padding: 24px 40px; }
       .nt-head { display: flex; align-items: center; margin-bottom: 8px; }
       .nt-label { line-height: 1.5; font-weight: 700; }
       .nt-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; }

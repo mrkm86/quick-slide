@@ -33,7 +33,7 @@ FIELDS = {"name", "description", "defaults", "motion", "look", "image_look", "ex
 LOOK = {
     "background": ("plain", "tint"),                    # ページの地: テーマの地／主役の色（primary）をうっすら混ぜた地
     "surface": ("soft", "white", "primary", "line"),     # カード・比較の列・KPI・吹き出しの地: 淡いグレー／（white は退役・RETIRED_LOOKS）／主役の色の淡い地／白に枠線
-    "radius": ("default", "square", "round"),           # 箱の角: 16px／4px／32px（写真は 8px・square のときだけ 4px）
+    "radius": ("default", "square", "round"),           # 箱の角: 16px／4px／32px（写真は 8px・square のときだけ 4px。notice の枠は default で 0・式の答えと NG／OK の箱は 16px・12px）
     "band": ("small", "bar", "none"),                   # 中身の型の左上の印: 小さな印／上端の全幅の帯／無し
     "emphasis": ("default", "strong"),                  # 強調する箱（accent: true のカードなど）: 淡い地に枠／差し色のベタ塗りに白抜き（明るい色なら黒）
     "statement": ("plain", "panel"),                    # 主張の1枚（statement）: 地のまま／主役の色の全面に白抜き（明るい色なら黒）
@@ -158,7 +158,8 @@ def look_css(look: dict) -> str:
         css.append(".tr.th { background-color: var(--primary-soft); }")
     r = {"square": 4, "round": 32}.get(look.get("radius"))
     if r:
-        css.append(f"{BOXES}, .contact, .scrim, .side-img, .gal-img {{ border-radius: {r}px; }}")
+        css.append(f"{BOXES}, .contact, .scrim, .side-img, .gal-img, .notice, .eq-res, .pair-box {{ border-radius: {r}px; }}")
+        css.append(f".nt-main {{ border-radius: {r - 2}px; }}")   # notice の白い面は枠（2px）の内側。帯と枠は同じ色の地なので、角の内側に白い隙間も帯のはみ出しも出ない
         if r == 4:
             css.append(".card-img { border-radius: 4px; }")
     b = look.get("band", "small")

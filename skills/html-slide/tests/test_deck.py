@@ -1537,6 +1537,31 @@ def case_style_look():
     assert t["background"] != "#ffffff", "tint で地の色が変わっていない"
 
 
+def case_look_radius_boxes():
+    """look.radius は notice の枠・式の答えの箱・NG／OK の箱にも効く（#58）: square 4px・round 32px・書かなければ今のまま。
+    notice は地を kind の色にして、白い面（nt-main）を枠の内側の角で丸める。帯は幅だけ持つので、角から出ない。"""
+    import deck_style as DS
+    for r, px_ in (("square", 4), ("round", 32)):
+        css = DS.look_css({"radius": r})
+        assert ".notice, .eq-res, .pair-box { border-radius: %dpx; }" % px_ in css, (r, css)
+        assert ".nt-main { border-radius: %dpx; }" % (px_ - 2) in css, (r, css)
+    assert DS.look_css({"radius": "default"}) == "" and DS.look_css({}) == "", "書かなければ CSS を足さない"
+    # 地・帯は kind の色。帯そのものは色を持たない（持つと角から出る）
+    nt = {"type": "notice", "headline": "h", "items": [{"kind": k, "title": "x"} for k in T.NOTICE_KINDS]}
+    s = _secs(build(one(nt), "radius-nt")[0])[0]
+    for kind, (_, _, line, _) in T.NOTICE_KINDS.items():
+        assert f'class="notice" style="width:1680px; border-color:{line}; background-color:{line}"' in s, kind
+    assert '<div class="nt-band"></div>' in s
+    # radius を書かないスタイル（standard）では、notice・equation・pairs の CSS に角の指定が増えない。visual は round なので丸くなる
+    scs = {"notice": nt, "equation": {"type": "equation", "headline": "h", "items": [{"title": "A"}, {"title": "B"}], "result": {"title": "C"}},
+           "pairs": {"type": "pairs", "headline": "h", "items": [{"label": "a", "before": "x", "after": "y"}] * 2}}
+    for name, sl in scs.items():
+        std = pathlib.Path(build(one(sl), f"radius-std-{name}", style="standard")[0]).read_text(encoding="utf-8")
+        vis = pathlib.Path(build(one(sl), f"radius-vis-{name}", style="visual")[0]).read_text(encoding="utf-8")
+        assert ".notice, .eq-res, .pair-box {" not in std and ".nt-main { border-radius" not in std, f"standard の {name} に角の指定が入った"
+        assert ".notice, .eq-res, .pair-box { border-radius: 32px; }" in vis, f"visual の {name} が丸くならない"
+
+
 def case_theme_primary_accent():
     """テーマの主役の色（primary）と差し色（accent）: 骨格は primary・強調は accent・古い書き方（accent だけ）は rc=2。"""
     two = TMP / "two.yaml"
