@@ -1,0 +1,48 @@
+name: 見せ方の要望
+description: スライドの見せ方（意味の名前が付く見た目・見本集への追加）の要望を出す
+title: "見せ方の要望: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        スライドの見せ方についての要望を受け付けます。
+        採用するかは保守者が判断します。数や好みの調整（凡例の数・色の濃さなど）は、台本の側で合わせてください。
+
+        公開の Issue です。台本の抜き書きに、外に出せない名前や数字があれば伏せるか置き換えてください。
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 要望の種類
+      options:
+        - 意味の名前が付く見た目（例: 参考・脚注のように名前で呼べる見せ方。台本には名前だけ書き、見た目の細部はエンジンが決める）
+        - いまある部品の組み合わせ（見本集への追加）
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 何を見せたいか
+      description: 読み手に何がひと目で伝わるようにしたいかを書いてください。
+      placeholder: 例）主役ではない、参考として並べた数字だと分かるようにしたい
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: 今の版で試したこと（台本の抜き書き）
+      description: いまの版で書いてみた台本のページを貼り、どこが足りなかったかを添えてください。使っている版が分かれば書いてください。
+      placeholder: |
+        ```json
+        {"type": "kpi", "headline": "...", "items": [ ... ]}
+        ```
+        足りなかったこと:
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: 使いどころ
+      description: どんな資料の、どんなページで使いたいかを書いてください。
+    validations:
+      required: true
