@@ -191,6 +191,27 @@ def t_table_align():
     check(abs(sum(got["ctr"]) / 2 - 400) <= 0.5, f"固定しない中央寄せの中心 {sum(got['ctr']) / 2} が箱の中心 400 とずれた")
 
 
+def t_footnote():
+    """footnote: source の下の脚注が PPTX に写る（文字・muted・source の1行下・同じ左端）。書かない台本には脚注の部品が無い。"""
+    import deck
+    pal = deck.palette(deck.load_theme(deck.THEMES / "default.yaml"))
+    fn = "※1 月末に休業日が 2 日あった"
+    tbl = {"type": "table", "headline": "h", "columns": ["部署", "今月"], "rows": [["受付", "1.4 日※1"]], "source": "定義の1行"}
+    sc = TMP / "foot.json"
+    sc.write_text(json.dumps({"title": "t", "slides": [dict(tbl, footnote=fn), tbl]}, ensure_ascii=False), encoding="utf-8")
+    html, _ = deck.build_html(sc, TMP / "foot-deck")
+    out = TMP / "foot.pptx"
+    render.render(html, out)
+    x = slide_xml(out, 1)
+    pos = lambda word: (int(x.xpath(f"//p:sp[.//a:t='{word}']//a:off/@x", namespaces=NS)[0]), int(x.xpath(f"//p:sp[.//a:t='{word}']//a:off/@y", namespaces=NS)[0]))
+    (sx, sy), (fx, fy) = pos("定義の1行"), pos(fn)
+    check(sx == fx and fy > sy, f"脚注が source の下・同じ左端にない: {(sx, sy)} {(fx, fy)}")
+    check(abs((fy - sy) - 33 * 6350) < 2 * 6350, f"脚注と source の行の間隔が 1 行ぶん（33px）でない: {fy - sy}")
+    color = x.xpath(f"//p:sp[.//a:t='{fn}']//a:rPr/a:solidFill/a:srgbClr/@val", namespaces=NS)[0].upper()
+    check(color == pal["muted"][1:].upper(), f"脚注の文字色が muted でない: {color}")
+    check(not slide_xml(out, 2).xpath(f"//a:t[contains(text(), '月末')]", namespaces=NS), "書かない台本に脚注が出た")
+
+
 def t_table_tone_dim_legend():
     """table: セルの tone の地・文字色、薄くした行の文字色、凡例の見本（塗り・枠・角丸）と文字（見本の右・重ならない）が PPTX に写る。"""
     import deck

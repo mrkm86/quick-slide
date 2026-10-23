@@ -30,6 +30,7 @@ CW = W - 2 * X0          # 中身の幅 1680
 HEAD_TOP = 80
 BODY_GAP = 40            # 見出しと中身の間（余白の段 4）
 BODY_BOTTOM = 952        # 中身の下端（下の文字とページ番号は 1008 から。上下の余白 64 を引いた 1016 の手前）
+FOOT_H = 33              # 脚注（footnote）1 行ぶんの高さ（22px・行高 1.5）。あれば中身の下端・source をその分だけ上げる
 TAKE_H, TAKE_GAP = 88, 40    # 締めの帯（takeaway）の高さと、中身との間（ADR 0019）
 STEP_GAP = 600           # 段を data-delay に移すときの 1段ぶんの遅れ（ms）
 SAFE = 0.94              # 行の見積もりで使う幅の割合（ブラウザの禁則と文節の折り返しのぶんの余裕）
@@ -223,9 +224,12 @@ class Slide:
         self.steps: set[int] = set()             # 型が使った段（1 以上）。flat でも記録する（talk の照合に使う）
         self.grow = 0                            # 中身が少ないときに大きく組む段の数（build_slide が決める・GROW_STEPS）
         self.need: float | None = None           # 型が見積もった中身の高さ（px）。大きく組めるかの判断に使う
-        self.avail: float | None = None          # 中身を置ける高さ（見出しの下から BODY_BOTTOM まで）
+        self.avail: float | None = None          # 中身を置ける高さ（見出しの下から BODY_BOTTOM まで。脚注があればその分だけ短い）
         # 中身の下端。締めの帯（takeaway）があれば、その分だけ上がる（帯は BODY_BOTTOM の上に置く）
-        self.bottom = BODY_BOTTOM - (TAKE_H + TAKE_GAP if spec.get("takeaway") else 0)
+        # 脚注（footnote）があれば、source の下に1行置くので、中身の下端と帯がその分だけ上がる
+        self.foot = FOOT_H if spec.get("footnote") not in (None, "") else 0
+        self.body_bottom = BODY_BOTTOM - self.foot
+        self.bottom = self.body_bottom - (TAKE_H + TAKE_GAP if spec.get("takeaway") else 0)
         self.caps: dict[str, int] = {}           # 並ぶ項目の同じ役の文字（カードの題など）の大きさの上限（build_slide がそろえる）
         self.big_head = False                    # 1行に収まる見出しを 80 にするか（build_slide が画像のないページで立てる・ADR 0022）
         self.seen: dict[str, list[int]] = {}     # 役ごとに、組んだ文字の大きさ
@@ -549,14 +553,21 @@ def header(s: Slide, default_headline=None, width=CW, default_kicker=None, top=H
     return "".join(parts), top + h + BODY_GAP
 
 
-def source_line(s: Slide, y=BODY_BOTTOM + 8, on_dark=False, width=CW):
-    """出典・注記（下端の上）。無ければ空。on_dark は写真の暗幕の上（白の文字）。width は置ける幅（写真の脇なら狭い）。"""
-    src = s.text("source")
-    if not src:
-        return ""
-    fs, _ = fit(src, 22, width, what="source", lines=1, lh=1.5, min_size=22)
+def source_line(s: Slide, y=None, on_dark=False, width=CW):
+    """出典・注記と、その下の脚注（下端の上）。どちらも1行で、無ければ空。脚注だけなら従来の source の位置に置く（本文の予約高は脚注ぶん引いたまま）。
+    on_dark は写真の暗幕の上（白の文字）。width は置ける幅（写真の脇なら狭い）。y は source（脚注だけなら脚注）の上端。"""
+    if y is None:                                  # 既定: source と脚注は脚注の分だけ上げて並べる。脚注だけなら従来の source の位置
+        y = s.body_bottom + 8 if s.text("source") else BODY_BOTTOM + 8
     col = " color:#ffffff;" if on_dark else ""
-    return f'<div class="source" style="top:{px(y)}; width:{px(width)}; font-size:{fs}px;{col}" data-name="出典">{esc(src)}</div>'
+    out = ""
+    for key, cls, name in (("source", "source", "出典"), ("footnote", "source footnote", "脚注")):
+        txt = s.text(key)
+        if not txt:
+            continue
+        fs, _ = fit(txt, 22, width, what=key, lines=1, lh=1.5, min_size=22)
+        out += f'<div class="{cls}" style="top:{px(y)}; width:{px(width)}; font-size:{fs}px;{col}" data-name="{name}">{esc(txt)}</div>'
+        y += FOOT_H
+    return out
 
 
 LEGEND_TONES = ("good", "warn", "bad", "dim")      # 色の凡例の語彙。dim は表の dim_rows（薄くした行）に当たる
@@ -771,8 +782,8 @@ def t_agenda(s: Slide):
     hl = s.spec.get("highlight")
     if hl is not None and (not isinstance(hl, int) or not 1 <= hl <= len(its)):
         s.err(f"highlight は 1〜{len(its)} の整数")
-    rh = min(s.gap(136), int((BODY_BOTTOM - top) / len(its)) // 8 * 8)
-    s.need, s.avail = rh * len(its), BODY_BOTTOM - top
+    rh = min(s.gap(136), int((s.body_bottom - top) / len(its)) // 8 * 8)
+    s.need, s.avail = rh * len(its), s.body_bottom - top
     rows = []
     for i, it in enumerate(its):
         note = s.text("note", spec=it)
@@ -861,7 +872,7 @@ def t_statement(s: Slide):
     if body:
         bs, _ = fit(body, 32, tw, what="補足（body）", lines=3, lh=1.6, min_size=28)
         inner.append(f'<div class="stmt-body" style="font-size:{bs}px; margin-left:56px" {s.anim(0, "rise", 500, "補足")}>{rich(body)}</div>')
-    return [f'<div class="stmt" style="{box(X0, HEAD_TOP, 1560, BODY_BOTTOM - HEAD_TOP)}">' + "".join(inner) + "</div>",
+    return [f'<div class="stmt" style="{box(X0, HEAD_TOP, 1560, s.body_bottom - HEAD_TOP)}">' + "".join(inner) + "</div>",
             source_line(s)]
 
 
@@ -895,7 +906,7 @@ def t_big_number(s: Slide):
         ns, nn = fit(note, s.g(28, 36), mw, what="note", lines=2, lh=1.5, min_size=22)   # 注記の下限は 22（slide-local）
         main.append(f'<div class="bn-item-text" style="font-size:{ns}px; margin-top:16px">{esc(note)}</div>')
         main_h += 16 + nn * ns * 1.5
-    parts = [head, f'<div class="bn-main" style="{box(X0, top, mw, BODY_BOTTOM - top)}">'
+    parts = [head, f'<div class="bn-main" style="{box(X0, top, mw, s.body_bottom - top)}">'
              f'<div {s.anim(1, "pop", 0, "大きな数字")}>' + "".join(main) + "</div></div>"]
     if side:
         rows, side_h = [], 0.0
@@ -910,9 +921,9 @@ def t_big_number(s: Slide):
             rows.append(f'<div class="bn-item" style="{last}" {s.anim(2, "rise", 150 * i, f"補足{i + 1}", item=True)}>'
                         + (f'<div class="bn-item-value" style="font-size:{vs}px">{esc(v)}</div>' if v else "")
                         + f'<div class="bn-item-text" style="font-size:{fs}px">{rich(it["text"])}</div></div>')
-        parts.append(f'<div class="bn-side" style="{box(1120, top, 680, BODY_BOTTOM - top)}">' + "".join(rows) + "</div>")
+        parts.append(f'<div class="bn-side" style="{box(1120, top, 680, s.body_bottom - top)}">' + "".join(rows) + "</div>")
         main_h = max(main_h, side_h)
-    s.need, s.avail = main_h, BODY_BOTTOM - top
+    s.need, s.avail = main_h, s.body_bottom - top
     parts.append(source_line(s))
     return parts
 
@@ -1254,12 +1265,13 @@ def t_table(s: Slide):
         top += sum_h + SUMMARY_GAP
         tstep = 2
     legend_h = tone_legend(s, 0)[1]                    # 検査と予約の高さ。置く位置は行の高さが決まってから
-    footer_h = legend_h + (40 if s.text("source") else 0)
-    rh = min(s.gap(112), int((s.bottom - top - footer_h) / (len(rows) + 1)) // 8 * 8)     # 行の高さ（大きく組むときは上限を広げる）
+    n_notes = bool(s.text("source")) + bool(s.text("footnote"))
+    footer_h = legend_h + (40 + FOOT_H * (n_notes - 1) if n_notes else 0)     # source・脚注は表の下に続ける（s.bottom の脚注ぶんは数えない）
+    rh = min(s.gap(112), int((s.bottom + s.foot - top - footer_h) / (len(rows) + 1)) // 8 * 8)     # 行の高さ（大きく組むときは上限を広げる）
     if rh < 24 * 1.5 + 16:                             # 最小の文字 24px・行高 1.5・上下 16px が入らない
         if band:
-            s.err(f"summary を置くと表が入らない（行の高さ {rh}px では文字 24px が入らない）。rows を減らすか、summary の label・note を短くする")
-        s.err(f"表が入らない（行の高さ {rh}px では文字 24px が入らない）。rows を減らすか、legend・source を外す")
+            s.err(f"summary を置くと表が入らない（行の高さ {rh}px では文字 24px が入らない）。rows を減らすか、summary の label・note を短くする（legend・source・footnote・takeaway も高さを使う）")
+        s.err(f"表が入らない（行の高さ {rh}px では文字 24px が入らない）。rows を減らすか、legend・source・footnote を外す")
     fs0 = 28 if rh >= 64 else 24                       # 表のセルは Std-28N-150（下限 24）。行が低ければ 24
     fs0 = s.g(fs0, 45)
     while fs0 > 24 and fs0 * 1.5 + 16 > rh:            # 1行が行の高さに入る段まで
@@ -1280,7 +1292,7 @@ def t_table(s: Slide):
             cells.append(f'<div class="td{" hl" if on else ""}{kind}" style="width:{px(cws[c])}; justify-content:{align}">'
                          f'<div style="font-size:{fs}px; text-align:{tal};{weight}">{rich(v)}</div></div>')
         out.append(f'<div class="tr{" th" if r == 0 else ""}{" dim" if dimmed else ""}" style="height:{px(rh)}">' + "".join(cells) + "</div>")
-    s.need, s.avail = (sum_h + SUMMARY_GAP if band else 0) + rh * (len(rows) + 1) + footer_h, s.bottom - top0
+    s.need, s.avail = (sum_h + SUMMARY_GAP if band else 0) + rh * (len(rows) + 1) + footer_h, s.bottom + s.foot - top0
     end = top + rh * (len(rows) + 1) + 16
     legend, _ = tone_legend(s, end, step=tstep)
     return [head, band, f'<div class="table" style="{box(X0, top, CW)}" {s.anim(tstep, "fade", 0, "表")}>' + "".join(out) + "</div>",
@@ -1444,8 +1456,8 @@ def t_quote(s: Slide):
                      + (f'<div class="quote-name" style="font-size:{bs}px">— {esc(by)}</div>' if by else "")
                      + (f'<div class="quote-role" style="font-size:{rs}px">{esc(role)}</div>' if role else "") + "</div>")
     od = " on-dark" if layout == "full" else ""
-    s.need, s.avail = need + (SPACE[1] + 42 if kicker else 0), BODY_BOTTOM - HEAD_TOP
-    return pre + [f'<div class="quote{od}" style="{box(qx, HEAD_TOP, tw, BODY_BOTTOM - HEAD_TOP)}">' + "".join(inner) + "</div>",
+    s.need, s.avail = need + (SPACE[1] + 42 if kicker else 0), s.body_bottom - HEAD_TOP
+    return pre + [f'<div class="quote{od}" style="{box(qx, HEAD_TOP, tw, s.body_bottom - HEAD_TOP)}">' + "".join(inner) + "</div>",
                   source_line(s, on_dark=layout == "full")]
 
 
@@ -1522,7 +1534,7 @@ def t_closing(s: Slide):
     contact = s.spec.get("contact")
     if not its and not contact:
         s.err("items か contact のどちらかは書く")
-    avail = BODY_BOTTOM - top
+    avail = s.body_bottom - top
     parts = [head]
     width = CW
     if has_img:
@@ -1592,7 +1604,7 @@ def _contact(s: Slide, contact, cw):
 def _closing_stack(s: Slide, its, contact, top, width):
     """写真つきの締めの左の列: 上に次の一手、下に連絡先。"""
     parts = []
-    bottom = BODY_BOTTOM
+    bottom = s.body_bottom
     if contact:
         inner, ch = _contact(s, contact, width)
         if bottom - ch < top:                    # 連絡先は下から積む。見出しの下端（中身の上端）より上に出たら重なる
@@ -2086,10 +2098,10 @@ def t_team(s: Slide):
     if cur:
         rows.append(cur)
         hs.append(cur_h)
-    s.need, s.avail = sum(hs) + 40 * (len(rows) - 1), BODY_BOTTOM - top
+    s.need, s.avail = sum(hs) + 40 * (len(rows) - 1), s.body_bottom - top
     body = "".join(f'<div class="row" style="gap:{gap}px; justify-content:center; align-items:flex-start;'
                    f'{" margin-top:40px;" if r else ""}">' + "".join(row) + "</div>" for r, row in enumerate(rows))
-    return [head, f'<div class="center" style="{box(X0, top, CW, BODY_BOTTOM - top)}">{body}</div>', source_line(s)]
+    return [head, f'<div class="center" style="{box(X0, top, CW, s.body_bottom - top)}">{body}</div>', source_line(s)]
 
 
 def t_matrix(s: Slide):
@@ -2252,7 +2264,7 @@ def t_gallery(s: Slide):
         return [head] + _collage(s, its, top) + [source_line(s)]
     n, gap = len(its), GUTTER
     cw = (CW - gap * (n - 1)) // n         # 整数に切り下げる（px() が丸めて上げると、並べた行が版の幅を越える）
-    avail = BODY_BOTTOM - top
+    avail = s.body_bottom - top
     caps = [s.text("caption", spec=it) for it in its]
     cap_h = (16 + 2 * 26 * 1.5) if any(caps) else 0
     fh = min(avail - cap_h, cw * 1.5)              # 縦長すぎる枠にしない（2:3 まで）
@@ -2276,7 +2288,7 @@ def _collage(s: Slide, its, top):
     gap = GUTTER
     lw = span(7)                                  # 大きい写真は格子の 7 列・小さい写真は 5 列
     rw = CW - lw - gap
-    avail = BODY_BOTTOM - top
+    avail = s.body_bottom - top
     caps = [s.text("caption", spec=it) for it in its]
     cap = 16 + 26 * 1.5 if any(caps) else 0
     fh = avail - cap                              # 大きい写真の高さ
@@ -2299,7 +2311,7 @@ def t_figure(s: Slide):
     head, top = header(s)
     cap = s.text("caption")
     cap_h = 56 if cap else 0
-    fh = BODY_BOTTOM - top - cap_h
+    fh = s.body_bottom - top - cap_h
     if fh < 240:
         s.err("見出しが高すぎて図の場所が足りない（見出しを短くするか sub を外す）")
     img = s.img(s.spec.get("image"), "image", "figure-img", X0, top, CW, fh, anim=s.anim(0, "fade", 150, "図"), fit_mode="contain")
@@ -2356,7 +2368,7 @@ def t_annotate(s: Slide):
     fit_mode = s.spec.get("fit", "cover")
     if fit_mode not in ("cover", "contain"):
         s.err("fit は cover（枠いっぱいに切り抜く・既定）か contain（切らずに縮める）")
-    iw, ih = ANNOTATE_IMG_W, BODY_BOTTOM - top
+    iw, ih = ANNOTATE_IMG_W, s.body_bottom - top
     img = s.img(s.spec.get("image"), "image", "side-img" if fit_mode == "cover" else "figure-img", X0, top, iw, ih,
                 anim=s.anim(0, "fade", 0, "画像"), fit_mode=fit_mode)
     rx, ry, rw, rh = X0, top, iw, ih             # 印の % を測る四角（contain なら実際に描いた画像）
@@ -2849,7 +2861,7 @@ def takeaway_band(s: Slide) -> str:
     ts, _ = fit(text, 32, CW - 128 - 56, what="takeaway", lines=1, lh=1.4, min_size=28, bold=True)
     w = min(CW, -(-max(904.0, text_width(plain(text), ts, True) / SAFE + 128 + 56) // 16) * 16)    # 16 の倍数（左右の位置が 8 の倍数になる）
     step = max(s.steps) if s.steps else 0
-    return (f'<div class="take" style="{box(X0 + (CW - w) / 2, BODY_BOTTOM - TAKE_H, w, TAKE_H)}" '
+    return (f'<div class="take" style="{box(X0 + (CW - w) / 2, s.body_bottom - TAKE_H, w, TAKE_H)}" '
             f'{s.anim(step, "fade", 500, "締めの帯")}>{ICON.svg(name, 40, "var(--primary-text)")}'
             f'<div class="take-t" style="font-size:{ts}px">{rich(text)}</div></div>')
 
@@ -2864,7 +2876,7 @@ GROW_FILL = 0.8                        # これより埋まっていなければ
 GROW_MAX = 0.92                        # 大きく組んだ結果がここまで埋まるなら採る（前は GROW_FILL と同じで、6行の表などが一段も上がらなかった・ADR 0022）
 
 # 型の棚: 名前 → (関数, 台本で使えるキー, 見出しの帯・下の文字・ページ番号を付けるか)
-HEAD_KEYS = {"kicker", "headline", "sub", "source"}
+HEAD_KEYS = {"kicker", "headline", "sub", "source", "footnote"}
 # --- 取り込んだページ（html） --------------------------------------------------------------------
 # PPTX から取り込んだページ（pptx_import.py が書く）。中身は決まり（contract.md）に沿った絶対配置の HTML で、型は組まずに通す（ADR 0025）。
 # 書いてはいけないもの: スクリプト・スタイルの要素・外へつながる要素と属性・ほかのページに効くもの
@@ -2972,7 +2984,7 @@ TYPES = {
     "cover": (t_cover, {"label", "title", "subtitle", "meta", "image", "layout", "text_side", "tone", "motif"}, False),
     "agenda": (t_agenda, HEAD_KEYS | {"items", "highlight"}, True),
     "section": (t_section, {"number", "label", "title", "subtitle", "image", "layout", "text_side", "tone", "motif"}, False),
-    "statement": (t_statement, {"kicker", "headline", "body", "source"}, True),
+    "statement": (t_statement, {"kicker", "headline", "body", "source", "footnote"}, True),
     "big-number": (t_big_number, HEAD_KEYS | {"value", "unit", "label", "note", "side"}, True),
     "cards": (t_cards, HEAD_KEYS | {"items"}, True),
     "flow": (t_flow, HEAD_KEYS | {"items"}, True),
@@ -2980,7 +2992,7 @@ TYPES = {
     "bar-chart": (t_bar_chart, HEAD_KEYS | {"bars", "unit", "note", "max", "callout"}, True),
     "table": (t_table, HEAD_KEYS | {"columns", "rows", "highlight", "widths", "align", "dim_rows", "legend", "summary"}, True),
     "photo": (t_photo, {"image", "layout", "split", "kicker", "headline", "body", "caption", "hide_text"}, False),
-    "quote": (t_quote, {"quote", "by", "position", "kicker", "source", "layout", "image"}, True),
+    "quote": (t_quote, {"quote", "by", "position", "kicker", "source", "footnote", "layout", "image"}, True),
     "bullets": (t_bullets, HEAD_KEYS | {"items", "image", "side", "split"}, True),
     "timeline": (t_timeline, HEAD_KEYS | {"items", "current"}, True),
     "closing": (t_closing, HEAD_KEYS | {"items", "contact", "image"}, True),

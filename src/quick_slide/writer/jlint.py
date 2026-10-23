@@ -28,7 +28,7 @@ NOTE_RULES = frozenset({"sentence_end_repetition"})   # 話す台本だけ
 # 文字列の値、またはその配列・入れ子（items の中身・表の行・series の name など）が対象
 VISIBLE_KEYS = frozenset({
     "headline", "kicker", "sub", "subtitle", "title", "body", "text", "term", "label", "note", "value", "unit",
-    "caption", "quote", "badge", "takeaway", "source", "contact", "display", "meta", "number", "by", "position",
+    "caption", "quote", "badge", "takeaway", "source", "footnote", "contact", "display", "meta", "number", "by", "position",
     "when", "before", "after", "delta", "tag", "name", "role", "initials", "low", "high", "bad_label", "good_label",
     "items", "points", "side", "left", "right", "center", "callout", "bars", "columns", "rows", "labels", "series",
     "members", "x", "y", "quadrants", "result", "group", "legend", "summary",
