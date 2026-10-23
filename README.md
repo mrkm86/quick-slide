@@ -153,6 +153,7 @@ Windows での既存の開発テストと、デスクトップアプリからの
 - [同梱の見本と再生成](samples/README.md)
 - [導入・検証ガイド](docs/INSTALL.md)
 - [作業ルールとテスト](AGENTS.md)
+- 見せ方の要望は [Issue](https://github.com/mrkm86/quick-slide/issues/new/choose) へ（ひな形あり）。採用は保守者が判断します
 
 データや描画用の道具はプラグインの外に保存します。置き場は `places.py` が決め、
 `QUICK_SLIDE_HOME` で変更できます。プラグインの更新とスライドの保存は独立しています。
