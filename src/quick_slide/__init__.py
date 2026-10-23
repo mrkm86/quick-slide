@@ -6,4 +6,4 @@
 
 __all__ = ["__version__"]
 # 製品の版（SemVer）。プラグインのマニフェスト 2 つと揃える。上げるのは tools/release.py（docs/RELEASING.md）
-__version__ = "1.1.0"
+__version__ = "1.1.1"
