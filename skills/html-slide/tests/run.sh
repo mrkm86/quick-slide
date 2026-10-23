@@ -165,6 +165,23 @@ deck "look.radius は notice の枠・式の答えの箱・NG／OK の箱にも�
 deck "モーフは退役（ADR 0023）: 切り替えは fade・none だけ・台本とスタイルの morph は fade で描いて警告・PPTX にモーフを書かない" no_morph
 deck "退役の仕組み（RETIRED_TYPES・RETIRED_LOOKS）: 描いて警告・deck-format に載せない・surface: white は line と同じ" retired
 
+# --- レビューモード（ADR 0028） ---
+review() { run "$1" python3 "$DIR/test_review.py" "$2"; }
+review "注記: _memo・_wish は文字・_ok は真偽値・省略と空は無いのと同じ・型違いは誤りとして返す" notes_of
+review "希望の一覧: 台本順・ページ番号・ID・見出し・希望なしも載せる・HTML タグと Markdown の記号は文字として出す" wishes_markdown
+review "止まらずに描く: 正常→失敗→正常・理由の枠・番号は欠番にしない・失敗ページの素材と枠は捨てる・deck は最初の誤りで止まる" continue_on_error
+review "失敗した章扉のあとも、章の番号は台本の順" chapter_numbers_kept
+review "_memo・_ok・_wish を書いても deck の出力は変わらない・型違いの注記でも deck は止まらない" deck_ignores_notes
+review "未知の _ キーは未知キーの検査から外れたまま" unknown_underscore_kept
+review "review（Chrome）: 注記なしでも rc=0・全ページ・外部通信なし・_ok は畳む・誤りのページに理由・注記の型違い・希望の一覧" review_end_to_end
+review "review の各ページの文書（CSS・字体・section）は deck.html と同じ" review_same_slides_as_deck
+review "review の iframe（等倍）の画素は deck の section の PNG と同じ・PDF も同じ文書から出る" review_pixels_match_deck
+review "スマホの幅（390px）で横にはみ出さない" review_narrow
+review "出力と台本が重なれば rc=2・Chrome が無ければ書かずに rc=4・壊れた台本は書かずに rc=2" review_guards
+review "注記の null は型違い（キーの省略とは別）・review は rc=2 で描画は続ける" review_null_notes
+review "--wishes の出力先が review.html・deck.html・一時ファイル・assets/ と重なれば rc=2・既存の成果物は変わらない" review_wishes_collision
+review "--watch: 同じ長さの変更・ファイルの置き換えで作り直す・壊れた台本では直前の成果物を残して見続ける" review_watch
+
 # --- 画像の枠を Codex で埋める（ADR 0011・偽物の codex） ---
 # --- 出力（ADR 0012） ---
 outputs() { run "$1" python3 "$DIR/test_outputs.py" "$2"; }

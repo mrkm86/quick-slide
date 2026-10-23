@@ -11,6 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
+import { overflowProblems, problemText } from "./overflow.mjs";
 
 const HOME = os.homedir();
 // puppeteer-core と Chrome の在りかは呼ぶ側（browser.py）が環境変数で渡す（ADR 0016）。無ければ前からの置き場
@@ -55,24 +56,7 @@ try {
   await page.evaluate(async () => { await document.fonts.ready; });
   const fonts = await page.evaluate(() => [...document.fonts].map((f) => `${f.family} ${f.weight} ${f.status}`));
   console.log(`字体: ${fonts.join(" / ")}`);
-  const problems = !shots ? [] : await page.evaluate(() => {
-    const out = [];
-    document.querySelectorAll("section[data-slide]").forEach((sec, i) => {
-      const sr = sec.getBoundingClientRect();
-      sec.querySelectorAll("*").forEach((el) => {
-        if (el.closest("aside.notes") || el.closest("svg")) return;
-        const r = el.getBoundingClientRect();
-        const label = `${el.className || el.tagName}「${(el.textContent || "").trim().slice(0, 16)}」`;
-        if (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1) {
-          if (el.clientWidth > 0 || el.clientHeight > 0) out.push(`${i + 1}枚目: はみ出し ${label} (${el.scrollWidth}x${el.scrollHeight} > ${el.clientWidth}x${el.clientHeight})`);
-        }
-        if (r.width && (r.left < sr.left - 1 || r.right > sr.right + 1 || r.top < sr.top - 1 || r.bottom > sr.bottom + 1)) {
-          out.push(`${i + 1}枚目: 画面の外 ${label}`);
-        }
-      });
-    });
-    return out;
-  });
+  const problems = !shots ? [] : (await page.evaluate(overflowProblems)).map(problemText);
   for (const p of problems) console.log(`警告 ${p}`);
   const sections = await page.$$("section[data-slide]");
   let n = 0;

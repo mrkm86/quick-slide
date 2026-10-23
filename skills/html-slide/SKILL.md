@@ -23,6 +23,7 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 | 描いた絵1枚を指示で直す（「人を一人足して」「夜の景色に」） | `revise --page N [--slot 枠] --note "…"`（既定は微修正＝今の絵を土台に・`--remake` で作り直し） |
 | 資料を作る（台本を書いて PPTX・PDF・ページの画像・サムネイルまで） | `deck` |
 | 週報・月報に貼る画像だけ欲しい／ざっと一覧で見たい | `deck --format png` ／ `deck --format thumbs` |
+| 台本を1ページずつ人と詰める（全ページを並べて見る・メモ・OK・見せ方の希望・検査結果） | `review`（[ADR 0028](docs/adr/0028-review-mode.md)） |
 | 台本を書いた・HTML を書いた（検査だけ） | `check` |
 | 決まりに沿った HTML が手元にある | `render` |
 | html-video が焼いた解説動画を PPTX にする | `from-video` |
@@ -71,6 +72,28 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 6. 人に渡す資料なら、検品する側に出力先の `inspect.md`（と `slides/` の画像）を渡して確かめてもらう（基準はこのスキルの [`INSPECTION.md`](INSPECTION.md)）
 7. **PowerPoint で動くかは人が見る**（自動では確かめない。下の「制約」）
 
+## Workflow: review（台本を1ページずつ詰める）
+
+全ページを縦に並べ、左に目次、右にページごとのメモと検査結果を出す HTML（`review.html`）を作る。中のスライドは deck と同じ組み・同じ CSS・同じ素材で描くので、PDF と同じ見た目で確かめられる（[ADR 0028](docs/adr/0028-review-mode.md)）。
+
+1. `python3 …/html_slide.py review --script <台本.json> [--out <フォルダ>] [--watch] [--wishes [<md>]]`（`--theme`・`--style`・`--mode`・`--logo`・`--watermark` は deck と同じ）
+   - 出力は `<出力先>/<台本の名前>/review/review.html`（`--out` で変える）。deck の成果物とは別のフォルダ。同じフォルダに `deck.html` と `assets/` も書く
+   - **台本が正本。** HTML の上では直さない。直すのは台本で、`--watch` を付けておくと台本を保存するたびに作り直す（ブラウザは再読み込みで反映）
+   - 画像は生成しない。まだ絵の無い生成の枠は仮の枠のままで、そのページに「画像未生成」と出る
+   - `review.html` は 1 枚で完結しない。画像は出力フォルダの `assets/` を相対パスで読むので、フォルダごと動かす（`review.html` だけを動かすと画像が外れる）。字体は出力フォルダに入らず、作った機械の字体ファイルを絶対の場所で読む（deck.html と同じ）。別の機械へ渡すときは、渡し先に同じ字体を用意してから作り直す（字体が無いと改行・配置が変わりうる）
+2. ページに書ける注記（ページ直下の `_` キー。deck は読まず、出力は変わらない）
+
+   | キー | 型 | 中身 |
+   |---|---|---|
+   | `_memo` | 文字 | そのページの狙い・数字の出どころ。メモ欄に出る |
+   | `_ok` | 真偽値 | `true` のページは畳んで出し、目次に印を付ける（検査は行う） |
+   | `_wish` | 文字 | 「いまのエンジンでは出せないが、本当はこう見せたい」。いまのエンジンで出せる形で先に進み、ここに書き留める |
+
+   型が違えば（`null` も含む。使わないならキーごと外す）、そのページの検査結果に誤りとして出る（スライドは描く）。ほかの `_` キーの扱いは [`references/deck-format.md`](references/deck-format.md) の「ページ直下の `_` キー」
+3. **止まらずに全ページを描く。** 型・設定・検査で描けないページは、そのページに理由を出す枠を置いて残りを描く（deck は最初の誤りで止まるまま）。検査結果は段階（誤り・警告・情報）・規則・対象・理由で出す。見出しの折り返しの行数も出る（複数行は誤りにしない）
+4. `--wishes` を付けると、全ページの `_wish` を台本順の Markdown（ページ番号・見出し・希望。無いページは「希望なし」）に書き出す。`--wishes` だけなら `<出力先>/wishes.md`、パスを足せばそこ（相対パスは実行したフォルダから）。`review.html`・`deck.html`・`assets/` と重なる指定は rc=2
+5. 終了コード: 0=誤りなし / 2=台本・ページの誤り・検査の誤り（`review.html` は書き終えてから返す）/ 4=Node・Chrome が足りない（検査済みのふりをしない）/ 1=書き出しの失敗。台本が読めないなど全体の誤りは `review.html` を書き換えない
+
 ## Workflow: from-video（解説動画 → PPTX）
 
 `python3 …/html_slide.py from-video --video-dir <html-video の出力>/<preset>` — `project/index.html`・`build.json` と台本（`--script`）から、1文 = 1クリックの PPTX を作る。ノートには字幕の文が入る。html-video は改修しない（[ADR 0001](docs/adr/0001-html-contract.md) の互換の経路）。
@@ -79,7 +102,8 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
 
 | パス | 中身 |
 |---|---|
-| `scripts/html_slide.py` | 入口（catalog / images / fill / revise / check / deck / assemble / render / import / from-video / verify） |
+| `scripts/html_slide.py` | 入口（catalog / images / fill / revise / check / deck / review / assemble / render / import / from-video / verify） |
+| `scripts/review.py`・`review_probe.mjs`・`overflow.mjs`・`templates/review.html` | レビューモード（ADR 0028）。はみ出しの診断（`overflow.mjs`）は `snapshot.mjs` と共有 |
 | `scripts/pptx_import.py`・`pptx_text.py`・`pptx_table.py`・`pptx_chart.py`・`pptx_anim.py`・`ooxml.py`・`ooxml_geom.py` | 既存の PPTX → 取り込みの台本（図形・文字・画像・表・グラフ・SmartArt・アニメーション・テーマ。ADR 0025） |
 | `scripts/imagegen.py`・`scripts/codex_run.py` | 生成の枠の描く指示・鍵・画風・キャラ ／ Codex の認証と並列の生成（image-slide の写し） |
 | `scripts/deck.py`・`scripts/deck_types.py` | 台本 → HTML（画面の型23種と画像の置き方）・雛形・画像の枠の一覧 |

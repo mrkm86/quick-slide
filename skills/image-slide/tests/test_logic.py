@@ -148,6 +148,13 @@ def t_script_errors():
     p = write_script(root, {"slides": [{"type": "statement", "headline": "h", "_note": "html-slide も読み飛ばす"}]})
     rc, _, err, _ = run(["check", "--script", str(p)], root)
     check(rc == 0, f"_ で始まるキーで落ちた: {err}")
+    # html-slide のレビューモードの注記（_memo・_wish・_ok）も読み飛ばし、描く中身には入れない（html-slide の ADR 0028）
+    page = {"type": "statement", "headline": "h", "_memo": "狙い: 数字の出どころ", "_wish": "ここを全面の絵にしたい", "_ok": True}
+    p = write_script(root, {"slides": [page]})
+    rc, _, err, _ = run(["check", "--script", str(p)], root)
+    check(rc == 0, f"レビューの注記で落ちた: {err}")
+    check("_memo" not in S.content_of(page, []) and "狙い" not in json.dumps(S.content_of(page, []), ensure_ascii=False),
+          "レビューの注記が描く中身に混ざった")
 
 
 def t_prompt_content():
