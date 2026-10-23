@@ -2519,6 +2519,22 @@ def case_table_summary_clicks():
     expect_error({"title": "t", "slides": [dict(tbl, steps=False, talk=["a", "b", "c"])]}, "tsc-flat-bad", "talk が 3 個", "クリック 0 回")
 
 
+def case_combo_samples():
+    """deck-format.md の「組み合わせの見本」の台本は、そのまま組める（rc=0）・1ページに収まる・SKILL.md と notice の行からたどれる。"""
+    fmt = (SKILL / "references" / "deck-format.md").read_text(encoding="utf-8")
+    sec = fmt.split("\n## 組み合わせの見本\n", 1)[1].split("\n## ", 1)[0]
+    blocks = re.findall(r"```json\n(.*?)\n```", sec, re.S)
+    assert blocks, "組み合わせの見本に台本が無い"
+    for i, b in enumerate(blocks):
+        slide = json.loads(b)
+        _, info = build(one(slide), f"combo-{i}")
+        assert len(info["slides"]) == 1 and not info["warnings"], info["warnings"]
+    assert json.loads(blocks[0])["type"] == "notice" and len(json.loads(blocks[0])["items"]) == 4
+    notice_row = next(l for l in fmt.splitlines() if l.startswith("| `notice` |") and "(#組み合わせの見本)" in l)
+    assert notice_row
+    assert "「組み合わせの見本」" in (SKILL / "SKILL.md").read_text(encoding="utf-8")
+
+
 CASES = {k[5:]: v for k, v in globals().items() if k.startswith("case_")}
 
 
