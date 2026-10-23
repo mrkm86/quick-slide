@@ -131,6 +131,7 @@ def _tone_roles(p: dict) -> dict:
 
       tone-{good,warn,bad}-bg   … 意味の色（-1）を地に 0.08 で混ぜた淡い地。tone-…-text … 同じ色の濃い側（-2）。tone の地・地の上で 4.5:1
       tone-neutral-bg / -text   … surface と、その上で 4.5:1 にした muted
+      ref-bg / -text / -rule    … 参考のカード。地は surface を bg に半分混ぜた退いた灰・文字は muted を地の上で 4.5:1・点線の枠は rule を地の上で 3:1
       group-{a,b,c}-bg          … a＝success・b＝warning-orange・c＝blue（DADS のプリミティブ・テーマに依らず固定）を地に混ぜた淡い地（ink・muted・accent-text が 4.5:1 になる濃さまで薄める）
       group-…-text              … 札の文字と枠。group の地・地の上で 4.5:1。group-…-rule … カードの枠。group の地・地の上で 3:1
     """
@@ -143,6 +144,10 @@ def _tone_roles(p: dict) -> dict:
         out[f"tone-{tone}-text"] = _darken(SEMANTIC[f"{base}-2"], [tbg, bg], 4.5)
     out["tone-neutral-bg"] = surface
     out["tone-neutral-text"] = _darken(p["muted"], [surface, bg], 4.5)
+    rbg = mix(surface, 0.5, bg)
+    out["ref-bg"] = rbg
+    out["ref-text"] = _darken(p["muted"], [rbg, surface, bg], 4.5)
+    out["ref-rule"] = _darken(p["rule"], [rbg, bg], 3.0)
     for g, (light, dark) in zip(GROUPS, (("success-1", "success-2"), ("warning-orange-1", "warning-orange-2"),
                                          (GROUP_C_LIGHT, GROUP_C_DARK))):
         light, dark = SEMANTIC.get(light, light), SEMANTIC.get(dark, dark)
@@ -219,9 +224,10 @@ def contrast_problems(p: dict) -> list[str]:
         need += [(f"tone-{tone}-text", f"tone-{tone}-bg", 4.5), (f"tone-{tone}-text", "bg", 3.0)]
     need += [("tone-neutral-text", "tone-neutral-bg", 4.5), ("tone-neutral-text", "bg", 3.0)]
     for tone in (*TONES, "neutral"):            # 増減の札の輪郭: tone の色の枠が、札の置かれる面（通常・強調の淡い面・group）に対して 3。強い look の面（accent-strong）の上では枠が札の地と同じ色になるので、札の地が 3
-        for g in ("bg", "surface", "accent-soft", *(f"group-{x}-bg" for x in GROUPS)):
+        for g in ("bg", "surface", "accent-soft", "ref-bg", *(f"group-{x}-bg" for x in GROUPS)):
             need.append((f"tone-{tone}-text", g, 3.0))
         need.append((f"tone-{tone}-bg", "accent-strong", 3.0))
+    need += [("ref-text", "ref-bg", 4.5), ("ref-text", "bg", 4.5), ("ref-rule", "ref-bg", 3.0), ("ref-rule", "bg", 3.0)]    # 参考のカード: 文字・札の文字と枠・点線の枠
     for g in GROUPS:                            # カードの種類分け: 地の上の本文・札の文字・枠
         for fg in ("ink", "muted", "accent-text", f"group-{g}-text"):
             need.append((fg, f"group-{g}-bg", 4.5))

@@ -1377,6 +1377,47 @@ def case_kpi_old_scripts_same():
     body = html.split("</style>")[1]
     assert len(re.findall(r'class="kpi" style="width:\d+px" data-step="1"', body)) == 4, "4枚は高さを固定しない・1クリック"
     assert "tone-" not in body and "group" not in body and "chip" not in body, "何も書かなければ札も色も付かない"
+    assert 'class="kpi ref' not in body and "chip ref" not in body, "reference を書かなければ参考の見た目は付かない"
+
+
+def case_kpi_reference():
+    """kpi・table summary の reference: 参考の見た目（class・札・灰の増減）・誤りは rc=2・混ぜても数字の上端がそろう・全部が参考でもよい・色の検査。"""
+    ref = {"label": "手作業", "value": "180", "unit": "件", "delta": "+9%", "trend": "up", "tone": "bad", "reference": True}
+    main = [{"label": "自動", "value": "1,200", "delta": "+35%", "trend": "up"}, {"label": "時間", "value": "4", "delta": "-60%", "trend": "down", "tone": "good"}]
+    body = _kpi_html(_kpi3(main + [ref]), "kref-mix").split("</style>")[1]
+    assert re.findall(r'class="kpi( ref)?"', body) == ["", "", " ref"], "参考のカードだけ .ref"
+    assert body.count('class="chip ref">参考<') == 1, "札の語は固定"
+    assert re.findall(r'class="kpi-delta tone-(\w+)"', body) == ["good", "good", "neutral"], "参考の増減は tone・trend によらず灰"
+    assert "▲ +9%" in body, "記号は trend のまま"
+    # 札を持たないカードにも同じ高さの空き（数字の上端がそろう）
+    tops = re.findall(r'class="kpi[^"]*" style="[^"]*"[^>]*>(?:<div class="chip[^>]*>[^<]*</div>|<div style="height:(\d+)px; flex:none"></div>)', body)
+    assert len(tops) == 3 and tops[0] == tops[1] != "", tops
+    # 全部が参考でもよい
+    allref = [dict(ref, label=x) for x in "abc"]
+    body = _kpi_html(_kpi3(allref), "kref-all").split("</style>")[1]
+    assert body.count('class="kpi ref"') == 3 and body.count('class="chip ref">参考<') == 3
+    # 誤り
+    bad = lambda it, *words: expect_error(one(_kpi3([it] + main)), "kref-bad", "items の 1 個目", *words)
+    row = {"label": "a", "value": "1"}
+    for v in ("true", 1, None, False, [], {}):
+        bad(dict(row, reference=v), "reference は true だけ")
+    bad(dict(row, reference=True, accent=True), "accent と reference は同時に書けない")
+    bad(dict(row, reference=True, group={"label": "自動", "tone": "a"}), "group と reference は同時に書けない")
+    # table の summary にも同じ名前・同じ見た目
+    tb = {"type": "table", "headline": "h", "columns": ["a", "b"], "rows": [["1", "2"]],
+          "summary": [{"label": "x", "value": "1"}, dict(ref, label="y")]}
+    html = build(one(tb, ["", "", ""]), "kref-sum")[0].read_text(encoding="utf-8")
+    body = html.split("</style>")[1]
+    assert re.findall(r'class="kpi( ref)?"', body) == ["", " ref"] and body.count('class="chip ref">参考<') == 1
+    assert re.findall(r'class="kpi-delta tone-(\w+)"', body) == ["neutral"]
+    expect_error(one(dict(tb, summary=[{"label": "x", "value": "1", "reference": True, "accent": True}])), "kref-sum-bad", "summary の 1 個目")
+    # 色: 全テーマで 文字 4.5:1・枠 3:1・札の枠 3:1（contrast_problems が見る）。壊せば拾う
+    for n in ("default", "forest", "warm"):
+        pal = deck.palette(deck.load_theme(deck.THEMES / f"{n}.yaml"))
+        assert deck.contrast_problems(pal) == [], n
+        assert deck.ratio(pal["ref-text"], pal["ref-bg"]) >= 4.5 and deck.ratio(pal["ref-rule"], pal["ref-bg"]) >= 3.0, n
+        assert pal["ref-text"] != pal["ink"], "文字は ink より一段薄い"
+        assert deck.contrast_problems(dict(pal, **{"ref-text": pal["ref-bg"]})), "壊せば contrast_problems が拾う"
 
 
 def case_r4_line_breaks_everywhere():

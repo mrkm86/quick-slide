@@ -1697,17 +1697,19 @@ TRENDS = {"up": "▲ ", "down": "▼ ", "flat": "→ "}
 KPI_TONES = ("good", "bad", "neutral")           # 増減の評価。省けば trend から（up＝good・down＝bad・それ以外＝neutral）
 TREND_TONE = {"up": "good", "down": "bad"}
 GROUP_TONES = ("a", "b", "c")                    # カードの種類分け。順序も評価も持たない
+REFERENCE_WORD = "参考"                           # 参考のカードの札の語（固定。badge では替えない）
 GROUP_LABEL_W = 192                              # 札の語の幅の上限（badge と同じ・24B）
 DELTA_PAD_X, DELTA_PAD_Y = 16, 8                 # 増減の札（ピル）の余白
 DELTA_BORDER = 2                                 # 増減の札の枠（tone の文字色。地の淡い色だけでは札が面に消える）
 
 
 def _kpi_items(s: Slide, key: str, *, lo: int, hi: int, allow_accent: bool) -> list[dict]:
-    """kpi・要約の帯が共有する指標の検査。許可キー・必須（label・value）・trend・tone・group を確かめた items を返す。
+    """kpi・要約の帯が共有する指標の検査。許可キー・必須（label・value）・trend・tone・group・reference を確かめた items を返す。
 
     allow_accent なら accent・badge も許す（badge の規則は badge_of）。group は {label, tone}（両方必須）。強める札と group は同時に置かない。
+    reference は true だけ（参考の札を出すので、accent・group とも同時に置かない）。
     """
-    fields = ("label", "value", "unit", "delta", "trend", "note", "tone", "group") + (("accent", "badge") if allow_accent else ())
+    fields = ("label", "value", "unit", "delta", "trend", "note", "tone", "group", "reference") + (("accent", "badge") if allow_accent else ())
     its = s.items(key, lo, hi, fields, required=("label", "value"))
     for i, it in enumerate(its):
         where = f"{key} の {i + 1} 個目"
@@ -1715,6 +1717,13 @@ def _kpi_items(s: Slide, key: str, *, lo: int, hi: int, allow_accent: bool) -> l
             s.err(f"{where}の trend は up / down / flat のどれか")
         if it.get("tone") is not None and (not isinstance(it["tone"], str) or it["tone"] not in KPI_TONES):
             s.err(f"{where}の tone は {' / '.join(KPI_TONES)} のどれか")
+        if "reference" in it:
+            if it["reference"] is not True:
+                s.err(f"{where}の reference は true だけ（参考のカードにしないなら書かない）")
+            if it.get("accent"):
+                s.err(f"{where}: accent と reference は同時に書けない（強めるカードと参考のカードは両立しない）")
+            if it.get("group") is not None:
+                s.err(f"{where}: group と reference は同時に書けない（札は1枚に1つ）")
         g = it.get("group")
         if g is None:
             continue
@@ -1775,7 +1784,7 @@ def _kpi_tiles(s: Slide, its, *, key, total_width, gap, vmax, drop, height_cap, 
     n = len(its)
     cw = (total_width - gap * (n - 1)) // n
     tiles, tallest = [], 0.0
-    chips = any(it.get("accent") or it.get("group") for it in its)     # 札が1つでもあれば全部のカードに札の領域を置く（数字の上端をそろえる）
+    chips = any(it.get("accent") or it.get("group") or it.get("reference") for it in its)     # 札が1つでもあれば全部のカードに札の領域を置く（数字の上端をそろえる）
     label_hs, hs = [], []
     for role in [r for r in s.seen if r.startswith(f"{role_prefix}-")]:
         del s.seen[role]                                 # 段を下りて組み直すたびに、この役の記録は取り直す
@@ -1783,7 +1792,7 @@ def _kpi_tiles(s: Slide, its, *, key, total_width, gap, vmax, drop, height_cap, 
         where = f"{key} の {i + 1} 個目"
         label, value, unit = s.text("label", spec=it), s.text("value", spec=it), s.text("unit", spec=it)
         delta, note, trend = s.text("delta", spec=it), s.text("note", spec=it), it.get("trend")
-        hl, grp = bool(it.get("accent")), it.get("group")
+        hl, grp, ref = bool(it.get("accent")), it.get("group"), it.get("reference") is True
         edge = 2 * (pad + (4 if hl else BORDER))        # カードの上下（と左右）の余白と枠の合計
         iw = cw - edge
         ls, ln = s.fit(f"{role_prefix}-label", label, step_down(s.g(28, 36), drop, 24), iw, what=f"{where}の label", lines=2, lh=1.5, min_size=24, bold=True)
@@ -1799,7 +1808,8 @@ def _kpi_tiles(s: Slide, its, *, key, total_width, gap, vmax, drop, height_cap, 
         h = edge + ln * ls * 1.5 + 16 + vs * (1.0 if vs >= 96 else 1.4)
         vlh = 1.0 if vs >= 96 else 1.4
         badge = badge_of(s, it, hl, where)          # 強める指標は札（badge か「注目」）を頭に
-        tag = chip(badge) if badge else (chip(grp["label"].strip(), f"group group-{grp['tone']}") if grp else "")   # 種類の札は必ず出す
+        tag = chip(badge) if badge else (chip(grp["label"].strip(), f"group group-{grp['tone']}") if grp
+                                         else chip(REFERENCE_WORD, "ref") if ref else "")   # 種類・参考の札は必ず出す
         if chips:
             tag = tag or f'<div style="height:{CHIP_H + 16}px; flex:none"></div>'     # 札のないカードにも同じ高さの空き
             h += CHIP_H + 16
@@ -1810,7 +1820,7 @@ def _kpi_tiles(s: Slide, its, *, key, total_width, gap, vmax, drop, height_cap, 
         if delta:
             d = TRENDS.get(trend, "") + delta
             ds, _ = s.fit(f"{role_prefix}-delta", d, step_down(s.g(28, 36), drop, 24), iw - 2 * (DELTA_PAD_X + DELTA_BORDER), what=f"{where}の delta", lines=1, lh=1.5, min_size=24, bold=True)
-            tone = it.get("tone") or TREND_TONE.get(trend, "neutral")
+            tone = "neutral" if ref else it.get("tone") or TREND_TONE.get(trend, "neutral")     # 参考の増減は退いた色（灰）にそろえる
             inner += f'<div class="kpi-delta tone-{tone}" style="font-size:{ds}px">{esc(d)}</div>'
             h += 16 + ds * 1.5 + 2 * (DELTA_PAD_Y + DELTA_BORDER)
         if note:
@@ -1819,7 +1829,7 @@ def _kpi_tiles(s: Slide, its, *, key, total_width, gap, vmax, drop, height_cap, 
             h += 8 + nn * ns * 1.5
         hs.append(h)
         tallest = max(tallest, h)
-        cls = "kpi" + (" hl" if hl else "") + (f" group-{grp['tone']}" if grp else "")
+        cls = "kpi" + (" hl" if hl else "") + (f" group-{grp['tone']}" if grp else "") + (" ref" if ref else "")
         tiles.append((cls, cw, inner, i, hl))
         if tallest > height_cap:
             break
