@@ -110,6 +110,13 @@ class DisplayedKeysTests(unittest.TestCase):
         for where in ("rows[0][1].text", "legend[0].text"):
             self.assertTrue(any(where in ln for ln in found), (where, found))
 
+    def test_footnote_is_checked(self) -> None:
+        self.assertIn("footnote", jlint.VISIBLE_KEYS)
+        slide = {"id": "p-fn", "type": "table", "headline": "表", "columns": ["品目", "数"], "rows": [["a", "1"]], "source": "出典", "footnote": "✅ ※1 補足"}
+        found = jlint.check([slide]).ng
+        self.assertEqual(len(found), 1, found)
+        self.assertTrue(any("footnote" in ln for ln in found), found)
+
     def test_table_summary_cards_are_checked(self) -> None:
         self.assertIn("summary", jlint.VISIBLE_KEYS)
         slide = {"id": "p-ts", "type": "table", "headline": "表", "columns": ["品目", "数"], "rows": [["a", "1"]],

@@ -25,7 +25,7 @@ THEMES = SKILL / "themes"
 
 TOP_KEYS = {"title", "theme", "mode", "footer", "page_numbers", "outline", "slides"}
 COMMON_KEYS = {"type", "talk", "transition", "steps", "fx", "id", "role"}
-HEAD_KEYS = {"kicker", "headline", "sub", "source"}
+HEAD_KEYS = {"kicker", "headline", "sub", "source", "footnote"}
 THEME_KEYS = {"background", "ink", "primary", "accent", "muted", "surface", "font", "font_files"}
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 
@@ -34,7 +34,7 @@ TYPES = {
     "cover": ({"label", "title", "subtitle", "meta", "image", "layout", "text_side", "tone", "motif"}, False, ("title",)),
     "agenda": (HEAD_KEYS | {"items", "highlight"}, True, ("items",)),
     "section": ({"number", "label", "title", "subtitle", "image", "layout", "text_side", "tone", "motif"}, False, ("title",)),
-    "statement": ({"kicker", "headline", "body", "source"}, True, ("headline",)),
+    "statement": ({"kicker", "headline", "body", "source", "footnote"}, True, ("headline",)),
     "big-number": (HEAD_KEYS | {"value", "unit", "label", "note", "side"}, True, ("headline", "value")),
     "cards": (HEAD_KEYS | {"items"}, True, ("headline", "items")),
     "flow": (HEAD_KEYS | {"items"}, True, ("headline", "items")),
@@ -42,7 +42,7 @@ TYPES = {
     "bar-chart": (HEAD_KEYS | {"bars", "unit", "note", "max", "callout"}, True, ("headline", "bars")),
     "table": (HEAD_KEYS | {"columns", "rows", "highlight", "widths", "align", "dim_rows", "legend", "summary"}, True, ("headline", "columns", "rows")),
     "photo": ({"image", "layout", "split", "kicker", "headline", "body", "caption", "hide_text"}, False, ("headline",)),
-    "quote": ({"quote", "by", "position", "kicker", "source", "layout", "image"}, True, ("quote",)),
+    "quote": ({"quote", "by", "position", "kicker", "source", "footnote", "layout", "image"}, True, ("quote",)),
     "bullets": (HEAD_KEYS | {"items", "image", "side", "split"}, True, ("headline", "items")),
     "timeline": (HEAD_KEYS | {"items", "current"}, True, ("headline", "items")),
     "closing": (HEAD_KEYS | {"items", "contact", "image"}, True, ("headline",)),

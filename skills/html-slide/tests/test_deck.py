@@ -2036,6 +2036,49 @@ def case_table_align():
         expect_error(one(dict(base, align=bad)), n, msg)
 
 
+def case_footnote():
+    """footnote: source の下の1行・source が無ければ source の位置・脚注の分だけ中身の下端と帯が上がる・入らなければ rc=2・書かない台本は今のまま。"""
+    src, fn = "定義の1行", "※1 補足の1行"
+    tbl = {"type": "table", "headline": "h", "columns": ["a", "b"], "rows": [["1", "2※1"], ["3", "4"]]}
+    tops = lambda sc, name: [int(v) for v in re.findall(r'class="source[^"]*" style="top:(\d+)px', _secs(build(one(sc), name)[0])[0])]
+    both = _secs(build(one(dict(tbl, source=src, footnote=fn)), "fn-both")[0])[0]
+    assert re.findall(r'class="source( footnote)?"[^>]*data-name="(出典|脚注)">([^<]*)<', both) == [("", "出典", src), (" footnote", "脚注", fn)], "出典 → 脚注の順"
+    t_both = tops(dict(tbl, source=src, footnote=fn), "fn-both")
+    assert t_both[1] - t_both[0] == T.FOOT_H, f"脚注は source の1行下: {t_both}"
+    assert tops(dict(tbl, footnote=fn), "fn-only") == [t_both[0]], "脚注だけなら source の位置"
+    # 型ごと: source の下に1行・下端の文字（1008〜）と重ならない
+    types = {
+        "kpi": {"items": [{"label": "売上", "value": "1"}, {"label": "件数", "value": "2"}, {"label": "解約", "value": "3"}]},
+        "bar-chart": {"bars": [{"label": "東", "value": 4}, {"label": "西", "value": 3}]},
+        "line-chart": {"labels": ["1月", "2月", "3月"], "series": [{"name": "東", "values": [1, 2, 3]}]},
+        "bullets": {"items": [{"title": "a", "body": "b"}, {"title": "c", "body": "d"}]},
+        "statement": {"body": "本文"},
+        "quote": {"quote": "引用"},
+    }
+    for ty, body in types.items():
+        sc = dict(body, type=ty, source=src, footnote=fn)
+        if ty not in ("quote",):
+            sc.setdefault("headline", "h")
+        t_ = tops(sc, f"fn-{ty}")
+        assert len(t_) == 2 and t_[1] - t_[0] == T.FOOT_H and t_[1] + T.FOOT_H <= 1008, f"{ty}: {t_}"
+        plain = tops({k: v for k, v in sc.items() if k != "footnote"}, f"fn-{ty}-plain")
+        assert t_[0] == plain[0] - T.FOOT_H, f"{ty}: 脚注の分だけ source が上がる: {t_} {plain}"
+        only = tops({k: v for k, v in sc.items() if k != "source"}, f"fn-{ty}-only")
+        assert only == plain, f"{ty}: 脚注だけの top は source だけの top と同じ: {only} {plain}"
+    # 書かない台本は旧版と同じ
+    plain = _secs(build(one(dict(tbl, source=src)), "fn-plain")[0])[0]
+    assert "footnote" not in plain and tops(dict(types["bullets"], type="bullets", headline="h", source=src), "fn-plain") == [T.BODY_BOTTOM + 8], "書かない台本: source は今までの位置（BODY_BOTTOM + 8）で脚注の部品が無い"
+    # takeaway・summary・legend と併用して入らなければ rc=2（縮める所を言う）
+    many = dict(tbl, rows=[[str(i), "x"] for i in range(7)], summary=[{"label": "平均", "value": "1"}],
+                legend=[{"tone": "good", "text": "良"}], takeaway="結論", source=src, footnote=fn)
+    expect_error(one(many), "fn-over", "rows を減らす", "footnote")
+    # 1行に入らなければ縮めず rc=2（source と同じ扱い）・文字でなければ rc=2
+    expect_error(one(dict(tbl, footnote="※" * 200)), "fn-long", "footnote")
+    expect_error(one(dict(tbl, footnote=["※1"])), "fn-list", "footnote")
+    # 見出しを持たない型（cover など）では書けない
+    expect_error(one({"type": "cover", "title": "t", "footnote": fn}), "fn-cover", "知らないキー")
+
+
 def case_table_tone_dim_legend():
     """table のセルの tone・dim_rows・legend: 地と文字色の class・退かせた行は tone を外す・凡例は表と source の間・誤りは位置付きで rc=2。"""
     base = {"type": "table", "headline": "h", "columns": ["a", "b", "c"], "rows": [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]}
