@@ -78,6 +78,7 @@ if $PY -c "import playwright" 2>/dev/null; then
     echo "  - ffmpeg が無いので動画の試験は飛ばす"
   fi
   run "雛形の全拍: NG 0・警告 0"                 bash -c "$PY '$SK/scripts/check.py' '$TMP/ok/index.html' --out '$TMP/ok/check' --wait 1600 | tail -1 | grep -q 'NG 0 ・ 警告 0'"
+  run "埋め込み API v1: iframe で ready→change→end・命令・不正の無視・別フレーム・単独表示は発信しない・通信経路に storage/location/history なし" $PY "$SK/tests/embed_check.py" "$TMP/ok/index.html" "$TMP/embed"
   run "inspect.md に拍ごとの文字と台本が入る"     bash -c "grep -q '## s3 値がマスへ飛ぶ' '$TMP/ok/check/inspect.md' && grep -q '話す台本: 値が飛んで' '$TMP/ok/check/inspect.md'"
 else
   echo "  - playwright が無いので全拍の検査は飛ばす"

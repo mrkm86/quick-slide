@@ -8,6 +8,7 @@
               （--strict で警告も NG。わざと重ねる要素には data-overlap-ok を付ける）
 --reuse は撮り済みの拍の記録（check.json と同じ形の配列）。その拍の画像は <out>/beats/ に置いてあるものとして、撮らずに記録へ混ぜる
   （--only で撮る場面を絞り、それ以外を --reuse で渡すと、場面ごとのキャッシュになる。--only "" なら Chrome を起動しない）
+埋め込み（iframe）: 画面外の親ページに sandbox="allow-scripts" の iframe で開き、ready → change → end の通知と next・prev・goto・request-state を確かめる（NG は「NG JS: 埋め込み API: …」の行）。--only "" なら飛ばす
 出力: <out>/beats/sNN-bM.png ・ <out>/sheet-sNN.png（場面ごとの一覧）・ <out>/check.json ・ <out>/inspect.md（検品役が読む写し）
 """
 import argparse, asyncio, json, pathlib, sys
@@ -87,9 +88,82 @@ def order(item):   # 場面の番号・拍の番号の順
     return int(s), int(b)
 
 
+PARENT = """<!doctype html><meta charset="utf-8"><iframe id="f" sandbox="allow-scripts" style="width:1920px;height:1080px;border:0"></iframe>"""
+LISTEN = "(h) => { window.LOG = []; const f = document.getElementById('f'); window.addEventListener('message', e => { if (e.source === f.contentWindow) LOG.push(e.data); }); f.srcdoc = h; }"
+SEND = "(m) => document.getElementById('f').contentWindow.postMessage(Object.assign({ namespace: 'motion-slide', version: 1 }, m), '*')"
+
+
+def expected_beats(text):
+    """組んだ HTML の場面ごとの拍数。画面のコードを通さず <section class="scene"> の data-beats から数える（通知の自己申告と比べるため）"""
+    out = []
+    for tag in __import__("re").findall(r'<section\b[^>]*\bclass="scene"[^>]*>', text):
+        m = __import__("re").search(r'data-beats="(\d+)"', tag)
+        out.append(int(m.group(1)) if m else 1)
+    return out
+
+
+async def embed_check(pg, html):
+    """HTML を親ページの iframe（sandbox="allow-scripts"）で開き、埋め込み API v1 の通知と命令を確かめる。NG の文の配列を返す。
+    期待する通知（場面・拍・index・total・end・namespace・version・件数と順序）は台本の拍数から作り、届いた通知の全部と完全に比べる"""
+    text = html.read_text(encoding="utf-8")
+    beats = expected_beats(text)
+    total = sum(beats)
+    pos = [(s, b) for s, n in enumerate(beats) for b in range(n)]
+    V1 = {"namespace": "motion-slide", "version": 1}
+    ready = {**V1, "type": "ready", "scenes": len(beats), "beats": total}
+    change = lambda i: {**V1, "type": "change", "scene": pos[i][0], "beat": pos[i][1], "index": i, "total": total}
+    end = {**V1, "type": "end", "total": total}
+    arrive = lambda i: [change(i)] + ([end] if i == total - 1 else [])
+    ng = []
+    await pg.set_content(PARENT)
+    await pg.evaluate(LISTEN, text)
+    try:
+        await pg.wait_for_function("window.LOG.length >= 2", timeout=8000)
+    except Exception:
+        return ["iframe に入れても ready・change が親へ届かない"]
+    await pg.wait_for_timeout(250)
+
+    async def act(m, ms=250):
+        n = len(await pg.evaluate("LOG"))
+        await pg.evaluate(SEND, m); await pg.wait_for_timeout(ms)
+        return (await pg.evaluate("LOG"))[n:]
+
+    want = [ready, change(0)] + ([end] if total == 1 else [])
+    if await pg.evaluate("LOG") != want:
+        return [f"起動の通知が期待（ready → change 0{' → end' if total == 1 else ''}）と違う: {await pg.evaluate('LOG')}"]
+    nxt = {**V1, "type": "command", "name": "next"}
+    for i in range(1, total):
+        got = await act(nxt); want += arrive(i)
+        if got != arrive(i):
+            ng.append(f"next で {i} 拍目へ進んだときの通知が期待と違う: {got}")
+            return ng
+    if await act(nxt):
+        ng.append("最後の拍で next を送ると通知が出た")
+    if total > 1:
+        got = await act({**V1, "type": "command", "name": "prev"}); want += [change(total - 2)]
+        if got != [change(total - 2)]:
+            ng.append(f"prev で戻ったときの通知が期待と違う: {got}")
+        got = await act({**V1, "type": "command", "name": "goto", "index": total - 1}); want += arrive(total - 1)
+        if got != arrive(total - 1):
+            ng.append(f"末尾へ戻ったとき end を再発信しない: {got}")
+    got = await act({**V1, "type": "request-state"}); want += [ready, change(total - 1)]
+    if got != [ready, change(total - 1)]:
+        ng.append(f"request-state の返答が ready → change でない（end を再発信してはいけない）: {got}")
+    got = await act({**V1, "type": "command", "name": "goto", "index": 0}); want += [change(0)]
+    if got != [change(0)]:
+        ng.append(f"goto 0 の通知が期待と違う: {got}")
+    if await pg.evaluate("LOG") != want:
+        ng.append("届いた通知の全部が期待の列（件数・順序・フィールド・namespace・version）と一致しない")
+    return ng
+
+
+embed_ng = []   # 埋め込み検査の NG の行（shoot が埋める）
+
+
 async def shoot(a, html, out, only):
     """only の場面（None なら全部）の拍を撮って、拍ごとの記録の配列を返す。only が空なら Chrome を起動しない"""
     report = []
+    embed_ng.clear()
     if only is not None and not only:
         return report
     from playwright.async_api import async_playwright
@@ -115,6 +189,10 @@ async def shoot(a, html, out, only):
                 await pg.screenshot(path=str(out / "beats" / f"{name}.png"))
                 e_now = list(errs); errs.clear()
                 report.append({"beat": name, "id": sc["id"], "title": sc["title"], "errors": e_now, **r})
+        if only is None or only:
+            first = scenes[0]["id"] if scenes else "?"
+            for m in await embed_check(await b.new_page(viewport={"width": 1920, "height": 1080}), html):
+                embed_ng.append(f"s01-b1 {first} NG JS: 埋め込み API: {m}")
         await b.close()
     return report
 
@@ -132,6 +210,8 @@ async def main(a):
         for k, tag in EMIT:
             for v in item[k]:
                 print(f"{item['beat']} {item['id']} {tag}: {v}")
+    for ln in embed_ng:
+        print(ln); ng += 1
     finish(out, html, report, ng, warn)
     print(f"拍 {len(report)} ・ NG {ng} ・ 警告 {warn} ・ 画像 {out}")
     return 2 if ng or (a.strict and warn) else 0

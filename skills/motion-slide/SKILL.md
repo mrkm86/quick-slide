@@ -55,6 +55,10 @@ NG は stderr の `NG: N枚目（id s3）: …`。rc は 0 / 2（台本の誤り
 `deck --no-shoot` は形の検査と `index.html` の組み立てだけで Chrome を起動しない（1 秒前後。`slides/`・`thumbs.png`・`inspect.md`・`check/` は前の回のまま。stdout に `pictures: not-taken`・`build.json` の `pictures.taken` が false）。非表示・並べ替えのあとの組み直し用。詳しくは [`docs/adr/0004-scene-shot-cache-and-no-shoot.md`](docs/adr/0004-scene-shot-cache-and-no-shoot.md)。
 この経路は html-slide の `check` / `deck` と同じ口（`--script` `--out` `--theme` `--logo` `--format` など。`--style` ほか motion-slide に無い引数は読み飛ばす）。PPTX・PDF は作らない。
 
+## 埋め込み API v1（iframe に置くとき）
+
+HTML 1枚を親ページの iframe（`sandbox="allow-scripts"` でよい）に置くと、画面が拍の位置を親へ `postMessage` で知らせ、親から `next`・`prev`・`goto` を指示できる。拍が単位で、番号は 0 始まり。単独で開いたとき（親が自分自身）は何も発信せず、キー・クリック・自動再生などは従来どおり。**新しいエンジンで組み直した HTML だけ**が発信する（古い HTML は黙るので、親は通知が来ない場合を扱う）。親は受信時に `event.source` が対象 iframe の `contentWindow` と一致することを確かめる。形・順序・命令の検証規則は `references/deck-format.md`「埋め込み API v1」。台本には何も書かない。
+
 ## 構成
 
 | パス | 中身 |
