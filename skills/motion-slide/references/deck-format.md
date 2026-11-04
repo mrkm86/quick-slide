@@ -83,6 +83,25 @@
 共通の `script`・`style`・`stage` は HTML に直に入るので、`</script`・`<!--` は逃がし、`</style` は NG にする。
 **ブラウザの CSP**: 発表の画面で場面の hook・script を動かすには `script-src` に `'unsafe-eval'` が要る（`new Function` を使うため）。
 
+## 埋め込み API v1（親ページとの通信。台本には書かない）
+
+組んだ HTML をページの iframe に置いたときだけ働く、エンジンの `postMessage` 仕様（`docs/adr/0005`）。`window.parent === window`（単独表示）では発信も受信もしない。台本 JSON の形式は変わらない。
+
+**共通**: メッセージは平坦なオブジェクトで、`namespace` は `"motion-slide"`・`version` は数値の `1`。値は固定の名前と数値だけ（題・本文・場面 id は載せない）。画面は `window.parent.postMessage(message, '*')` で発信する（不透明なオリジンの iframe からは親のオリジンを決められないため）。**番号はすべて 0 始まり**で、単位は拍。`index` は全場面を通した拍番号、`scene` は場面の番号、`beat` はその場面の中の番号。画面の `1 / N` 表示とハッシュの表記は変えない。
+
+| 方向 | 形 | いつ |
+|---|---|---|
+| 画面 → 親 | `{type:"ready", scenes, beats}` | 起動時と、`request-state` を受けたとき。`beats` は総拍数 |
+| 画面 → 親 | `{type:"change", scene, beat, index, total}` | 起動時と、位置が実際に変わったとき（`total` は `beats` と同じ） |
+| 画面 → 親 | `{type:"end", total}` | 最後の拍に入ったとき（初期位置が最後でも）。離れて再び入ればまた届く |
+| 親 → 画面 | `{type:"command", name:"next"}` / `"prev"` | 1 拍進める／戻す |
+| 親 → 画面 | `{type:"command", name:"goto", index}` | 通しの拍番号へ移る |
+| 親 → 画面 | `{type:"request-state"}` | 全体数と現在位置を問い合わせる（移動しない） |
+
+**順序**: 起動は `ready` → `change` →（最後の拍なら）`end`。`request-state` の返答は `ready` → 現在位置の `change`（`end` は再発信しない）。最後の拍の `next`・先頭の `prev`・同じ `index` への `goto`・同じ拍の描き直しでは、`change`・`end` を重ねない。`end` は末尾に入ったという出来事で、自動再生の終わりではない。
+
+**受信の検証**: `event.source` が親と一致、`data` が配列でも null でもないオブジェクト、`namespace` が完全一致、`version === 1`、既知の `type`・`name`。`goto.index` は整数で `0 <= index < total`（文字列・小数・範囲外は無視。丸めない）。外れたメッセージは例外も応答もなく捨てる。`event.origin` では判定しない。通信の経路で storage・`location`・`history` は読まず書かない。親の命令（`next`・`prev`・`goto`）による移動では、単独表示で行っている URL のハッシュ更新も行わない（履歴に触れない）。
+
 ## 検査（`check` / `deck`）
 
 `motion_slide.py check` は、形の検査（Chrome なし・`--quick` ならここまで）→ 組み立て → 全部の拍を Chrome で開く検査、の順。拍の絵・検査の記録は場面ごとにキャッシュされ、鍵（場面の中身・共通部・テーマ・ロゴ・エンジン・`--wait`・場面の番号と総数・ここまでの言葉・章のレール）が同じ場面は撮り直さない（`docs/adr/0004`）。`deck --no-shoot` は Chrome を使わず組み立てだけ。NG は `NG: N枚目（id s3）: …` で、直し方まで書く。主なもの:
@@ -93,6 +112,7 @@
 | HTML | 閉じ忘れ・閉じすぎ・`html`・`stage` に禁止のタグ（`<SCRIPT>` も）・閉じていない `<!--`・要素の `id` が場面をまたいで重なる |
 | 場面の中で閉じる | `hook`/`script`/`style` が別の場面の `#id`・要素の id（`getElementById`・`querySelector`・`$`・`x.table`・`x.cell`・`x.wire`・`x.hand`。空白・コメントをはさんでも見る）・`MS.go(別の番号)` を引く・`style` の規則が `#<id>` で始まらない／`~` `+` `:has()` で外へ出る |
 | JS | `hook`/`script` はエンジンと同じ `new Function` の文法検査・共通 `script` は `node --check`（`node` があるとき） |
+| 埋め込み（Chrome） | iframe（`sandbox="allow-scripts"`）に入れて全拍を `next` で進めたとき、`ready`・`change`・末尾の `end` が仕様どおり届かない（`NG JS: 埋め込み API: …`） |
 | 全拍（Chrome） | JS のエラー・舞台の外へのはみ出し・文字が切れる（NG）／重なり・道しるべとの重なり・泣き別れ・パッと出る（警告。`--strict` で NG） |
 
 見た目の確認（`slides/slide-NN.png`・`thumbs.png`・`check/sheet-sNN.png`）は目で見る。検査は図が意味を伝えているかを見ない。

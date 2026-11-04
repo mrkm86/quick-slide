@@ -235,8 +235,39 @@
     const ctx = { prev, fwd, step: S === prev.S && B === prev.B + 1, later, every, sfx, rel, wire, hand, fly, countUp, table, cell, scene: el };
     if (HOOKS[el.id]) try { HOOKS[el.id](b, ctx); } catch (e) { console.error(`hook ${el.id}`, e); }
     chrome();
-    history.replaceState(null, "", `#${S + 1}.${B + 1}`);
+    if (!quiet) try { history.replaceState(null, "", `#${S + 1}.${B + 1}`); } catch (e) { /* 不透明なオリジンの iframe では URL を書き換えられない */ }
+    notify();
     if (playing) { clearTimeout(playT); playT = setTimeout(next, sc.dur[B] || CFG.dur); bgmSync(); }
+  }
+  // ── 埋め込み API v1（iframe の中だけ。親へ位置を知らせ、親から next・prev・goto を受ける。仕様は references/deck-format.md） ──
+  const EM = window.parent !== window ? window.parent : null;
+  let sentI = -1, quiet = false;   // quiet: 親の命令で動くとき true（その移動では URL のハッシュに触れない）
+  const nBeats = () => scenes.reduce((a, x) => a + x.beats, 0), at = () => scenes.slice(0, S).reduce((a, x) => a + x.beats, 0) + B;
+  const post = m => { try { EM.postMessage({ namespace: "motion-slide", version: 1, ...m }, "*"); } catch (e) { /* 発信できなくても画面は止めない */ } };
+  const where = () => post({ type: "change", scene: S, beat: B, index: sentI = at(), total: nBeats() });
+  const ready = () => post({ type: "ready", scenes: scenes.length, beats: nBeats() });
+  function notify() {
+    if (!EM || at() === sentI) return;
+    where(); if (sentI === nBeats() - 1) post({ type: "end", total: nBeats() });
+  }
+  function listen() {
+    addEventListener("message", e => {
+      try {
+        const d = e.data;
+        if (e.source !== EM || !d || typeof d !== "object" || Array.isArray(d) || d.namespace !== "motion-slide" || d.version !== 1) return;
+        if (d.type === "request-state") { ready(); where(); }
+        else if (d.type === "command") {
+          const i = d.index;
+          quiet = true;
+          try {
+            if (d.name === "next") next(); else if (d.name === "prev") prev();
+            else if (d.name === "goto" && Number.isInteger(i) && i >= 0 && i < nBeats() && i !== at()) {
+              let s = 0, r = i; while (r >= scenes[s].beats) r -= scenes[s++].beats; go(s, r);
+            }
+          } finally { quiet = false; }
+        }
+      } catch (err) { /* 不正なメッセージは黙って捨てる */ }
+    });
   }
   function go(s, b) { S = Math.max(0, Math.min(scenes.length - 1, s)); B = Math.max(0, Math.min(scenes[S].beats - 1, b)); apply(); }
   function next() { if (B < scenes[S].beats - 1) go(S, B + 1); else if (S < scenes.length - 1) go(S + 1, 0); else setPlay(false, true); }
@@ -317,7 +348,9 @@
     ["pointerdown", "keydown"].forEach(ev => addEventListener(ev, () => audio(), { once: true }));
     stage.addEventListener("click", e => { if (e.target.closest("button,input,select,textarea,label,a,.live-zone,#ms-ov")) return; next(); });
     const m = location.hash.match(/^#(\d+)\.(\d+)$/);
+    if (EM) ready();
     go(m ? +m[1] - 1 : 0, m ? +m[2] - 1 : 0);
+    if (EM) listen();
   }
 
   // 効果音を1つ、音のデータ（44.1kHz・モノラル）にする。動画に音を重ねるときに使う（SFX.log の t の時刻に置く）
