@@ -246,6 +246,25 @@ def variants() -> list[dict]:
                     "takeaway": "3つを同時に始める"}, "アイコン・締めの帯"),
         V("bullets", {"headline": "現場へのお願いは**3つだけ**", "items": [{"icon": "calendar", "title": "予定表に議題を書く"},
                       {"icon": "clock", "title": "30分で閉じる"}, {"icon": "chat", "title": "週1回の3問に答える"}]}, "アイコン"),
+        V("cards", {"headline": "試行は、**ルール3**から始めて、1週ずつ足していく", "layout": "lead", "items": [
+            {"icon": "check", "label": "最初の1週", "title": "決めたら、その場で閉じる", "body": "いちばん効くルール。最後の3分で、決定・担当・期限だけを書く", "accent": True},
+            {"label": "2週目から", "title": "議題は前日までに出す", "body": "予定表に1行で書く"},
+            {"label": "3週目から", "title": "25分を基本にする", "body": "会議室の予約を25分に変える"}]}, "主役を左に大きく"),
+        V("summary", {"headline": "3つのルールで、会議の時間を**半分**にできる", "layout": "lead", "points": [
+            {"value": "週11.5時間", "title": "会議は1人あたり週11.5時間まで増えた", "body": "3年で1.4倍"},
+            {"value": "3つ", "title": "ルールは3つで足りる"}, {"value": "4週", "title": "先に試したチームは半分以下になった"}]}, "主役を左に大きく"),
+        V("layers", {"headline": "議題から集計まで、会議の記録は**1本の流れ**でつながる", "rows": [
+            {"label": "現場", "items": [{"id": "a", "title": "議題メモ", "body": "前日までに1行で"},
+                                      {"id": "m", "title": "25分の会議", "body": "その場で決めて閉じる", "accent": True},
+                                      {"id": "n", "title": "3行の記録", "body": "決定・担当・期限"}]},
+            {"label": "事務局", "items": [{"id": "s", "title": "集計表", "body": "会議の時間を記録", "col": 2},
+                                        {"id": "r", "title": "週の報告", "body": "毎週金曜に共有", "col": 3}]}],
+            "links": [{"from": "a", "to": "m", "label": "前日"}, {"from": "m", "to": "n", "label": "終了時", "accent": True},
+                      {"from": "n", "to": "s", "label": "その日のうちに"}, {"from": "s", "to": "r", "label": "毎週"}]}, "2層・矢印に名札"),
+        V("layers", {"headline": "申請は、申込から承認まで**3つの箱**を通る", "rows": [
+            {"items": [{"id": "a", "title": "申込", "body": "フォームに入力"}, {"id": "b", "title": "確認", "body": "担当が確かめる"},
+                       {"id": "c", "title": "承認", "body": "部長が決裁", "accent": True}]}],
+            "links": [{"from": "a", "to": "b"}, {"from": "b", "to": "c", "accent": True}]}, "1層・名札なし"),
     ]
     return out
 

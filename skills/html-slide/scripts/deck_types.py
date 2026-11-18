@@ -2736,7 +2736,7 @@ def t_layers(s: Slide):
             n.update(x=x0 + (n["col"] - 1) * (nw + cg), y=by + (bh - nh) / 2, hl=hl)
             icon = icon_of(s, it, n["where"])
             icon = icon if nw >= 400 else None                              # 狭い箱にはアイコンを置かない（文字の幅を優先する）
-            edge = 2 * (20 + (4 if hl else BORDER))
+            edge = 2 * (24 + (4 if hl else BORDER))      # 雛形の .dg-node の左右の余白 24 と枠
             tw = nw - edge - (72 + 16 if icon else 0)
             inner, room = "", nh - 2 * (12 + (4 if hl else BORDER))
             kicker, body = s.text("label", spec=it), s.text("body", spec=it)
