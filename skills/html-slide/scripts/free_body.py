@@ -59,6 +59,7 @@ SURFACES = {
              "pop": "tone-warn-text", "on-pop": "tone-warn-bg", "off": "bg"},
 }
 BOX_KINDS = ("fill", "deep", "accent", "good", "bad", "warn")
+OFFS = ("mark-off", "deep-off", "fill-off", "pop-off")      # マスの「塗っていない側」の候補（地に近い薄い面）
 # style で地の色を直に書いたとき、その地を面として読む（上の文字の既定の色を決める）
 BG_SURFACE = {"bg": "page", "primary-soft": "soft", "accent-soft": "soft", "primary-fill": "fill", "accent-fill": "accent", "deep": "deep"}
 
@@ -161,11 +162,11 @@ class _Parser(HTMLParser):
 def parse(body: str) -> Node:
     p = _Parser()
     p.feed(body)
-    p.close()
-    m = re.search(r"<[A-Za-z/!?][^<>]*$", body)          # 末尾の閉じていないタグは、解析器が黙って捨てる。解析のあとで確かめて止める
+    # 末尾の閉じていないタグ（属性の値の中に > があるものも）は、close() が黙って捨てる。読み残しを先に見て止める
+    m = re.search(r"<[A-Za-z/!?].*", p.rawdata, re.S)
     if m:
-        line = body.count("\n", 0, m.start()) + 1
-        raise FreeError(f"body の {line} 行目: タグ「{m.group(0)[:20]}」が > で閉じていない")
+        raise FreeError(f"body の末尾: タグ「{m.group(0)[:20]}」が > で閉じていない")
+    p.close()
     if len(p.stack) > 1:
         raise FreeError(f"body: <{p.stack[-1].tag}>（{p.stack[-1].line} 行目）が閉じていない")
     if not p.root.kids:
@@ -432,12 +433,18 @@ class _Render:
         gap = 8 if cols <= 10 else 4
         css = {k: v for k, v in st.items() if k in keep}
         css.update({"grid-template-columns": f"repeat({cols}, 1fr)", "gap": f"{gap}px"})
-        # 塗った側は、地の上で 3:1・塗っていない側とも 3:1 離れる色。塗っていない側は、地に近い薄い面（数は文字と data-name でも伝える）
-        hot = self.pick(bg, (s["pop"], s["mark"], s["strong"], s["text"]), apart=s["off"])
+        # 塗った側は、地の上で 3:1・塗っていない側とも 3:1 離れる色。塗っていない側は、地に近い薄い面（数は文字と data-name でも伝える）。
+        # style で地の色を書いた箱の中では、面の既定の組が合わないことがあるので、塗っていない側も候補から選び直す
+        near = lambda a, b: ratio(self.pal[a], self.pal[b]) < SHAPE_CONTRAST - 1e-9
+        pair = next(((h, o) for o in dict.fromkeys((s["off"], *OFFS)) for h in dict.fromkeys((s["pop"], s["mark"], s["strong"], s["text"]))
+                     if not near(h, bg) and not near(h, o) and near(o, bg)), None)
+        if pair is None:
+            raise FreeError(f"body の {node.line} 行目: f-cells の塗った側と塗っていない側を、地の色 --{bg} の上で見分けられる色の組が無い（マスを面の箱か、別の地に置く）")
+        hot, off = pair
         cell = lambda c: f'<div class="f-cell" style="background-color: {_var(c)};"></div>'
         self.parts += total
         mo = self.motion(node, f"マス（{total} のうち {on}）")
-        return f'<div class="f-cells" style="{_css(css)}"{mo}>' + cell(hot) * on + cell(s["off"]) * (total - on) + "</div>"
+        return f'<div class="f-cells" style="{_css(css)}"{mo}>' + cell(hot) * on + cell(off) * (total - on) + "</div>"
 
     def bars(self, node: Node, st: dict, surf: str, bg: str) -> str:
         keep = ("width", "height", "flex", "gap", "align-self", "margin", *LENGTH_SIDES[4:])
@@ -459,6 +466,11 @@ class _Render:
         cols, names = [], []
         for b, label in zip(bars, labels):
             self.classes(b)
+            if label is not None:                            # 棒の上の数は 1 行・同じ大きさ（高さが列ごとに違うと、棒を描く高さがずれて尺度が狂う）
+                if label.attrs:
+                    raise FreeError(f"body の {b.line} 行目: 棒の上の数の <b> に {'・'.join(sorted(label.attrs))} は書けない（<b>数</b> とだけ書く）")
+                if any(k.tag != "#text" for k in label.kids):
+                    raise FreeError(f"body の {b.line} 行目: 棒の上の数の <b> の中は文字だけ（<br>・<span> は書けない）")
             self.only(b, "f-bar", ("data-value",))
             v = _num(b, "data-value")
             if v > vmax:

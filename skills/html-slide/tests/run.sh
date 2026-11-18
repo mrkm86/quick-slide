@@ -179,6 +179,9 @@ deck "色の面の上の強調の語と出典は面の上の色・layers の矢�
 deck "自由なページ（free）の解析器: 許した要素・属性・CSS だけ・色の組・部品の値の範囲。外れたら理由つきで rc=2" free_parser
 deck "自由なページの組み: 枠は型と同じ部品・面ごとの文字の色・アイコン・マス・棒・箱の縁の札・クリックの段・handout・steps: false・警告" free_render
 deck "自由なページの描き出しの検査（Chrome）: 箱の外は rc=2・下の空きは警告・画像だけの出力でも止まる" free_chrome
+deck "自由なページの部品: 段と名前が残る・入れ子と読まない属性は rc=2・図形の色は地の上で 3:1・マスは見分けられる組・棒の数は中身に残る" free_parts
+deck "自由なページの棒の尺度（Chrome）: 同じ値の棒は、名前の行数・上の数の長さが違っても同じ高さ" free_bars_scale
+deck "入らなくて組み直すとき、入らなかった試しの警告・段・画像の枠を残さない" retry_restores_state
 deck "色の役（primary-fill・accent-fill・deep・deep-pop）: 3つのテーマと黄・淡い黄・紺の主役の色で文字が 4.5:1" color_roles
 
 # --- レビューモード（ADR 0028） ---

@@ -3053,6 +3053,11 @@ def case_free_parts():
         "棒の数が片方だけ": ('<div class="f-bars" data-max="10"><div class="f-bar" data-value="7"><b>7</b>a</div><div class="f-bar" data-value="3">b</div></div>', "全部の f-bar"),
         "閉じていないタグ": ("<div>本文</div><script", "閉じていない"),
         "閉じていない div": ("<div>本文</div><div", "閉じていない"),
+        "値の中に > のある閉じていないタグ": ('<div>本文</div><script x=">"', "閉じていない"),
+        "値の中に > のある閉じていない div": ('<div>本文</div><div x="a>b"', "閉じていない"),
+        "棒の上の数の style": ('<div class="f-bars" data-max="10"><div class="f-bar" data-value="5"><b style="position:absolute">5</b>名</div></div>', "<b> に style"),
+        "棒の上の数の段": ('<div class="f-bars" data-max="10"><div class="f-bar" data-value="5"><b data-step="1">5</b>名</div></div>', "<b> に data-step"),
+        "棒の上の数の中の大きさ": ('<div class="f-bars" data-max="10"><div class="f-bar" data-value="5"><b><span style="font-size: 64px">5</span></b>長</div></div>', "文字だけ"),
     }
     for name, (body, word) in bad.items():
         expect_error(one(_free(body)), "free-p-bad", word)
@@ -3079,6 +3084,18 @@ def case_free_parts():
                 assert all(ratio(theme[n], theme[ground]) >= 3 for n in names), (surf, what, names)
             disc = re.search(r'class="f-icon-disc" style="[^"]*background-color: var\(--([a-z-]+)\)', h).group(1)
             assert ratio(theme[disc], theme[ground]) >= 3, (surf, "丸", disc)
+    # style で書ける地の色の全部の上でも、マスは見分けられる組になるか、rc=2 で止まる（見分けられないまま通さない）
+    import free_body as FB2
+    for theme in (pal, deck.palette({"background": "#ffffff", "ink": "#333333", "primary": "#ffd400", "accent": "#ffd400"}),
+                  deck.palette({"background": "#ffffff", "ink": "#333333", "primary": "#006f83"})):
+        for g in FB2.COLOR_VARS:
+            try:
+                h, _ = FB.render(f'<div style="background-color: var(--{g})">{cells.format("")}</div>', theme, lambda *a: "")
+            except FB.FreeError as e:
+                assert "見分けられる色の組が無い" in str(e), e
+                continue
+            cs_ = re.findall(r'class="f-cell" style="background-color: var\(--([a-z-]+)\)', h)
+            assert ratio(theme[cs_[0]], theme[g]) >= 3 and ratio(theme[cs_[0]], theme[cs_[-1]]) >= 3, (g, cs_[0], cs_[-1])
     # 棒: 名前は下の別の行（名前が何行でも、棒を描く高さは全部の列で同じ）。見える数を省いても、数は中身として残る
     bars = '<div class="f-bars" data-max="10"><div class="f-bar" data-value="10">短</div><div class="f-bar" data-value="10">とても長い名前で二行に折れる棒の名前</div></div>'
     h = build(one(_free(bars)), "free-p-bars")[0].read_text(encoding="utf-8")
@@ -3097,6 +3114,12 @@ def case_free_bars_scale():
     assert not R.errors(d["violations"]), d["violations"]
     hs = [p["rect"]["h"] for p in d["slides"][0]["prims"] if p["type"] == "rect"]
     assert len(hs) == 3 and abs(hs[0] - hs[1]) < 1 and abs(hs[0] - 2 * hs[2]) < 2, hs
+    # 棒の上の数があっても同じ（数は 1 行・同じ大きさなので、列ごとの高さがそろう）
+    bars = ('<div class="f-bars f-grow" data-max="10"><div class="f-bar" data-value="5"><b>5</b>短</div>'
+            '<div class="f-bar" data-value="5"><b>5.0 ポイント</b>長い名前で折れる棒の名前をここに書く</div></div>')
+    d = R.extract(build(one(_free(bars)), "free-c-bars2")[0])
+    hs = [p["rect"]["h"] for p in d["slides"][0]["prims"] if p["type"] == "rect"]
+    assert len(hs) == 2 and abs(hs[0] - hs[1]) < 1, hs
 
 
 def case_retry_restores_state():
