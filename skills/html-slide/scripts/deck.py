@@ -341,12 +341,18 @@ def _logo_lum(im) -> float:
     return statistics.median(_lum(p) for p in px)
 
 
-LOGO_OPAQUE_SHARE = 0.02   # 透けている画素（不透明度が 200 以下）がこの割合に満たない画像は、自分の地を持つロゴとみなす（縁の数画素だけ半透明な画像で扱いが切り替わらないように）
+LOGO_OPAQUE_SHARE = 0.02   # 内側の透けている画素（不透明度が 200 以下）がこの割合に満たない画像は、自分の地を持つロゴとみなす
 
 
 def _see_through_share(alpha) -> float:
-    """余白を切った範囲のうち、透けている画素の割合。字や印の間が透けるロゴは大きく、地を塗ったロゴはほぼ 0。"""
-    hist = alpha.histogram()
+    """余白を切った範囲の内側のうち、透けている画素の割合。字や印の間が透けるロゴは大きく、地を塗ったロゴはほぼ 0。
+
+    外周（短い辺の 5%・2px 以上）は数えない。地を塗った画像の縁だけが半透明（縁をなめらかにした書き出し）でも、
+    画像の形や解像度で割合が変わって扱いが切り替わらないようにする。"""
+    w, h = alpha.size
+    m = max(2, round(min(w, h) * 0.05))
+    inner = alpha.crop((m, m, w - m, h - m)) if w > 2 * m and h > 2 * m else alpha
+    hist = inner.histogram()
     return sum(hist[:201]) / max(1, sum(hist))
 
 

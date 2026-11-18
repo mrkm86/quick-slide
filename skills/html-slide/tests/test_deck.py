@@ -1767,6 +1767,14 @@ def case_logo_contrast():
     im.save(almost)
     _, info6 = build(sc, "lc-almost", logo=str(almost))
     assert [p["sticker"] for p in info6["logo"]["pages"]] == [False, False], info6["logo"]["pages"]
+    # 外周 1px だけ半透明（縁をなめらかにした書き出し）でも、解像度によらず「自分の地を持つロゴ」。すき間のあるロゴは透けるロゴ
+    for size in ((444, 59), (888, 118)):
+        im = Image.new("RGBA", size, (20, 20, 20, 120))
+        ImageDraw.Draw(im).rectangle((1, 1, size[0] - 2, size[1] - 2), fill=(20, 20, 20, 255))
+        f = TMP / f"lc-rim-{size[0]}.png"
+        im.save(f)
+        assert deck.load_logo(str(f))[1]["lum"] is None, f"外周 1px の半透明で扱いが変わった: {size}"
+    assert deck.load_logo(str(black))[1]["lum"] is not None and deck.load_logo(str(almost))[1]["lum"] is None
     # 透明な所の無いロゴ（自分の地を持つ）は、暗い面でもそのまま（地を足さない）。全部透明な画像は rc=2
     solid = TMP / "lc-solid.png"
     Image.new("RGB", (444, 59), (20, 20, 20)).save(solid)
