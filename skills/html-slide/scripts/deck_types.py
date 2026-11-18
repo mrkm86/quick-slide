@@ -28,7 +28,8 @@ W, H = 1920, 1080
 X0 = 120                 # 左右の余白
 CW = W - 2 * X0          # 中身の幅 1680
 HEAD_TOP = 80
-BODY_GAP = 40            # 見出しと中身の間（余白の段 4）
+BODY_GAP = 64            # 見出しと中身の間（余白の段 5。40 から広げた・ADR 0030 の追記。見出しのすぐ下から箱が始まり、窮屈に見えていた）
+BODY_GAP_TIGHT = 40      # 64 では中身が入らないページだけ、前の間に詰めて組む（build_slide。今まで通っていた台本を止めない）
 BODY_BOTTOM = 952        # 中身の下端（下の文字とページ番号は 1008 から。上下の余白 64 を引いた 1016 の手前）
 FOOT_H = 33              # 脚注（footnote）1 行ぶんの高さ（22px・行高 1.5）。あれば中身の下端・source をその分だけ上げる
 TAKE_H, TAKE_GAP = 88, 40    # 締めの帯（takeaway）の高さと、中身との間（ADR 0019）
@@ -239,6 +240,7 @@ class Slide:
         self.bottom = self.body_bottom - (TAKE_H + TAKE_GAP if spec.get("takeaway") else 0)
         self.caps: dict[str, int] = {}           # 並ぶ項目の同じ役の文字（カードの題など）の大きさの上限（build_slide がそろえる）
         self.big_head = False                    # 1行に収まる見出しを 80 にするか（build_slide が画像のないページで立てる・ADR 0022）
+        self.body_gap = BODY_GAP                 # 見出しと中身の間（入らないページは build_slide が BODY_GAP_TIGHT に詰める）
         self.seen: dict[str, list[int]] = {}     # 役ごとに、組んだ文字の大きさ
         self.fx = spec.get("fx")
         if self.fx is not None and self.fx not in FX:
@@ -557,7 +559,7 @@ def header(s: Slide, default_headline=None, width=CW, default_kicker=None, top=H
         parts.append(f'<div class="sub" style="font-size:{ss}px" {s.anim(0, "rise", 150, "リード")}>{rich(sub)}</div>')
         h += SPACE[2] + sn * ss * 1.5
     parts.append("</div>")
-    return "".join(parts), top + h + BODY_GAP
+    return "".join(parts), top + h + s.body_gap
 
 
 def source_line(s: Slide, y=None, on_dark=False, width=CW):
@@ -1534,9 +1536,9 @@ def _photo_band(s: Slide):
     head, top = header(s, top=BAND_H + 64)
     parts.append(head)
     if body:
-        room = BODY_BOTTOM - (top - BODY_GAP + 24)
+        room = BODY_BOTTOM - (top - s.body_gap + 24)
         bs, _ = fit(body, 32, CW, what="本文（body）", height=min(room, 32 * 1.6 * 3), lh=1.6, min_size=28)
-        parts.append(f'<div class="sub" style="{box(X0, top - BODY_GAP + 24, CW)} position:absolute; font-size:{bs}px; '
+        parts.append(f'<div class="sub" style="{box(X0, top - s.body_gap + 24, CW)} position:absolute; font-size:{bs}px; '
                      f'line-height:1.6; color:var(--ink)" {s.anim(0, "rise", 300, "本文")}>{rich(body)}</div>')
     return parts
 
@@ -3389,13 +3391,18 @@ def build_slide(s: Slide) -> tuple[list[str], bool]:
     if s.type in RETIRED_TYPES:
         s.warnings.append(f"{s.no}枚目: 型 {s.type} は退役した（{RETIRED_TYPES[s.type]}）。今までどおり描くが、新しい台本では使わない")
     s.big_head = not _has_image(s.spec)        # 画像のないページは、1行に収まる見出しを 80 に（ADR 0022）
-    try:
-        parts = _compose(s, fn)
-    except DeckError:
-        if not s.big_head:
-            raise
-        s.big_head = False                     # 大きな見出しで中身が入らなければ、今までの見出しで組む
-        parts = _compose(s, fn)
+    # 中身が入らなければ、順にゆるめる: 大きな見出し（80）をやめる → 見出しと中身の間を詰める（64 → 40）。どれでも入らなければ、最初の誤りを出す
+    tries = [(True, BODY_GAP), (False, BODY_GAP), (False, BODY_GAP_TIGHT)] if s.big_head else [(False, BODY_GAP), (False, BODY_GAP_TIGHT)]
+    first = None
+    for big, gap in tries:
+        s.big_head, s.body_gap = big, gap
+        try:
+            parts = _compose(s, fn)
+            break
+        except DeckError as e:
+            first = first or e
+    else:
+        raise first
     if s.type in GROWABLE and not _has_image(s.spec) and s.need is not None and s.need < GROW_FILL * s.avail:
         base = {k: min(v) for k, v in s.seen.items() if v}
         for f in GROW_STEPS:                    # 中身が少ないときは、文字を大きくして場所を使う。入る一番大きい倍率
