@@ -431,6 +431,29 @@
       .dg-pill.hl { border-color: var(--accent-mark); color: var(--accent-text); }
       .dg-hlabel { position: absolute; line-height: 1.4; font-weight: 700; text-align: center; word-break: auto-phrase; }
       .dg-hlabel.hl { color: var(--accent-text); }
+      /* 自由なページ（型 free・ADR 0030）: 中身の箱と部品。色は free_body が要素ごとに style で書く（いちばん近い面に合わせる）。ここは並べ方と大きさだけ */
+      .f-body { position: absolute; display: flex; flex-direction: column; gap: 24px; font-size: 28px; line-height: 1.5; }
+      .f-body div { min-width: 0; word-break: auto-phrase; }
+      .f-row { display: flex; flex-direction: row; gap: 24px; }
+      .f-col { display: flex; flex-direction: column; gap: 16px; }
+      .f-grow { flex: 1 1 0px; }
+      .f-box { display: flex; flex-direction: column; gap: 16px; padding: 40px; border-radius: 16px; }
+      .f-num { font-size: 120px; line-height: 1.0; font-weight: 700; white-space: nowrap; }
+      .f-label { font-size: 28px; line-height: 1.5; font-weight: 700; }
+      .f-note { font-size: 22px; line-height: 1.5; }
+      .f-strong { font-weight: 700; }
+      .f-chip { align-self: flex-start; flex: none; padding: 8px 24px; border-radius: 9999px; font-size: 24px; line-height: 1.0; font-weight: 700; white-space: nowrap; }
+      .f-no { flex: none; width: 64px; height: 64px; border-radius: 9999px; display: flex; align-items: center; justify-content: center;
+              font-size: 32px; line-height: 1.0; font-weight: 700; }
+      .f-icon-disc { flex: none; display: flex; align-items: center; justify-content: center; border-radius: 9999px; }
+      .f-icon-plain { flex: none; display: flex; align-items: center; justify-content: center; }
+      .f-cells { flex: none; width: 480px; display: grid; align-content: start; }
+      .f-cell { aspect-ratio: 1 / 1; border-radius: 8px; }
+      .f-bars { flex: 1 1 0px; display: flex; flex-direction: row; align-items: stretch; gap: 24px; min-height: 240px; }
+      .f-bar-col { flex: 1 1 0px; display: flex; flex-direction: column; align-items: center; }
+      .f-bar-value { flex: none; font-size: 36px; line-height: 1.4; font-weight: 700; white-space: nowrap; }
+      .f-bar-fill { width: 64%; border-radius: 8px; min-height: 0; }
+      .f-bar-name { flex: none; font-size: 26px; line-height: 1.5; margin-top: 8px; text-align: center; }
       /* スタイルの見た目の調子（look・ADR 0005 追記）。deck.py が差し込む。standard は空 */
       {{LOOK}}
     </style>

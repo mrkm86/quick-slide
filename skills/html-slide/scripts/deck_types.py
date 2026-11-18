@@ -2852,6 +2852,28 @@ def t_layers(s: Slide):
     return parts
 
 
+FREE_PARTS_WARN = 200      # 自由なページの部品（PPTX の図形）がこれを越えたら警告する（PowerPoint での扱いが重くなる）
+
+
+def t_free(s: Slide):
+    """自由なページ: 見出し・出典・下の文字はほかの型と同じ部品で置き、見出しの下の「中身の箱」の中だけを、書く側の body で組む（ADR 0030）。
+
+    body は free_body が解析する（許した要素・属性・CSS だけ・部品の展開・色の組の検査）。箱は左右が本文の幅、上は見出しの下、
+    下は中身の下端（出典・結論の帯の上）。クリックの段は body の data-step（Slide.anim を通すので、配る資料・steps: false も型と同じ扱い）。
+    """
+    import free_body as FB
+    head, top = header(s)
+    try:
+        inner, info = FB.render(s.spec.get("body"), s.pal, lambda step, fx, delay, name: s.anim(step, fx, delay, name))
+    except FB.FreeError as e:
+        s.err(str(e))
+    for w in info["warnings"]:
+        s.warnings.append(f"{s.no}枚目（free）: {w}")
+    if info["parts"] > FREE_PARTS_WARN:
+        s.warnings.append(f"{s.no}枚目（free）: 部品が多い（およそ {info['parts']} 個）。PowerPoint で直しにくくなるので、マスの数などを減らす")
+    return [head, f'<div class="f-body" style="{box(X0, top, CW, s.bottom - top)}" data-free-body>{inner}</div>', source_line(s)]
+
+
 def t_pairs(s: Slide):
     """対: よくない例 → よい例 を 2〜4 組（label・before・after・icon）。1組ずつクリックで出る。4組は 2×2、2組は横に2つ、3組は縦に3つ。"""
     head, top = header(s, big=True)
@@ -3335,6 +3357,7 @@ TYPES = {
     "deflist": (t_deflist, HEAD_KEYS | {"items"}, True),
     "steps": (t_steps, HEAD_KEYS | {"items", "current", "layout"}, True),
     "layers": (t_layers, HEAD_KEYS | {"rows", "links"}, True),
+    "free": (t_free, HEAD_KEYS | {"body"}, True),
 }
 # 退役した型（型の名前 → 代わりの型の案内）。台本に書いてあれば今までどおり描くが、使うと警告し、台本の書き方（deck-format.md）・
 # 台本係の一覧・カタログには載せない。描く部分は残す（過去のデッキを組み直せるように）。今は無し（ADR 0021）
@@ -3343,7 +3366,7 @@ RETIRED_TYPES: dict[str, str] = {}
 # 中身の高さを確かめていない型（big-number の補足・team の2段）にも置かない（帯に重なる）
 # notice は枠そのものが言い切りの型なので置かない。deflist・steps は置ける
 TAKEAWAY_TYPES = ("cards", "flow", "compare", "bullets", "timeline", "summary", "kpi", "bar-chart", "line-chart",
-                  "table", "matrix", "equation", "hub", "pairs", "deflist", "steps", "layers")
+                  "table", "matrix", "equation", "hub", "pairs", "deflist", "steps", "layers", "free")
 for _t in TAKEAWAY_TYPES:
     TYPES[_t] = (TYPES[_t][0], TYPES[_t][1] | {"takeaway", "takeaway_icon"}, TYPES[_t][2])
 
