@@ -115,12 +115,13 @@ def palette(t: dict) -> dict:
     # 並びは前と同じ（CSS 変数の並び＝出す HTML を変えない）: 共通 → 主役の色の役 → 差し色の役 → 幕 → 意味の色
     p = {k: v for k, v in base.items() if k not in DP.SEMANTIC and not k.startswith(("primary", "accent", "on-"))}
     p["primary-soft"], p["accent-soft"] = base["primary-soft"], base["accent-soft"]
+    p["on-deep"] = base["on-deep"]
     pk = {"key": base["primary"], "deco": base["primary-decor"]}
     ak = {"key": base["accent"], "deco": base["accent-decor"]}
     # 写真の上（暗幕の地）: 色を白に寄せて、一番薄い暗幕を白い写真に重ねた地で 4.5 を越える一番濃い色
     thin = mix(ink, min(T.OVERLAYS.values()), white)
     for name, k in (("primary", pk), ("accent", ak)):
-        for role in (name, f"{name}-text", f"{name}-mark", f"{name}-decor", f"{name}-strong", f"on-{name}"):
+        for role in (name, f"{name}-text", f"{name}-mark", f"{name}-decor", f"{name}-strong", f"on-{name}", f"{name}-fill", f"on-{name}-fill"):
             p[role] = base[role]
         p[f"{name}-on-dark"] = next((c for c in (mix(k["deco"], 1 - n / 40, white) for n in range(41)) if ratio(c, thin) >= 4.5), white)
     r, g, b = (int(p["ink"][i:i + 2], 16) for i in (1, 3, 5))
@@ -529,7 +530,7 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
             s = T.Slide(no, spec, pal, flat=not steps_on, script_dir=script_path.parent, assets=assets,
                         placeholder=placeholder, slots=slots, warnings=img_warns, overlays=used_overlays,
                         still=(mode == "handout"), image_look=image_look,   # 配る資料は動きなし（読む・直す・PDF にする用）
-                        gen_dir=gen_dir)
+                        gen_dir=gen_dir, look=sty["look"])
             parts, chrome = T.build_slide(s)
             if s.chars and not s.chars_used:
                 img_warns.append(f"{no}枚目（{spec['type']}）: _characters を描き込む枠が無い（prompt だけの画像の枠に描く。"

@@ -36,7 +36,7 @@ TYPES = {
     "section": ({"number", "label", "title", "subtitle", "image", "layout", "text_side", "tone", "motif"}, False, ("title",)),
     "statement": ({"kicker", "headline", "body", "source", "footnote"}, True, ("headline",)),
     "big-number": (HEAD_KEYS | {"value", "unit", "label", "note", "side"}, True, ("headline", "value")),
-    "cards": (HEAD_KEYS | {"items"}, True, ("headline", "items")),
+    "cards": (HEAD_KEYS | {"items", "layout"}, True, ("headline", "items")),
     "flow": (HEAD_KEYS | {"items"}, True, ("headline", "items")),
     "compare": (HEAD_KEYS | {"left", "right", "accent", "arrow"}, True, ("headline", "left", "right")),
     "bar-chart": (HEAD_KEYS | {"bars", "unit", "note", "max", "callout"}, True, ("headline", "bars")),
@@ -46,7 +46,7 @@ TYPES = {
     "bullets": (HEAD_KEYS | {"items", "image", "side", "split"}, True, ("headline", "items")),
     "timeline": (HEAD_KEYS | {"items", "current"}, True, ("headline", "items")),
     "closing": (HEAD_KEYS | {"items", "contact", "image"}, True, ("headline",)),
-    "summary": (HEAD_KEYS | {"points", "label"}, True, ("headline", "points")),
+    "summary": (HEAD_KEYS | {"points", "label", "layout"}, True, ("headline", "points")),
     "kpi": (HEAD_KEYS | {"items", "image"}, True, ("headline", "items")),
     "line-chart": (HEAD_KEYS | {"labels", "series", "unit", "min", "max", "note", "callout", "value_labels"}, True,
                    ("headline", "labels", "series")),
@@ -61,10 +61,11 @@ TYPES = {
     "notice": (HEAD_KEYS | {"items", "label_style"}, True, ("headline", "items")),
     "deflist": (HEAD_KEYS | {"items"}, True, ("headline", "items")),
     "steps": (HEAD_KEYS | {"items", "current", "layout"}, True, ("headline", "items")),
+    "layers": (HEAD_KEYS | {"rows", "links"}, True, ("headline", "rows")),
 }
 # 締めの帯（takeaway）を置ける型（html-slide の deck_types.TAKEAWAY_TYPES と同じ）
 TAKEAWAY_TYPES = ("cards", "flow", "compare", "bullets", "timeline", "summary", "kpi", "bar-chart", "line-chart",
-                  "table", "matrix", "equation", "hub", "pairs", "deflist", "steps")
+                  "table", "matrix", "equation", "hub", "pairs", "deflist", "steps", "layers")
 for _t in TAKEAWAY_TYPES:
     TYPES[_t] = (TYPES[_t][0] | {"takeaway", "takeaway_icon"}, TYPES[_t][1], TYPES[_t][2])
 
@@ -83,6 +84,8 @@ LAYOUT_KEYS = {
     "line-chart": {"min", "max", "value_labels"},
     "compare": {"arrow"},
     "steps": {"layout"},
+    "cards": {"layout"},
+    "summary": {"layout"},
     "notice": {"label_style"},
 }
 

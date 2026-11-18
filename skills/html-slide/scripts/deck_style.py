@@ -1,4 +1,4 @@
-"""スタイル（ADR 0005）。資料全体の見せ方の既定を決める。名前は image-slide とそろえる（standard・visual）。
+"""スタイル（ADR 0005）。資料全体の見せ方の既定を決める。名前は image-slide とそろえる（standard・visual・classic）。
 
 html-slide のスタイルは、**決まった項目の値だけ**を持つ（文章を読んで解釈する仕組みは無い）:
 
@@ -7,6 +7,9 @@ html-slide のスタイルは、**決まった項目の値だけ**を持つ（�
     defaults:                        # 任意。型ごとの変化形の既定（台本に書いてあれば台本が勝つ）
       cover: {layout: hero}
       photo: {layout: left, split: 1/2}
+    look:                            # 任意。見た目の調子（文字の大きさ・余白は変えない）
+      surface: flat
+      title: solid
     image_look: photo                # 任意。Codex で描く画像の枠の画風（photo・illustration・handdrawn。--image-look が勝つ・ADR 0011）
     expects_images: [cover, section] # 任意。画像を置くのが基本の型。image が無ければ警告する（止めない）
     motion:                          # 任意。動きの既定
@@ -15,7 +18,8 @@ html-slide のスタイルは、**決まった項目の値だけ**を持つ（�
 
 - 知らないキー・知らない型・その型に無い変化形・選べない値は rc=2（DeckError）
 - 画像が要る変化形は、そのページに画像があるときだけ当てる（無いページは型の既定のまま。止めない）
-- 組み込みは `styles/standard.yaml`（既定・今までの見た目）と `styles/visual.yaml`。カスタムは同じ形の YAML を `--style <パス>` で
+- 組み込みは `styles/standard.yaml`（既定・枠なしの淡い面・主役の色の表紙・濃い面の締め）・`styles/visual.yaml`・`styles/classic.yaml`（前の既定・箱に枠線を引く。look なし）。カスタムは同じ形の YAML を `--style <パス>` で
+- `look` は見た目の調子の項目（background・surface・radius・band・emphasis・statement・fill・title・deep）。書かない項目は型の既定のまま。項目と値は下の LOOK
 - 見た目の調子（余白・見出しの大きさの段階）はまだ持たない（文字のはみ出しの検査とぶつかりやすいため・ADR 0005）
 """
 from __future__ import annotations
@@ -32,11 +36,14 @@ FIELDS = {"name", "description", "defaults", "motion", "look", "image_look", "ex
 # 見た目の調子（look）。文字の大きさ・余白は変えない（はみ出しの検査は字体で実測しているため）。色は全部テーマから作り、読みやすさの検査も通す
 LOOK = {
     "background": ("plain", "tint"),                    # ページの地: テーマの地／主役の色（primary）をうっすら混ぜた地
-    "surface": ("soft", "white", "primary", "line"),     # カード・比較の列・KPI・吹き出しの地: 淡いグレー／（white は退役・RETIRED_LOOKS）／主役の色の淡い地／白に枠線
+    "surface": ("soft", "white", "primary", "line", "flat"),     # カード・比較の列・KPI・吹き出しの地: 淡いグレー／（white は退役・RETIRED_LOOKS）／主役の色の淡い地／白に枠線／枠なしの淡い面（flat・箱は主役の色の淡い地で、区切りは面と余白）
     "radius": ("default", "square", "round"),           # 箱の角: 16px／4px／32px（写真は 8px・square のときだけ 4px。notice の枠は default で 0・式の答えと NG／OK の箱は 16px・12px）
     "band": ("small", "bar", "none"),                   # 中身の型の左上の印: 小さな印／上端の全幅の帯／無し
-    "emphasis": ("default", "strong"),                  # 強調する箱（accent: true のカードなど）: 淡い地に枠／差し色のベタ塗りに白抜き（明るい色なら黒）
-    "statement": ("plain", "panel"),                    # 主張の1枚（statement）: 地のまま／主役の色の全面に白抜き（明るい色なら黒）
+    "emphasis": ("default", "strong", "deep"),                  # 強調する箱（accent: true のカードなど）: 淡い地に枠／差し色のベタ塗りに白抜き（明るい色なら黒）／濃い面（ほぼ黒）に白抜き
+    "statement": ("plain", "panel", "deep"),                    # 主張の1枚（statement）: 地のまま／主役の色の全面に白抜き（明るい色なら黒）／濃い面（ほぼ黒）に白抜き
+    "fill": ("content", "stretch"),                     # 並ぶ箱（カード・指標・比較）の高さ: 中身に沿う／置ける高さへ伸ばす（中身の 1.6 倍まで。箱の中は上下に振り分ける）
+    "title": ("plain", "solid", "deep"),                # 表紙・章扉: 地のまま／主役の色そのままの全面（文字は白か ink の読める方）／濃い面（ほぼ黒）に白い文字
+    "deep": ("off", "on"),                              # 結論の帯・表の見出しの行・締めのページを濃い面（ほぼ黒）にする
 }
 # 退役した変化形（look の項目, 値）→ 代わりの値。YAML には今までどおり書けて、代わりの値と同じに描くが、読んだときに注意を出し、
 # 台本の書き方（deck-format.md）・台本係の一覧には載せない（ADR 0020・0021）。white は白に影（0 8px 28px）で、影は elevation の番号の丸だけにしたため
@@ -115,6 +122,8 @@ def load(spec: str | None) -> dict:
     look = {} if d.get("look") is None else d["look"]
     if not isinstance(look, dict):
         raise DeckError(f"{path}: look は「項目: 値」で書く")
+    if isinstance(look.get("deep"), bool):      # YAML は引用符なしの on・off を真偽値に読む。deep: on と書けるように語へ戻す
+        look = {**look, "deep": "on" if look["deep"] else "off"}
     for k, v in look.items():
         if k not in LOOK:
             raise DeckError(f"{path}: look に {k!r} は無い（あるのは {', '.join(LOOK)}）")
@@ -156,6 +165,47 @@ def look_css(look: dict) -> str:
     elif s == "primary":
         css.append(f"{BOXES} {{ background-color: var(--primary-soft); }}")
         css.append(".tr.th { background-color: var(--primary-soft); }")
+    elif s == "flat":                              # 枠なしの淡い面。区切りは面の色と余白で作る（頭の短い線・締めの帯の輪郭も外す）
+        css.append(f"{BOXES} {{ background-color: var(--primary-soft); border-color: var(--primary-soft); }}")
+        css.append(f"{HL} {{ border-color: var(--accent-soft); }}")
+        css.append(".card-bar { display: none; }")
+        css.append(".dg-band { background-color: var(--primary-soft); border-color: var(--primary-soft); }")
+        css.append(".dg-node { border-color: var(--bg); }")
+        css.append(".card { min-height: 240px; }")
+        css.append(".card.lead-row, .card.sum-col { min-height: 0; }")       # 枠が無いので、箱は中身に沿わせる（中身の少ない箱を 400 まで伸ばすと、空きが箱の中に残る）
+        css.append(".tr.th { background-color: var(--primary-fill); border-bottom-color: var(--primary-fill); }")
+        css.append(".tr.th .td div, .tr.th .td em { color: var(--on-primary-fill); }")
+        css.append(".tr.th .td.hl em { color: var(--on-accent); }")
+        css.append(".tr { border-bottom-color: var(--rule-weak); }")
+        css.append(".take { background-color: var(--primary-fill); border-color: var(--primary-fill); }")
+        css.append(".take-t, .take-t em { color: var(--on-primary-fill); }")
+        css.append("section[data-slide] { --take-icon: var(--on-primary-fill); --disc-ground: var(--primary-fill); --disc-ink: var(--on-primary-fill); }")   # 淡い面の箱の上では、淡い丸が面に消える。丸は主役の色の面に
+    if look.get("title") == "solid":
+        tp = 'section[data-type="cover"], section[data-type="section"]'
+        css.append(f"{tp} {{ background-color: var(--primary-fill); }}")
+        css.append(".cover-title, .cover-subtitle, .cover-label, .cover-meta div, .sec-title, .sec-subtitle, .sec-label, .sec-no, "
+                   ".cover-title em, .sec-title em { color: var(--on-primary-fill); }")
+        css.append(".cover-subtitle em, .sec-subtitle em { color: var(--on-primary-fill); font-weight: 700; }")   # 面と同じ色相の強調の色は面に消える。面の上の文字の色で、太さで強める
+        css.append(".cover-rule { background-color: var(--on-primary-fill); }")
+        css.append(".sec-panel { background-color: var(--primary-fill); }")     # 全面が主役の色なので、左の帯は面に溶かす
+    if look.get("title") == "deep":
+        tp = 'section[data-type="cover"], section[data-type="section"]'
+        css.append(f"{tp} {{ background-color: var(--deep); }}")
+        css.append(".cover-title, .cover-subtitle, .cover-meta div, .sec-title, .sec-subtitle { color: var(--on-deep); }")
+        css.append(".cover-label, .sec-label, .sec-no, .cover-title em, .sec-title em, .cover-subtitle em, .sec-subtitle em { color: var(--deep-pop); }")
+        css.append(".cover-rule { background-color: var(--deep-pop); }")
+        css.append(".sec-panel { background-color: var(--deep); }")
+    if look.get("title") in ("solid", "deep"):
+        # 全面の写真（layout: hero）では、題は写真の上の幕（.on-dark・.on-light）に載る。上の規則（面の上の色）が勝つと、明るい幕に白い題・
+        # 暗い幕に面用の強調の色が載って読めない。幕の上の色（雛形の規則と同じ値。幕に対して検査済み）を、後ろに置いて勝たせる
+        css.append(".on-dark .cover-title, .on-dark .cover-subtitle, .on-dark div, .on-dark .sec-title, .on-dark .sec-subtitle { color: #ffffff; }")
+        css.append(".on-dark em { color: var(--accent-on-dark); }")
+        css.append(".on-dark .cover-label, .on-dark .sec-label, .on-dark .sec-no { color: var(--primary-on-dark); }")
+        css.append(".on-dark .cover-rule { background-color: var(--primary-on-dark); }")
+        css.append(".on-light .cover-title, .on-light .cover-subtitle, .on-light div, .on-light .sec-title, .on-light .sec-subtitle { color: var(--ink); }")
+        css.append(".on-light em { color: var(--accent-on-light); }")
+        css.append(".on-light .cover-label, .on-light .sec-label, .on-light .sec-no { color: var(--primary-on-light); }")
+        css.append(".on-light .cover-rule { background-color: var(--primary-decor); }")
     r = {"square": 4, "round": 32}.get(look.get("radius"))
     if r:
         css.append(f"{BOXES}, .contact, .scrim, .side-img, .gal-img, .notice, .eq-res, .pair-box {{ border-radius: {r}px; }}")
@@ -167,7 +217,8 @@ def look_css(look: dict) -> str:
         css.append(".band { left: 0; width: 1920px; height: 16px; }")
     elif b == "none":
         css.append(".band { display: none; }")
-    if look.get("emphasis") == "strong":
+    em_at = len(css)
+    if look.get("emphasis") in ("strong", "deep"):
         css.append(f"{HL} {{ background-color: var(--accent-strong); border-color: var(--accent-strong); }}")
         css.append(f".card.hl div, .cmp.hl div, .kpi.hl div:where(:not(.kpi-delta)), .card.hl em, .cmp.hl em, .kpi.hl em {{ color: var(--on-accent); }}")   # 増減の札は tone の色のまま（:where で優先度は元のまま。札の色の規則に勝たない）
         css.append(".card.hl .card-bar, .cmp.hl .cmp-dot { background-color: var(--on-accent); }")
@@ -175,11 +226,30 @@ def look_css(look: dict) -> str:
         css.append(".kpi.hl .kpi-value, .kpi.hl .kpi-unit { color: var(--on-accent); }")   # 型の CSS の方が強いので名指しで上書き
         css.append(".cmp.hl .cmp-chip { background-color: var(--on-accent); color: var(--accent-strong); }")
         css.append(".card.hl .chip, .cmp.hl .chip, .kpi.hl .chip { background-color: var(--on-accent); color: var(--accent-strong); }")   # 強める箱の札は面と反対の色
-    if look.get("statement") == "panel":
+        if look.get("emphasis") == "deep":
+            css[em_at:] = [x.replace("var(--accent-strong)", "var(--deep)").replace("var(--on-accent)", "var(--on-deep)") for x in css[em_at:]]
+    st_at = len(css)
+    if look.get("statement") in ("panel", "deep"):
         st = 'section[data-type="statement"]'
         css.append(f"{st} {{ background-color: var(--primary-strong); }}")
         css.append(f"{st} div, {st} em {{ color: var(--on-primary); }}")
         css.append(f"{st} .stmt-bar, {st} .band {{ background-color: var(--on-primary); }}")
+    if look.get("statement") == "deep":
+        css[st_at:] = [x.replace("var(--primary-strong)", "var(--deep)").replace("var(--on-primary)", "var(--on-deep)") for x in css[st_at:]]
+    if look.get("deep") == "on":
+        cl = 'section[data-type="closing"]'
+        css.append(".take { background-color: var(--deep); border-color: var(--deep); }")
+        css.append(".take-t { color: var(--on-deep); }")
+        css.append(".take-t em, .tr.th .td em { color: var(--deep-pop); }")
+        css.append(".tr.th .td.hl em { color: var(--on-accent); }")                 # 強める列の見出しは差し色の面のまま          # 濃い面の上の強調の語
+        css.append("section[data-slide] { --take-icon: var(--deep-pop); }")
+        css.append(".tr.th { background-color: var(--deep); border-bottom-color: var(--deep); }")
+        css.append(".tr.th .td div { color: var(--on-deep); }")
+        css.append(f"{cl} {{ background-color: var(--deep); }}")
+        css.append(f"{cl} .headline, {cl} .li-title, {cl} .li-body, {cl} .sub, {cl} .footer, {cl} .pageno {{ color: var(--on-deep); }}")
+        css.append(f"{cl} .source {{ color: var(--on-deep); }}")                     # 出典・脚注（.source.footnote）も濃い面の上の文字に
+        css.append(f"{cl} .kicker, {cl} em {{ color: var(--deep-pop); }}")
+        css.append(f"{cl} .contact em {{ color: var(--on-primary); }}")             # 連絡先の箱は文字を載せる面（primary-strong）のまま
     return "\n      ".join(css)
 
 

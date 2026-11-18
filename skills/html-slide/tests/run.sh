@@ -167,6 +167,15 @@ deck "look.radius は notice の枠・式の答えの箱・NG／OK の箱にも�
 deck "組み合わせの見本（deck-format.md）: 載せた台本がそのまま組める・SKILL.md と notice の行からたどれる" combo_samples
 deck "モーフは退役（ADR 0023）: 切り替えは fade・none だけ・台本とスタイルの morph は fade で描いて警告・PPTX にモーフを書かない" no_morph
 deck "退役の仕組み（RETIRED_TYPES・RETIRED_LOOKS）: 描いて警告・deck-format に載せない・surface: white は line と同じ" retired
+deck "表の列の幅: widths が無ければ中身で決める（長い文の列が広い・どの列も等分の半分以上）・書けば書いたとおり・誤りは rc=2" table_widths_by_content
+deck "表の揃えの既定: 1列目は左・全角8字までの列は中央・文の列は左・align を書けば書いたとおり" table_align_default
+deck "カタカナの語（3字以上）は途中で折らない: 入る段へ下りる・入らなければ今までどおり折る（止めない）" katakana_not_split
+deck "layers（構成図）: 層と箱の数・矢印の向き・col で縦にそろう・クリックは1・知らない id・隣でない矢印・col の重なりは rc=2" layers
+deck "layout: lead（cards・summary）: 主役は accent の項目か1つ目・クリックの数は変わらない・写真つきカードと知らない値は rc=2" layout_lead
+deck "look の新しい値（flat・stretch・solid・deep）: CSS が出る・classic は出ない・standard は出る・知らない値は rc=2・deep: on も読める" look_new_values
+deck "look.fill: stretch は箱を8の倍数の高さへ伸ばす（中身の1.6倍まで）・classic は伸ばさない" look_fill_stretch
+deck "色の面の上の強調の語と出典は面の上の色・layers の矢印の型違いは rc=2・表の列の幅の合計は本文の幅" look_emphasis_on_fills
+deck "色の役（primary-fill・accent-fill・deep・deep-pop）: 3つのテーマと黄・淡い黄・紺の主役の色で文字が 4.5:1" color_roles
 
 # --- レビューモード（ADR 0028） ---
 review() { run "$1" python3 "$DIR/test_review.py" "$2"; }

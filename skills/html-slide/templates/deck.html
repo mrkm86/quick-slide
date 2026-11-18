@@ -252,7 +252,7 @@
       .td.hl { background-color: var(--accent-soft); border-left: 4px solid var(--accent-mark); border-right: 4px solid var(--accent-mark); }
       .td.hl div { font-weight: 700; }
       .tr.th .td.hl { background-color: var(--accent-strong); }
-      .tr.th .td.hl div { color: var(--on-accent); }
+      .tr.th .td.hl div, .tr.th .td.hl em { color: var(--on-accent); }
       .td.tone-good { background-color: var(--tone-good-bg); }
       .td.tone-warn { background-color: var(--tone-warn-bg); }
       .td.tone-bad { background-color: var(--tone-bad-bg); }
@@ -406,6 +406,31 @@
       .st-dot { display: flex; align-items: center; justify-content: center; border-radius: 9999px; font-size: 32px; line-height: 1.0; font-weight: 700; }
       .st-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
       .st-body { line-height: 1.6; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
+      /* 主役を大きく置く組み（layout: lead）: 左は主役の色の面、右は残りを縦に積む */
+      .lead-panel { position: absolute; display: flex; flex-direction: column; justify-content: space-between; background-color: var(--primary-fill); border-radius: 16px; }
+      .lead-label { line-height: 1.5; font-weight: 700; color: var(--on-primary-fill); }
+      .lead-value { line-height: 1.2; font-weight: 700; color: var(--on-primary-fill); margin-bottom: 8px; }
+      .lead-title { line-height: 1.4; font-weight: 700; color: var(--on-primary-fill); word-break: auto-phrase; }
+      .lead-body { line-height: 1.6; color: var(--on-primary-fill); margin-top: 16px; word-break: auto-phrase; }
+      .lead-panel em { color: var(--on-primary-fill); }
+      .lead-row { position: absolute; flex-direction: row; align-items: center; min-height: 0; padding: 0 40px; }
+      .lead-row-value { line-height: 1.4; font-weight: 700; color: var(--primary-text); }
+      .lead-row-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .lead-row-body { line-height: 1.5; color: var(--muted); word-break: auto-phrase; }
+      /* 構成図（層・箱・矢印）: 層は淡い面に枠・箱は白い面に枠（強める箱は差し色の太い枠）・矢印の名札は白い面の札 */
+      .dg-band { position: absolute; background-color: var(--surface); border: 2px solid var(--rule); border-radius: 16px; }
+      .dg-rowlabel { position: absolute; display: flex; align-items: center; }
+      .dg-rowlabel div { font-weight: 700; color: var(--primary-text); word-break: auto-phrase; }
+      .dg-node { position: absolute; display: flex; align-items: center; background-color: var(--bg); border: 2px solid var(--rule); border-radius: 12px; padding: 0 24px; }
+      .dg-node.hl { background-color: var(--accent-soft); border: 4px solid var(--accent-mark); }
+      .dg-kicker { line-height: 1.5; font-weight: 700; color: var(--primary-text); }
+      .dg-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .dg-body { line-height: 1.5; color: var(--muted); word-break: auto-phrase; }
+      .dg-pill { position: absolute; display: flex; align-items: center; justify-content: center; background-color: var(--bg); border: 2px solid var(--rule);
+                 border-radius: 9999px; line-height: 1.0; font-weight: 700; white-space: nowrap; }
+      .dg-pill.hl { border-color: var(--accent-mark); color: var(--accent-text); }
+      .dg-hlabel { position: absolute; line-height: 1.4; font-weight: 700; text-align: center; word-break: auto-phrase; }
+      .dg-hlabel.hl { color: var(--accent-text); }
       /* スタイルの見た目の調子（look・ADR 0005 追記）。deck.py が差し込む。standard は空 */
       {{LOOK}}
     </style>

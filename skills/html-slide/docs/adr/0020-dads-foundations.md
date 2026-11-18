@@ -89,3 +89,7 @@
 - `skills/dads/scripts/keycolors.py` を実行時に import する。`skills/html-slide` だけを配ると動かない（`skills/dads` も同じ階層に置く。配布の手順は `references/deploy.md`）
 - 見本の台本（`examples/image-deck.json`）の footer は 22px では 1 行に入らなかったので短くした（下の文字の幅が 792px のため）
 - Noto Sans JP のファイルが無い機体では游ゴシックで測る。幅が少し違い、描き出しの Chrome の検査が最終の判定
+
+## 追記（2026-11-18）箱の枠は classic だけの決まりに
+
+決めたことの 5. の「箱は外周の枠を持つ」は、スタイル `classic` だけの決まりになった。既定の `standard` は枠なしの淡い面にした（[ADR 0029](0029-design-direction-per-deck.md)）。文字と図形のコントラストの決まり（4.5・3.0）は変えていない。

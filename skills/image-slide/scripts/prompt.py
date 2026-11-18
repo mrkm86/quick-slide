@@ -4,7 +4,7 @@
 選んだ型の描き方・このページの中身）。ただし quick-slide の企画ページ（題・意図・本文）ではなく、
 html-slide の台本の1枚（型と中身）から組む。
 
-- 型（TYPE_NOTES）は html-slide の型（29種）に1つずつ、何を載せるか（コンテンツ）だけを言う。構図は Codex に任せる（ADR 0005）
+- 型（TYPE_NOTES）は html-slide の型（30種）に1つずつ、何を載せるか（コンテンツ）だけを言う。構図は Codex に任せる（ADR 0005）
 - ロゴ・フッタの文字・ページ番号は描かせない。下端の帯を空けさせ、あとで PowerPoint の部品として上に置く（pptx_out.py）
 - プロンプトに入れるのは台本の中身だけ。ファイルのパスは入れない（参照画像は「添付の参照画像1」と順番で言う）
 """
@@ -78,6 +78,10 @@ TYPE_NOTES = {
              "または current（1から数えた番号。それより前が済・後ろがこれから）で、進み具合を示す。"
              "状態は色だけでなく、丸の形（済は塗り・いまは二重の輪・これからは白に枠）と札の語（「済」「いま」「これから」）でも示す。"
              "段をつなぐ線は、済の所は実線・これからは破線",
+    "layers": "構成図。rows の各段が1つの層で、label は層の名前、items はその層に並ぶ箱（title・body・label・icon）。"
+              "箱の col（1から数えた列）は、段をまたいで縦にそろえる。links は箱と箱をつなぐ矢印で、from から to へ向ける"
+              "（both が真なら両向き。label があればその矢印に短い名札を添える。accent が真の箱と矢印は太い線で目立たせる）。"
+              "id は links が箱を指すための名前なので描かない。層の上下の順と、矢印の向きが分かるように描く",
 }
 
 KEY_WORDS = ("キーの意味: kicker＝見出しの上の小さな名札、headline＝見出し（主張）、sub＝見出しの下のリード文、"
@@ -88,7 +92,7 @@ KEY_WORDS = ("キーの意味: kicker＝見出しの上の小さな名札、head
              "キーの名前そのものは描かない")
 
 LAYOUT_WORDS = ("配置のキーの意味: layout＝置き方（split＝片側に写真・hero／full＝全面の写真・left／right＝写真の側・band＝上に横長の帯・"
-                "collage＝大1枚＋小2枚・portrait＝脇に丸い人物写真・plain＝写真なし・graphic＝写真の代わりに幾何学の図形で飾る・row＝段を横に並べる／column＝縦に並べる）、motif＝graphic の図柄（circles＝重なる円・grid＝点の格子と四角・bands＝斜めの帯・blocks＝色の面の組み合わせ）、text_side＝文字を置く側、"
+                "collage＝大1枚＋小2枚・portrait＝脇に丸い人物写真・plain＝写真なし・graphic＝写真の代わりに幾何学の図形で飾る・row＝段を横に並べる／column＝縦に並べる・lead＝cards と summary で、主役の1つ（cards は accent が真の項目・summary は1つ目の根拠）を左に大きく置き、残りを右に縦に積む）、motif＝graphic の図柄（circles＝重なる円・grid＝点の格子と四角・bands＝斜めの帯・blocks＝色の面の組み合わせ）、text_side＝文字を置く側、"
                 "tone＝全面の写真の上の幕（light＝明るい幕に濃い文字・dark＝暗い幕に白い文字）、side＝写真の側、"
                 "split＝写真の幅（1/2・2/5・1/3）、fit＝cover は枠いっぱいに切り抜く・contain は切らずに全体を見せる、"
                 "widths＝表の列の幅の比、align＝表の列ごとの文字の揃え（left・center・right。columns と同じ順）、dim_rows＝表の薄くする行の番号（1から数えた行。その行の文字を薄い灰にする。番号は描かない）、min・max＝グラフの軸の下限・上限、value_labels＝値を添える点（all・last・none）、"

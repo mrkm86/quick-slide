@@ -4,13 +4,13 @@
  "theme": "{{RUN_DIR}}/settings/theme.yaml",
  "html": "{{DECK_DIR}}/work/deck.html",
  "style": "standard",
- "style_description": "説明・報告・社内資料向け。文字と図を整理して並べる（表紙は右に写真、写真は全面）",
+ "style_description": "説明・報告・社内資料向け。枠なしの淡い面で整え、表紙・章扉は主役の色、結論と締めは濃い面にする（表紙は右に写真、写真は全面）",
  "image_look": "illustration",
  "warnings": [],
  "font": "Noto Sans JP",
  "font_note": null,
  "images": [],
- "cache": "{{CACHE}}/scripts-f55e0eb34fc6",
+ "cache": "{{CACHE}}/scripts-abd77220aa4f",
  "logo": null,
  "slides": [
   {

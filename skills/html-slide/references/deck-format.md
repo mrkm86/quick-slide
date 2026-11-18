@@ -17,7 +17,7 @@
 8. **ラベルも日本語で書く。** 「RULE 1」ではなく「ルール1」（固有名詞は英語のままでよい）
 9. **型は中身の形で選び、同じ型を続けない。** 順番のある段は `flow`、並列の要点は `cards`、観点×項目は `table`、2軸の位置づけは `matrix`、時期は `timeline`、
    一番言いたい1文は `statement`、冒頭の結論と根拠は `summary`、数字は 4. のとおり。順番の無い並びを `flow` にしない。
-   進み具合（どこまで済んで今どこか）を見せるなら `steps`、補足・注意・決まりごとは `notice`、用語と説明・項目と内容の対は `deflist`（比べるなら `table`）。
+   進み具合（どこまで済んで今どこか）を見せるなら `steps`、補足・注意・決まりごとは `notice`、用語と説明・項目と内容の対は `deflist`（比べるなら `table`）、層と箱と矢印で見せる構成（システム・データの流れ・役割分担）は `layers`。
    同じ型を3枚続けない。1つの型は表紙・締めを除いた枚数の3分の1まで。10枚を超えたら話の区切りに `section`（か `agenda` の再掲）を入れる
 10. **箱の中は名詞と短い補足まで。** 文で説明しない。題は全角10字まで、補足は20字まで（「文字起こし／Whisper・MLX」）。
    言い切りは見出しに、結論の1行は `takeaway` に置く。構成要素は `equation`、中心と周りは `hub`、直し方は `pairs`、並列の要点には `icon` を添える。
@@ -48,7 +48,7 @@
 | `talk` | 話す台本（文字の配列）。**1つ目は画面に入ったとき、2つ目以降は各クリックのときに話すこと**。省けば空 |
 | `transition` | `fade`（既定）／`none`。`morph` は退役した（書いてあれば fade で描き、警告する） |
 | `steps` | `false` にすると、その1枚のクリックをなくす（全部が自動で順に出る。`talk` は1つにする） |
-| `takeaway` | 中身の下に置く**結論の1行の帯**（全角でおよそ40字まで）。最後のクリックと一緒に出る（クリックは増えない）。頭にアイコンが付く。中身の型（`cards`・`flow`・`compare`・`bullets`・`timeline`・`summary`・`kpi`・`bar-chart`・`line-chart`・`table`・`matrix`・`equation`・`hub`・`pairs`・`deflist`・`steps`）だけ。`notice` には置かない |
+| `takeaway` | 中身の下に置く**結論の1行の帯**（全角でおよそ40字まで）。最後のクリックと一緒に出る（クリックは増えない）。頭にアイコンが付く。中身の型（`cards`・`flow`・`compare`・`bullets`・`timeline`・`summary`・`kpi`・`bar-chart`・`line-chart`・`table`・`matrix`・`equation`・`hub`・`pairs`・`deflist`・`steps`・`layers`）だけ。`notice` には置かない |
 | `takeaway_icon` | 帯の頭のアイコンの名前（下の「アイコン」の一覧から。省くと `info`）。`takeaway` と一緒に書く |
 | `fx` | 並びの1つずつ（カード・矢羽根・比較の列・箇条書きの項目・大きな数字の補足・要約の根拠・指標・人）の出方を変える: `rise`・`fade`・`pop`・`wipe-right` など（contract.md の語彙） |
 
@@ -92,10 +92,10 @@
 | `agenda` | 目次。話の順番を先に見せる（2〜6項目）。章の頭で `highlight` を付けて再掲もできる | 0 |
 | `section` | 章扉。話の区切りを明確にする。`layout: graphic` で写真の代わりに図形で飾る | 0 |
 | `statement` | 一番言いたいことを1文で大きく言う（結論・まとめ） | 0 |
-| `summary` | 冒頭で結論1文と、それを支える根拠2〜3を1枚で見せる（エグゼクティブサマリー・ハイライト・稟議の要旨） | 1 |
+| `summary` | 冒頭で結論1文と、それを支える根拠2〜3を1枚で見せる（エグゼクティブサマリー・ハイライト・稟議の要旨）。`layout: lead` で1つ目の根拠を左に大きく置く | 1（`layout: lead` も 1） |
 | `big-number` | 1つの数字で状況を言い切る（＋補足の数字2〜3） | 1（`side` があれば 2） |
 | `kpi` | 同格の数字を3〜4個並べ、前年比などの増減を添える（業績・週次の指標・効果の目標） | 1 |
-| `cards` | 並列の要点 2〜4（ルール・特長・選択肢） | カードの枚数 |
+| `cards` | 並列の要点 2〜4（ルール・特長・選択肢）。`layout: lead` で `accent` の1枚を左に大きく置く | カードの枚数 |
 | `flow` | 順序のある3〜5段（課題→原因→解決→効果・手順） | 段の数 |
 | `compare` | 2つを並べて違いを見せる（いま／これから・A案／B案） | 2 |
 | `bar-chart` | 数の大小・少ない時点の推移を見せる（2〜8本） | 1 |
@@ -117,6 +117,7 @@
 | `notice` | 補足・注意・決まりごとを、種類（お知らせ・完了・注意・重要）つきの枠で 1〜4 個（DADS の注釈ブロック）。4つで「課題・原因・対策・アクション」に使う見本は「[組み合わせの見本](#組み合わせの見本)」 | 枠の数 |
 | `deflist` | 用語と説明・項目と内容の対を、左右 2 列で 3〜8 行（DADS の説明リスト）。比べるなら `table` | 行の数 |
 | `steps` | 手順の進み具合（済・いま・これから）を、番号の丸と札で見せる。横 3〜5 段・縦 3〜6 段（DADS のステップナビゲーション）。順番の説明だけなら `flow` | 段の数 |
+| `layers` | 構成図。層（1〜3 段）に箱（1〜4 個）を並べ、箱と箱を矢印でつなぐ（システムの構成・データの流れ・役割分担） | 1 |
 
 ## 型ごとのキー
 
@@ -138,11 +139,11 @@
 | `section` | `title`★・`subtitle`・`number`（省くと章扉の通し番号）・`label`（「CHAPTER」など）・`image`（あれば右半分に写真、無ければ左に主役の色の帯）・`layout`・`text_side`・`tone`・`motif`（cover と同じ。`hero` で全面の写真、`graphic` で右半分を図形で飾る） |
 | `statement` | `headline`★（主張・3行まで）・`body`（補足・3行）・`kicker` |
 | `big-number` | `value`★（数字の文字）・`unit`（単位）・`label`（説明・2行）・`note`・`side`（`{value, text}`・0〜3） |
-| `cards` | `items`★（`{label, title★, body, accent, image, icon, badge}`・2〜4）。`accent: true` の1枚を強める（頭に札「注目」が付く。`badge` でその語を替える）。`image` はカードの上に 16:9 で、書くなら全部のカードに |
+| `cards` | `items`★（`{label, title★, body, accent, image, icon, badge}`・2〜4）・`layout`（`row`＝横に並べる・既定／`lead`＝主役の1枚を左に大きく置く。下の「主役を大きく置く」）。`accent: true` の1枚を強める（頭に札「注目」が付く。`badge` でその語を替える）。`image` はカードの上に 16:9 で、書くなら全部のカードに |
 | `flow` | `items`★（`{label★, title, body, accent, badge}`・3〜5）。`label` は矢羽根の中の短い語（「課題」）。既定で最後の段を強める（濃い面と太い輪郭。`badge` を書けば、その段の頭に札が付く） |
 | `compare` | `left`★・`right`★（`{label, title, points: [文字…], image, badge}`・points は5つまで。強める側の頭に札「注目」が付く（`badge` でその語を替える）。`image` は列の上に 16:9 で、書くなら両方に＝ビフォー・アフター）・`accent`（`right` 既定／`left`／`none`）・`arrow`（既定 true） |
 | `bar-chart` | `bars`★（`{label★, value★（0以上の数）, highlight, display, tone}`・2〜8。`tone` は `good-strong`・`good`・`good-soft`（良い側の濃い・中・淡）／`warn`／`bad`／`neutral`。`neutral` と省略は今の灰。色は棒と値の文字に付き、`label` は必ず出る。`highlight` と同時なら色は `tone`・強調はラベルの太字だけ。有彩色の `tone` で値が 0 の棒は、軸の上に高さ 16px の短い帯（0 の札）で残る。量の高さではない）・`unit`（値の後ろに付ける）・`max`（軸の上限）・`note`（グラフの注記）・`callout`（`{value, text}` 右に要点） |
-| `table` | `columns`★（2〜5）・`rows`★（各行は columns と同じ数・1〜7行）・`highlight`（強める列・1から。色の地に加えて、太い縦の罫と太字で示す）・`widths`（列の幅の比）・`align`（列ごとの揃え。columns と同じ数の配列で、値は left / center / right。見出しの行も同じ揃え。省略すると 1 列目 left・残り center。数の列は right にすると桁がそろう）・セルは文字・数のほかに `{"text": "20日", "tone": "warn"}`（`text` 必須・`tone` は `good` / `warn` / `bad`。淡い地＋濃い文字。見出しの行 `columns` には書けない。しきい値の判定は台本を書く側で行い、エンジンは色を付けるだけ）・`dim_rows`（薄くする行の番号の配列・1から。見出しの行は数えない。文字を `muted` にする。`tone` を書いたセルでも薄くするほうが優先で、地も付かない。1列目・`highlight` の列の太字は残る。重複はまとまる）・`legend`（色の凡例。1〜4 項目の `{tone, text}`・どちらも必須。`tone` は `good` / `warn` / `bad` / `dim`（`dim` は `dim_rows` の薄い行）。表の下に「色見本＋説明」を1行で並べ、`source` はその下。1行に入らなければ rc=2。書いていない色を載せてもよい）。**色だけで意味を伝えない:** `tone`・`dim_rows` を使うときは `legend` で色の意味を文字でも書く（`source` は出典・注記に使う）。`legend` は `table` だけ）・`summary`（見出しと表の間の数字のカードの帯。**1〜4 枚**で、各カードは `kpi` の `items` と同じ `label`★・`value`★・`unit`・`delta`・`trend`・`note`・`tone`・`group`・`reference`（意味も見た目も `kpi` と同じ）。`accent`・`badge` は使えない。幅は本文の幅を枚数で等分（間は溝）。カードの高さの上限は 384px と使える高さの小さいほう。入らなければ全部のカードの文字を同じだけ小さくし、それでも入らなければ rc=2。表・`legend`・`source` はその下に組み、残りの高さに入らなければ rc=2。**2 クリック**: カードが1クリック目に順に出て、表と `legend` が2クリック目。`summary` を書かない表は1クリック。**`summary`・`legend`・`source`・`takeaway` を併用すると、内容によって表の行がかなり限られる**（帯・凡例・source・結論の帯が高さを使うため）。明細が多いときはページを分ける。入らなければ rc=2 で、縮める所を言う） |
+| `table` | `columns`★（2〜5）・`rows`★（各行は columns と同じ数・1〜7行）・`highlight`（強める列・1から。色の地に加えて、太い縦の罫と太字で示す）・`widths`（列の幅の比。省くと、列ごとに一番長いセルの幅から決める）・`align`（列ごとの揃え。columns と同じ数の配列で、値は left / center / right。見出しの行も同じ揃え。省略すると 1 列目 left。ほかの列は、全部のセルが全角8字までなら center・長い文が入る列は left。数の列は right にすると桁がそろう）・セルは文字・数のほかに `{"text": "20日", "tone": "warn"}`（`text` 必須・`tone` は `good` / `warn` / `bad`。淡い地＋濃い文字。見出しの行 `columns` には書けない。しきい値の判定は台本を書く側で行い、エンジンは色を付けるだけ）・`dim_rows`（薄くする行の番号の配列・1から。見出しの行は数えない。文字を `muted` にする。`tone` を書いたセルでも薄くするほうが優先で、地も付かない。1列目・`highlight` の列の太字は残る。重複はまとまる）・`legend`（色の凡例。1〜4 項目の `{tone, text}`・どちらも必須。`tone` は `good` / `warn` / `bad` / `dim`（`dim` は `dim_rows` の薄い行）。表の下に「色見本＋説明」を1行で並べ、`source` はその下。1行に入らなければ rc=2。書いていない色を載せてもよい）。**色だけで意味を伝えない:** `tone`・`dim_rows` を使うときは `legend` で色の意味を文字でも書く（`source` は出典・注記に使う）。`legend` は `table` だけ）・`summary`（見出しと表の間の数字のカードの帯。**1〜4 枚**で、各カードは `kpi` の `items` と同じ `label`★・`value`★・`unit`・`delta`・`trend`・`note`・`tone`・`group`・`reference`（意味も見た目も `kpi` と同じ）。`accent`・`badge` は使えない。幅は本文の幅を枚数で等分（間は溝）。カードの高さの上限は 384px と使える高さの小さいほう。入らなければ全部のカードの文字を同じだけ小さくし、それでも入らなければ rc=2。表・`legend`・`source` はその下に組み、残りの高さに入らなければ rc=2。**2 クリック**: カードが1クリック目に順に出て、表と `legend` が2クリック目。`summary` を書かない表は1クリック。**`summary`・`legend`・`source`・`takeaway` を併用すると、内容によって表の行がかなり限られる**（帯・凡例・source・結論の帯が高さを使うため）。明細が多いときはページを分ける。入らなければ rc=2 で、縮める所を言う） |
 | `bullets` | `items`★（文字か `{title, body, icon}`・2〜5。icon は書くなら全部の項目に）・`image`（脇に写真）・`side`（写真の側 `right` 既定・`left`）・`split`（写真の幅 `1/3` 既定＝格子の4列 528・`2/5`＝5列 672・`1/2`＝6列 816） |
 | `timeline` | `items`★（`{when★, title★, body}`・3〜6）・`current`（今の時期・1から。札「いま」と二重の丸で示す） |
 | `photo` | `image`★・`headline`★・`hide_text`（`layout: full` だけ。true で画像だけの扉絵。下を見る）・`layout`（`full` 既定／`left`／`right`／`band`＝上に横長の写真の帯 1920×480、下に見出しと本文。下の文字・ページ番号も出す）・`split`（left・right の写真の幅 `1/2` 既定＝960・`2/5`＝768・`1/3`＝640）・`kicker`・`body`・`caption`（写真の出典） |
@@ -151,7 +152,7 @@
 | `annotate` | `image`★・`items`★（`{x★, y★（0〜100 の %）, title★, body}`・1〜6）・`fit`（`cover` 既定＝枠いっぱいに切り抜き、% は枠に対して／`contain`＝切らずに縮め、% は描いた画像に対して）。画像は左の格子の 8 列（1104 幅）、説明は右。印と説明は同じクリックで1つずつ |
 | `figure` | `image`★（`object-fit: contain` で縮めて全体を見せる。余りは地の色）・`caption`（図のすぐ下に1行） |
 | `closing` | `items`（次の一手 `{title, body}`・0〜4）・`contact`（文字・配列・`{label, name, lines}`）。どちらかは必須・`image`（右に写真 768×1080。次の一手と連絡先は左に縦に積む。ページ番号は出さない） |
-| `summary` | `headline`★（結論）・`points`★（`{title★, body, value}`・2〜3）・`label`（根拠の番号の前の語。既定「根拠」）。`kicker` は省くと「結論」 |
+| `summary` | `headline`★（結論）・`points`★（`{title★, body, value}`・2〜3）・`label`（根拠の番号の前の語。既定「根拠」）・`layout`（`row`＝横に並べる・既定／`lead`＝1つ目の根拠を左に大きく置く）。`kicker` は省くと「結論」 |
 | `kpi` | `items`★（`{label★, value★, unit, delta（前年比など。淡い地の札になる）, trend（up・down・flat → ▲▼→）, tone（good・bad・neutral。増減の札の色）, note, accent, badge, group}`・3〜4。accent の指標の頭に札「注目」が付く）・`image`（上に現場の写真の帯 1920×296。見出しと数字はその下）。`tone` を省くと trend から決まる（up＝good 緑・down＝bad 赤・flat と trend なし＝neutral 灰）。増えるほど悪い数字（滞留日数など）は `tone: bad` で上書きする。▲▼→ は trend のまま変わらない（色だけで示さない）。`delta` が無ければ札は出ない。`group` は `{label★, tone★}`: カードの種類分けで、tone は `a`（緑系）・`b`（橙系）・`c`（青系）。どれもテーマを変えても同じ色。同じ group のカードは同じ淡い地と枠・同じ札（label は全角6字くらいまで）になる。**札は必ず出る**。評価の良し悪しとは関係がない。group を書かないカードはいつもの面のまま（一部のカードだけに書いてよい）。`accent` と `group` は同時に書けない（rc=2）。`reference` は `true` だけ（それ以外の値は rc=2）: 主役ではなく参考として並べた数字のカードで、退いた灰の地・点線の枠・一段薄い文字（ラベル・数字・単位）・頭の札「参考」（語は固定で `badge` では替えない）で出る。参考のカードの増減の札は `tone`・`trend` によらず灰で、▲▼→ は `trend` のまま。`accent`・`group` とは同時に書けない（rc=2。どちらも札を出すため）。全部のカードを参考にしてもよく、主役のカードと混ぜても数字の上端がそろう。3枚のときはカードが使える高さいっぱいに伸び、中身は縦の中央に並ぶ |
 | `line-chart` | `labels`★（横軸の時点・3〜12）・`series`★（`{name, values★（labels と同じ数）, highlight}`・1〜3。2本以上は `name` 必須。線は点の形（丸・四角・ひし形）と線種（実線・破線・点線）を台本の順に変え、線の端に名前と最後の値を出す。名前が長くて入らないときだけ凡例）・`unit`・`min`（既定 0。負の値があれば必須）・`max`（省くと切りのよい上限）・`note`・`callout`（`{value, text}`）・`value_labels`（`all`／`last`／`none`。既定は1本で8時点までなら all、ほかは last） |
 | `team` | `members`★（`{name★, role, note, image, initials}`・2〜6）。`image` が無ければ `initials`（省くと名前の1文字目）の丸。5〜6人は3人ずつ2段 |
@@ -161,11 +162,20 @@
 | `notice` | `items`★（`{kind, label, title★, body, points}`・1〜4）。`kind` は `info`（お知らせ・既定）／`success`（完了）／`warning`（注意）／`error`（重要）で、アイコン・種類の語・枠の色が決まる（`label` を書けばその語）。`points` は短い箇条（4つまで）。`label_style`（一番外）は `icon`（アイコン＋語の行・既定）か `chip`（頭の行をアイコンでなく kind の色の札にする。語は残る）。4個のときは枠の余白と文字を詰めるので、題は1〜2行・本文は短く。1つずつクリックで出る。見出しの下に枠を縦に並べる |
 | `deflist` | `items`★（`{term★, body★, icon}`・3〜8）。左に用語（太字）・右に説明。用語の列は格子の 3 列（長ければ 4 列）で固定。`icon` は書くなら全部の行に。1行ずつクリックで出る |
 | `steps` | `items`★（`{title★, body, state}`・横 3〜5・縦 3〜6）・`current`（いま何段目か・1から。それより前が済・後ろがこれから）・`layout`（`row` 既定＝横／`column`＝縦）。`state`（`done`＝済・`current`＝いま・`todo`＝これから）を段ごとに書けば `current` より優先。どちらも無ければ rc=2。状態は丸の形（済は塗り・いまは二重の輪・これからは白に枠）・札の語・線（済は実線・これからは破線）で示す。1段ずつクリックで出る |
+| `layers` | `rows`★（`{label, items★}`・1〜3 段。上から順。`label` は層の名前）・`items`（`{id★, title★, body, label, icon, accent, col}`・1 段に 1〜4 個。`id` は箱の名前で、このページの中で重ならない文字。`col` は列の番号（1〜4）で、省くと並び順。段をまたいで同じ `col` の箱は縦にそろう）・`links`（`{from★, to★, label, both, accent}`・0〜8 本。`from`・`to` は箱の `id`。つなげるのは、同じ層の隣どうし（横）と、隣の層の箱（同じ列なら縦・違う列なら鉤の手）だけ。層をまたいで飛ばす・間の箱をまたぐ矢印は rc=2。`label` は矢印の名札。`both: true` は両向き。`accent: true` の箱と矢印は差し色の太い枠・太い線）。箱が1クリックでまとめて出て、矢印と名札はそのあとに続けて出る（クリックは1）。アイコンは箱の幅が 400px 以上のときだけ付く |
 | `matrix` | `x`★・`y`★（`{label★, low, high}`）・`items`★（`{label★, x★, y★（0〜100）, accent}`・1〜8。accent の点は二重の輪。名前どうし・区切り線との重なりはずらし、置けなければ rc=2＝x・y を離す）・`quadrants`（`{title, body}` を 左上・右上・左下・右下 の順に4つ）・`focus`（淡く塗る象限・同じ順で1〜4）・`callout`（`{title, text}` 右に要点） |
+
+### 主役を大きく置く（`layout: lead`）
+
+`cards` と `summary` は、`layout: lead` にすると、同格に並べず主役の1つを左の大きな面（主役の色）に置き、残り（1〜3つ）を右に縦に積む。いちばん言いたい手・数字が、同じ大きさの箱に埋もれるときに使う。
+
+- 主役は、`cards` は `accent: true` の項目（無ければ1つ目）、`summary` は1つ目の根拠。`summary` の主役は `value` が大きく出る
+- クリックの数は `row` と同じ。`cards` は項目ごとに1つ、`summary` は1つ
+- 写真つきの `cards`（`image` のある項目）には使えない（rc=2）。`badge` は `accent` の項目にだけ書ける
 
 ### アイコン（`icon`）
 
-`cards`・`bullets`・`equation`・`hub`・`pairs`・`deflist` の項目と、`takeaway_icon`（結論の帯）に、アイコンを名前で添えられる（[ADR 0019](../docs/adr/0019-diagram-types-icons-takeaway.md)）。
+`cards`・`bullets`・`equation`・`hub`・`pairs`・`deflist`・`layers` の項目（箱）と、`takeaway_icon`（結論の帯）に、アイコンを名前で添えられる（[ADR 0019](../docs/adr/0019-diagram-types-icons-takeaway.md)）。
 PPTX では図形のまま（色はテーマの主役の色）。合う名前が無ければ書かない。カードは icon と image のどちらか。
 
 doc（書類・原稿）・list（一覧・手順）・checklist（決まり・確かめること）・code（プログラム）・chart（数字・グラフ）・trend（伸び・増える）・scissors（切る・削る）・image（写真・画像）・video（動画・再生）・mic（声・話す）・speaker（音）・captions（字幕・文字）・chat（会話・相談）・mail（連絡・メール）・sparkle（強調・仕上げ・AI）・bulb（思いつき・アイデア）・target（目標・狙い）・flag（決めたこと・到達点）・check（できた・よい）・cross（やめる・よくない）・alert（注意・困りごと）・search（探す・調べる）・folder（フォルダ・置き場）・layers（重ねる・仕組み）・gear（設定・仕組み）・shield（守る・安全）・lock（鍵・閉じる）・link（つなぐ）・refresh（繰り返す・見直す）・upload（入れる・出す）・download（受け取る）・calendar（日付・予定）・clock（時間）・yen（お金・費用）・user（人・担当）・users（人たち・チーム）・building（会社・建物）・laptop（パソコン・手元）・phone（スマホ）・cloud（外のサービス・クラウド）・book（学ぶ・手引き）・pin（場所）・star（おすすめ・大事）・rocket（始める・速く）・hub（司令塔・まとめ役）・info（情報・補足）・notice（お知らせ・告知）・help（疑問・ヘルプ）・error（エラー・失敗）・done（チェックの印だけ（丸なし））・arrow-right（次へ・進む）・arrow-left（戻る）・arrow-up（上・昇順）・arrow-down（下・降順）・chevron-right（リンクの強調・次）・chevron-left（前）・chevron-down（開く（アコーディオン・選択））・chevron-up（閉じる）・compare（比べる）・trend-down（減る・下がる）・add（追加）・remove（削除・引く）・close（閉じる・×）・edit（編集）・delete（ごみ箱・削除）・copy（複製）・external-link（新しいタブで開く）・eye（見る・表示）・filter（絞り込み）・sort（並べ替え）・menu（メニュー）・more-vert（縦三点（メニューを開く））・home（ホーム・トップ）・article（記事・本文）・table（表）・slideshow（スライド・資料）・assignment（課題・申請）・fact-check（検証・照合）・database（データ・保存）・pie（割合・構成比）・analytics（分析・気づき）・timer（所要時間・計る）・hourglass（待つ・処理中（動かない砂時計））・history（履歴・経過）・event（催し・日程）・terminal（コマンド・端末）・key（鍵・認証）・bolt（速い・電気・即時）・robot（AI・ロボット）・brain（考える・判断）・tree（構造・分岐）・puzzle（部品・拡張）・tool（道具・直す）・speed（速さ・性能）・school（学ぶ・研修）・work（仕事・業務）・handshake（合意・連携）・globe（世界・公開）・translate（言語・翻訳）・award（成果・表彰）
@@ -348,9 +358,10 @@ node scripts/snapshot.mjs /tmp/deck-try/deck.html /tmp/deck-try/png       # 1枚
 
 | スタイル | 中身 |
 |---|---|
-| `standard`（既定） | 説明・報告・社内資料向け。今までの見た目そのもの（何も足さない） |
+| `standard`（既定） | 説明・報告・社内資料向け。箱は枠なしの淡い面・並ぶ箱は置ける高さへ伸ばす・表紙と章扉は主役の色の全面・結論の帯と表の見出しの行と締めのページと主張の1枚は濃い面（ほぼ黒）・強調する箱は差し色のベタ塗り。上端の帯と左上の印は無し |
+| `classic` | 前の既定の飾り。箱に枠線を引く（look を足さない）。投影・印刷で境をはっきり見せたいとき。表の列の幅など組み方は `standard` と同じ（前の版と同じ組みには戻らない） |
 | `visual` | ビジュアル寄り。プレゼン・ピッチ向け。表紙・章扉は全面写真、写真は全面、画像つきの箇条書きは写真1/2、3枚のギャラリーはコラージュ、出方はフェード。見た目は地に強調色をうっすら・上端に全幅の帯・白い箱に枠線・角を丸く・強調する箱と主張の1枚は強調色のベタ塗り |
-| カスタム（YAML） | `defaults`（型ごとの変化形の既定）・`motion`（fx・transition）・`look`（見た目の調子: background・surface・radius・band・emphasis・statement）。雛形は `templates/custom-style.example.yaml`。知らないキー・値は rc=2 |
+| カスタム（YAML） | `defaults`（型ごとの変化形の既定）・`motion`（fx・transition）・`look`（見た目の調子: background・surface・radius・band・emphasis・statement・fill・title・deep）。雛形は `templates/custom-style.example.yaml`。知らないキー・値は rc=2 |
 
 - 画像が要る変化形（hero・full・portrait など）は、そのページに `image` があるときだけ効く
 - 何を足したかは `inspect.md` の各ページの「スタイルで足した既定」に出る

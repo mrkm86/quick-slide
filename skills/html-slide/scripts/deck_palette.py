@@ -114,6 +114,17 @@ def base_palette(t: dict) -> dict:
         p[f"{name}-decor"] = k["deco"]
         p[f"{name}-strong"] = k["strong"]
         p[f"on-{name}"] = white if ratio(white, k["strong"]) >= 4.5 else ink
+        # 面にそのまま使うテーマの色（明度を動かさない）と、その上の文字。白も ink も 4.5:1 に届かない色なら、文字を載せる面（strong）に落とす
+        raw = t.get(name) or t["primary"]
+        on = next((c for c in (white, ink) if ratio(c, raw) >= 4.5), None)
+        p[f"{name}-fill"], p[f"on-{name}-fill"] = (raw, on) if on else (k["strong"], p[f"on-{name}"])
+    # 濃い面（deep）: 主役の色の色相をわずかに残した、ほぼ黒の面。画面のいちばん暗い所を作る。その上の文字は白、強める語と印は deep-pop
+    _, c, h = KC.to_oklch(t["primary"])
+    p["deep"] = KC.from_oklch(0.25, min(c * 0.25, 0.02), h)     # 彩度はごくわずか（0.05 だと黄の主役の色で焦げ茶になり、色が濁って見えた）
+    p["on-deep"] = white
+    # 濃い面の上で強める色: 主役の色そのまま → 差し色そのまま → どちらも 4.5:1 に届かなければ、主役の色を白へ寄せて届く一番濃い色（白にすると強調が消える）
+    p["deep-pop"] = next((x for x in (p["primary-fill"], p["accent-fill"]) if ratio(x, p["deep"]) >= 4.5),
+                         next((x for x in (mix(t["primary"], 1 - n / 40, white) for n in range(41)) if ratio(x, p["deep"]) >= 4.5), white))
     p.update(SEMANTIC)
     p.update(_tone_roles(p))
     p.update(_bar_roles(p))
@@ -211,7 +222,9 @@ def contrast_problems(p: dict) -> list[str]:
         for g in TEXT_GROUNDS:
             need.append((fg, g, 4.5))
     need += [("faint", "bg", 4.5),
-             ("on-primary", "primary-strong", 4.5), ("on-accent", "accent-strong", 4.5)]
+             ("on-primary", "primary-strong", 4.5), ("on-accent", "accent-strong", 4.5),
+             ("on-primary-fill", "primary-fill", 4.5), ("on-accent-fill", "accent-fill", 4.5),
+             ("on-deep", "deep", 4.5), ("deep-pop", "deep", 4.5)]
     for g in TEXT_GROUNDS:                      # 罫・枠・軸
         need.append(("rule", g, 3.0))
     need += [("rule-weak", "bg", 3.0), ("bar", "bg", 3.0)]

@@ -509,6 +509,10 @@ def minimal(type_: str, role: dict) -> dict:
     if type_ == "steps":
         return head | {"current": 2, "items": [{"title": f"{{段{i}}}", "body": "{説明}", "state": s}
                                                for i, s in zip((1, 2, 3), ("done", "current", "todo"))]}
+    if type_ == "layers":
+        return head | {"rows": [{"label": "{層1}", "items": [{"id": "a", "title": "{箱1}", "body": "{補足}"}, {"id": "b", "title": "{箱2}", "body": "{補足}"}]},
+                                {"label": "{層2}", "items": [{"id": "c", "title": "{箱3}", "body": "{補足}"}]}],
+                       "links": [{"from": "a", "to": "b", "label": "{名札}"}, {"from": "b", "to": "c"}]}
     raise T.DeckError(f"雛形を作れない型: {type_}")
 
 
@@ -849,7 +853,9 @@ def case_diagram_types():
     assert 'data-step="3"' in take.group(2), f"締めの帯は最後の段（3）と一緒に出る: {take.group(2)}"
     box_top = re.search(r'class="center" style="left:120px; top:([\d.]+)px; width:1680px; height:([\d.]+)px', secs[0])
     assert float(box_top.group(1)) + float(box_top.group(2)) <= T.BODY_BOTTOM - T.TAKE_H - T.TAKE_GAP + 0.5, "中身が帯に重なる"
-    assert "fill:var(--primary-text)" in secs[1] and "stroke" not in re.search(r"<svg.*?</svg>", secs[1], re.S).group(0) and 'class="icon-disc"' in secs[1], "カードのアイコン"
+    # 丸の色は CSS 変数（--disc-ground・--disc-ink）経由。変数が無ければ今までと同じ色（淡い地に主役の色の文字）
+    assert "var(--disc-ink, var(--primary-text))" in secs[1] and "var(--disc-ground, var(--tint))" in secs[1], "カードのアイコン: 丸の色は変数経由で、既定は今までと同じ"
+    assert "stroke" not in re.search(r"<svg.*?</svg>", secs[1], re.S).group(0) and 'class="icon-disc"' in secs[1], "カードのアイコン"
     assert secs[2].count('class="li-icon"') == 2
     assert len(ICON.ICONS) == 100 and all(re.fullmatch(r"[a-z]+(-[a-z]+)*", k) for k in ICON.ICONS)
     assert all(d for d, _ in ICON.ICONS.values()) and set(ICON.DESCRIPTIONS) == set(ICON.ICONS), "説明は100種すべてに付く"
@@ -1212,6 +1218,7 @@ def _kpi3(items, **kw):
 
 
 def _kpi_html(spec, name, **kw):
+    kw.setdefault("style", "classic")     # 箱の高さを中身に沿わせる前の既定。standard は fill: stretch で高さを伸ばす（case_look_new_values）
     return build(one(spec, ["", ""]), name, **kw)[0].read_text(encoding="utf-8")
 
 
@@ -1682,7 +1689,7 @@ def case_logo_pages():
     off = sorted(n for n, pg in pages.items() if pg.get("off"))
     assert off == [1, 9, 15], f"ロゴを置かないページ {off}（表紙・章扉の絵・全面の写真）"
     th = deck.DS.look_theme(deck.load_theme(deck.THEMES / "default.yaml"), deck.DS.load("visual")["look"])
-    assert pages[24]["plate"] == deck.palette(th)["primary-strong"], f"主張の全面の地の色になっていない: {pages[21]}"
+    assert pages[25]["plate"] == deck.palette(th)["primary-strong"], f"主張の全面の地の色になっていない: {pages[25]}"
     assert pages[2]["plate"] == th["background"], pages[2]
     h = pathlib.Path(html).read_text(encoding="utf-8")
     secs = h.split("<section data-slide")[1:]
@@ -1708,13 +1715,13 @@ def case_logo_positions():
     html, info = deck.build_html(SAMPLE, TMP / "logo-bl", logo=str(logo), logo_position="bottom-left")
     pages = {pg["no"]: pg for pg in info["logo"]["pages"]}
     assert info["logo"]["position"] == "bottom-left"
-    assert pages[2]["corner"] == "bottom-left" and pages[22]["corner"] == "bottom-right" and pages[15].get("off"), \
-        f"左下 → 右下 → 置かない になっていない: {pages[2]} {pages[22]} {pages[15]}（22 は左半分が絵）"
+    assert pages[2]["corner"] == "bottom-left" and pages[23]["corner"] == "bottom-right" and pages[15].get("off"), \
+        f"左下 → 右下 → 置かない になっていない: {pages[2]} {pages[23]} {pages[15]}（23 は左半分が絵）"
     secs = pathlib.Path(html).read_text(encoding="utf-8").split("<section data-slide")[1:]
     assert 'data-keep="logo-left"' in secs[1] and 'data-keep="logo-plate-left"' in secs[1]
     assert re.search(r'class="footer"[^>]*style="left: 477px; width: 435px;"', secs[1]), "下の文字がロゴの右に寄っていない"
     assert re.search(r'class="pageno"[^>]*>2<', secs[1]) and 'data-name="ページ番号" style=' not in secs[1], "ページ番号が動いた"
-    assert 'data-keep="logo"' in secs[21], "右下に逃げたページの部品名が右下のものでない"
+    assert 'data-keep="logo"' in secs[22], "右下に逃げたページの部品名が右下のものでない"
     html, info = deck.build_html(SAMPLE, TMP / "logo-tr", logo=str(logo), logo_position="top-right")
     pages = {pg["no"]: pg for pg in info["logo"]["pages"]}
     assert pages[2]["corner"] == "top-right" and all(pages[n].get("off") for n in (1, 9, 15)), \
@@ -2142,7 +2149,7 @@ def case_table_tone_dim_legend():
         expect_error(one(dict(base, legend=lg)), name, word)
     expect_error(one({"type": "line-chart", "headline": "h", "labels": ["1", "2"], "series": [{"values": [1, 2]}], "legend": [ok]}), "l-line", "legend")
     expect_error(one({"type": "cards", "headline": "h", "items": [{"title": "a"}, {"title": "b"}], "legend": [ok]}), "l-cards", "legend")
-    # 行が低すぎて最小の文字（24px・行高 1.5・上下 16px＝52px）が入らないときは rc=2。見出しを小さく組み直せば入るなら、そちらで入れる
+    # 行が低すぎて最小の文字（24px・行高 1.5・上下 12px＝48px）が入らないときは rc=2。見出しを小さく組み直せば入るなら、そちらで入れる
     long_head = {"kicker": "k", "headline": "見出しを長くして二行にする、さらに長くして確かめる文章を書く、まだ続けて二行に収める",
                  "sub": "リード文も長くして二行にする。リード文も長くして二行にする。リード文も長くする。"}
     tight = dict(base, **long_head, rows=[["1", "2", "3"]] * 7, legend=legend[:1], source="注記", takeaway="結論")
@@ -2151,7 +2158,8 @@ def case_table_tone_dim_legend():
     packed = dict(base, rows=[["1", "2", "3"]] * 7, source="x", takeaway="t", kicker="k", sub="リード文を長く" * 6)
     for sc, name in ((packed, "tdl-packed"), (dict(packed, rows=[["1", "2", "3"]] * 5, legend=legend[:2]), "tdl-packed-lg")):
         rhs = [int(v) for v in re.findall(r'class="tr th?" style="height:(\d+)px', _secs(build(one(sc), name)[0])[0])]
-        assert rhs and min(rhs) >= 52, f"最小の行の高さ 52px を割った: {rhs}"
+        assert rhs and min(rhs) >= 48, f"最小の行の高さ 48px を割った: {rhs}"
+        assert all(v % 8 == 0 for v in rhs), f"行の高さが 8 の倍数でない: {rhs}"
 
 
 def case_table_tone_contrast_all_themes():
@@ -2452,21 +2460,21 @@ def case_table_summary():
     tight = _sum_table([_sum_card(i, note="注" * 28) for i in range(4)], rows=[["1", "2", "3"]] * 7, legend=[{"tone": "good", "text": "良"}], source="x", takeaway="結論",
                        kicker="k", sub="リード文を長く" * 6)
     expect_error(one(tight), "ts-tight", "summary を置くと表が入らない", "rows を減らす", "summary の label・note を短くする")
-    # 複合: group・tone・align・dim・legend・source・takeaway を全部書いても組めて、最小の行の高さ（52px）を守る
+    # 複合: group・tone・align・dim・legend・source・takeaway を全部書いても組めて、最小の行の高さ（48px・8 の倍数）を守る
     combo = _sum_table([_sum_card(1, delta="+3", trend="up", group={"label": "自動", "tone": "a"}), _sum_card(2, tone="bad", delta="x")],
                        rows=[["1", "2", {"text": "3", "tone": "warn"}]], align=["left", "right", "center"], dim_rows=[1], highlight=2,
                        legend=[{"tone": "warn", "text": "注意"}, {"tone": "dim", "text": "見送り"}], source="出典", takeaway="結論")
     path = build(one(combo), "ts-combo")[0]
     s = _secs(path)[0]
     rhs = [int(v) for v in re.findall(r'class="tr th?" style="height:(\d+)px', s)]
-    assert rhs and min(rhs) >= 52, rhs
+    assert rhs and min(rhs) >= 48 and all(v % 8 == 0 for v in rhs), rhs
     y = lambda cls: float(re.search(rf'class="{cls}"[^>]*?top:([\d.]+)px', s).group(1))
     assert y("table") > y("row") + 100 and y("tone-legend") > y("table") and y("source") > y("tone-legend"), "上から 帯 → 表 → 凡例 → source"
     assert "結論" in s, "takeaway も入る（帯は s.bottom を上げてあるので二重に引かない）"
     # takeaway なしなら 3 行まで入る（上の組と同じ帯・凡例・source）
     no_take = {k: v for k, v in combo.items() if k != "takeaway"}
     s3 = _secs(build(one(dict(no_take, rows=[["1", "2", "3"]] * 3, dim_rows=[2])), "ts-combo3")[0])[0]
-    assert min(int(v) for v in re.findall(r'class="tr th?" style="height:(\d+)px', s3)) >= 52
+    assert min(int(v) for v in re.findall(r'class="tr th?" style="height:(\d+)px', s3)) >= 48
     # summary を書かない table は今までどおり: 1クリック・kpi の部品もカードの行も出ない・段は 1 だけ
     old = _secs(build(one({k: v for k, v in _sum_table([]).items() if k != "summary"}, ["", ""]), "ts-old")[0])[0]
     assert "kpi" not in old and 'class="row"' not in old
@@ -2533,6 +2541,275 @@ def case_combo_samples():
     notice_row = next(l for l in fmt.splitlines() if l.startswith("| `notice` |") and "(#組み合わせの見本)" in l)
     assert notice_row
     assert "「組み合わせの見本」" in (SKILL / "SKILL.md").read_text(encoding="utf-8")
+
+
+# --- 見た目の仕上げ（ADR 0029）: 表の幅・カタカナ・構成図・主役を大きく・look の新しい値・色の役 -------------------------
+
+def case_table_widths_by_content():
+    """表の列の幅: widths が無ければ中身（列で一番長いセル）で決める・書けば書いたとおりの比・どの列も等分の半分より狭くしない。"""
+    tbl = {"type": "table", "headline": "h", "columns": ["項目", "内容", "担当"],
+           "rows": [["a", "議題を前日までに予定表へ1行で書き、決めたいことも添える", "設計"],
+                    ["b", "会議の終わりに決まったことと担当と期限を読み上げる", "営業"]]}
+    ws = [int(w) for w in re.findall(r'class="td[^"]*" style="width:(\d+)px', _secs(build(one(tbl), "tw-auto")[0])[0])][:3]
+    assert ws[1] > ws[0] * 2 and ws[1] > ws[2] * 2, f"長い文の列が広くならない: {ws}"
+    assert min(ws) >= T.CW / 3 * 0.5 - 1, f"等分の半分より狭い列がある: {ws}"
+    assert abs(sum(ws) - T.CW) <= 3, ws
+    ws = [int(w) for w in re.findall(r'class="td[^"]*" style="width:(\d+)px', _secs(build(one(dict(tbl, widths=[1, 1, 2])), "tw-given")[0])[0])][:3]
+    assert ws == [round(T.CW / 4), round(T.CW / 4), round(T.CW / 2)], f"widths を書けば書いたとおり: {ws}"
+    same = dict(tbl, rows=[["あいう", "えおか", "きくけ"], ["さしす", "せそた", "ちつて"]])
+    ws = [int(w) for w in re.findall(r'class="td[^"]*" style="width:(\d+)px', _secs(build(one(same), "tw-even")[0])[0])][:3]
+    assert max(ws) - min(ws) <= 3, f"同じ長さの列は等分: {ws}"
+    expect_error(one(dict(tbl, widths=[1, 2])), "tw-bad", "widths")
+    expect_error(one(dict(tbl, widths=[1, 0, 1])), "tw-bad0", "widths")
+
+
+def case_table_align_default():
+    """表の揃えの既定: 1列目は左・全部のセルが全角8字までの列は中央・文が入る列は左。align を書けば書いたとおり。"""
+    tbl = {"type": "table", "headline": "h", "columns": ["項目", "短い列", "文の列"],
+           "rows": [["a", "30分", "議題を前日までに予定表へ1行で書き、決めたいことも添える"],
+                    ["b", "25分", "会議の終わりに決まったことと担当と期限を読み上げる"]]}
+    just = lambda html: re.findall(r'class="td[^"]*" style="width:\d+px; justify-content:([a-z-]+)"', html)[:3]
+    assert just(_secs(build(one(tbl), "ta-def")[0])[0]) == ["flex-start", "center", "flex-start"], "1列目左・短い列は中央・文の列は左"
+    assert just(_secs(build(one(dict(tbl, align=["right", "left", "center"])), "ta-given")[0])[0]) == ["flex-end", "flex-start", "center"]
+
+
+def case_katakana_not_split():
+    """カタカナの語（3字以上）は途中で折らない: 入る段へ下りる・どの段でも入らなければ今までどおり語の途中で折る（止めない）。"""
+    word = "メタモルフォーゼ"
+    assert T.count_lines(word, 57, 400, True, split_kana=False) == 99, "折らない数え方では、幅を越える語は 99"
+    assert T.count_lines(word, 57, 400, True, split_kana=True) == 2, "折る数え方なら 2 行"
+    size, n = T.fit(word, 57, 400, what="題", lines=2, bold=True, min_size=28)
+    assert size < 57 and n == 1 and T.count_lines(word, size, 400, True, split_kana=False) == 1, (size, n)
+    size, n = T.fit(word, 57, 200, what="題", lines=4, bold=True, min_size=45)
+    assert (size, n) == (57, 3), "どの段でも入らなければ、大きさは下げず語の途中で折る（止めない）"
+    assert T.count_lines("ツー", 57, 100, True, split_kana=False) == 2, "2字の語は対象外（今までどおり折れる）"
+    assert T.count_lines("ABCDEFG", 57, 100, True) == 99 and T.count_lines("ABCDEFG", 28, 400, True) == 1, "英数字の語は今までどおり"
+
+
+def _layers_spec(**kw) -> dict:
+    spec = {"type": "layers", "headline": "h",
+            "rows": [{"label": "現場", "items": [{"id": "a", "title": "議題", "body": "前日に"}, {"id": "b", "title": "会議", "accent": True},
+                                               {"id": "c", "title": "記録"}]},
+                     {"label": "事務局", "items": [{"id": "d", "title": "集計", "col": 2}, {"id": "e", "title": "報告", "col": 3}]}],
+            "links": [{"from": "a", "to": "b", "label": "前日"}, {"from": "c", "to": "b", "accent": True},
+                      {"from": "c", "to": "d", "label": "その日"}, {"from": "d", "to": "e", "both": True}]}
+    return spec | kw
+
+
+def case_layers():
+    """layers（構成図）: 層と箱の数・矢印の向き・col で縦にそろう・クリックは1・誤り（知らない id・隣でない矢印・col の重なりなど）は rc=2。"""
+    path, info = build(one(_layers_spec(), ["x", "y"]), "layers-ok")
+    s = _secs(path)[0]
+    assert info["slides"][0]["clicks"] == 1 and info["warnings"] == [], info
+    assert s.count('class="dg-band"') == 2 and s.count('class="dg-node') == 5 and s.count('class="dg-node hl"') == 1, "層 2・箱 5・強める箱 1"
+    assert s.count('class="dg-rowlabel"') == 2 and s.count("<polygon") == 5, "矢印の頭は 4 本＋両向きの 1"
+    nodes = [(int(x), int(y)) for x, y in re.findall(r'class="dg-node[^"]*" style="left:(\d+)px; top:(\d+)px', s)]
+    assert nodes[3][0] == nodes[1][0] and nodes[4][0] == nodes[2][0], f"同じ col は縦にそろう: {nodes}"
+    assert nodes[0][1] == nodes[1][1] == nodes[2][1] < nodes[3][1] == nodes[4][1], f"層ごとに高さがそろう: {nodes}"
+    nw = int(re.search(r'class="dg-node[^"]*" style="left:\d+px; top:\d+px; width:(\d+)px', s).group(1))
+    heads = [[tuple(float(v) for v in pt.split(",")) for pt in m.split()] for m in re.findall(r'<polygon points="([^"]*)"', s)]
+    tip = lambda h: h[0]
+    right_of = lambda i: nodes[i][0] + nw
+    assert abs(tip(heads[0])[0] - (nodes[1][0] - 8)) < 1.5, "a → b: 矢印の先は b の左"
+    assert abs(tip(heads[1])[0] - (right_of(1) + 8)) < 1.5, "c → b（右から左）: 矢印の先は b の右"
+    assert tip(heads[2])[1] > nodes[2][1], "c → d は上の層から下の層へ: 矢印の先は下向き（d の上）"
+    assert "stroke:var(--accent-mark)" in s and "stroke-width:4" in s, "強める矢印は差し色の太い線"
+    assert s.count(f"left:{nodes[3][0]}px") >= 1 and ">前日<" in s and ">その日<" in s, "矢印の名札"
+    steps = set(re.findall(r'data-step="(\d+)"', s))
+    assert steps == {"0", "1"}, f"箱も矢印も1クリック: {steps}"
+    # 誤り（rc=2）
+    link = lambda **k: _layers_spec(links=[dict({"from": "a", "to": "b"}, **k)])
+    for sc, name, words in (
+            (link(to="zzz"), "ly-unknown", ("links の 1 本目", "zzz")),
+            (_layers_spec(links=[{"from": "a", "to": "c"}]), "ly-skip", ("隣どうし",)),
+            (_layers_spec(links=[{"from": "a", "to": "a"}]), "ly-self", ("違う箱",)),
+            (_layers_spec(rows=[{"items": [{"id": "a", "title": "x"}]}, {"items": [{"id": "b", "title": "y"}]}, {"items": [{"id": "c", "title": "z"}]}],
+                          links=[{"from": "a", "to": "c"}]), "ly-rows", ("隣の層",)),
+            (_layers_spec(rows=[{"items": [{"id": "a", "title": "x", "col": 2}, {"id": "b", "title": "y", "col": 2}]}], links=[]), "ly-col", ("col 2",)),
+            (_layers_spec(rows=[{"items": [{"id": "a", "title": "x"}, {"id": "a", "title": "y"}]}], links=[]), "ly-dup", ("id",)),
+            (_layers_spec(rows=[{"items": [{"title": "x"}]}], links=[]), "ly-noid", ("id",)),
+            (_layers_spec(rows=[], links=[]), "ly-empty", ("rows は 1〜3 段",)),
+            (_layers_spec(rows=[{"items": [{"id": str(i), "title": "x"}]} for i in range(4)], links=[]), "ly-four", ("rows は 1〜3 段",)),
+            (_layers_spec(rows=[{"items": [{"id": str(i), "title": "x"} for i in range(5)]}], links=[]), "ly-five", ("1〜4",)),
+            (_layers_spec(links=[{"from": "a", "to": "b", "color": "red"}]), "ly-key", ("知らないキー",)),
+            (_layers_spec(rows=[{"items": [{"id": "a", "title": "x"}], "mark": 1}], links=[]), "ly-rowkey", ("知らないキー",))):
+        expect_error(one(sc), name, *words)
+    expect_error(one(_layers_spec(), ["x"]), "ly-talk", "talk")
+
+
+def case_layout_lead():
+    """layout: lead（cards・summary）: cards は accent の項目（無ければ1つ目）が主役・summary は1つ目の根拠・クリックの数は変わらない・
+    写真つきカードと知らない値は rc=2。"""
+    items = [{"label": "ア", "title": "あ", "body": "b1"}, {"label": "イ", "title": "い", "body": "b2", "accent": True},
+             {"label": "ウ", "title": "う", "body": "b3"}]
+    cards = {"type": "cards", "headline": "h", "items": items}
+    base = build(one(cards), "lead-row")[1]["slides"][0]["clicks"]
+    path, info = build(one(dict(cards, layout="lead")), "lead-cards")
+    s = _secs(path)[0]
+    assert info["slides"][0]["clicks"] == base == 3, (base, info["slides"][0])
+    panel = re.search(r'class="lead-panel".*?(?=<div class="card lead-row")', s, re.S).group(0)
+    assert ">い<" in panel and ">あ<" not in panel and ">う<" not in panel, "accent の項目が主役"
+    assert s.count('class="card lead-row"') == 2 and s.index(">あ<") > s.index(">い<"), "残りは右に積む"
+    assert 'class="card hl"' not in s, "主役の面と強調の箱を二重にしない"
+    plain_first = _secs(build(one(dict(cards, layout="lead", items=[{k: v for k, v in it.items() if k != "accent"} for it in items])), "lead-first")[0])[0]
+    assert ">あ<" in re.search(r'class="lead-panel".*?(?=<div class="card lead-row")', plain_first, re.S).group(0), "accent が無ければ1つ目"
+    summ = {"type": "summary", "headline": "h", "points": [{"value": "11.5", "title": "あ", "body": "b1"}, {"title": "い"}, {"title": "う"}]}
+    sb = build(one(summ), "lead-sum-row")[1]["slides"][0]["clicks"]
+    path, info = build(one(dict(summ, layout="lead")), "lead-sum")
+    s = _secs(path)[0]
+    assert info["slides"][0]["clicks"] == sb == 1, (sb, info["slides"][0])
+    panel = re.search(r'class="lead-panel".*?(?=<div class="card lead-row")', s, re.S).group(0)
+    assert ">11.5<" in panel and ">あ<" in panel and ">い<" not in panel, "summary は1つ目の根拠が主役（value は大きく）"
+    assert s.count('class="card lead-row"') == 2
+    imaged = dict(cards, layout="lead", items=[dict(it, image={"prompt": "p"}) for it in items])
+    expect_error(one(imaged), "lead-img", "layout: lead", "写真")
+    expect_error(one(dict(cards, layout="grid")), "lead-bad", "layout")
+    expect_error(one(dict(summ, layout="grid")), "lead-sum-bad", "layout")
+    expect_error(one(dict(cards, layout="lead", items=[dict(items[0], badge="新"), items[1], items[2]])), "lead-badge", "badge")
+
+
+def _style_file(name: str, text: str) -> pathlib.Path:
+    p = TMP / f"{name}.yaml"
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def case_look_new_values():
+    """look の新しい値（surface: flat・fill: stretch・title: solid／deep・emphasis／statement: deep・deep: on）: CSS が出る・
+    classic は空・standard は出る・知らない値は rc=2（deep: on は YAML の真偽値でも読める）。"""
+    DS = deck.DS
+    assert DS.look_css({}) == "" and DS.load("classic")["look"] == {}, "classic は look なし"
+    std = DS.load("standard")["look"]
+    assert std == {"surface": "flat", "band": "none", "fill": "stretch", "emphasis": "strong", "statement": "deep", "title": "solid", "deep": "on"}, std
+    flat, solid, deep_title = DS.look_css({"surface": "flat"}), DS.look_css({"title": "solid"}), DS.look_css({"title": "deep"})
+    assert ".card-bar { display: none; }" in flat and "--disc-ground: var(--primary-fill)" in flat, "flat"
+    assert "var(--primary-fill)" in solid and 'section[data-type="cover"]' in solid and "var(--on-primary-fill)" in solid, "solid"
+    assert "var(--deep)" in deep_title and "var(--deep-pop)" in deep_title and "primary-fill" not in deep_title, "title: deep"
+    emph = DS.look_css({"emphasis": "deep"})
+    assert "var(--deep)" in emph and "var(--on-deep)" in emph and "accent-strong" not in emph, "emphasis: deep"
+    assert "var(--accent-strong)" in DS.look_css({"emphasis": "strong"}), "emphasis: strong は今までどおり"
+    stmt = DS.look_css({"statement": "deep"})
+    assert "var(--deep)" in stmt and "primary-strong" not in stmt, "statement: deep"
+    deep_on = DS.look_css({"deep": "on"})
+    assert 'section[data-type="closing"]' in deep_on and ".tr.th" in deep_on and ".take" in deep_on, "deep: on"
+    assert DS.look_css({"fill": "stretch"}) == "", "fill は組みの値（CSS は出さない）"
+    # 組んだ HTML: classic には出ず、standard には出る
+    def style_of(name, **kw):
+        h = build(one({"type": "cards", "headline": "h", "items": [{"title": "a"}, {"title": "b"}]}), name, **kw)[0].read_text(encoding="utf-8")
+        return h[h.index("<style"):h.index("</style>")]
+    classic_css, standard_css = style_of("lk-classic", style="classic"), style_of("lk-standard")
+    assert "--disc-ground:" not in classic_css and ".card-bar { display: none; }" not in classic_css and "var(--deep)" not in classic_css, "classic には look の CSS が出ない"
+    assert "--disc-ground: var(--primary-fill)" in standard_css and ".card-bar { display: none; }" in standard_css and "var(--deep)" in standard_css, "standard には出る"
+    # 知らない値は rc=2・deep は引用符なしの on でも読める
+    for item, bad in (("surface", "glass"), ("fill", "grow"), ("title", "gradient"), ("emphasis", "neon"), ("statement", "neon"), ("deep", "maybe")):
+        f = _style_file(f"lk-bad-{item}", f"name: x\nlook:\n  {item}: {bad}\n")
+        try:
+            DS.load(str(f))
+            raise AssertionError(f"{item}: {bad} が通った")
+        except T.DeckError as e:
+            assert f"look.{item}" in str(e), e
+    f = _style_file("lk-on", "name: x\nlook:\n  deep: on\n  fill: stretch\n")
+    assert DS.load(str(f))["look"] == {"deep": "on", "fill": "stretch"}, "引用符なしの on（YAML の真偽値）も読める"
+    f = _style_file("lk-off", "name: x\nlook:\n  deep: off\n")
+    assert DS.load(str(f))["look"] == {"deep": "off"}
+    assert DS.look_css({"deep": "off"}) == ""
+    # 雛形がそのまま読める
+    assert DS.load(str(SKILL / "templates" / "custom-style.example.yaml"))["look"]["fill"] == "content"
+
+
+def case_look_emphasis_on_fills():
+    """色の面の上の強調の語（**語**）・出典: 面と同じ色相の強調の色のまま残さない（査読の指摘。表紙の副題・締め・表の見出し・結論の帯）。
+    look の CSS に面ごとの規則があり、その色の役と面が 4.5:1（3 テーマと明るい主役の色）。layers の矢印の型違い・表の幅の合計も見る。"""
+    DS = deck.DS
+    std = DS.look_css(DS.load("standard")["look"])
+    for rule in (".cover-subtitle em, .sec-subtitle em { color: var(--on-primary-fill); font-weight: 700; }",
+                 ".take-t em, .tr.th .td em { color: var(--deep-pop); }",
+                 ".tr.th .td.hl em { color: var(--on-accent); }",
+                 'section[data-type="closing"] .source { color: var(--on-deep); }',
+                 'section[data-type="closing"] em { color: var(--deep-pop); }',
+                 'section[data-type="closing"] .contact em { color: var(--on-primary); }'):
+        assert rule in std, f"standard の look に無い: {rule}"
+    assert ".cover-subtitle em" in DS.look_css({"title": "deep"}) and "var(--deep-pop)" in DS.look_css({"title": "deep"})
+    flat = DS.look_css({"surface": "flat"})
+    assert ".take-t, .take-t em { color: var(--on-primary-fill); }" in flat and ".tr.th .td div, .tr.th .td em { color: var(--on-primary-fill); }" in flat, "flat だけのとき"
+    # 後に出る規則が勝つ: standard では、濃い面の規則が淡い面の規則より後ろ
+    assert std.index(".take-t em, .tr.th .td em { color: var(--deep-pop); }") > std.index(".take-t, .take-t em { color: var(--on-primary-fill); }")
+    # 全面の写真（hero）の表紙・章扉: 題は幕の上に載るので、幕の上の色（検査済み）が、面の上の色の規則より後ろにあって勝つ（再査読の指摘）
+    for look in ({"title": "solid"}, {"title": "deep"}, DS.load("standard")["look"]):
+        css = DS.look_css(look)
+        last_title = max(css.rfind(".cover-subtitle em"), css.rfind(".cover-rule { background-color: var(--on-primary-fill); }"), css.rfind(".sec-panel"))
+        for rule in (".on-light .cover-title, .on-light .cover-subtitle, .on-light div, .on-light .sec-title, .on-light .sec-subtitle { color: var(--ink); }",
+                     ".on-light em { color: var(--accent-on-light); }", ".on-light .cover-label, .on-light .sec-label, .on-light .sec-no { color: var(--primary-on-light); }",
+                     ".on-dark .cover-title, .on-dark .cover-subtitle, .on-dark div, .on-dark .sec-title, .on-dark .sec-subtitle { color: #ffffff; }",
+                     ".on-dark em { color: var(--accent-on-dark); }", ".on-dark .cover-label, .on-dark .sec-label, .on-dark .sec-no { color: var(--primary-on-dark); }"):
+            assert rule in css and css.index(rule) > last_title, (look, rule)
+    assert ".on-light" not in DS.look_css({"surface": "flat"}), "title の look が無ければ足さない"
+    img = str(SKILL / "examples" / "images" / "s01-image.jpg")
+    for tone, cls in (("light", "on-light"), ("dark", "on-dark")):       # 組んだ HTML: 題・日付の箱が幕の class を持つ（上の規則が効く相手）
+        for spec in ({"type": "cover", "layout": "hero", "tone": tone, "title": "題の**強調**", "subtitle": "説明の**重要語**", "meta": ["日付"], "image": {"path": img}},
+                     {"type": "section", "layout": "hero", "tone": tone, "number": "01", "title": "章の**題**", "subtitle": "副題の**語**", "image": {"path": img}}):
+            h = build(one(spec), f"hero-{spec['type']}-{tone}")[0].read_text(encoding="utf-8")
+            assert f'-text {cls}"' in h, (spec["type"], tone)
+    tpl = (SKILL / "templates" / "deck.html").read_text(encoding="utf-8")
+    assert ".tr.th .td.hl div, .tr.th .td.hl em { color: var(--on-accent); }" in tpl, "強める列の見出しの強調の語（どのスタイルでも）"
+    for th in ({"background": "#ffffff", "ink": "#333333", "primary": "#006f83"}, {"background": "#ffffff", "ink": "#1a1a1a", "primary": "#f5a623", "accent": "#399dd1"},
+               {"background": "#faf7f0", "ink": "#333333", "primary": "#ac3e00"}, {"background": "#ffffff", "ink": "#333333", "primary": "#197a4b"}):
+        pal = deck.palette(th)
+        for fg, bg in (("on-primary-fill", "primary-fill"), ("deep-pop", "deep"), ("on-deep", "deep"), ("on-accent", "accent-strong"), ("on-primary", "primary-strong")):
+            assert deck.ratio(pal[fg], pal[bg]) >= 4.5 - 1e-9, (th["primary"], fg, bg, deck.ratio(pal[fg], pal[bg]))
+    # 組んだ HTML に、強調の語と出典がそのまま出ている（色は上の規則が決める）
+    h = build(one({"type": "closing", "headline": "締め", "items": [{"title": "**重要**な次の一手"}], "source": "出典"}), "em-closing")[0].read_text(encoding="utf-8")
+    assert "<em>重要</em>" in h and 'class="source"' in h
+    # layers: both・accent は真偽値だけ・links は書いたなら配列
+    base = {"type": "layers", "headline": "h", "rows": [{"items": [{"id": "a", "title": "A"}, {"id": "b", "title": "B"}]}]}
+    for bad in ({"links": [{"from": "a", "to": "b", "both": "true"}]}, {"links": [{"from": "a", "to": "b", "accent": 1}]}, {"links": None}):
+        try:
+            build(one({**base, **bad}), "ly-bad")
+            raise AssertionError(f"通った: {bad}")
+        except T.DeckError:
+            pass
+    build(one({**base, "links": [{"from": "a", "to": "b", "both": True, "accent": False}]}), "ly-ok")
+    build(one(base), "ly-nolinks")
+    # 表: 列の幅の合計は、いつも本文の幅ちょうど（列ごとに丸めて 1px 越えない）
+    import re as _re
+    h = build(one({"type": "table", "headline": "h", "columns": ["a", "b", "c"], "rows": [["1", "2", "3"]], "widths": [1, 1, 7]}), "tb-sum")[0].read_text(encoding="utf-8")
+    row = h[h.index('class="tr th"'):]
+    ws = [int(v) for v in _re.findall(r'class="td[^"]*" style="width:(\d+)px', row[:row.index("</div></div></div>")])][:3]
+    assert sum(ws) == T.CW, ws
+
+
+def case_look_fill_stretch():
+    """fill: stretch は並ぶ箱の高さを置ける高さへ伸ばす（8 の倍数・中身の 1.6 倍まで）。classic は伸ばさず、中身に沿う。"""
+    cards = {"type": "cards", "headline": "h", "items": [{"title": "a", "body": "短い"}, {"title": "b", "body": "短い"}, {"title": "c", "body": "短い"}]}
+    heights = lambda style: [int(v) for v in re.findall(r'class="card[^"]*" style="[^"]*height:(\d+)px', _secs(build(one(cards), f"fs-{style}", style=style)[0])[0])]
+    std, classic = heights("standard"), heights("classic")
+    assert len(std) == 3 and all(v % 8 == 0 for v in std) and len(set(std)) == 1, f"standard は同じ高さに伸ばす（8 の倍数）: {std}"
+    assert classic == [], f"classic は高さを固定しない（中身に沿う）: {classic}"
+    sl = T.Slide(1, {"type": "cards"}, deck.palette(deck.load_theme(deck.THEMES / "default.yaml")), flat=False, script_dir=TMP, assets=[], look={"fill": "stretch"})
+    assert T.stretch_h(sl, 300, 1000) == 480 and T.stretch_h(sl, 300, 400) == 400 and T.stretch_h(sl, 300, 300) is None, "中身の 1.6 倍まで・置ける高さまで・伸ばせなければ None"
+    sl = T.Slide(1, {"type": "cards"}, deck.palette(deck.load_theme(deck.THEMES / "default.yaml")), flat=False, script_dir=TMP, assets=[], look={})
+    assert T.stretch_h(sl, 300, 1000) is None, "fill が無ければ伸ばさない"
+
+
+def case_color_roles():
+    """色の役（primary-fill・accent-fill・on-…-fill・deep・on-deep・deep-pop）が3つのテーマと、黄のような明るい主役の色で 4.5:1 を満たす。"""
+    themes = {n: dict(deck.load_theme(deck.THEMES / f"{n}.yaml")) for n in ("default", "forest", "warm")}
+    base = themes["default"]
+    themes["yellow"] = dict(base, primary="#ffd400", accent="#f5c518")
+    themes["pale-yellow"] = dict(base, primary="#fff176", accent="#ffe082")
+    themes["navy"] = dict(base, primary="#0b1f4d", accent="#1f3b8a")
+    for name, th in themes.items():
+        p = deck.palette(th)
+        for fg, bg in (("on-primary-fill", "primary-fill"), ("on-accent-fill", "accent-fill"), ("on-deep", "deep"), ("deep-pop", "deep")):
+            r = deck.ratio(p[fg], p[bg])
+            assert r >= 4.5, f"{name}: {fg} {p[fg]} × {bg} {p[bg]} は {r:.2f}:1（4.5 未満）"
+        assert deck.contrast_problems(p) == [], (name, deck.contrast_problems(p))
+        r_, g_, b_ = (int(p["deep"][i:i + 2], 16) for i in (1, 3, 5))
+        assert max(r_, g_, b_) <= 64, f"{name}: deep はほぼ黒（{p['deep']}）"
+    p = deck.palette(themes["yellow"])
+    assert p["primary-fill"] == "#ffd400" and p["on-primary-fill"] != "#ffffff", "黄の面の上の文字は白にしない（明るい色の上は黒に寄せる）"
+    p = deck.palette(base)
+    assert p["primary-fill"] == base["primary"], "テーマの色そのまま（明度を動かさない）"
 
 
 CASES = {k[5:]: v for k, v in globals().items() if k.startswith("case_")}
