@@ -1060,23 +1060,24 @@ def t_cards(s: Slide):
         iw = inner_w(cw, hl)
         room = avail - box_pad(hl) - 32
         inner = ['<div class="card-bar"></div>']
+        any_badge = any(x.get("accent") for x in its)
         h = box_pad(hl) + 8 + 24                # 上下の余白と枠・上の短い線とその下の間
         badge = badge_of(s, it, hl, f"items の {i + 1} 個目")
-        if badge:                               # 強調は色だけで示さない: 頭に札（badge か「注目」）
-            inner.insert(0, chip(badge))
+        if badge or any_badge:                  # 強調は色だけで示さない: 頭に札（badge か「注目」）。札のないカードにも同じ高さの空きを置く（アイコンと題の上端をそろえる）
+            inner.insert(0, chip(badge) if badge else f'<div style="height:{CHIP_H + 16}px; flex:none"></div>')
             room -= CHIP_H + 16
             h += CHIP_H + 16
         icon = icon_of(s, it, f"items の {i + 1} 個目")
         if icon and it.get("image"):
             s.err("カードの icon と image は一緒に書かない（どちらか）")
         if icon:                                # 上の短い線の代わりにアイコン（ADR 0019）
-            inner = [icon_disc(icon, 96, 56, extra=" margin-bottom:24px;")] if not badge else [inner[0], icon_disc(icon, 96, 56, extra=" margin-bottom:24px;")]
+            inner = [icon_disc(icon, 96, 56, extra=" margin-bottom:24px;")] if not (badge or any_badge) else [inner[0], icon_disc(icon, 96, 56, extra=" margin-bottom:24px;")]
             room -= 96 - 8
             h += 96 - 8
         if it.get("image"):                     # カードの上に 16:9 の写真（全部のカードで同じ比）
             ih = iw * 9 / 16
             pic = s.img(it["image"], f"item{i + 1}", "card-img", 0, 0, iw, ih, extra="position:static;")
-            inner = [pic] if not badge else [inner[0], pic]
+            inner = [pic] if not (badge or any_badge) else [inner[0], pic]
             room -= ih + 24 - 32
         if label:
             ls, _ = s.fit("card-label", label, 28, iw, what=f"items の {i + 1} 個目の label", lines=1, lh=1.5, min_size=28, bold=True)
@@ -1094,7 +1095,7 @@ def t_cards(s: Slide):
             h += bn * bs * 1.6
         tallest = max(tallest, h)
         cls = "card hl" if hl else "card"
-        n_top = bool(badge) + bool(icon)        # 頭の部品（札・アイコン）の数。伸ばした箱では、頭と文字を上下に振り分ける
+        n_top = bool(badge or any_badge) + bool(icon)        # 頭の部品（札・アイコン）の数。伸ばした箱では、頭と文字を上下に振り分ける
         cards.append((cls, inner, n_top, i))
     tall = stretch_h(s, tallest, avail) if not any(imaged) else None
     out = []

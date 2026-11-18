@@ -44,3 +44,7 @@
 ## 追記（2026-10-10）`look.surface: white` の退役
 
 `white`（白に影）は退役した。受け付けるが `line`（白に枠線）と同じに描く（影は番号の丸だけ・[ADR 0020](0020-dads-foundations.md)）。`visual` は `line` にした。
+
+## 追記（2026-11-18）standard の見た目を替え、前の見た目は classic に
+
+`standard` は look を持つようになった（枠なしの淡い面・主役の色の表紙・ほぼ黒の面・箱を置ける高さへ伸ばす）。前の `standard`（look なし）は `classic` の名前で残す。look の項目に `fill`・`title`・`deep` を足し、`surface` に `flat`、`emphasis`・`statement` に `deep` を足した（[ADR 0029](0029-design-direction-per-deck.md)）。
