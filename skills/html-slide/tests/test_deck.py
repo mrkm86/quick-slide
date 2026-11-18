@@ -2999,7 +2999,7 @@ def case_free_render():
     # 棒: 長さは数に比例した flex の伸び（丸めない）・on の棒は差し色
     bars = '<div class="f-box f-grow"><div class="f-bars" data-max="21"><div class="f-bar on" data-value="21"><b>21%</b>導入前</div><div class="f-bar" data-value="6.5"><b>6.5%</b>3か月目</div></div></div>'
     h = build(one(_free(bars)), "free-bars")[0].read_text(encoding="utf-8")
-    assert 'style="flex: 21 1 0px; background-color: var(--accent-fill);"' in h and 'style="flex: 6.5 1 0px; background-color: var(--primary-fill);"' in h
+    assert 'style="flex: 21 1 0px; background-color: var(--accent-fill);"' in h and 'style="flex: 6.5 1 0px; background-color: var(--rule);"' in h, "差し色の無いテーマ: ふつうの棒は色みの無い色に退く"
     assert 'style="flex: 14.5 1 0px;"' in h and 'class="f-bar-value" style="color: var(--primary-text);">6.5%</div>' in h and ">3か月目</div>" in h
     # クリックの段: data-step の 1 以上の値の種類の数（talk と照合）。配る資料・steps: false は型と同じ扱い
     steps = '<div class="f-row f-grow"><div class="f-box f-grow" data-step="1"><div>一</div></div><div class="f-box f-grow" data-step="2" data-fx="pop" data-name="二つ目"><div>二</div></div></div>'
@@ -3068,7 +3068,7 @@ def case_free_parts():
     pal = deck.palette({"background": "#ffffff", "ink": "#1a1a1a", "primary": "#ffd400"})
     assert ratio(pal["primary-fill"], pal["bg"]) < 3, "この試験の前提（主役の色が地に近い）"
     body = (cells.format("") + '<span class="f-icon" data-icon="users"></span><span class="f-icon disc" data-icon="users"></span>'
-            '<div class="f-row"><div>a</div><div class="f-line"></div></div><div class="f-bars" data-max="10"><div class="f-bar on" data-value="7">a</div><div class="f-bar" data-value="3">b</div></div>')
+            '<div class="f-row"><div>a</div><div class="f-line"></div></div><div class="f-bars" data-max="10"><div class="f-bar" data-value="7">a</div><div class="f-bar" data-value="3">b</div></div>')
     for surf in ("{}", '<div class="f-box">{}</div>', '<div class="f-box fill">{}</div>', '<div class="f-box deep">{}</div>', '<div class="f-box accent">{}</div>'):
         for theme in (pal, deck.palette({"background": "#ffffff", "ink": "#333333", "primary": "#006f83"})):
             h, _ = FB.render(surf.format(body), theme, lambda *a: "")
@@ -3089,6 +3089,7 @@ def case_free_parts():
     # style で書ける地の色の全部の上でも、マスは見分けられる組になるか、rc=2 で止まる（見分けられないまま通さない）
     import free_body as FB2
     for theme in (pal, deck.palette({"background": "#ffffff", "ink": "#333333", "primary": "#ffd400", "accent": "#ffd400"}),
+                  deck.palette({"background": "#ffffff", "ink": "#333333", "primary": "#006f83", "accent": "#813f9d"}),
                   deck.palette({"background": "#ffffff", "ink": "#333333", "primary": "#006f83"})):
         for g in FB2.COLOR_VARS:
             try:
@@ -3100,7 +3101,7 @@ def case_free_parts():
             assert ratio(theme[cs_[0]], theme[g]) >= 3 and ratio(theme[cs_[0]], theme[cs_[-1]]) >= 3, (g, cs_[0], cs_[-1])
         # アイコン・丸つきのアイコン・線・棒も同じ: 書いた地の上で 3:1 の色になるか、rc=2 で止まる
         shapes = {"アイコン": ('<div class="f-icon" data-icon="users"></div>', r'style="fill:var\(--([a-z-]+)\)"'),
-                  "線": ('<div class="f-row"><div>a</div><div class="f-line"></div></div>', r'class="f-line" style="background-color: var\(--([a-z-]+)\)'),
+                  "線": ('<div class="f-row"><div></div><div class="f-line"></div></div>', r'class="f-line" style="background-color: var\(--([a-z-]+)\)'),
                   "棒": ('<div class="f-bars" data-max="10"><div class="f-bar on" data-value="7"></div><div class="f-bar" data-value="3"></div></div>',
                         r'class="f-bar-fill" style="flex: [^;]+; background-color: var\(--([a-z-]+)\)'),
                   "丸": ('<div class="f-icon disc" data-icon="users"></div>', r'class="f-icon-disc" style="[^"]*background-color: var\(--([a-z-]+)\)')}
@@ -3109,10 +3110,12 @@ def case_free_parts():
                 try:
                     h, _ = FB.render(f'<div style="background-color: var(--{g})">{part}</div>', theme, lambda *a: "")
                 except FB.FreeError as e:
-                    assert "見える色" in str(e) or "読めない" in str(e), (g, what, e)
+                    assert "見える色" in str(e) or "見分けられる色" in str(e), (g, what, e)
                     continue
                 names = re.findall(pat, h)
                 assert names and all(ratio(theme[n], theme[g]) >= 3 for n in names), (g, what, names)
+                if what == "棒":
+                    assert theme[names[0]] != theme[names[1]], (g, "強める棒とふつうの棒が同じ色", names)
                 if what == "丸":
                     glyph = re.search(r'style="fill:var\(--([a-z-]+)\)"', h).group(1)
                     assert ratio(theme[glyph], theme[names[0]]) >= 3, (g, "丸の中の絵", glyph)

@@ -462,6 +462,13 @@ class _Render:
         # 棒の色: ふつうの棒と強める棒（on）。どちらも地の上で 3:1
         plain = self.pick(node, "棒", bg, (s["mark"], s["strong"], s["text"]))
         hot = self.pick(node, "棒", bg, (s["pop"], s["strong"], s["text"]))
+        ons = sum(b.has("on") for b in bars)
+        if 0 < ons < len(bars) and self.pal[hot] == self.pal[plain]:
+            # 強める棒とふつうの棒が同じ色になる（差し色の無いテーマ・色の面の上）: ふつうの棒を、色みの無い色に退かせる。無ければ誤り
+            plain = next((n for n in dict.fromkeys(("rule", s["muted"], "muted", "ink", "bg"))
+                          if self.pal[n] != self.pal[hot] and ratio(self.pal[n], self.pal[bg]) >= SHAPE_CONTRAST - 1e-9), None)
+            if plain is None:
+                raise FreeError(f"body の {node.line} 行目: 強める棒（on）とふつうの棒を、地の色 --{bg} の上で見分けられる色が無い（淡い面の箱か、地の上に置く）")
         mo = self.motion(node, "棒")
         gap = f' style="gap: {st["gap"]};"' if "gap" in st else ""
         cols, names = [], []
