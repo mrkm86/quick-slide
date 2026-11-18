@@ -120,7 +120,7 @@ def base_palette(t: dict) -> dict:
         p[f"{name}-fill"], p[f"on-{name}-fill"] = (raw, on) if on else (k["strong"], p[f"on-{name}"])
     # 濃い面（deep）: 主役の色の色相をわずかに残した、ほぼ黒の面。画面のいちばん暗い所を作る。その上の文字は白、強める語と印は deep-pop
     _, c, h = KC.to_oklch(t["primary"])
-    p["deep"] = KC.from_oklch(0.27, min(c * 0.4, 0.05), h)
+    p["deep"] = KC.from_oklch(0.25, min(c * 0.25, 0.02), h)     # 彩度はごくわずか（0.05 だと黄の主役の色で焦げ茶になり、色が濁って見えた）
     p["on-deep"] = white
     p["deep-pop"] = next((x for x in (p["primary-fill"], p["accent-fill"]) if ratio(x, p["deep"]) >= 4.5), white)
     p.update(SEMANTIC)
