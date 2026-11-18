@@ -33,7 +33,7 @@
     "rise": 4,
     "pop": 4
    },
-   "shapes": 10,
+   "shapes": 9,
    "ok": true
   },
   {
@@ -48,7 +48,7 @@
     "rise": 2,
     "pop": 1
    },
-   "shapes": 5,
+   "shapes": 4,
    "ok": true
   },
   {
@@ -62,7 +62,7 @@
    "fx": {
     "rise": 6
    },
-   "shapes": 8,
+   "shapes": 7,
    "ok": true
   },
   {
@@ -76,7 +76,7 @@
    "fx": {
     "rise": 5
    },
-   "shapes": 7,
+   "shapes": 6,
    "ok": true
   },
   {
@@ -91,7 +91,7 @@
     "rise": 1,
     "fade": 2
    },
-   "shapes": 5,
+   "shapes": 4,
    "ok": true
   },
   {
@@ -105,7 +105,7 @@
    "fx": {
     "rise": 4
    },
-   "shapes": 5,
+   "shapes": 4,
    "ok": true
   }
  ],

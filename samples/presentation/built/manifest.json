@@ -25,18 +25,18 @@
  },
  "engine": "html-slide",
  "files": {
-  "build.json": "0ae27efd295754afd10e1356e624de139ffa129a2ee841856b88d4b943cd848f",
-  "deck-info.json": "0a5219058a59d50d44786405a84acea749aac663bdd18e6d681f971ea075a18e",
-  "pictures/index.json": "c723e339a01bf02aed590339a1777e8105cded01dc07672e1839e6a301dfbb9d",
-  "present/deck.html": "088a76ec5e86b554815e858a55cca6c7cd8d2501e96d371e3b916e43faaaaacd",
+  "build.json": "589a200a726df95c93d6ed8b3bd5800305736742d46e3c423f07ba80c919cfd6",
+  "deck-info.json": "51dc348a44f3da4339ad258b8e0f44073fb7290b50ff27f6bbe9d1f913fd5b14",
+  "pictures/index.json": "b7560e142f1eaac87afe0931409fc5fdf0f9499526b4e4611278df92ca455ddc",
+  "present/deck.html": "7cfe546d3176b7d5b9e8d8fe9526a91fa5941f5a38c358a7f604fd3d6c3467ee",
   "settings/theme.yaml": "6a90509a82d7b287c2fade753a959ec6cbb9ceaa3722d7489ffddc27ee5ecab5",
-  "slides/slide-01.png": "3771c4919aefd100f2f0d9387336b6bfa5fab1d7e235e059a1a0fc105e43f00a",
-  "slides/slide-02.png": "79794fd107c6b2356af6793c4a2ebf689481f63bb37d201bfa3c03505a4b7138",
-  "slides/slide-03.png": "eef6a662f609bbac9ca45a1516d237aa52dcbd82efb96cfd1d2471075e988c67",
-  "slides/slide-04.png": "02b59a6bfe9ee730b0bb7ac81ce81b8efedfee5a03bbadc3f77900ad031e699e",
-  "slides/slide-05.png": "93ab957a27e478c07a47b2f2b7a808102e50b16e273d73a9e5c4d52ab501e2a7",
-  "slides/slide-06.png": "3ac72f71f3fede3ae5d792f84c5f122cdec7ef37c261100a7e0e88972d232c13",
-  "slides/slide-07.png": "e352348071ed491312754d24daad9c4cd1c7d486256d958645e15b9d37a757fc"
+  "slides/slide-01.png": "3654709848ca168522d3c85d57c8959ef548f0a05a429982266129052fafc36b",
+  "slides/slide-02.png": "3aa21bc12f4e729ec10b2abc7e028f0d3b74880b1884b56ce48cf351757955b1",
+  "slides/slide-03.png": "5b625d8dd26212c37c65116ea2e2a52627b98ccf5d59c674d207cb73b8295c5d",
+  "slides/slide-04.png": "ef806c05e72ed08cdee5be06d205ff0ad7ceae742db0ae1f5319e562107a549b",
+  "slides/slide-05.png": "4c6d2b38a5ea28383e108a35d331d9664754a0ad3e24b3a4226cad02b002a8e8",
+  "slides/slide-06.png": "b95c8c5d154dfb3abeb026cd9f45bc445eef18c995f7f37f9052223c97ba0948",
+  "slides/slide-07.png": "3bd8cf4a4b7034736a02d2e0a91c3b34bdbddb00ca29a15b2fdad18fa3ba841b"
  },
  "format": "quick-slide-sample",
  "format_version": 1,
@@ -87,6 +87,6 @@
    "warnings": []
   }
  ],
- "script_sha256": "4640536b3ef93c3e4c79a1398f0a4d3c615621af24dc1ef17436d452a3a4c429",
- "version": "f82ac0592a9001e57f1fe94bb0932885bbda315a1cd8b9e4301f02c5995d6654"
+ "script_sha256": "f96aceb7b7abb9b717a0e67ae8f612556d358912f96a759ab5708886af65c4b1",
+ "version": "b7d224d191d58b12152efdfb664b3d3ba0591d2910dfcdf29487e812798c8dd4"
 }
