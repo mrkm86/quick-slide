@@ -289,7 +289,7 @@ def free_texts(body) -> list[str]:
     """自由なページ（型 free）の body（html-slide が組む HTML）から、見える文字と数を上から順に拾う。
 
     絵で描くエンジンは、HTML の組みではなく中身だけを受ける。割合のマス（f-cells）は「100 のうち 21」、
-    棒（f-bar）は「名前: 値」にする（html-slide の free_body.visible_text と同じ考え方。こちらは組みを検査しない）。"""
+    棒（f-bar）は「名前: 値（最大 尺度）」にする（html-slide の free_body.visible_text と同じ考え方。こちらは組みを検査しない）。"""
     from html.parser import HTMLParser
     if not isinstance(body, str):
         return []
@@ -300,14 +300,17 @@ def free_texts(body) -> list[str]:
             super().__init__(convert_charrefs=True)
             self.bar: list[str] | None = None
             self.depth = 0
+            self.vmax = self.value = ""
 
         def handle_starttag(self, tag, attrs):
             a = dict(attrs)
             cls = (a.get("class") or "").split()
             if "f-cells" in cls:
                 out.append(f"{a.get('data-total', '')} のうち {a.get('data-on', '')}")
+            if "f-bars" in cls:
+                self.vmax = a.get("data-max") or ""
             if "f-bar" in cls:
-                self.bar, self.depth = [], 0
+                self.bar, self.depth, self.value = [], 0, a.get("data-value") or ""
             elif self.bar is not None and tag != "br":
                 self.depth += 1
 
@@ -317,8 +320,8 @@ def free_texts(body) -> list[str]:
             if self.depth:
                 self.depth -= 1
                 return
-            if self.bar:
-                out.append(" ".join(self.bar))
+            if self.bar or self.value:                    # 見える数（<b>）を省いた棒でも、長さを決める数を渡す
+                out.append(f"{' '.join(self.bar)}: {self.value}（最大 {self.vmax}）" if self.value else " ".join(self.bar))
             self.bar = None
 
         def handle_data(self, data):

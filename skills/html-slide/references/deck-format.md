@@ -193,10 +193,11 @@
 | 要素 | `div`・`span`・`br`・`b`・`em` だけ。必ず閉じる（`<div …></div>`）。独自のタグ・`<… />` は使えない |
 | 並べ方 | flex だけ。**`position`・`top`・`left`・`transform` は書けない**。`class="f-row"`（横に並べる）・`f-col`（縦に積む）・`f-grow`（残りの場所を取る）と、`style` の `flex`（数か `none`）・`gap`・`align-items`・`align-self`・`justify-content`・`flex-wrap`・`width`・`height`・`min-…`・`max-…`・`padding`・`margin`・`border-radius` |
 | 色 | `style` に書けるのは `color`・`background-color` だけで、値は `var(--名前)` だけ: `bg`・`ink`・`muted`・`primary-soft`・`accent-soft`・`primary-fill`／`on-primary-fill`・`accent-fill`／`on-accent-fill`・`deep`／`on-deep`／`deep-pop`・`primary-text`・`accent-text`・`success-2`・`error-2`。**ふつうは色を書かない**（下の「面の箱」と「文字の役」に任せれば、面に合う色になる）。文字の色と地の色の比が 4.5:1 に届かなければ rc=2 |
-| 文字の大きさ | `font-size` は 200・160・120・96・80・64・57・48・45・36・32・28・26・24・22 の px だけ（本文は 28 以上・注記は 22 以上）。`line-height` は 1.0・1.2・1.3・1.4・1.5・1.6・1.7・1.75。`font-weight` は 400 か 700。`text-align`・`white-space: nowrap` |
+| 文字の大きさ | `font-size` は 200・160・120・96・80・64・57・48・45・36・32・28・26・24・22 の px だけ（**本文は 28 以上**。22・24・26 を書けるのは、注記の `f-note` と札の `f-chip` だけ。ほかの所に書くと rc=2）。`line-height` は 1.0・1.2・1.3・1.4・1.5・1.6・1.7・1.75。`font-weight` は 400 か 700。`text-align`・`white-space: nowrap` |
 | 長さ | px の整数（8 の倍数でなければ警告）か % |
 | 文字 | 見える文字は、要素の中の文字として書く（属性に書かない）。**文字と箱を同じ `<div>` に並べない**（文字は `<div>` で包む） |
-| 動き | 出したい `<div>` に `data-step="N"`（N クリック目）・`data-fx`・`data-delay`・`data-name`。`talk` の数は、`data-step` の 1 以上の値の種類の数 ＋ 1 |
+| 動き | 出したい `<div>` に `data-step="N"`（N クリック目）・`data-fx`・`data-delay`・`data-name`。マス・棒・線にも付けられる（アイコンは `<div class="f-icon" …>` と書くか、`<div>` で包む。棒の 1 本ずつには付けられない）。**`data-step` の付いた要素の中に、もう 1 つ `data-step` は書けない**（並べて書く）。`talk` の数は、`data-step` の 1 以上の値の種類の数 ＋ 1 |
+| 高さ | 見出しと中身の箱の間は、いつも 64（型のページのように 40 へ詰め直さない）。箱に入らなければ rc=2 なので、中身を減らすか、文字を小さい段にする |
 
 部品（class と `data-…`）:
 
@@ -204,12 +205,12 @@
 |---|---|---|
 | 面の箱 | `class="f-box"`（淡い面）・`f-box fill`（主役の色）・`f-box deep`（ほぼ黒）・`f-box accent`（差し色）・`f-box good`／`bad`／`warn`（良い・悪い・注意） | 地の色・角・内側の余白がそろう箱。**中の文字とアイコンの色は、面に合わせてエンジンが決める** |
 | 文字の役 | `f-num`（大きな数字・既定 120）・`f-label`（太い名札）・`f-note`（注記）・`f-muted`（補足の色）・`f-strong`（強める） | 大きさと色の組。文字の中では `<b>`（太字）・`<em>`（強める色）・`<span class="f-strong">`・`<span class="f-muted">` |
-| アイコン | `<span class="f-icon" data-icon="名前"></span>`。丸つきは `class="f-icon disc"`。大きさは `data-size`（24〜160・既定 56） | 図形のアイコン（名前は下の「アイコン」の一覧） |
-| 割合のマス | `<div class="f-cells" data-total="100" data-on="21" data-cols="10" style="width: 560px"></div>` | マスの塗り分け。`total` 1〜100・`on` 0〜`total`・`cols` 1〜20。幅は `style` の `width`（省くと 480） |
-| 棒 | `<div class="f-bars" data-max="21"><div class="f-bar on" data-value="21"><b>21%</b>導入前</div>…</div>` | 数に比例した長さの棒（1〜8 本・同じ `f-bars` の中は同じ尺度・丸めない）。`<b>` が棒の上の数字、残りの文字が下の名前。`on` の棒は差し色 |
+| アイコン | `<span class="f-icon" data-icon="名前"></span>`。丸つきは `class="f-icon disc"`。大きさは `data-size`（24〜160・既定 56） | 図形のアイコン（名前は下の「アイコン」の一覧）。`style` は書けない（余白は外の並びの `gap` で取る） |
+| 割合のマス | `<div class="f-cells" data-total="100" data-on="21" data-cols="10" style="width: 560px"></div>` | マスの塗り分け。`total` 1〜100・`on` 0〜`total`・`cols` 1〜20。幅は `style` の `width`（省くと 480。ほかに書ける `style` は `flex`・`align-self`・`margin`）。塗った側の色は、地の上で見える色をエンジンが選ぶ。塗っていない側は地に近い薄い面なので、**数は文字でも書く** |
+| 棒 | `<div class="f-bars" data-max="21"><div class="f-bar on" data-value="21"><b>21%</b>導入前</div>…</div>` | 数に比例した長さの棒（1〜8 本・同じ `f-bars` の中は同じ尺度・丸めない）。`<b>` が棒の上の数字、残りの文字が下の名前。`<b>` は**全部の棒に書くか、どれにも書かない**。`on` の棒は差し色。`f-bars` に書ける `style` は `width`・`height`・`flex`・`gap`・`align-self`・`margin`。`f-bar` には `class` と `data-value` だけ |
 | 札・番号 | `class="f-chip"`（札）・`f-no`（番号の丸） | 札は、`f-box` の最初の子に `class="f-chip top"` と書くと、箱の中身の行を押し下げない（並ぶ箱の行がそろう） |
-| つなぐ線・矢印 | 線は `<div class="f-line"></div>`（横に並べた箱の間に置くと、間の幅に伸びる）。矢印は `<span class="f-icon" data-icon="arrow-right"></span>`（`arrow-down`・`chevron-right` も） | 箱と箱の関係（つながる・次へ進む）を見せる。**並びに意味（順番・行き来）があるときは、間に置く** |
-| まとまり | `data-name="名前"` | PPTX でその要素と中身が 1 つのグループになる（マスと棒には、エンジンが付ける） |
+| つなぐ線・矢印 | 線は `<div class="f-line"></div>`（横に並べた箱の間に置くと、間の幅に伸びる。`style` は書けない）。矢印は `<span class="f-icon" data-icon="arrow-right"></span>`（`arrow-down`・`chevron-right` も） | 箱と箱の関係（つながる・次へ進む）を見せる。**並びに意味（順番・行き来）があるときは、間に置く** |
+| まとまり | `data-name="名前"` | PPTX でその要素と中身が 1 つのグループになる（マスと棒には、エンジンが付ける）。**まとまりは外側の 1 つ**: `data-name` の付いた要素の中に、もう 1 つ `data-name` は書けない（中のマス・棒も、外のまとまりに入る）。グループになるのは、重なりの順で続いている部品 |
 
 組み方のこつ:
 

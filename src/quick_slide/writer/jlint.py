@@ -76,7 +76,7 @@ def _walk(value: Any, key: str, path: str, depth: int = 0) -> Iterable[tuple[str
             yield from _walk(v, k, f"{path}.{k}" if path else k, depth + 1)
 
 
-_TAG = re.compile(r"<[^>]*>")
+_TAG = re.compile(r"</?[A-Za-z][^<>]*>")     # タグだけ。本文の比較の記号（3 < 5）は文字として残す
 
 
 def _visible(spec: dict[str, Any]) -> dict[str, Any]:

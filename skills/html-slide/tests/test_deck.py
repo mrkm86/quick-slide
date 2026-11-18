@@ -2994,7 +2994,7 @@ def case_free_render():
     assert '<div class="f-strong" style="color: var(--on-primary-fill);">主役の色の面</div>' in sec
     cells = sec[sec.index('class="f-cells"'):]
     assert 'data-name="マス（20 のうち 5）"' in cells and "repeat(10, 1fr)" in cells
-    assert cells.count("background-color: var(--on-primary-fill);") == 5 and cells.count("background-color: var(--primary-soft);") >= 15, "塗った 5・塗っていない 15"
+    assert cells.count("background-color: var(--on-primary-fill);") == 5 and cells.count("background-color: var(--fill-off);") == 15, "塗った 5・塗っていない 15"
     assert "onclick" not in sec and "position:absolute" not in sec.split('class="f-body"')[1].replace(" ", "")[200:], "body に position を書かせない"
     # 棒: 長さは数に比例した flex の伸び（丸めない）・on の棒は差し色
     bars = '<div class="f-box f-grow"><div class="f-bars" data-max="21"><div class="f-bar on" data-value="21"><b>21%</b>導入前</div><div class="f-bar" data-value="6.5"><b>6.5%</b>3か月目</div></div></div>'
@@ -3018,6 +3018,112 @@ def case_free_render():
     many = "".join('<div class="f-cells" data-total="100" data-on="1" data-cols="20" style="width: 240px"></div>' for _ in range(3))
     _, info = build(one(_free(f'<div class="f-row f-grow">{many}</div>')), "free-many")
     assert any("部品が多い" in w for w in info["warnings"]), info["warnings"]
+
+
+def case_free_parts():
+    """自由なページの部品の決まり: 部品に付けた段・名前が残る・入れ子は止める・読まない属性は止める・図形の色は地の上で 3:1・棒は同じ尺度。"""
+    import free_body as FB
+    from deck_palette import ratio
+    cells = '<div class="f-cells" data-total="10" data-on="3" data-cols="5"{}></div>'
+    # 部品に付けた段は、展開した外側の要素に残り、talk と照合する
+    for name, body in {"マス": cells.format(' data-step="1"'),
+                       "棒": '<div class="f-bars" data-max="10" data-step="1"><div class="f-bar" data-value="7">a</div></div>',
+                       "線": '<div class="f-row"><div>a</div><div class="f-line" data-step="1"></div><div>b</div></div>',
+                       "アイコン": '<div class="f-icon" data-icon="users" data-step="1"></div>'}.items():
+        sec = build(one(_free(body), ["前", "後"]), "free-p-step")[0].read_text(encoding="utf-8").split("<section data-slide")[1]
+        assert sec.count('data-step="1"') == 1, (name, "部品の段が消えた")
+        expect_error(one(_free(body), ["前"]), "free-p-talk", "talk")
+    sec = build(one(_free('<div class="f-row"><span class="f-icon" data-icon="users" data-name="印"></span><div class="f-line" data-name="つなぎ"></div></div>')),
+                "free-p-name")[0].read_text(encoding="utf-8")
+    assert 'data-name="印"' in sec and 'data-name="つなぎ"' in sec, "アイコン・線の名前"
+    # まとまりは外側の 1 つ: 名前の付いた親の中では、部品が自分の名前を持たない
+    sec = build(one(_free(f'<div data-name="全体">{cells.format("")}</div>')), "free-p-group")[0].read_text(encoding="utf-8").split("<section data-slide")[1]
+    assert 'data-name="全体"' in sec and "マス（" not in sec, "親のまとまりに入る"
+    bad = {
+        "段の入れ子": ('<div data-step="1"><div data-step="2"><div>a</div></div></div>', "もう 1 つ data-step"),
+        "名前の入れ子": (f'<div data-name="外">{cells.format(" data-name=\"内\"")}</div>', "もう 1 つ data-name"),
+        "棒 1 本の段": ('<div class="f-bars" data-max="10"><div class="f-bar" data-value="7" data-step="1">a</div></div>', "f-bar に data-step"),
+        "アイコンの span の段": ('<span class="f-icon" data-icon="users" data-step="1"></span>', "<div> に付ける"),
+        "線の style": ('<div class="f-line" style="width: 80px"></div>', "f-line の style"),
+        "マスの色": (cells.format(' style="color: var(--ink)"'), "f-cells の style"),
+        "マスに関係ない属性": (cells.format(' data-max="3"'), "f-cells に data-max"),
+        "ふつうの div に部品の属性": ('<div data-total="3"><div>a</div></div>', "data-total"),
+        "本文を 22 に": ('<div style="font-size: 22px">長い本文</div>', "本文に使えない"),
+        "文字の中を 24 に": ('<div>本文<span style="font-size: 24px">小さく</span></div>', "本文に使えない"),
+        "棒の数が片方だけ": ('<div class="f-bars" data-max="10"><div class="f-bar" data-value="7"><b>7</b>a</div><div class="f-bar" data-value="3">b</div></div>', "全部の f-bar"),
+        "閉じていないタグ": ("<div>本文</div><script", "閉じていない"),
+        "閉じていない div": ("<div>本文</div><div", "閉じていない"),
+    }
+    for name, (body, word) in bad.items():
+        expect_error(one(_free(body)), "free-p-bad", word)
+    build(one(_free('<div class="f-note" style="font-size: 22px">注記</div><div class="f-chip" style="font-size: 22px">札</div><div>3 &lt; 5 と 3 < 5</div>')), "free-p-small")
+    # 図形の色: 主役の色が地に近いテーマ（白地に明るい黄）でも、塗った側・アイコン・線が地の上で 3:1
+    pal = deck.palette({"background": "#ffffff", "ink": "#1a1a1a", "primary": "#ffd400"})
+    assert ratio(pal["primary-fill"], pal["bg"]) < 3, "この試験の前提（主役の色が地に近い）"
+    body = (cells.format("") + '<span class="f-icon" data-icon="users"></span><span class="f-icon disc" data-icon="users"></span>'
+            '<div class="f-row"><div>a</div><div class="f-line"></div></div><div class="f-bars" data-max="10"><div class="f-bar on" data-value="7">a</div><div class="f-bar" data-value="3">b</div></div>')
+    for surf in ("{}", '<div class="f-box">{}</div>', '<div class="f-box fill">{}</div>', '<div class="f-box deep">{}</div>', '<div class="f-box accent">{}</div>'):
+        for theme in (pal, deck.palette({"background": "#ffffff", "ink": "#333333", "primary": "#006f83"})):
+            h, _ = FB.render(surf.format(body), theme, lambda *a: "")
+            ground = re.search(r'class="f-box[^"]*" style="background-color: var\(--([a-z-]+)\)', h)
+            ground = ground.group(1) if ground else "bg"
+            on = re.search(r'class="f-cell" style="background-color: var\(--([a-z-]+)\)', h).group(1)
+            off = re.findall(r'class="f-cell" style="background-color: var\(--([a-z-]+)\)', h)[-1]
+            assert ratio(theme[on], theme[ground]) >= 3 and ratio(theme[on], theme[off]) >= 3, (surf, on, off, "マスの塗った側")
+            for what, pat in (("アイコン", r'style="fill:var\(--([a-z-]+)\)"'), ("線", r'class="f-line" style="background-color: var\(--([a-z-]+)\)'),
+                              ("棒", r'class="f-bar-fill" style="flex: [^;]+; background-color: var\(--([a-z-]+)\)')):
+                names = [next(x for x in (m if isinstance(m, tuple) else (m,)) if x) for m in re.findall(pat, h)]
+                assert names, (what, "色が見つからない")
+                if what == "アイコン":
+                    names = names[:1]              # 1 つ目（丸なし）は地の上。丸つきは丸の色を下で見る
+                assert all(ratio(theme[n], theme[ground]) >= 3 for n in names), (surf, what, names)
+            disc = re.search(r'class="f-icon-disc" style="[^"]*background-color: var\(--([a-z-]+)\)', h).group(1)
+            assert ratio(theme[disc], theme[ground]) >= 3, (surf, "丸", disc)
+    # 棒: 名前は下の別の行（名前が何行でも、棒を描く高さは全部の列で同じ）。見える数を省いても、数は中身として残る
+    bars = '<div class="f-bars" data-max="10"><div class="f-bar" data-value="10">短</div><div class="f-bar" data-value="10">とても長い名前で二行に折れる棒の名前</div></div>'
+    h = build(one(_free(bars)), "free-p-bars")[0].read_text(encoding="utf-8")
+    plots, names = h.split('class="f-bar-plots"')[1].split('class="f-bar-names"')
+    assert plots.count('class="f-bar-fill"') == 2 and "f-bar-name" not in plots and names.count('class="f-bar-name"') == 2
+    assert FB.visible_text(bars)[0] == "短: 10（最大 10）"
+
+
+def case_free_bars_scale():
+    """棒の尺度（Chrome）: 同じ値の棒は、名前の行数が違っても同じ高さ。"""
+    import render as R
+    bars = ('<div class="f-bars f-grow" data-max="10"><div class="f-bar" data-value="8">短</div>'
+            '<div class="f-bar" data-value="8">とても長い名前で二行にも三行にも折れていく棒の名前をここに書く</div><div class="f-bar" data-value="4">半分</div></div>')
+    path = build(one(_free(bars)), "free-c-bars")[0]
+    d = R.extract(path)
+    assert not R.errors(d["violations"]), d["violations"]
+    hs = [p["rect"]["h"] for p in d["slides"][0]["prims"] if p["type"] == "rect"]
+    assert len(hs) == 3 and abs(hs[0] - hs[1]) < 1 and abs(hs[0] - 2 * hs[2]) < 2, hs
+
+
+def case_retry_restores_state():
+    """入らなくて組み直すとき（大きな見出しをやめる・間を詰める）、入らなかった試しが足した警告・段・画像の枠を残さない。"""
+    fn, keys, chrome = T.TYPES["statement"]
+    seen = []
+
+    def probe(s):
+        seen.append((s.big_head, s.body_gap, len(s.slots), len(s.assets)))
+        if s.body_gap != T.BODY_GAP_TIGHT:               # 64 の試しは、足してから「入らない」と言う
+            s.warnings.append("入らなかった試しの警告")
+            s.steps.add(7)
+            s.slots.append({"slot": "x"})
+            s.assets.append(("a", "b"))
+            s.chars_used = True
+            s.err("入らない")
+        assert not s.chars_used
+        return fn(s)
+
+    T.TYPES["statement"] = (probe, keys, chrome)
+    try:
+        _, info = build(one({"type": "statement", "headline": "主張"}, ["話す"]), "retry-state")   # 段が残れば talk の数が合わずに止まる
+    finally:
+        T.TYPES["statement"] = (fn, keys, chrome)
+    assert [g for _, g, _, _ in seen][-1] == T.BODY_GAP_TIGHT and len(seen) >= 2, seen
+    assert len({(n, m) for _, _, n, m in seen}) == 1, ("枠・素材が残った", seen)
+    assert not any("入らなかった試し" in w for w in info["warnings"]), info["warnings"]
 
 
 def case_free_chrome():

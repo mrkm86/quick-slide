@@ -128,6 +128,9 @@ def base_palette(t: dict) -> dict:
     # 割合のマスなどの「塗っていない側」: 地との差が見える、色みの無い面（自由なページの部品が使う・ADR 0030）
     p["mark-off"] = mix(ink, 0.16, bg)
     p["deep-off"] = mix(white, 0.28, p["deep"])
+    # 色の面（主役の色・差し色）の上の「塗っていない側」: 面の色へ、上に載る色をわずかに混ぜる（面との差は薄く、塗った側とははっきり分かれる）
+    p["fill-off"] = mix(p["on-primary-fill"], 0.16, p["primary-fill"])
+    p["pop-off"] = mix(p["on-accent-fill"], 0.16, p["accent-fill"])
     p.update(SEMANTIC)
     p.update(_tone_roles(p))
     p.update(_bar_roles(p))

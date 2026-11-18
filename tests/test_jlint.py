@@ -90,6 +90,13 @@ class DisplayedKeysTests(unittest.TestCase):
                       "items[0].group.label"):
             self.assertTrue(any(where in ln for ln in found), (where, found))
 
+    def test_free_body_keeps_a_bare_less_than_sign(self) -> None:
+        # 自由なページの body: タグだけを外す。本文の比較の記号（<）から次のタグまでを消さない
+        segs = jlint.segments([{"id": "p", "type": "free", "headline": "h",
+                                "body": '<div class="f-row"><div>3 < 5 の場合</div><div>次の<b>語</b></div></div>'}])
+        texts = [s.text for s in segs if s.where.startswith("body")]
+        self.assertEqual(["3 < 5 の場合", "次の", "語"], texts)
+
     def test_review_notes_are_not_displayed_text(self) -> None:
         # 台本のページに書くレビューの注記（html-slide の review）は、画面に出る文ではない
         slides = [{"id": "p1", "type": "statement", "headline": "まず結論です",

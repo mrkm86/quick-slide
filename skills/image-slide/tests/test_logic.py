@@ -155,6 +155,11 @@ def t_script_errors():
     check(rc == 0, f"レビューの注記で落ちた: {err}")
     check("_memo" not in S.content_of(page, []) and "狙い" not in json.dumps(S.content_of(page, []), ensure_ascii=False),
           "レビューの注記が描く中身に混ざった")
+    # 自由なページ（型 free）の body: 見える文字に加えて、マスと棒の数を中身として渡す（見える数を省いた棒でも、長さを決める数が残る）
+    body = ('<div class="f-row"><div>割合</div><div class="f-cells" data-total="100" data-on="21" data-cols="10"></div></div>'
+            '<div class="f-bars" data-max="10"><div class="f-bar" data-value="7.5">導入前</div><div class="f-bar on" data-value="3"><b>3件</b>導入後</div></div>')
+    c = S.content_of({"type": "free", "headline": "h", "body": body}, [])
+    check(c.get("body") == ["割合", "100 のうち 21", "導入前: 7.5（最大 10）", "3件 導入後: 3（最大 10）"], f"free の中身: {c.get('body')}")
 
 
 def t_prompt_content():

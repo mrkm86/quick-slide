@@ -9,7 +9,7 @@
     <style>
       @font-face { font-family: "Noto Sans JP"; font-weight: 400; src: url("file://{{HOME}}/fonts/noto-sans-jp/NotoSansJP-Regular.ttf"); ascent-override: 93.60%; descent-override: 6.40%; line-gap-override: 0%; }
       @font-face { font-family: "Noto Sans JP"; font-weight: 700; src: url("file://{{HOME}}/fonts/noto-sans-jp/NotoSansJP-Bold.ttf"); ascent-override: 93.60%; descent-override: 6.40%; line-gap-override: 0%; }
-      :root { --bg: #ffffff; --ink: #333333; --surface: #f2f2f2; --muted: #666666; --faint: #767676; --rule: #767676; --rule-weak: #949494; --bar: #949494; --tint: #eaf7ff; --deep: #18232a; --deep-pop: #0db4f2; --mark-off: #dedede; --deep-off: #596166; --tone-good-bg: #eef7f3; --tone-good-text: #197a4b; --tone-warn-bg: #f9f6eb; --tone-warn-text: #8b6c00; --tone-bad-bg: #fdebeb; --tone-bad-text: #ce0000; --tone-neutral-bg: #f2f2f2; --tone-neutral-text: #666666; --ref-bg: #f8f8f8; --ref-text: #666666; --ref-rule: #767676; --group-a-bg: #eef7f3; --group-a-text: #197a4b; --group-a-rule: #259d63; --group-b-bg: #fff2eb; --group-b-text: #c54600; --group-b-rule: #f75900; --group-c-bg: #eff2ff; --group-c-text: #0017c1; --group-c-rule: #3460fb; --bar-good-strong: #005e37; --bar-good-strong-text: #197a4b; --bar-good: #007f4b; --bar-good-text: #197a4b; --bar-good-soft: #279e64; --bar-good-soft-text: #197a4b; --bar-warn: #ad8700; --bar-warn-text: #886a00; --bar-bad: #ec0000; --bar-bad-text: #ce0000; --primary-soft: #eaf7ff; --accent-soft: #eaf7ff; --on-deep: #ffffff; --primary: #0077a1; --primary-text: #0077a1; --primary-mark: #0096cb; --primary-decor: #009fd7; --primary-strong: #0077a1; --on-primary: #ffffff; --primary-fill: #0db4f2; --on-primary-fill: #333333; --primary-on-dark: #79cdea; --accent: #0077a1; --accent-text: #0077a1; --accent-mark: #0096cb; --accent-decor: #009fd7; --accent-strong: #0077a1; --on-accent: #ffffff; --accent-fill: #0db4f2; --on-accent-fill: #333333; --accent-on-dark: #79cdea; --scrim: rgba(51, 51, 51, 0.86); --scrim-0: rgba(51, 51, 51, 0); --scrim-quote: rgba(51, 51, 51, 0.86); --veil: rgba(255, 255, 255, 0.94); --veil-0: rgba(255, 255, 255, 0); --primary-on-light: #00769f; --accent-on-light: #00769f; --success-1: #259d63; --success-2: #197a4b; --error-1: #ec0000; --error-2: #ce0000; --warning-yellow-1: #b78f00; --warning-yellow-2: #927200; --warning-orange-1: #fb5b01; --warning-orange-2: #c74700; }
+      :root { --bg: #ffffff; --ink: #333333; --surface: #f2f2f2; --muted: #666666; --faint: #767676; --rule: #767676; --rule-weak: #949494; --bar: #949494; --tint: #eaf7ff; --deep: #18232a; --deep-pop: #0db4f2; --mark-off: #dedede; --deep-off: #596166; --fill-off: #139fd3; --pop-off: #139fd3; --tone-good-bg: #eef7f3; --tone-good-text: #197a4b; --tone-warn-bg: #f9f6eb; --tone-warn-text: #8b6c00; --tone-bad-bg: #fdebeb; --tone-bad-text: #ce0000; --tone-neutral-bg: #f2f2f2; --tone-neutral-text: #666666; --ref-bg: #f8f8f8; --ref-text: #666666; --ref-rule: #767676; --group-a-bg: #eef7f3; --group-a-text: #197a4b; --group-a-rule: #259d63; --group-b-bg: #fff2eb; --group-b-text: #c54600; --group-b-rule: #f75900; --group-c-bg: #eff2ff; --group-c-text: #0017c1; --group-c-rule: #3460fb; --bar-good-strong: #005e37; --bar-good-strong-text: #197a4b; --bar-good: #007f4b; --bar-good-text: #197a4b; --bar-good-soft: #279e64; --bar-good-soft-text: #197a4b; --bar-warn: #ad8700; --bar-warn-text: #886a00; --bar-bad: #ec0000; --bar-bad-text: #ce0000; --primary-soft: #eaf7ff; --accent-soft: #eaf7ff; --on-deep: #ffffff; --primary: #0077a1; --primary-text: #0077a1; --primary-mark: #0096cb; --primary-decor: #009fd7; --primary-strong: #0077a1; --on-primary: #ffffff; --primary-fill: #0db4f2; --on-primary-fill: #333333; --primary-on-dark: #79cdea; --accent: #0077a1; --accent-text: #0077a1; --accent-mark: #0096cb; --accent-decor: #009fd7; --accent-strong: #0077a1; --on-accent: #ffffff; --accent-fill: #0db4f2; --on-accent-fill: #333333; --accent-on-dark: #79cdea; --scrim: rgba(51, 51, 51, 0.86); --scrim-0: rgba(51, 51, 51, 0); --scrim-quote: rgba(51, 51, 51, 0.86); --veil: rgba(255, 255, 255, 0.94); --veil-0: rgba(255, 255, 255, 0); --primary-on-light: #00769f; --accent-on-light: #00769f; --success-1: #259d63; --success-2: #197a4b; --error-1: #ec0000; --error-2: #ce0000; --warning-yellow-1: #b78f00; --warning-yellow-2: #927200; --warning-orange-1: #fb5b01; --warning-orange-2: #c74700; }
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { background-color: #8a8f99; }
       section[data-slide] {
@@ -442,6 +442,8 @@
       .f-row:has(> .f-box), .f-row:has(> .f-col > .f-box) { gap: 48px; }
       .f-col:has(> .f-box), .f-body:has(> .f-box) { gap: 40px; }
       .f-box { display: flex; flex-direction: column; gap: 16px; padding: 40px; border-radius: 16px; }
+      .f-box.f-row { flex-direction: row; gap: 24px; }   /* 面の箱そのものを横並びにする書き方（class="f-box f-row"）。箱の中身が横に並ぶ */
+      .f-body .f-line { flex: 1 1 0px; min-width: 24px; height: 4px; align-self: center; }   /* 箱と箱をつなぐ線 */
       .f-num { font-size: 120px; line-height: 1.0; font-weight: 700; white-space: nowrap; }
       .f-label { font-size: 28px; line-height: 1.5; font-weight: 700; }
       .f-note { font-size: 22px; line-height: 1.5; }
@@ -454,11 +456,13 @@
       .f-icon-plain { flex: none; display: flex; align-items: center; justify-content: center; }
       .f-cells { flex: none; width: 480px; display: grid; align-content: start; }
       .f-cell { aspect-ratio: 1 / 1; border-radius: 8px; }
-      .f-bars { flex: 1 1 0px; display: flex; flex-direction: row; align-items: stretch; gap: 24px; min-height: 240px; }
+      .f-bars { flex: 1 1 0px; display: flex; flex-direction: column; gap: 8px; min-height: 240px; }
+      .f-bar-plots { flex: 1 1 0px; display: flex; flex-direction: row; align-items: stretch; gap: 24px; min-height: 0; }   /* 棒を描く段: 高さは全部の列で同じ（名前は下の別の段） */
+      .f-bar-names { flex: none; display: flex; flex-direction: row; align-items: flex-start; gap: 24px; }
       .f-bar-col { flex: 1 1 0px; display: flex; flex-direction: column; align-items: center; }
       .f-bar-value { flex: none; font-size: 36px; line-height: 1.4; font-weight: 700; white-space: nowrap; }
       .f-bar-fill { width: 64%; border-radius: 8px; min-height: 0; }
-      .f-bar-name { flex: none; font-size: 26px; line-height: 1.5; margin-top: 8px; text-align: center; }
+      .f-bar-name { flex: 1 1 0px; font-size: 26px; line-height: 1.5; text-align: center; }
       /* スタイルの見た目の調子（look・ADR 0005 追記）。deck.py が差し込む。standard は空 */
       .card, .cmp, .kpi, .callout { background-color: var(--primary-soft); border-color: var(--primary-soft); }
       .card.hl, .cmp.hl, .kpi.hl { border-color: var(--accent-soft); }

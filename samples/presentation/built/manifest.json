@@ -26,9 +26,9 @@
  "engine": "html-slide",
  "files": {
   "build.json": "589a200a726df95c93d6ed8b3bd5800305736742d46e3c423f07ba80c919cfd6",
-  "deck-info.json": "9f09b408c62d9abe9c75798513544c9632c54c0096213e357390a52635124fde",
-  "pictures/index.json": "55dd93f46b5109c0ab31446bea013b3fc894e627e6fd647182dbc7cdba2821cc",
-  "present/deck.html": "d8c49c0d1928a13de238c0fbd6fc5f9b439d3156a08e5410572ce29c33799124",
+  "deck-info.json": "c0ed78923b023dc4e0d8a92b331362ba59c199f48a7fe7cf59f60dcb771f8134",
+  "pictures/index.json": "073ad8e2447adf8b498f7a6b31c7f8cc9498c562d923ba7c10faa70743645a0f",
+  "present/deck.html": "8d6a508f814bc87f589fe55c8bc32c75e88e16907dbfe903424b8beec7ea77cd",
   "settings/theme.yaml": "6a90509a82d7b287c2fade753a959ec6cbb9ceaa3722d7489ffddc27ee5ecab5",
   "slides/slide-01.png": "3654709848ca168522d3c85d57c8959ef548f0a05a429982266129052fafc36b",
   "slides/slide-02.png": "1777f6308410180329753ea644c893e13351112a52606bb04bc7020c8a03140a",
@@ -88,5 +88,5 @@
   }
  ],
  "script_sha256": "6f127a0500462fe7c67acd6409dcfecfb1ae47dae1fcb888e746085062f4cf47",
- "version": "f0cc6f787f0cb5967eacf808d7bda14738b4fec49615b00486ca1c93b1ea3f0f"
+ "version": "dacc42e03819aab8fee368ac68a0ea733803e47c2262089ae274284f2888f65e"
 }

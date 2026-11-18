@@ -442,7 +442,7 @@
       .f-col:has(> .f-box), .f-body:has(> .f-box) { gap: 40px; }
       .f-box { display: flex; flex-direction: column; gap: 16px; padding: 40px; border-radius: 16px; }
       .f-box.f-row { flex-direction: row; gap: 24px; }   /* 面の箱そのものを横並びにする書き方（class="f-box f-row"）。箱の中身が横に並ぶ */
-      .f-line { flex: 1 1 0px; min-width: 24px; height: 4px; align-self: center; }   /* 箱と箱をつなぐ線 */
+      .f-body .f-line { flex: 1 1 0px; min-width: 24px; height: 4px; align-self: center; }   /* 箱と箱をつなぐ線 */
       .f-num { font-size: 120px; line-height: 1.0; font-weight: 700; white-space: nowrap; }
       .f-label { font-size: 28px; line-height: 1.5; font-weight: 700; }
       .f-note { font-size: 22px; line-height: 1.5; }
@@ -455,11 +455,13 @@
       .f-icon-plain { flex: none; display: flex; align-items: center; justify-content: center; }
       .f-cells { flex: none; width: 480px; display: grid; align-content: start; }
       .f-cell { aspect-ratio: 1 / 1; border-radius: 8px; }
-      .f-bars { flex: 1 1 0px; display: flex; flex-direction: row; align-items: stretch; gap: 24px; min-height: 240px; }
+      .f-bars { flex: 1 1 0px; display: flex; flex-direction: column; gap: 8px; min-height: 240px; }
+      .f-bar-plots { flex: 1 1 0px; display: flex; flex-direction: row; align-items: stretch; gap: 24px; min-height: 0; }   /* 棒を描く段: 高さは全部の列で同じ（名前は下の別の段） */
+      .f-bar-names { flex: none; display: flex; flex-direction: row; align-items: flex-start; gap: 24px; }
       .f-bar-col { flex: 1 1 0px; display: flex; flex-direction: column; align-items: center; }
       .f-bar-value { flex: none; font-size: 36px; line-height: 1.4; font-weight: 700; white-space: nowrap; }
       .f-bar-fill { width: 64%; border-radius: 8px; min-height: 0; }
-      .f-bar-name { flex: none; font-size: 26px; line-height: 1.5; margin-top: 8px; text-align: center; }
+      .f-bar-name { flex: 1 1 0px; font-size: 26px; line-height: 1.5; text-align: center; }
       /* スタイルの見た目の調子（look・ADR 0005 追記）。deck.py が差し込む。standard は空 */
       {{LOOK}}
     </style>

@@ -24,6 +24,9 @@ SCALE = (200, 160, 120, 96, 80, 64, 57, 48, 45, 36, 32, 28, 26, 24, 22)   # 文�
 LINE_HEIGHTS = ("1", "1.0", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.75")
 MIN_PX = 22
 CONTRAST = 4.5
+SHAPE_CONTRAST = 3.0     # 図形（アイコン・マス・棒・線）が、地の上で見える比
+BODY_PX = 28             # 本文の下限。これより小さい段は、注記（f-note）と札（f-chip）だけ
+SMALL_OK = ("f-note", "f-chip")
 FX = ("rise", "fade", "pop", "wipe-right", "wipe-left", "wipe-up", "wipe-down", "wheel")
 
 BLOCKS = ("div",)
@@ -43,9 +46,9 @@ SURFACES = {
     "soft": {"bg": "primary-soft", "text": "ink", "muted": "muted", "strong": "primary-text", "mark": "primary-fill", "on-mark": "on-primary-fill",
              "pop": "accent-fill", "on-pop": "on-accent-fill", "off": "mark-off"},
     "fill": {"bg": "primary-fill", "text": "on-primary-fill", "muted": "on-primary-fill", "strong": "on-primary-fill", "mark": "on-primary-fill",
-             "on-mark": "primary-fill", "pop": "on-primary-fill", "on-pop": "primary-fill", "off": "primary-soft"},
+             "on-mark": "primary-fill", "pop": "on-primary-fill", "on-pop": "primary-fill", "off": "fill-off"},
     "accent": {"bg": "accent-fill", "text": "on-accent-fill", "muted": "on-accent-fill", "strong": "on-accent-fill", "mark": "on-accent-fill",
-               "on-mark": "accent-fill", "pop": "on-accent-fill", "on-pop": "accent-fill", "off": "accent-soft"},
+               "on-mark": "accent-fill", "pop": "on-accent-fill", "on-pop": "accent-fill", "off": "pop-off"},
     "deep": {"bg": "deep", "text": "on-deep", "muted": "on-deep", "strong": "deep-pop", "mark": "deep-pop", "on-mark": "deep",
              "pop": "deep-pop", "on-pop": "deep", "off": "deep-off"},
     "good": {"bg": "tone-good-bg", "text": "ink", "muted": "muted", "strong": "tone-good-text", "mark": "tone-good-text", "on-mark": "tone-good-bg",
@@ -159,6 +162,10 @@ def parse(body: str) -> Node:
     p = _Parser()
     p.feed(body)
     p.close()
+    m = re.search(r"<[A-Za-z/!?][^<>]*$", body)          # 末尾の閉じていないタグは、解析器が黙って捨てる。解析のあとで確かめて止める
+    if m:
+        line = body.count("\n", 0, m.start()) + 1
+        raise FreeError(f"body の {line} 行目: タグ「{m.group(0)[:20]}」が > で閉じていない")
     if len(p.stack) > 1:
         raise FreeError(f"body: <{p.stack[-1].tag}>（{p.stack[-1].line} 行目）が閉じていない")
     if not p.root.kids:
@@ -265,6 +272,7 @@ class _Render:
         self.pal, self.anim = pal, anim
         self.warns: list[str] = []
         self.parts = 0
+        self.in_step = self.in_name = 0     # 段・まとまりの中にいる深さ（入れ子を止める）
 
     # --- 検査 ---
     def classes(self, node: Node) -> list[str]:
@@ -280,21 +288,51 @@ class _Render:
             raise FreeError(f"body の {node.line} 行目: 文字の色 --{fg} が、地の色 --{bg} の上で読めない（コントラスト {r:.2f} が {CONTRAST} 未満）。"
                             "文字の色を書かずに面の箱（f-box・f-box fill・f-box deep）に任せるか、地に合う色にする")
 
-    def motion(self, node: Node) -> str:
+    def only(self, node: Node, what: str, attrs: tuple, st: dict | None = None, styles: tuple = ()) -> None:
+        """部品が読む属性・style だけを通す（書けたのに効かない、を無くす）。"""
+        bad = sorted(set(node.attrs) - set(attrs) - {"class"} - ({"style"} if st is not None else set()))
+        if bad:
+            raise FreeError(f"body の {node.line} 行目: {what} に {'・'.join(bad)} は書けない（使えるのは {'・'.join(a for a in attrs)}）")
+        extra = sorted(set(st or {}) - set(styles))
+        if extra:
+            can = f"使えるのは {'・'.join(styles)}" if styles else "style は書けない"
+            raise FreeError(f"body の {node.line} 行目: {what} の style に {'・'.join(extra)} は書けない（{can}）")
+
+    def pick(self, bg: str, names, apart: str | None = None) -> str:
+        """図形の色: names の順に、地（bg）の上で 3:1 に届く最初の色。apart があれば、その色とも 3:1 離れるものを先に採る。"""
+        names = list(dict.fromkeys(names))
+        ok = [n for n in names if ratio(self.pal[n], self.pal[bg]) >= SHAPE_CONTRAST - 1e-9]
+        if apart:
+            far = [n for n in ok if ratio(self.pal[n], self.pal[apart]) >= SHAPE_CONTRAST - 1e-9]
+            if far:
+                return far[0]
+        return ok[0] if ok else max(names, key=lambda n: ratio(self.pal[n], self.pal[bg]))
+
+    def motion(self, node: Node, default_name: str | None = None) -> str:
+        """動き（data-step・data-fx・data-delay）とまとまりの名前（data-name）の属性。段の中の段・名前の中の名前は止める。"""
         a = node.attrs
+        name = a.get("data-name")
+        if name is not None:
+            if not name.strip():
+                raise FreeError(f"body の {node.line} 行目: data-name が空")
+            if self.in_name:
+                raise FreeError(f"body の {node.line} 行目: data-name の付いた要素の中に、もう 1 つ data-name は書けない（まとまりは外側の 1 つ）")
+        elif not self.in_name:
+            name = default_name
         if "data-step" not in a:
             if "data-fx" in a or "data-delay" in a:
                 raise FreeError(f"body の {node.line} 行目: data-fx・data-delay は data-step と一緒に書く")
-            name = a.get("data-name")
             return f' data-name="{_html.escape(name, quote=True)}"' if name else ""
         if node.tag != "div":
-            raise FreeError(f"body の {node.line} 行目: data-step は <div> に付ける（文字の中の要素には付けられない）")
+            raise FreeError(f"body の {node.line} 行目: data-step は <div> に付ける（文字の中の要素・<span> のアイコンには付けられない。<div> で包む）")
+        if self.in_step:
+            raise FreeError(f"body の {node.line} 行目: data-step の付いた要素の中に、もう 1 つ data-step は書けない（段は外側の 1 つ。並べて書く）")
         step = _int(node, "data-step", 0, 20)
         fx = a.get("data-fx", "rise")
         if fx not in FX:
             raise FreeError(f"body の {node.line} 行目: data-fx は {' / '.join(FX)} のどれか（{fx!r}）")
         delay = _int(node, "data-delay", 0, 10000) if "data-delay" in a else 0
-        return " " + self.anim(step, fx, delay, a.get("data-name"))
+        return " " + self.anim(step, fx, delay, name)
 
     # --- 組み立て ---
     def surface_of(self, node: Node, st: dict, cs: list[str], cur: str) -> str:
@@ -320,8 +358,13 @@ class _Render:
         self.contrast(node, fg, bg)
         return fg
 
-    def inline(self, node: Node, surf: str, bg: str) -> str:
-        """文字の中身（文字・br・b・em・span）。"""
+    def small(self, node: Node, st: dict, ok: bool) -> None:
+        if "font-size" in st and int(st["font-size"][:-2]) < BODY_PX and not ok:
+            raise FreeError(f"body の {node.line} 行目: font-size: {st['font-size']} は本文に使えない（本文は {BODY_PX} 以上。"
+                            f"{MIN_PX}〜26 は注記の <div class=\"f-note\"> と札の f-chip だけ）")
+
+    def inline(self, node: Node, surf: str, bg: str, small: bool = False) -> str:
+        """文字の中身（文字・br・b・em・span）。small は、28 より小さい段を書いてよい所（注記・札の中）。"""
         out = []
         for k in node.kids:
             if k.tag == "#text":
@@ -339,6 +382,7 @@ class _Render:
                 extra = sorted(set(st) - {"color", "font-weight", "font-size"})
                 if extra:
                     raise FreeError(f"body の {k.line} 行目: 文字の中の <{k.tag}> の style に {'・'.join(extra)} は書けない")
+                self.small(k, st, small)
                 css = {}
                 if "color" in st or cs or k.tag == "em":
                     fg = st.get("color") or SURFACES[surf]["strong" if (k.tag == "em" or "f-strong" in cs) else "muted" if "f-muted" in cs else "text"]
@@ -350,12 +394,13 @@ class _Render:
                     if p in st:
                         css[p] = st[p]
                 tag = "span" if k.tag == "em" else k.tag          # em は雛形で差し色が付く。色はここで決めるので span にする
-                out.append(f'<{tag} style="{_css(css)}">{self.inline(k, surf, bg)}</{tag}>' if css else f"<{tag}>{self.inline(k, surf, bg)}</{tag}>")
+                out.append(f'<{tag} style="{_css(css)}">{self.inline(k, surf, bg, small)}</{tag}>' if css else f"<{tag}>{self.inline(k, surf, bg, small)}</{tag}>")
             else:
                 raise FreeError(f"body の {k.line} 行目: 文字と <{k.tag}> を同じ要素に並べられない（文字は <div> で包む）")
         return "".join(out)
 
-    def icon(self, node: Node, cs: list[str], surf: str) -> str:
+    def icon(self, node: Node, cs: list[str], st: dict, surf: str, bg: str) -> str:
+        self.only(node, "f-icon", ("data-icon", "data-size", "data-name", "data-step", "data-fx", "data-delay"), st)
         name = node.attrs.get("data-icon")
         if name not in ICON.ICONS:
             raise FreeError(f"body の {node.line} 行目: data-icon {name!r} は無い（名前は deck-format.md の「アイコン」の一覧）")
@@ -363,29 +408,40 @@ class _Render:
             raise FreeError(f"body の {node.line} 行目: f-icon の中には何も書かない")
         size = _int(node, "data-size", 24, 160) if "data-size" in node.attrs else 56
         s = SURFACES[surf]
+        mo = self.motion(node)
         self.parts += 2
         if "disc" in cs:
             d = int(math.ceil(size * 1.7 / 8) * 8)
-            return (f'<div class="f-icon-disc" style="width: {d}px; height: {d}px; background-color: {_var(s["mark"])};">'
-                    f'{ICON.svg(name, size, _var(s["on-mark"]))}</div>')
-        return f'<div class="f-icon-plain" style="width: {size}px; height: {size}px;">{ICON.svg(name, size, _var(s["mark"]))}</div>'
+            # 丸の地は地の上で、中の絵は丸の上で、どちらも 3:1。主役の色が地に近いテーマでは、強める文字の色・文字の色の丸に落とす
+            pairs = [(s["mark"], s["on-mark"]), (s["strong"], bg), (s["text"], bg)]
+            disc, glyph = next(((a, b) for a, b in pairs if min(ratio(self.pal[a], self.pal[bg]), ratio(self.pal[b], self.pal[a])) >= SHAPE_CONTRAST - 1e-9),
+                               pairs[-1])
+            return (f'<div class="f-icon-disc" style="width: {d}px; height: {d}px; background-color: {_var(disc)};"{mo}>'
+                    f'{ICON.svg(name, size, _var(glyph))}</div>')
+        c = self.pick(bg, (s["mark"], s["strong"], s["text"]))
+        return f'<div class="f-icon-plain" style="width: {size}px; height: {size}px;"{mo}>{ICON.svg(name, size, _var(c))}</div>'
 
-    def cells(self, node: Node, st: dict, surf: str) -> str:
+    def cells(self, node: Node, st: dict, surf: str, bg: str) -> str:
+        keep = ("width", "flex", "align-self", "margin", *LENGTH_SIDES[4:])
+        self.only(node, "f-cells", ("data-total", "data-on", "data-cols", "data-name", "data-step", "data-fx", "data-delay"), st, keep)
         total, cols = _int(node, "data-total", 1, 100), _int(node, "data-cols", 1, 20)
         on = _int(node, "data-on", 0, total)
         if node.kids:
             raise FreeError(f"body の {node.line} 行目: f-cells の中には何も書かない")
         s = SURFACES[surf]
         gap = 8 if cols <= 10 else 4
-        css = {k: v for k, v in st.items() if k in ("width", "flex", "align-self", "margin", *LENGTH_SIDES)}
+        css = {k: v for k, v in st.items() if k in keep}
         css.update({"grid-template-columns": f"repeat({cols}, 1fr)", "gap": f"{gap}px"})
+        # 塗った側は、地の上で 3:1・塗っていない側とも 3:1 離れる色。塗っていない側は、地に近い薄い面（数は文字と data-name でも伝える）
+        hot = self.pick(bg, (s["pop"], s["mark"], s["strong"], s["text"]), apart=s["off"])
         cell = lambda c: f'<div class="f-cell" style="background-color: {_var(c)};"></div>'
         self.parts += total
-        name = node.attrs.get("data-name") or f"マス（{total} のうち {on}）"
-        return (f'<div class="f-cells" data-name="{_html.escape(name, quote=True)}" style="{_css(css)}">'
-                + cell(s["pop"]) * on + cell(s["off"]) * (total - on) + "</div>")
+        mo = self.motion(node, f"マス（{total} のうち {on}）")
+        return f'<div class="f-cells" style="{_css(css)}"{mo}>' + cell(hot) * on + cell(s["off"]) * (total - on) + "</div>"
 
     def bars(self, node: Node, st: dict, surf: str, bg: str) -> str:
+        keep = ("width", "height", "flex", "gap", "align-self", "margin", *LENGTH_SIDES[4:])
+        self.only(node, "f-bars", ("data-max", "data-name", "data-step", "data-fx", "data-delay"), st, keep)
         vmax = _num(node, "data-max")
         if vmax <= 0:
             raise FreeError(f"body の {node.line} 行目: data-max は 0 より大きい数")
@@ -393,28 +449,35 @@ class _Render:
         if len(bars) != len(node.kids) or not 1 <= len(bars) <= 8:
             raise FreeError(f"body の {node.line} 行目: f-bars の中は f-bar の <div> を 1〜8 個だけ")
         s = SURFACES[surf]
-        cols = []
-        for b in bars:
+        labels = [next((k for k in b.kids if k.tag == "b"), None) for b in bars]
+        if any(labels) and not all(labels):
+            raise FreeError(f"body の {node.line} 行目: 棒の上の数（<b>…</b>）は、全部の f-bar に書くか、どれにも書かない（棒の高さの尺度をそろえるため）")
+        # 棒の色: ふつうの棒と強める棒（on）。どちらも地の上で 3:1
+        plain, hot = self.pick(bg, (s["mark"], s["strong"], s["text"])), self.pick(bg, (s["pop"], s["strong"], s["text"]))
+        mo = self.motion(node, "棒")
+        gap = f' style="gap: {st["gap"]};"' if "gap" in st else ""
+        cols, names = [], []
+        for b, label in zip(bars, labels):
             self.classes(b)
+            self.only(b, "f-bar", ("data-value",))
             v = _num(b, "data-value")
             if v > vmax:
                 raise FreeError(f"body の {b.line} 行目: data-value {v:g} が data-max {vmax:g} を越えている")
-            label = next((k for k in b.kids if k.tag == "b"), None)
             rest = Node("div", line=b.line)
             rest.kids = [k for k in b.kids if k is not label]
-            on = b.has("on")
-            fg = s["strong"]
-            self.contrast(b, fg, bg)
+            self.contrast(b, s["strong"], bg)
             self.contrast(b, s["muted"], bg)
-            head = f'<div class="f-bar-value" style="color: {_var(fg)};">{self.inline(label, surf, bg)}</div>' if label else ""
-            name = f'<div class="f-bar-name" style="color: {_var(s["muted"])};">{self.inline(rest, surf, bg)}</div>' if rest.kids else ""
-            # 棒の長さは、数に比例した flex の伸び（丸めない）。上の空きが残りを取るので、同じ f-bars の中は同じ尺度になる
+            head = f'<div class="f-bar-value" style="color: {_var(s["strong"])};">{self.inline(label, surf, bg)}</div>' if label else ""
+            # 棒の長さは、数に比例した flex の伸び（丸めない）。上の空きが残りを取る。名前は下の別の行に置くので、
+            # 名前が何行でも、棒を描く高さは全部の列で同じ＝同じ f-bars の中は同じ尺度
             cols.append(f'<div class="f-bar-col"><div style="flex: {vmax - v:g} 1 0px;"></div>{head}'
-                        f'<div class="f-bar-fill" style="flex: {v:g} 1 0px; background-color: {_var(s["pop"] if on else s["mark"])};"></div>{name}</div>')
+                        f'<div class="f-bar-fill" style="flex: {v:g} 1 0px; background-color: {_var(hot if b.has("on") else plain)};"></div></div>')
+            names.append(f'<div class="f-bar-name" style="color: {_var(s["muted"])};">{self.inline(rest, surf, bg)}</div>' if rest.kids
+                         else '<div class="f-bar-name"></div>')
             self.parts += 3
-        css = {k: v for k, v in st.items() if k in ("width", "height", "flex", "gap", "align-self", "margin", *LENGTH_SIDES)}
-        name = node.attrs.get("data-name") or "棒"
-        return f'<div class="f-bars" data-name="{_html.escape(name, quote=True)}" style="{_css(css)}">' + "".join(cols) + "</div>"
+        css = {k: v for k, v in st.items() if k in keep and k != "gap"}
+        foot = f'<div class="f-bar-names"{gap}>' + "".join(names) + "</div>" if any("style=" in n for n in names) else ""
+        return f'<div class="f-bars" style="{_css(css)}"{mo}><div class="f-bar-plots"{gap}>' + "".join(cols) + "</div>" + foot + "</div>"
 
     def block(self, node: Node, surf: str, bg: str, parent: Node | None = None) -> str:
         cs = self.classes(node)
@@ -422,20 +485,23 @@ class _Render:
         if node.tag == "span":
             if "f-icon" not in cs:
                 raise FreeError(f"body の {node.line} 行目: <span> は文字の中か、アイコン（class=\"f-icon\"）にだけ使う")
-            return self.icon(node, cs, surf)
+            return self.icon(node, cs, st, surf, bg)
         if "f-icon" in cs:
-            return self.icon(node, cs, surf)
+            return self.icon(node, cs, st, surf, bg)
         if "f-cells" in cs:
-            return self.cells(node, st, surf)
+            return self.cells(node, st, surf, bg)
         if "f-bars" in cs:
             return self.bars(node, st, surf, bg)
         if "f-bar" in cs:
             raise FreeError(f"body の {node.line} 行目: f-bar は f-bars の中に書く")
         if "f-line" in cs:                                   # 箱と箱をつなぐ線（横に並べた箱の間に置く。残りの幅に伸びる）
+            self.only(node, "f-line", ("data-name", "data-step", "data-fx", "data-delay"), st)
             if node.kids:
                 raise FreeError(f"body の {node.line} 行目: f-line の中には何も書かない")
             self.parts += 1
-            return '<div class="f-line" style="background-color: var(--rule);"></div>'
+            c = self.pick(bg, ("rule", SURFACES[surf]["muted"], SURFACES[surf]["text"]))
+            return f'<div class="f-line" style="background-color: {_var(c)};"{self.motion(node)}></div>'
+        self.only(node, "<div>", ("data-name", "data-step", "data-fx", "data-delay"), st, tuple(st))
         new = self.surface_of(node, st, cs, surf)
         chip = "f-chip" in cs or "f-no" in cs
         if chip:                                             # 札・番号の丸は、自分の面（差し色・主役の色）を持つ
@@ -445,23 +511,33 @@ class _Render:
         if "f-box" in cs or chip or "background-color" in st:
             css["background-color"] = _var(new_bg)
         css.pop("color", None)
+        small = any(c in SMALL_OK for c in cs)
+        self.small(node, st, small)
         has_text = any(k.tag == "#text" or k.tag in INLINES and "f-icon" not in k.classes or k.tag == "br" for k in node.kids)
         has_block = any(k.tag == "div" or (k.tag == "span" and "f-icon" in k.classes) for k in node.kids)
         if has_text and has_block:
             raise FreeError(f"body の {node.line} 行目: 文字と、箱・アイコンを同じ <div> に並べられない（文字を <div> で包む）")
-        if has_text:
-            css["color"] = _var(self.text_color(node, st, cs, new, new_bg))
-            inner = self.inline(node, new, new_bg)
-            self.parts += 1
-        else:
-            inner = "".join(self.block(k, new, new_bg, node) for k in node.kids)
-            if "f-box" in cs or "background-color" in st:
-                self.parts += 1
         if "top" in cs:                                      # 箱の上の縁にかける札: 箱の中身の行を押し下げない（並ぶ箱の行がそろう）
             if "f-chip" not in cs or parent is None or "f-box" not in parent.classes or parent.kids[0] is not node:
                 raise FreeError(f"body の {node.line} 行目: top は、f-box の最初の子の f-chip にだけ付ける（class=\"f-chip top\"）")
+        mo = self.motion(node)                               # 子を組む前に読む（段・名前の入れ子を、子の側で止めるため）
+        if has_text:
+            css["color"] = _var(self.text_color(node, st, cs, new, new_bg))
+            inner = self.inline(node, new, new_bg, small)
+            self.parts += 1
+        else:
+            stepped, named = "data-step" in node.attrs, "data-name" in node.attrs
+            self.in_step += stepped
+            self.in_name += named
+            try:
+                inner = "".join(self.block(k, new, new_bg, node) for k in node.kids)
+            finally:
+                self.in_step -= stepped
+                self.in_name -= named
+            if "f-box" in cs or "background-color" in st:
+                self.parts += 1
         cls = " ".join(c for c in cs if c not in MODIFIERS or c in BOX_KINDS) + (" f-tag" if "top" in cs else "")
-        attr = (f' class="{cls}"' if cls else "") + (f' style="{_css(css)}"' if css else "") + self.motion(node)
+        attr = (f' class="{cls}"' if cls else "") + (f' style="{_css(css)}"' if css else "") + mo
         return f"<div{attr}>{inner}</div>"
 
 
@@ -488,8 +564,20 @@ def visible_text(body: str) -> list[str]:
         if n.has("f-cells"):
             out.append(f"{n.attrs.get('data-total')} のうち {n.attrs.get('data-on')}")
             return
+        if n.has("f-bars"):                                  # 棒は「名前: 値（最大 尺度）」。見える数（<b>）を省いた棒でも、長さを決める数が残る
+            for b in n.kids:
+                texts: list[str] = []
+                grab(b, texts)
+                out.append(f"{' '.join(texts)}: {b.attrs.get('data-value')}（最大 {n.attrs.get('data-max')}）")
+            return
         for k in n.kids:
             walk(k)
+
+    def grab(n: Node, into: list[str]):
+        if n.tag == "#text":
+            into.append(" ".join(n.text.split()))
+        for k in n.kids:
+            grab(k, into)
 
     walk(parse(body))
     return [t for t in out if t]

@@ -2860,7 +2860,8 @@ FREE_PARTS_WARN = 200      # 自由なページの部品（PPTX の図形）が�
 def t_free(s: Slide):
     """自由なページ: 見出し・出典・下の文字はほかの型と同じ部品で置き、見出しの下の「中身の箱」の中だけを、書く側の body で組む（ADR 0030）。
 
-    body は free_body が解析する（許した要素・属性・CSS だけ・部品の展開・色の組の検査）。箱は左右が本文の幅、上は見出しの下、
+    body は free_body が解析する（許した要素・属性・CSS だけ・部品の展開・色の組の検査）。箱は左右が本文の幅、上は見出しの下
+    （間はいつも 64。箱の中の高さはブラウザで組むまで分からないので、型のように 40 へ詰め直さない。入らなければ検査の free-outside が止める）、
     下は中身の下端（出典・結論の帯の上）。クリックの段は body の data-step（Slide.anim を通すので、配る資料・steps: false も型と同じ扱い）。
     """
     import free_body as FB
@@ -3394,6 +3395,8 @@ def build_slide(s: Slide) -> tuple[list[str], bool]:
     # 中身が入らなければ、順にゆるめる: 大きな見出し（80）をやめる → 見出しと中身の間を詰める（64 → 40）。どれでも入らなければ、最初の誤りを出す
     tries = [(True, BODY_GAP), (False, BODY_GAP), (False, BODY_GAP_TIGHT)] if s.big_head else [(False, BODY_GAP), (False, BODY_GAP_TIGHT)]
     first = None
+    # 組むたびに足されるもの（画像の枠・素材・キャラの参照・警告・段）は、やり直す前に戻す（入らなかった試しの分が残ると、枠が二重になる）
+    keep = (len(s.slots), len(s.assets), s.chars_used, len(s.warnings), set(s.steps))
     for big, gap in tries:
         s.big_head, s.body_gap = big, gap
         try:
@@ -3401,6 +3404,8 @@ def build_slide(s: Slide) -> tuple[list[str], bool]:
             break
         except DeckError as e:
             first = first or e
+            del s.slots[keep[0]:], s.assets[keep[1]:], s.warnings[keep[3]:]
+            s.chars_used, s.steps = keep[2], set(keep[4])
     else:
         raise first
     if s.type in GROWABLE and not _has_image(s.spec) and s.need is not None and s.need < GROW_FILL * s.avail:
