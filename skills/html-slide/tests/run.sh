@@ -147,6 +147,7 @@ deck "見た目の調子（look）: 誤りは rc=2・visual の CSS（影・帯�
 deck "Codex r4 #1・#6 写真つきの締め: 連絡先が見出しに重なれば rc=2・出典は左の列の幅" r4_closing_image_guards
 deck "ロゴの大きさ: 329×44 の枠に縦横比を保って縮めるだけ・透明な余白は切る・小さければ警告" logo_geometry
 deck "ロゴのページごとの扱い（Chrome）: 右下が写真なら左下（文字の左端）・両方だめなら置かない・地はその場所の色・番号はロゴの左" logo_pages
+deck "ロゴが地の上で読めるか（Chrome）: 読めなければ白いロゴ・無ければ余白つきの地・判定の値は image-slide と同じ・誤りは rc=2" logo_contrast
 deck "ロゴの位置（--logo-position・Chrome）: 左下 → 右下・右上 → 右下・左下なら下の文字をロゴの右へ・角ごとに部品名・左上は止める" logo_positions
 deck "ページ番号は既定でオフ・出すときは中央下（下の文字はその手前まで）" page_numbers_default_off
 deck "透かし（--watermark）: 全ページの中央下の端・CSS と数字がそろう・PPTX では選べない・動かせない !!watermark・付けなければ足さない・改行は止める" watermark

@@ -121,7 +121,10 @@ def _logo_lum(rgba) -> float:
     import statistics
     small = rgba.copy()
     small.thumbnail((200, 200))
-    px = [p for p in small.getdata() if p[3] > 200] or list(small.getdata())
+    data = list(small.getdata())
+    # 不透明な画素で測る。全部が半透明のロゴ（薄い線など）は、描かれている画素（不透明度 0 より上）で測る
+    # （透明な画素の色＝たいてい黒を数えると、白い線のロゴが「暗いロゴ」になる。html-slide の deck._logo_lum と同じ測り方）
+    px = [p for p in data if p[3] > 200] or [p for p in data if p[3] > 0] or data
     return statistics.median(_lum(p) for p in px)
 
 

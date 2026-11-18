@@ -1708,6 +1708,109 @@ def case_logo_pages():
     assert [pg.get("corner") for pg in info["logo"]["pages"]] == ["bottom-left", "bottom-left"], info["logo"]["pages"]
 
 
+def case_logo_contrast():
+    """ロゴが地の上で読めるか（Chrome で地の色を測る）: 読めればそのまま・読めなければ白いロゴ（--logo-white）・それも無ければ
+    余白つきの地（ステッカー）。判定の値は image-slide と同じ。白いロゴの縦横比違い・--logo なしは rc=2。"""
+    L = deck.logo_look
+    assert deck.LOGO_CONTRAST == 3.0 and deck.LOGO_STICKER_PAD == 12
+    dark, light = 0.012, 1.0                                            # 黒に近いロゴ・白いロゴの明るさ
+    assert L(dark, None, "#ffffff") == {"variant": "normal", "plate": "#ffffff", "sticker": False}, "白い地の黒いロゴはそのまま"
+    assert L(dark, None, "#162428") == {"variant": "normal", "plate": "#ffffff", "sticker": True}, "暗い地の黒いロゴは白いステッカー"
+    assert L(dark, light, "#162428") == {"variant": "white", "plate": "#162428", "sticker": False}, "白いロゴがあれば替える"
+    assert L(dark, light, "#ffffff")["variant"] == "normal", "白い地では白いロゴに替えない"
+    assert L(light, None, "#ffffff") == {"variant": "normal", "plate": "#000000", "sticker": True}, "白いロゴだけを白い地に置くなら黒いステッカー"
+    assert L(dark, None, "#f5a623")["sticker"] is False, "明るい主役の色の面では黒いロゴが読める"
+    from PIL import Image, ImageDraw
+    def striped(name, color, size=(464, 79), box=(10, 10, 454, 69)):   # すき間が透けるロゴ（縦の帯）。べた塗りの画像は、自分の地を持つロゴの扱いになる
+        im = Image.new("RGBA", size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        for x in range(box[0], box[2], 24):
+            d.rectangle((x, box[1], min(x + 11, box[2] - 1), box[3] - 1), fill=color)
+        d.rectangle((box[2] - 12, box[1], box[2] - 1, box[3] - 1), fill=color)
+        im.save(TMP / name)
+        return TMP / name
+    black, white = striped("lc-black.png", (20, 20, 20, 255)), striped("lc-white.png", (255, 255, 255, 255))
+    sc = {"title": "t", "slides": [{"type": "cards", "headline": "白い地", "items": [{"title": "a"}, {"title": "b"}]},
+                                   {"type": "closing", "headline": "締め", "items": [{"title": "次の一手"}]}]}
+    html, info = build(sc, "lc-a", logo=str(black))                     # 既定のスタイル: 締めはほぼ黒の面
+    pg = info["logo"]["pages"]
+    assert (pg[0]["variant"], pg[0]["sticker"]) == ("normal", False) and (pg[1]["variant"], pg[1]["sticker"], pg[1]["plate"]) == ("normal", True, "#ffffff"), pg
+    h = pathlib.Path(html).read_text(encoding="utf-8").split("<section data-slide")[2]
+    m = re.search(r'class="logo-plate"[^>]*style="background-color: #ffffff; left: (\d+)px; top: (\d+)px; width: (\d+)px; height: (\d+)px; border-radius: 8px;"', h)
+    lg = info["logo"]
+    assert m and [int(v) for v in m.groups()] == [lg["x"] - 12, lg["y"] - 12, lg["w"] + 24, lg["h"] + 24], "ステッカーはロゴの周りに 12px の余白"
+    html, info = build(sc, "lc-b", logo=str(black), logo_white=str(white))
+    pg = info["logo"]["pages"]
+    assert [p["variant"] for p in pg] == ["normal", "white"] and not pg[1]["sticker"], pg
+    secs = pathlib.Path(html).read_text(encoding="utf-8").split("<section data-slide")
+    assert 'src="assets/logo.png"' in secs[1] and 'src="assets/logo-white.png"' in secs[2] and (TMP / "lc-b" / "assets" / "logo-white.png").is_file()
+    # 余白つきの地の帯に文字がかかるページ: 余白をとらず、ロゴと同じ大きさの地にする（覆わない）
+    lg = info["logo"]
+    near = {"title": "t", "slides": [{"type": "html", "background": "#162428", "html":
+            f'<div style="position:absolute; left:{lg["x"] - 300}px; top:{lg["y"]}px; width:{300 - 6}px; height:{lg["h"]}px; font-size:22px; line-height:1.5; color:#ffffff">隣の文字</div>'}]}
+    html, info2 = build(near, "lc-near", logo=str(black))
+    assert info2["logo"]["pages"][0]["sticker"] is True, info2["logo"]["pages"]
+    h = pathlib.Path(html).read_text(encoding="utf-8")
+    m = re.search(rf'class="logo-plate"[^>]*style="background-color: #ffffff; left: {lg["x"]}px; top: {lg["y"]}px; width: {lg["w"]}px; height: {lg["h"]}px;([^"]*)"', h)
+    assert m and "border-radius" not in m.group(1), "帯に文字がかかるなら余白なし・角も丸めない（ロゴの四隅まで覆う）"
+    # 左下で、広げた地がページの外へ出るとき（文字の左端が 0）も余白なし
+    edge = {"title": "t", "slides": [{"type": "html", "background": "#162428", "html":
+            '<div style="position:absolute; left:0px; top:200px; width:600px; height:48px; font-size:32px; line-height:1.5; color:#ffffff">左端の文字</div>'}]}
+    html, info5 = build(edge, "lc-edge", logo=str(black), logo_position="bottom-left")
+    pg5 = info5["logo"]["pages"][0]
+    assert (pg5["corner"], pg5["x"], pg5["sticker"]) == ("bottom-left", 0, True), pg5
+    assert re.search(r'class="logo-plate"[^>]*style="background-color: #ffffff; left: 0px;', pathlib.Path(html).read_text(encoding="utf-8")), "ページの外へ出さない"
+    # 縁の 1 画素だけ半透明な、地を塗ったロゴも「自分の地を持つロゴ」（扱いが切り替わらない）
+    almost = TMP / "lc-almost.png"
+    im = Image.new("RGBA", (444, 59), (20, 20, 20, 255))
+    im.putpixel((0, 0), (20, 20, 20, 120))
+    im.save(almost)
+    _, info6 = build(sc, "lc-almost", logo=str(almost))
+    assert [p["sticker"] for p in info6["logo"]["pages"]] == [False, False], info6["logo"]["pages"]
+    # 外周 1px だけ半透明（縁をなめらかにした書き出し）でも、解像度によらず「自分の地を持つロゴ」。すき間のあるロゴは透けるロゴ
+    for size in ((444, 59), (888, 118)):
+        im = Image.new("RGBA", size, (20, 20, 20, 120))
+        ImageDraw.Draw(im).rectangle((1, 1, size[0] - 2, size[1] - 2), fill=(20, 20, 20, 255))
+        f = TMP / f"lc-rim-{size[0]}.png"
+        im.save(f)
+        assert deck.load_logo(str(f))[1]["lum"] is None, f"外周 1px の半透明で扱いが変わった: {size}"
+    assert deck.load_logo(str(black))[1]["lum"] is not None and deck.load_logo(str(almost))[1]["lum"] is None
+    # 半透明の白い細い線だけのロゴ: 描かれている画素で明るさを測る（透明な画素の黒を数えない）。暗い面にそのまま置き、白い地で消さない
+    thin = TMP / "lc-thin.png"
+    im = Image.new("RGBA", (444, 59), (0, 0, 0, 0))
+    ImageDraw.Draw(im).rectangle((0, 0, 443, 58), outline=(255, 255, 255, 200), width=2)
+    im.save(thin)
+    lum = deck.load_logo(str(thin))[1]["lum"]
+    assert lum is not None and lum > 0.9, lum
+    assert deck.logo_look(lum, None, "#162428") == {"variant": "normal", "plate": "#162428", "sticker": False}
+    # 透明な所の無いロゴ（自分の地を持つ）は、暗い面でもそのまま（地を足さない）。全部透明な画像は rc=2
+    solid = TMP / "lc-solid.png"
+    Image.new("RGB", (444, 59), (20, 20, 20)).save(solid)
+    _, info3 = build(sc, "lc-solid", logo=str(solid))
+    assert [(p["variant"], p["sticker"]) for p in info3["logo"]["pages"]] == [("normal", False), ("normal", False)], info3["logo"]["pages"]
+    assert deck.logo_look(None, 1.0, "#162428") == {"variant": "normal", "plate": "#162428", "sticker": False}
+    empty = TMP / "lc-empty.png"
+    Image.new("RGBA", (444, 59), (0, 0, 0, 0)).save(empty)
+    for kw in ({"logo": str(empty)}, {"logo": str(black), "logo_white": str(empty)}):
+        try:
+            build(sc, "lc-empty", **kw)
+            raise AssertionError(f"全部透明なロゴが通った: {kw}")
+        except T.DeckError as e:
+            assert "全部透明" in str(e), e
+    # 余白のある白いロゴ: 余白を切った形が合えば使う
+    padded = striped("lc-white-padded.png", (255, 255, 255, 255), size=(644, 159), box=(100, 50, 544, 109))
+    _, info4 = build(sc, "lc-padded", logo=str(black), logo_white=str(padded))
+    assert info4["logo"]["pages"][1]["variant"] == "white", info4["logo"]["pages"]
+    tall = TMP / "lc-tall.png"
+    Image.new("RGBA", (100, 100), (255, 255, 255, 255)).save(tall)
+    for kw, word in (({"logo": str(black), "logo_white": str(tall)}, "縦横比"), ({"logo_white": str(white)}, "一緒に")):
+        try:
+            build(sc, "lc-bad", **kw)
+            raise AssertionError(f"通った: {kw}")
+        except T.DeckError as e:
+            assert word in str(e), e
+
+
 def case_logo_positions():
     """--logo-position（Chrome で測る）: 左下は 左下 → 右下・右上は 右上 → 右下（上下をまたぐのは右の列だけ）。
     左下なら下の文字をロゴの右へ、右上ならページ番号は元の位置。角ごとに PPTX の部品名を変える。知らない値は止める。"""

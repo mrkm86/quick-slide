@@ -422,7 +422,7 @@ def cmd_deck(a) -> int:
     try:
         html, info = deck.build_html(script, out, theme=a.theme, mode=a.mode, placeholder=ph, style=a.style,
                                      logo=a.logo, logo_position=a.logo_position, watermark=a.watermark,
-                                     image_look=a.image_look)
+                                     image_look=a.image_look, logo_white=a.logo_white)
     except deck.DeckError as e:
         print(f"NG: {e}", file=sys.stderr)
         return 2
@@ -645,6 +645,7 @@ def deck_args(d) -> None:
     d.add_argument("--mode", choices=("talk", "handout"),
                    help="talk（既定・話す資料。クリックで出る）／handout（配る資料。動きも切り替えも付けない）。台本の mode より優先")
     d.add_argument("--logo", help="ロゴの画像（PNG・JPEG）。高さ 44px・幅 329px の枠へ縦横比を保って収める（引き伸ばさない）")
+    d.add_argument("--logo-white", help="暗い地のページで使う白いロゴ（PNG・JPEG。縦横比は --logo と同じ）。無ければ、読めない地の上では白い地を敷く")
     d.add_argument("--logo-position", choices=list(deck.LOGO_POSITIONS), default="bottom-right",
                    help="ロゴを置く角（既定 bottom-right）。ふさがったページは、右下 → 左下・左下 → 右下・右上 → 右下へ逃がし、それもだめなら置かない")
     d.add_argument("--watermark", help="透かしの文字（例: example.com・社外秘）。全ページの中央下の端に、固定の薄いグレーで置く。"
@@ -711,6 +712,7 @@ def main(argv=None) -> int:
     rw.add_argument("--style", help=style_help)
     rw.add_argument("--mode", choices=("talk", "handout"))
     rw.add_argument("--logo")
+    rw.add_argument("--logo-white")
     rw.add_argument("--logo-position", choices=list(deck.LOGO_POSITIONS), default="bottom-right")
     rw.add_argument("--watermark")
     rw.add_argument("--image-look", choices=list(G.IMAGE_LOOKS), help=LOOK_HELP)

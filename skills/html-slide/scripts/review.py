@@ -122,7 +122,7 @@ def collect(script: Path, out: Path, a) -> dict:
     # 描く前の絵が無い生成の枠は仮の枠にする（review は画像を生成しない）。持ち込みの絵が無いページは、そのページの誤り
     html_path, info = deck.build_html(script, out, theme=a.theme, mode=a.mode, placeholder="generated", style=a.style,
                                       logo=a.logo, logo_position=a.logo_position, watermark=a.watermark,
-                                      image_look=a.image_look, page_errors=page_errors)
+                                      image_look=a.image_look, page_errors=page_errors, logo_white=getattr(a, "logo_white", None))
     head, sections = split_doc(html_path.read_text(encoding="utf-8"))
     if len(sections) != len(specs):
         raise deck.DeckError(f"組んだページの数（{len(sections)}）が台本（{len(specs)}）と合わない")

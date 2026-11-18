@@ -227,7 +227,7 @@ class EngineArgsTests(Base):
         self.assertEqual(arg(deck, "--logo-position"), "bottom-left")
         self.assertEqual(Path(arg(deck, "--logo")).read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
         self.assertEqual(arg(deck, "--watermark"), "配布禁止")
-        self.assertNotIn("--logo-white", deck, "白いロゴはピッチだけ")
+        self.assertEqual(Path(arg(deck, "--logo-white")).read_bytes()[:8], b"\x89PNG\r\n\x1a\n", "白いロゴはプレゼンにも渡す（暗い地のページで使う）")
         self.assertNotIn("--logo", check, "html-slide の検査はロゴを受けない")
         self.assertEqual(arg(check, "--theme"), look["theme"], "検査もテーマで（読めない色は検査で分かる）")
         # フッタ・ページ番号はエンジンに渡す台本に入れ、台本の版（台本係が書いたもの）は変えない

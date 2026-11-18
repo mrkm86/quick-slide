@@ -11,7 +11,7 @@
 | ブランドの配色 | `--theme <回の控え>/settings/theme.yaml`（`palette.engine_theme`） |
 | ブランドの字体 | テーマの `font`・`font_files`（エンジンの設定の `fonts:` に字体ファイルがあるときだけ。`brand_font`・P5） |
 | ブランドのロゴ（使う種類の画像） | `--logo`（PNG・JPEG だけ。加工しない） |
-| ブランドの白いロゴ（`logo_white`） | `--logo-white`（ピッチだけ。縦横比がロゴと 2% 以内で合うときだけ） |
+| ブランドの白いロゴ（`logo_white`） | `--logo-white`（ピッチとプレゼン。暗い地のページで使う。縦横比がロゴと 2% 以内で合うときだけ） |
 | ロゴの角 | `--logo-position`（bottom-right・bottom-left・top-right） |
 | フッタの文字 | 台本の一番外の `footer`（`scripts/engine.json` に書くときに入れる。台本の版は変えない） |
 | ページ番号 | 台本の一番外の `page_numbers` |
@@ -119,9 +119,9 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
         if why:
             notes.append(f"ロゴを置きません（{why}）")
     white_path = white_sha = None
-    if logo_path is not None and mode == "pitch" and variant != "white" and "logo_white" in assets:
+    if logo_path is not None and mode in ("pitch", "presentation") and variant != "white" and "logo_white" in assets:
         white_path, white_sha, why = _asset_file(store, root, assets["logo_white"])
-        if white_path is not None and not _same_aspect(assets[VARIANT_TO_ROLE[variant]], assets["logo_white"]):
+        if white_path is not None and not _same_aspect(logo_path, white_path):
             white_path = white_sha = None
             why = "白いロゴの縦横比がロゴと違う"
         if why:
@@ -380,10 +380,22 @@ def _asset_file(store: Any, root: DataRoot, row: dict[str, Any] | None) -> tuple
     return path, sha, None
 
 
-def _same_aspect(a: dict[str, Any], b: dict[str, Any]) -> bool:
+def _drawn_size(path: Path) -> tuple[int, int]:
+    """画像の、透明な余白を切った大きさ（エンジンはロゴの余白を切ってから枠に収める。同じ測り方で比べる）。"""
+    from PIL import Image
+    with Image.open(path) as im:
+        im.load()
+        box = im.convert("RGBA").getchannel("A").getbbox() if "A" in im.getbands() or im.mode == "P" else None
+        return (box[2] - box[0], box[3] - box[1]) if box else im.size
+
+
+def _same_aspect(a: Path, b: Path) -> bool:
+    """ロゴと白いロゴの縦横比が合うか（透明な余白を切った大きさで比べる。ファイルの大きさで比べると、余白の違うだけの
+    白いロゴを捨ててしまう）。読めない画像は合わない扱い。"""
     try:
-        ra, rb = a["width"] / a["height"], b["width"] / b["height"]
-    except (KeyError, TypeError, ZeroDivisionError):
+        (aw, ah), (bw, bh) = _drawn_size(a), _drawn_size(b)
+        ra, rb = aw / ah, bw / bh
+    except (OSError, ValueError, ZeroDivisionError):
         return False
     return abs(rb - ra) <= WHITE_ASPECT_TOLERANCE * ra
 

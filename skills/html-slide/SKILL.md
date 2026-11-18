@@ -46,11 +46,11 @@ description: 台本（資料用の JSON）や HTML から、編集できて Powe
    - **画像は台本を書く側が判断して置く**（[ADR 0011](docs/adr/0011-fill-images-with-codex.md)）。構造・手順・数字は図解（型）、空気・場面・気持ちは `image: {prompt: "何を描くか"}`、
      実在のもの（自社の製品・特定の人・「あの資料のあの写真」）は `path` で持ち込み。prompt に画風は書かない（`--image-look` かスタイルが足す）。
      キャラはページに `_characters`（image-slide と同じ書き方）。決まりは deck-format.md の「絵の出どころ」
-3. `python3 …/html_slide.py deck --script <台本.json> [--out <フォルダ>] [--style standard|visual|<YAML>] [--theme default|forest|warm|<YAML>] [--logo <PNG> [--logo-position bottom-right|bottom-left|top-right]] [--watermark <文字>] [--image-look photo|illustration|handdrawn] [--no-fill] [--format pptx,pdf,png,thumbs]`
+3. `python3 …/html_slide.py deck --script <台本.json> [--out <フォルダ>] [--style standard|visual|<YAML>] [--theme default|forest|warm|<YAML>] [--logo <PNG> [--logo-white <PNG>] [--logo-position bottom-right|bottom-left|top-right]] [--watermark <文字>] [--image-look photo|illustration|handdrawn] [--no-fill] [--format pptx,pdf,png,thumbs]`
    - **まだ絵の無い生成の枠は、先に Codex で描いて埋める**（認証は1度・並列8本・1枚1〜2分）。描けなかった枠は仮の枠で組んで rc=1（もう一度流すとその枠だけ描く）。
      急ぐ下書きは `--no-fill`（仮の枠）。Codex の認証が切れていれば rc=4（`codex login`）
    - **画風**は `--image-look`（省けばスタイル: standard は illustration・visual は photo）。変えると生成の枠だけ描き直す。前の画風の絵は残る
-   - **ロゴ**は既定で右下（高さ 44px まで・引き伸ばさない・右下が写真なら左下・両方ふさがれば置かない）。`--logo-position` で左下・右上も選べる（右上がふさがれば右下へ）。決まりは deck-format.md の「ロゴ」
+   - **ロゴ**は既定で右下（高さ 44px まで・引き伸ばさない・右下が写真なら左下・両方ふさがれば置かない）。`--logo-position` で左下・右上も選べる（右上がふさがれば右下へ）。地の上でロゴが読めないページ（ほぼ黒の締めに黒いロゴなど）は、`--logo-white` があれば白いロゴに替え、無ければ余白つきの地を敷く。決まりは deck-format.md の「ロゴ」
    - **透かし**は `--watermark 社外秘` のように渡すと、全ページの中央下の端に薄いグレーで入る（PPTX では選べない・動かせない部品）。決まりは deck-format.md の「透かし」
    - **スタイル**は資料全体の見せ方の既定（[ADR 0005](docs/adr/0005-styles-standard-visual.md)）。`standard`（既定・説明・報告・社内資料向け。箱は枠なしの淡い面・表紙と章扉は主役の色・結論と締めは濃い面）／`visual`（ビジュアル寄り・プレゼン・ピッチ向け。画像のある表紙・章扉は全面写真など）／`classic`（前の既定。箱に枠線を引く。投影・印刷で境をはっきり見せたいとき）／カスタムの YAML（雛形は `templates/custom-style.example.yaml`）。台本に変化形を書いたページは台本が勝つ
    - rc=2 なら stderr の `NG:` を読んで台本を直す（文字のはみ出しは文を短く。字を小さくしない）

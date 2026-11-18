@@ -6,7 +6,7 @@
 //   node logo_ground.mjs <deck.html> <出力ディレクトリ> <M> <x,y,w,h> [<x,y,w,h> …]
 //
 // 出力は <出力ディレクトリ>/ground-<ページ>-<候補>.png（例 ground-01-0.png）と
-// {"pages": [[{"x": 置いた x, "img": bool, "text": bool}, …候補], …ページ]}。
+// {"pages": [[{"x": 置いた x, "img": bool, "text": bool, "near": bool（枠を HTML_SLIDE_LOGO_PAD px 広げた帯に絵か文字がかかるか）}, …候補], …ページ]}。
 // x に -1 を書いた候補は、そのページの左半分の文字の左端にそろえる（無ければ 120）。node_modules と Chrome は snapshot.mjs と同じ
 import { createRequire } from "node:module";
 import fs from "node:fs";
@@ -54,7 +54,7 @@ try {
     document.querySelectorAll(".logo, .logo-plate, .footer, .pageno, .watermark").forEach((el) => { el.style.visibility = "hidden"; });
   });
   // 枠にかかるもの: 写真・絵（ロゴ以外の <img>）・図形の飾り（svg.art）と、文字を直に持つ要素
-  const pages = await page.evaluate((boxes) => [...document.querySelectorAll("section[data-slide]")].map((sec) => {
+  const pages = await page.evaluate((boxes, pad) => [...document.querySelectorAll("section[data-slide]")].map((sec) => {
     const o = sec.getBoundingClientRect();
     const hits = (el, [bx, by, bw, bh]) => {
       const r = el.getBoundingClientRect();
@@ -66,13 +66,27 @@ try {
     const imgs = [...sec.querySelectorAll("img:not(.logo), svg.art")].filter(shown);
     const texts = [...sec.querySelectorAll("*")].filter((el) => shown(el) && !el.closest("svg") &&
       [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()));
+    // 透かしは測るときに隠すが、広げた帯は透かしの文字にかかることがある。箱（全幅）ではなく文字の範囲で見る
+    const hitsRect = (r, [bx, by, bw, bh]) => {
+      if (!r.width || !r.height) return false;
+      const l = r.left - o.left, t = r.top - o.top;
+      return l < bx + bw && l + r.width > bx && t < by + bh && t + r.height > by;
+    };
+    const marks = [...sec.querySelectorAll(".watermark")].map((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return range.getBoundingClientRect();
+    });
     const lefts = texts.map((el) => el.getBoundingClientRect()).filter((r) => r.width && r.left - o.left < 960)
       .map((r) => Math.round(r.left - o.left));
     return boxes.map(([bx, ...rest]) => {
       const b = [bx < 0 ? (lefts.length ? Math.min(...lefts) : 120) : bx, ...rest];
-      return { x: b[0], img: imgs.some((el) => hits(el, b)), text: texts.some((el) => hits(el, b)) };
+      // near: 枠を上下左右に pad だけ広げた帯（読めない地に敷く、余白つきの地の場所）に、絵か文字がかかるか
+      const wide = [b[0] - pad, b[1] - pad, b[2] + 2 * pad, b[3] + 2 * pad];
+      return { x: b[0], img: imgs.some((el) => hits(el, b)), text: texts.some((el) => hits(el, b)),
+               near: imgs.some((el) => hits(el, wide)) || texts.some((el) => hits(el, wide)) || marks.some((r) => hitsRect(r, wide)) };
     });
-  }), boxes);
+  }), boxes, Number(process.env.HTML_SLIDE_LOGO_PAD || 0));
   const sections = await page.$$("section[data-slide]");
   for (let i = 0; i < sections.length; i++) {
     const r = await sections[i].boundingBox();
