@@ -337,7 +337,10 @@ def _logo_lum(im) -> float:
     import statistics
     small = im.convert("RGBA")
     small.thumbnail((200, 200))
-    px = [p for p in small.getdata() if p[3] > 200] or list(small.getdata())
+    data = list(small.getdata())
+    # 不透明な画素で測る。全部が半透明のロゴ（薄い線など）は、描かれている画素（不透明度 0 より上）で測る
+    # （透明な画素の色＝たいてい黒を数えると、白い線のロゴが「暗いロゴ」になり、白い地を敷いて線が消える）
+    px = [p for p in data if p[3] > 200] or [p for p in data if p[3] > 0] or data
     return statistics.median(_lum(p) for p in px)
 
 

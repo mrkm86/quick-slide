@@ -1775,6 +1775,14 @@ def case_logo_contrast():
         im.save(f)
         assert deck.load_logo(str(f))[1]["lum"] is None, f"外周 1px の半透明で扱いが変わった: {size}"
     assert deck.load_logo(str(black))[1]["lum"] is not None and deck.load_logo(str(almost))[1]["lum"] is None
+    # 半透明の白い細い線だけのロゴ: 描かれている画素で明るさを測る（透明な画素の黒を数えない）。暗い面にそのまま置き、白い地で消さない
+    thin = TMP / "lc-thin.png"
+    im = Image.new("RGBA", (444, 59), (0, 0, 0, 0))
+    ImageDraw.Draw(im).rectangle((0, 0, 443, 58), outline=(255, 255, 255, 200), width=2)
+    im.save(thin)
+    lum = deck.load_logo(str(thin))[1]["lum"]
+    assert lum is not None and lum > 0.9, lum
+    assert deck.logo_look(lum, None, "#162428") == {"variant": "normal", "plate": "#162428", "sticker": False}
     # 透明な所の無いロゴ（自分の地を持つ）は、暗い面でもそのまま（地を足さない）。全部透明な画像は rc=2
     solid = TMP / "lc-solid.png"
     Image.new("RGB", (444, 59), (20, 20, 20)).save(solid)
