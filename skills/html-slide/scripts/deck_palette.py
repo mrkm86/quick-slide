@@ -125,6 +125,9 @@ def base_palette(t: dict) -> dict:
     # 濃い面の上で強める色: 主役の色そのまま → 差し色そのまま → どちらも 4.5:1 に届かなければ、主役の色を白へ寄せて届く一番濃い色（白にすると強調が消える）
     p["deep-pop"] = next((x for x in (p["primary-fill"], p["accent-fill"]) if ratio(x, p["deep"]) >= 4.5),
                          next((x for x in (mix(t["primary"], 1 - n / 40, white) for n in range(41)) if ratio(x, p["deep"]) >= 4.5), white))
+    # 割合のマスなどの「塗っていない側」: 地との差が見える、色みの無い面（自由なページの部品が使う・ADR 0030）
+    p["mark-off"] = mix(ink, 0.16, bg)
+    p["deep-off"] = mix(white, 0.28, p["deep"])
     p.update(SEMANTIC)
     p.update(_tone_roles(p))
     p.update(_bar_roles(p))

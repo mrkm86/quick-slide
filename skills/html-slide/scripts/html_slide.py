@@ -441,6 +441,17 @@ def cmd_deck(a) -> int:
             print(f"NG: {e}", file=sys.stderr)
             return e.rc
         say_violations(report.get("violations") or [])
+    else:                                          # PPTX を書かない出力（画像・PDF だけ）でも、描き出しの検査の誤りで止める（ADR 0030）
+        try:
+            vs = R.check(html)
+        except R.RenderError as e:
+            print(f"NG: {e}", file=sys.stderr)
+            return e.rc
+        say_violations(vs)
+        if R.errors(vs):
+            (out / "deck-info.json").write_text(json.dumps(info, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+            print(f"NG: 決まり違反が {len(R.errors(vs))} 件ある（PPTX は書かない出力でも、画像・PDF を作らない）", file=sys.stderr)
+            return 2
     # ページの画像・PDF・サムネイル（ADR 0012）。作れなかったものがあれば rc=1
     made, out_rc = {}, 0
     slides = json.loads(script.read_text(encoding="utf-8"))["slides"]

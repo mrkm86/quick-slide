@@ -39,15 +39,15 @@ COLOR_VARS = ("bg", "ink", "muted", "primary-soft", "accent-soft", "primary-fill
 # 面（地の色）ごとの、上に載る文字の色の役。text＝ふつうの文字・muted＝補足・strong＝強める文字と数字・mark＝図形（アイコン・棒・マス）
 SURFACES = {
     "page": {"bg": "bg", "text": "ink", "muted": "muted", "strong": "primary-text", "mark": "primary-fill", "on-mark": "on-primary-fill",
-             "pop": "accent-fill", "on-pop": "on-accent-fill", "off": "primary-soft"},
+             "pop": "accent-fill", "on-pop": "on-accent-fill", "off": "mark-off"},
     "soft": {"bg": "primary-soft", "text": "ink", "muted": "muted", "strong": "primary-text", "mark": "primary-fill", "on-mark": "on-primary-fill",
-             "pop": "accent-fill", "on-pop": "on-accent-fill", "off": "bg"},
+             "pop": "accent-fill", "on-pop": "on-accent-fill", "off": "mark-off"},
     "fill": {"bg": "primary-fill", "text": "on-primary-fill", "muted": "on-primary-fill", "strong": "on-primary-fill", "mark": "on-primary-fill",
              "on-mark": "primary-fill", "pop": "on-primary-fill", "on-pop": "primary-fill", "off": "primary-soft"},
     "accent": {"bg": "accent-fill", "text": "on-accent-fill", "muted": "on-accent-fill", "strong": "on-accent-fill", "mark": "on-accent-fill",
                "on-mark": "accent-fill", "pop": "on-accent-fill", "on-pop": "accent-fill", "off": "accent-soft"},
     "deep": {"bg": "deep", "text": "on-deep", "muted": "on-deep", "strong": "deep-pop", "mark": "deep-pop", "on-mark": "deep",
-             "pop": "deep-pop", "on-pop": "deep", "off": "muted"},
+             "pop": "deep-pop", "on-pop": "deep", "off": "deep-off"},
     "good": {"bg": "tone-good-bg", "text": "ink", "muted": "muted", "strong": "tone-good-text", "mark": "tone-good-text", "on-mark": "tone-good-bg",
              "pop": "tone-good-text", "on-pop": "tone-good-bg", "off": "bg"},
     "bad": {"bg": "tone-bad-bg", "text": "ink", "muted": "muted", "strong": "tone-bad-text", "mark": "tone-bad-text", "on-mark": "tone-bad-bg",
@@ -62,7 +62,7 @@ BG_SURFACE = {"bg": "page", "primary-soft": "soft", "accent-soft": "soft", "prim
 LAYOUT = {"f-row", "f-col", "f-grow"}
 ROLES = {"f-num", "f-label", "f-note", "f-muted", "f-strong"}
 PARTS = {"f-box", "f-icon", "f-cells", "f-bars", "f-bar", "f-chip", "f-no"}
-MODIFIERS = set(BOX_KINDS) | {"disc", "on"}
+MODIFIERS = set(BOX_KINDS) | {"disc", "on", "top"}
 CLASSES = LAYOUT | ROLES | PARTS | MODIFIERS
 
 KEYWORDS = {
@@ -410,7 +410,7 @@ class _Render:
         name = node.attrs.get("data-name") or "棒"
         return f'<div class="f-bars" data-name="{_html.escape(name, quote=True)}" style="{_css(css)}">' + "".join(cols) + "</div>"
 
-    def block(self, node: Node, surf: str, bg: str) -> str:
+    def block(self, node: Node, surf: str, bg: str, parent: Node | None = None) -> str:
         cs = self.classes(node)
         st = style_of(node, self.warns)
         if node.tag == "span":
@@ -443,10 +443,13 @@ class _Render:
             inner = self.inline(node, new, new_bg)
             self.parts += 1
         else:
-            inner = "".join(self.block(k, new, new_bg) for k in node.kids)
+            inner = "".join(self.block(k, new, new_bg, node) for k in node.kids)
             if "f-box" in cs or "background-color" in st:
                 self.parts += 1
-        cls = " ".join(c for c in cs if c not in MODIFIERS or c in BOX_KINDS)
+        if "top" in cs:                                      # 箱の上の縁にかける札: 箱の中身の行を押し下げない（並ぶ箱の行がそろう）
+            if "f-chip" not in cs or parent is None or "f-box" not in parent.classes or parent.kids[0] is not node:
+                raise FreeError(f"body の {node.line} 行目: top は、f-box の最初の子の f-chip にだけ付ける（class=\"f-chip top\"）")
+        cls = " ".join(c for c in cs if c not in MODIFIERS or c in BOX_KINDS) + (" f-tag" if "top" in cs else "")
         attr = (f' class="{cls}"' if cls else "") + (f' style="{_css(css)}"' if css else "") + self.motion(node)
         return f"<div{attr}>{inner}</div>"
 

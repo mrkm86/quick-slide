@@ -815,6 +815,27 @@ function contractMain() {
       if (!H.isInline(el) && el.clientWidth > 0 && (el.textContent || '').trim() &&
           (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)) overflow.push(el);
     }
+    // 自由なページ（型 free・ADR 0030）: 中身の箱（[data-free-body]）から出た部品は誤り。箱の高さの 8 割を使っていなければ警告
+    for (const fb of sec.querySelectorAll('[data-free-body]')) {
+      const b = fb.getBoundingClientRect();
+      const out = new Set();
+      for (const el of fb.querySelectorAll('*')) {
+        if (el.namespaceURI !== 'http://www.w3.org/1999/xhtml' || el.closest('.f-tag')) continue;   // 箱の上の縁にかける札は、わざと箱から出す
+        const r = el.getBoundingClientRect();
+        if (!(r.width > 0 || r.height > 0)) continue;
+        if (r.left < b.left - 1 || r.top < b.top - 1 || r.right > b.right + 1 || r.bottom > b.bottom + 1) {
+          let anc = false;
+          for (let n = el.parentNode; n && n !== fb; n = n.parentNode) if (out.has(n)) { anc = true; break; }
+          out.add(el);
+          if (!anc) V(no, el, 'free-outside', `中身の箱からはみ出す（箱 ${Math.round(b.width)}×${Math.round(b.height)} に対して 右 ${Math.round(r.right - b.right)}・下 ${Math.round(r.bottom - b.bottom)}px）。中身を減らすか、文字を小さい段にするか、箱を flex で割り直す`, 'error', sec);
+        }
+      }
+      const kids = [...fb.children].map(k => k.getBoundingClientRect()).filter(r => r.width > 0 || r.height > 0);
+      if (kids.length && b.height > 0) {
+        const used = Math.max(...kids.map(r => r.bottom)) - b.top;
+        if (used < b.height * 0.8) V(no, fb, 'free-sparse', `中身の箱の下が空いている（高さ ${Math.round(b.height)} のうち ${Math.round(used)}px しか使っていない）。一番外の並びに f-grow を付けて伸ばす`, 'warn', sec);
+      }
+    }
     for (const el of overflow) {
       if (overflow.some(x => x !== el && el.contains(x))) continue;
       V(no, el, 'text-overflow', `文字が箱からはみ出す（中身 ${el.scrollWidth}×${el.scrollHeight} > 箱 ${el.clientWidth}×${el.clientHeight}。文を短くする）`, LV('text-overflow'), sec);
