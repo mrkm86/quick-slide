@@ -11,7 +11,7 @@
 | ブランドの配色 | `--theme <回の控え>/settings/theme.yaml`（`palette.engine_theme`） |
 | ブランドの字体 | テーマの `font`・`font_files`（エンジンの設定の `fonts:` に字体ファイルがあるときだけ。`brand_font`・P5） |
 | ブランドのロゴ（使う種類の画像） | `--logo`（PNG・JPEG だけ。加工しない） |
-| ブランドの白いロゴ（`logo_white`） | `--logo-white`（ピッチだけ。縦横比がロゴと 2% 以内で合うときだけ） |
+| ブランドの白いロゴ（`logo_white`） | `--logo-white`（ピッチとプレゼン。暗い地のページで使う。縦横比がロゴと 2% 以内で合うときだけ） |
 | ロゴの角 | `--logo-position`（bottom-right・bottom-left・top-right） |
 | フッタの文字 | 台本の一番外の `footer`（`scripts/engine.json` に書くときに入れる。台本の版は変えない） |
 | ページ番号 | 台本の一番外の `page_numbers` |
@@ -119,7 +119,7 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
         if why:
             notes.append(f"ロゴを置きません（{why}）")
     white_path = white_sha = None
-    if logo_path is not None and mode == "pitch" and variant != "white" and "logo_white" in assets:
+    if logo_path is not None and mode in ("pitch", "presentation") and variant != "white" and "logo_white" in assets:
         white_path, white_sha, why = _asset_file(store, root, assets["logo_white"])
         if white_path is not None and not _same_aspect(assets[VARIANT_TO_ROLE[variant]], assets["logo_white"]):
             white_path = white_sha = None
