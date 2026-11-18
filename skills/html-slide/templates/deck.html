@@ -406,6 +406,20 @@
       .st-dot { display: flex; align-items: center; justify-content: center; border-radius: 9999px; font-size: 32px; line-height: 1.0; font-weight: 700; }
       .st-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
       .st-body { line-height: 1.6; color: var(--muted); margin-top: 8px; word-break: auto-phrase; }
+      /* 構成図（層・箱・矢印）: 層は淡い面に枠・箱は白い面に枠（強める箱は差し色の太い枠）・矢印の名札は白い面の札 */
+      .dg-band { position: absolute; background-color: var(--surface); border: 2px solid var(--rule); border-radius: 16px; }
+      .dg-rowlabel { position: absolute; display: flex; align-items: center; }
+      .dg-rowlabel div { font-weight: 700; color: var(--primary-text); word-break: auto-phrase; }
+      .dg-node { position: absolute; display: flex; align-items: center; background-color: var(--bg); border: 2px solid var(--rule); border-radius: 12px; padding: 0 20px; }
+      .dg-node.hl { background-color: var(--accent-soft); border: 4px solid var(--accent-mark); }
+      .dg-kicker { line-height: 1.5; font-weight: 700; color: var(--primary-text); }
+      .dg-title { line-height: 1.4; font-weight: 700; word-break: auto-phrase; }
+      .dg-body { line-height: 1.5; color: var(--muted); word-break: auto-phrase; }
+      .dg-pill { position: absolute; display: flex; align-items: center; justify-content: center; background-color: var(--bg); border: 2px solid var(--rule);
+                 border-radius: 9999px; line-height: 1.0; font-weight: 700; white-space: nowrap; }
+      .dg-pill.hl { border-color: var(--accent-mark); color: var(--accent-text); }
+      .dg-hlabel { position: absolute; line-height: 1.4; font-weight: 700; text-align: center; word-break: auto-phrase; }
+      .dg-hlabel.hl { color: var(--accent-text); }
       /* スタイルの見た目の調子（look・ADR 0005 追記）。deck.py が差し込む。standard は空 */
       {{LOOK}}
     </style>

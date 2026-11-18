@@ -119,20 +119,25 @@ def text_width(text, size, bold=False) -> float:
     return _font(int(size), bold).getlength(plain(text))
 
 
-_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9.,:%/+\-]*|\s+|.", re.S)
+_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9.,:%/+\-]*|[ァ-ヴー]{3,}|\s+|.", re.S)   # 英数字の語・カタカナの語（3字以上）・空白・1文字
+_KANA = re.compile(r"[ァ-ヴー]{3,}")
 
 
-def count_lines(text, size, width, bold=False) -> int:
-    """改行（\\n）で区切った行ごとに数えて足す。"""
-    return sum(_count_lines(seg, size, width, bold) for seg in plain(text).split("\n"))
+def count_lines(text, size, width, bold=False, split_kana=True) -> int:
+    """改行（\\n）で区切った行ごとに数えて足す。split_kana=False は、カタカナの語が幅を越えたら 99（入る大きさまで段を下りるため）。"""
+    return sum(_count_lines(seg, size, width, bold, split_kana) for seg in plain(text).split("\n"))
 
 
-def _count_lines(text, size, width, bold=False) -> int:
+def _count_lines(text, size, width, bold=False, split_kana=True) -> int:
     """width に折り返したときの行数（英数字の語は分けない・ほかは1文字ずつ折れる前提）。1語が幅を越えたら 99。"""
     limit = width * SAFE
     f = _font(int(size), bold)
     n, cur = 1, 0.0
+    toks = []
     for tok in _TOKEN.findall(plain(text)):
+        # カタカナの語は途中で折らない（「メタモルフォ／ーゼ」を避ける。入る大きさまで段を下りる）。語だけで幅を越えるなら、1文字ずつに戻す（止めない）
+        toks += list(tok) if split_kana and _KANA.fullmatch(tok) and f.getlength(tok) > limit else [tok]
+    for tok in toks:
         w = f.getlength(tok)
         if w > limit and not tok.isspace():
             return 99                      # 英数字の語は途中で折れず、箱からはみ出す（縮めるか rc=2）
@@ -169,16 +174,17 @@ def fit(text, size, width, *, what, lines=None, height=None, lh=1.5, min_size=No
     size = snap(size)
     floor = snap(max(min_size or step_down(size, 2), MIN_PX))
     cands = [v for v in SCALE if floor <= v <= size] or [floor]
-    for i, s in enumerate(cands):
-        n = count_lines(text, s, width, bold)
-        if (lines is None or n <= lines) and (height is None or n * s * lh <= height + 0.5):
-            if tidy and n > 1:
-                for t in cands[i + 1:]:
-                    if t < s * 0.86 - 0.5:
-                        break
-                    if count_lines(text, t, width, bold) < n:
-                        return t, n - 1
-            return s, n
+    for split_kana in (False, True):          # まずカタカナの語を折らずに入る段を探す。無ければ、語の途中で折る数え方で探す（止めない）
+        for i, s in enumerate(cands):
+            n = count_lines(text, s, width, bold, split_kana)
+            if (lines is None or n <= lines) and (height is None or n * s * lh <= height + 0.5):
+                if tidy and n > 1:
+                    for t in cands[i + 1:]:
+                        if t < s * 0.86 - 0.5:
+                            break
+                        if count_lines(text, t, width, bold, split_kana) < n:
+                            return t, n - 1
+                return s, n
     room = f"{lines} 行" if lines is not None else f"高さ {height:.0f}px"
     raise DeckError(f"{what}が長すぎて入らない（{size}px から {floor}px まで下りても {room} を越える。"
                     f"幅 {width:.0f}px）: {plain(text)}")
@@ -205,7 +211,7 @@ class Slide:
     def __init__(self, no: int, spec: dict, pal: dict, flat: bool, script_dir: pathlib.Path, assets: list,
                  placeholder: bool = False, slots: list | None = None, warnings: list | None = None,
                  overlays: dict | None = None, still: bool = False, image_look: str | None = None,
-                 gen_dir: pathlib.Path | None = None):
+                 gen_dir: pathlib.Path | None = None, look: dict | None = None):
         import imagegen as G                     # 生成の枠の描く指示と鍵（imagegen が deck_types を import するので、ここで読む）
         self.no, self.spec, self.pal, self.flat = no, spec, pal, flat
         self.image_look = G.look_of(image_look)  # 生成の枠の画風（ADR 0011）
@@ -213,6 +219,7 @@ class Slide:
         self.chars_used = False
         self.still = still                       # 動きを付けない（handout）。段は数える（talk の照合は talk モードと同じ）
         self.type = spec.get("type")
+        self.look = look or {}                   # スタイルの見た目の調子（deck_style.LOOK）。組み方に効くのは fill だけ
         self.script_dir = script_dir
         self.gen_dir = gen_dir                   # 生成の絵の置き場（キャッシュの区画・ADR 0014）。無ければ台本のそばの images/
         self.assets = assets                     # (元のパス, assets/ の中の名前) を deck.py がコピーする
@@ -938,6 +945,17 @@ def box_pad(hl: bool = False) -> float:
     return 2 * (CALLOUT_PAD + (4 if hl else BORDER))
 
 
+STRETCH = 1.6     # 伸ばす箱の高さの上限（中身の高さの何倍まで。これより伸ばすと、箱の中の空きが目立つ）
+
+
+def stretch_h(s: Slide, content: float, avail: float, floor: float = 0) -> int | None:
+    """look.fill: stretch のとき、並ぶ箱を伸ばす高さ（8 の倍数）。伸ばさないなら None。"""
+    if s.look.get("fill") != "stretch":
+        return None
+    h = int(min(avail, max(content * STRETCH, floor)) // 8) * 8
+    return h if h > content else None
+
+
 def t_cards(s: Slide):
     """カード: 2〜4枚を横に並べる（小見出し・見出し・本文）。1枚ずつクリックで出る。accent: true で1枚を強める。
 
@@ -993,8 +1011,20 @@ def t_cards(s: Slide):
             h += bn * bs * 1.6
         tallest = max(tallest, h)
         cls = "card hl" if hl else "card"
-        cards.append(f'<div class="{cls}" style="width:{px(cw)}" '
-                     f'{s.anim(i + 1, "rise", 0, f"カード{i + 1}", item=True)}>' + "".join(inner) + "</div>")
+        n_top = bool(badge) + bool(icon)        # 頭の部品（札・アイコン）の数。伸ばした箱では、頭と文字を上下に振り分ける
+        cards.append((cls, inner, n_top, i))
+    tall = stretch_h(s, tallest, avail) if not any(imaged) else None
+    out = []
+    for cls, inner, n_top, i in cards:
+        style, body = f"width:{px(cw)}", "".join(inner)
+        if tall:
+            if n_top and len(inner) > n_top:
+                body = "".join(inner[:n_top]) + '<div class="col">' + "".join(inner[n_top:]) + "</div>"
+                style += f"; height:{px(tall)}; justify-content:space-between"
+            else:
+                style += f"; height:{px(tall)}; justify-content:center"
+        out.append(f'<div class="{cls}" style="{style}" {s.anim(i + 1, "rise", 0, f"カード{i + 1}", item=True)}>{body}</div>')
+    cards = out
     s.need, s.avail = tallest, avail
     return [head, f'<div class="center" style="{box(X0, top, CW, avail)}"><div class="row" style="gap:{gap}px">'
             + "".join(cards) + "</div></div>", source_line(s)]
@@ -1113,8 +1143,11 @@ def t_compare(s: Slide):
                           f'{s.anim(2, "wipe-right", 0, "比較の矢印")}><polygon points="0,0 56,40 0,80" fill="{fill}"/></svg></div>')
         elif i == 1:
             panels.append(f'<div style="width:{gap}px; flex:none"></div>')
-        panels.append(f'<div class="{cls}" style="width:{px(pw)}" '
+        panels.append(f'<div class="{cls}" style="width:{px(pw)}{{TALL}}" '
                       f'{s.anim(i + 1, "rise", 150 * i, "左の列" if i == 0 else "右の列", item=True)}>' + "".join(inner) + "</div>")
+    has_img = any(isinstance(s.spec.get(k), dict) and s.spec[k].get("image") for k in ("left", "right"))
+    tall = None if has_img else stretch_h(s, tallest, avail)
+    panels = [p.replace("{TALL}", f"; height:{px(tall)}" if tall else "", 1) for p in panels]
     s.need, s.avail = tallest, avail
     return [head, f'<div class="center" style="{box(X0, top, CW, avail)}"><div class="row">' + "".join(panels) + "</div></div>",
             source_line(s)]
@@ -1780,7 +1813,8 @@ def t_kpi(s: Slide):
     vmax = s.g(vmax, 120 if n == 3 else 96)             # 数字は 3 つなら 120・4 つなら 96 まで（大きく組むとき）
     for drop in range(0, 6):                    # カードの高さが入るまで、全部のカードの文字を同じだけ段を下りる
         tiles, tallest = _kpi_tiles(s, its, key="items", total_width=CW, gap=GUTTER, vmax=vmax, drop=drop, height_cap=avail,
-                                    pad=CALLOUT_PAD, fill_height=avail if n == 3 else None)
+                                    pad=CALLOUT_PAD, fill_height=avail if n == 3 or (s.look.get("fill") == "stretch" and not pre) else None,
+                                    fill_cap=n != 3)
         if tallest <= avail:
             s.need, s.avail = tallest, avail
             break
@@ -1790,7 +1824,7 @@ def t_kpi(s: Slide):
                   + "".join(tiles) + "</div></div>", source_line(s)]
 
 
-def _kpi_tiles(s: Slide, its, *, key, total_width, gap, vmax, drop, height_cap, pad, fill_height=None, step=1, role_prefix="kpi"):
+def _kpi_tiles(s: Slide, its, *, key, total_width, gap, vmax, drop, height_cap, pad, fill_height=None, step=1, role_prefix="kpi", fill_cap=False):
     """指標のカード（文字は段を drop だけ下りる）。(HTML の列, 内容の高さの見積もり) を返す。kpi と、表の上の要約の帯が共有する。
 
     幅は total_width を枚数で等分（gap を引いて整数に切り下げる。px() が丸めて上げると、並べた行が版の幅を越える）。
@@ -1852,6 +1886,8 @@ def _kpi_tiles(s: Slide, its, *, key, total_width, gap, vmax, drop, height_cap, 
         tiles.append((cls, cw, inner, i, hl))
         if tallest > height_cap:
             break
+    if fill_height and fill_cap:                 # 4枚を伸ばすとき（look.fill: stretch）は、中身の STRETCH 倍まで
+        fill_height = max(tallest, min(fill_height, int(tallest * STRETCH) // 8 * 8))
     fill = (f"; padding:{pad}px" if pad != CALLOUT_PAD else "") + (f"; height:{px(fill_height)}; justify-content:center" if fill_height else "")
     label_min, pts = "", [""] * len(tiles)
     if chips:
@@ -2535,6 +2571,189 @@ def t_hub(s: Slide):
     return parts
 
 
+def _arrow_head(x: float, y: float, dx: int, dy: int, color: str, size: float = 16) -> str:
+    """(x, y) を先端にした三角（dx・dy は進む向き。縦か横だけ）。"""
+    if dx:
+        pts = f"{x:.1f},{y:.1f} {x - dx * size:.1f},{y - size * 0.6:.1f} {x - dx * size:.1f},{y + size * 0.6:.1f}"
+    else:
+        pts = f"{x:.1f},{y:.1f} {x - size * 0.6:.1f},{y - dy * size:.1f} {x + size * 0.6:.1f},{y - dy * size:.1f}"
+    return f'<polygon points="{pts}" style="fill:{color}"/>'
+
+
+def t_layers(s: Slide):
+    """構成図: 層（rows・1〜3 段）に箱（items・1〜4 個）を並べ、箱と箱を矢印（links）でつなぐ。システム構成・データの流れ・役割分担。
+
+    箱は列（col・1 から。省けば並び順）で縦にそろえる。矢印は、同じ層の隣どうし（横）・上下の層（同じ列なら縦、違う列なら鉤の手）。
+    矢印には短い名札（label）を載せられる。both: true は両向き。accent: true の箱と矢印は差し色（太い枠・太い線）で強める。
+    箱は1クリックでまとめて出て、矢印はそのあとに続けて出る。
+    """
+    head, top = header(s)
+    rows = s.spec.get("rows")
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 3:
+        s.err("rows は 1〜3 段の配列（上から順）")
+    nodes: dict[str, dict] = {}
+    parsed = []
+    for r, row in enumerate(rows):
+        if not isinstance(row, dict):
+            s.err(f"rows の {r + 1} 段目は {{label, items}} のオブジェクトで書く")
+        extra = sorted(set(row) - {"label", "items"})
+        if extra:
+            s.err(f"rows の {r + 1} 段目に知らないキー: {', '.join(extra)}（使えるのは label, items）")
+        its = s.items("items", 1, 4, ("id", "title", "body", "label", "icon", "accent", "col"), required=("id", "title"),
+                      spec=row, where=f"rows の {r + 1} 段目の ")
+        used = set()
+        for i, it in enumerate(its):
+            where = f"rows の {r + 1} 段目の items の {i + 1} 個目"
+            col = it.get("col", i + 1)
+            if isinstance(col, bool) or not isinstance(col, int) or not 1 <= col <= 4:
+                s.err(f"{where}: col は 1〜4 の整数")
+            if col in used:
+                s.err(f"{where}: col {col} は同じ段でもう使っている")
+            used.add(col)
+            nid = it["id"]
+            if not isinstance(nid, str) or nid in nodes:
+                s.err(f"{where}: id は資料の中でなく、このページの中で重ならない文字で書く（{nid!r}）")
+            nodes[nid] = {"row": r, "col": col, "it": it, "where": where}
+        parsed.append((s.text("label", spec=row, where=f"rows の {r + 1} 段目の "), its))
+    links = s.spec.get("links") or []
+    if not isinstance(links, list) or len(links) > 8:
+        s.err("links は 8 本までの配列")
+    R, C = len(parsed), max(n["col"] for n in nodes.values())
+    avail = s.bottom - top
+    lw = 152 if any(lb for lb, _ in parsed) else 0          # 層の名前の列
+    cg = 208 if C <= 3 else 144                             # 列の間（横の矢印と名札の場所）
+    rg = 72 if R > 1 else 0                                 # 層の間（縦の矢印と名札の場所）
+    x0, cwid = X0 + 32 + lw, CW - 64 - lw
+    nw = (cwid - cg * (C - 1)) / C
+    bh = int((avail - rg * (R - 1)) / R)
+    nh = min(bh - 24, 232)
+    if nh < 120:
+        s.err(f"層が多すぎて入らない（箱の高さ {nh:.0f}px）。見出しを短くするか、takeaway・source を外す")
+    parts = [head]
+    for r, (label, its) in enumerate(parsed):
+        by = top + r * (bh + rg)
+        parts.append(f'<div class="dg-band" style="{box(X0, by, CW, bh)}" {s.anim(1, "fade", 0, f"層{r + 1}")}></div>')
+        if label:
+            ls, _ = s.fit("dg-rowlabel", label, 28, lw - 16, what=f"rows の {r + 1} 段目の label", lines=2, lh=1.4, min_size=24, bold=True)
+            parts.append(f'<div class="dg-rowlabel" style="{box(X0 + 32, by, lw - 16, bh)}" {s.anim(1, "fade", 0, f"層の名前{r + 1}")}>'
+                         f'<div style="font-size:{ls}px; line-height:1.4">{esc(label)}</div></div>')
+        for it in its:
+            n = nodes[it["id"]]
+            hl = bool(it.get("accent"))
+            n.update(x=x0 + (n["col"] - 1) * (nw + cg), y=by + (bh - nh) / 2, hl=hl)
+            icon = icon_of(s, it, n["where"])
+            icon = icon if nw >= 400 else None                              # 狭い箱にはアイコンを置かない（文字の幅を優先する）
+            edge = 2 * (20 + (4 if hl else BORDER))
+            tw = nw - edge - (72 + 16 if icon else 0)
+            inner, room = "", nh - 2 * (12 + (4 if hl else BORDER))
+            kicker, body = s.text("label", spec=it), s.text("body", spec=it)
+            if kicker:
+                ks, _ = s.fit("dg-kicker", kicker, 22, tw, what=f"{n['where']}の label", lines=1, lh=1.5, min_size=22, bold=True)
+                inner += f'<div class="dg-kicker" style="font-size:{ks}px">{esc(kicker)}</div>'
+                room -= ks * 1.5
+            try:                                # 題は、1行に入る段があればそれを採る（箱が低いので、2行の大きな題より1行を優先する）
+                ts, tn = fit(it["title"], 36 if nh >= 200 else 28, tw, what="題", lines=1, lh=1.4, min_size=26, bold=True)   # 低い箱では題を 28 から（補足の2行ぶんを残す）
+                ts, tn = s.fit("dg-title", it["title"], ts, tw, what=f"{n['where']}の title", lines=1, lh=1.4, min_size=26, bold=True)
+            except DeckError:
+                ts, tn = s.fit("dg-title", it["title"], 28, tw, what=f"{n['where']}の title", lines=2, lh=1.4, min_size=24, bold=True, tidy=True)
+            inner += f'<div class="dg-title" style="font-size:{ts}px">{rich(it["title"])}</div>'
+            room -= tn * ts * 1.4
+            if body:
+                bs, _ = s.fit("dg-body", body, 26, tw, under="dg-title", what=f"{n['where']}の body", height=room - 8, lh=1.5, min_size=22)
+                inner += f'<div class="dg-body" style="font-size:{bs}px">{rich(body)}</div>'
+            disc = icon_disc(icon, 72, 40, extra=" flex:none; margin-right:16px;") if icon else ""
+            parts.append(f'<div class="dg-node{" hl" if hl else ""}" style="{box(n["x"], n["y"], nw, nh)}" '
+                         f'{s.anim(1, "rise", 100 + 80 * n["col"], "箱 " + plain(it["title"]))}>{disc}<div class="col">{inner}</div></div>')
+    # 矢印。箱の辺ごとに、つなぐ相手の位置の順に並べて等分に付け根を取る（交わらないように）
+    conns = []
+    for i, ln in enumerate(links):
+        where = f"links の {i + 1} 本目"
+        if not isinstance(ln, dict):
+            s.err(f"{where}は {{from, to, label, both, accent}} のオブジェクトで書く")
+        extra = sorted(set(ln) - {"from", "to", "label", "both", "accent"})
+        if extra:
+            s.err(f"{where}に知らないキー: {', '.join(extra)}（使えるのは from, to, label, both, accent）")
+        a, b = nodes.get(ln.get("from")), nodes.get(ln.get("to"))
+        if a is None or b is None or a is b:
+            s.err(f"{where}: from と to は、このページの違う箱の id で書く（{ln.get('from')!r} → {ln.get('to')!r}）")
+        if a["row"] == b["row"]:
+            if abs(a["col"] - b["col"]) != 1:
+                s.err(f"{where}: 同じ層の矢印は、隣どうしの箱だけ（間の箱をまたげない）")
+            kind = "h"
+        else:
+            if abs(a["row"] - b["row"]) != 1:
+                s.err(f"{where}: 上下の矢印は、隣の層どうしだけ")
+            kind = "v"
+        conns.append({"a": a, "b": b, "kind": kind, "label": s.text("label", spec=ln, where=f"{where}の "),
+                      "both": ln.get("both") is True, "hl": ln.get("accent") is True, "where": where})
+    sides: dict[tuple, list] = {}
+    for c in conns:
+        if c["kind"] == "v":
+            up, lo = (c["a"], c["b"]) if c["a"]["row"] < c["b"]["row"] else (c["b"], c["a"])
+            c["up"], c["lo"] = up, lo
+            sides.setdefault((id(up), "bottom"), []).append((lo["x"], c, "ux"))
+            sides.setdefault((id(lo), "top"), []).append((up["x"], c, "lx"))
+    for (nid, _), lst in sides.items():
+        lst.sort(key=lambda t: t[0])
+        for k, (_, c, key) in enumerate(lst):
+            node = c["up"] if key == "ux" else c["lo"]
+            c[key] = node["x"] + nw * (k + 1) / (len(lst) + 1)
+            c[key + "_n"] = len(lst)
+    svg, pills = [], []
+    for c in conns:
+        color = "var(--accent-mark)" if c["hl"] else "var(--rule)"
+        sw = 4 if c["hl"] else 3
+        if c["kind"] == "h":
+            left, right = (c["a"], c["b"]) if c["a"]["col"] < c["b"]["col"] else (c["b"], c["a"])
+            y = left["y"] + nh / 2
+            x1, x2 = left["x"] + nw + 8, right["x"] - 8
+            to_right = c["b"] is right
+            pts = [(x1, y), (x2, y)] if to_right else [(x2, y), (x1, y)]
+            mid = ((x1 + x2) / 2, y)
+        else:
+            up, lo = c["up"], c["lo"]
+            y1, y2 = up["y"] + nh + 8, lo["y"] - 8
+            ux, lx = c["ux"], c["lx"]
+            if up["col"] == lo["col"]:                      # 同じ列は縦の1本。付け根は、つなぐ線の多い側に合わせる
+                ux = lx = (lx if c["lx_n"] >= c["ux_n"] else ux)
+                pts = [(ux, y1), (lx, y2)]
+                mid = (ux, (y1 + y2) / 2)
+            else:                                           # 違う列は鉤の手（層の間の中ほどで横に渡る）
+                ym = (y1 + y2) / 2
+                pts = [(ux, y1), (ux, ym), (lx, ym), (lx, y2)]
+                mid = ((ux + lx) / 2, ym)
+            if c["b"] is up:
+                pts.reverse()
+        heads = [(pts[-1], pts[-2])] + ([(pts[0], pts[1])] if c["both"] else [])
+        cut = lambda p, q: (p[0] - (14 if p[0] > q[0] else -14 if p[0] < q[0] else 0), p[1] - (14 if p[1] > q[1] else -14 if p[1] < q[1] else 0))
+        line = list(pts)
+        line[-1] = cut(pts[-1], pts[-2])
+        if c["both"]:
+            line[0] = cut(pts[0], pts[1])
+        svg.append(f'<polyline points="{" ".join(f"{x:.1f},{y:.1f}" for x, y in line)}" style="fill:none; stroke:{color}; stroke-width:{sw}"/>')
+        for tip, prev in heads:
+            dx = (tip[0] > prev[0]) - (tip[0] < prev[0])
+            dy = (tip[1] > prev[1]) - (tip[1] < prev[1])
+            svg.append(_arrow_head(tip[0], tip[1], dx, dy, color))
+        if c["label"] and c["kind"] == "h":                 # 横の矢印の名前は、線の上に文字だけで置く（列の間は狭く、札の余白が取れない）
+            ps, pn = s.fit("dg-hlabel", c["label"], 24, cg - 16, what=f"{c['where']}の label", lines=2, lh=1.4, min_size=22, bold=True)
+            ph = pn * ps * 1.4
+            pills.append(f'<div class="dg-hlabel{" hl" if c["hl"] else ""}" style="{box(mid[0] - (cg - 16) / 2, mid[1] - 12 - ph, cg - 16, ph)} font-size:{ps}px" '
+                         f'{s.anim(1, "fade", 500, "矢印の名前 " + c["label"])}>{esc(c["label"])}</div>')
+        elif c["label"]:
+            ps, _ = s.fit("dg-pill", c["label"], 24, 400 - 36, what=f"{c['where']}の label", lines=1, lh=1.0, min_size=22, bold=True)
+            pw = text_width(c["label"], ps, True) / SAFE + 36
+            pills.append(f'<div class="dg-pill{" hl" if c["hl"] else ""}" style="{box(mid[0] - pw / 2, mid[1] - 20, pw, 40)} font-size:{ps}px" '
+                         f'{s.anim(1, "fade", 500, "矢印の名札 " + c["label"])}>{esc(c["label"])}</div>')
+    if svg:
+        parts.append(f'<svg class="abs-svg" style="left:0; top:0" width="{W}" height="{H}" viewBox="0 0 {W} {H}" {s.anim(1, "fade", 400, "矢印")}>'
+                     + "".join(svg) + "</svg>")
+    parts += pills
+    s.need, s.avail = avail, avail
+    parts.append(source_line(s))
+    return parts
+
+
 def t_pairs(s: Slide):
     """対: よくない例 → よい例 を 2〜4 組（label・before・after・icon）。1組ずつクリックで出る。4組は 2×2、2組は横に2つ、3組は縦に3つ。"""
     head, top = header(s, big=True)
@@ -3017,6 +3236,7 @@ TYPES = {
     "notice": (t_notice, HEAD_KEYS | {"items", "label_style"}, True),
     "deflist": (t_deflist, HEAD_KEYS | {"items"}, True),
     "steps": (t_steps, HEAD_KEYS | {"items", "current", "layout"}, True),
+    "layers": (t_layers, HEAD_KEYS | {"rows", "links"}, True),
 }
 # 退役した型（型の名前 → 代わりの型の案内）。台本に書いてあれば今までどおり描くが、使うと警告し、台本の書き方（deck-format.md）・
 # 台本係の一覧・カタログには載せない。描く部分は残す（過去のデッキを組み直せるように）。今は無し（ADR 0021）
@@ -3025,7 +3245,7 @@ RETIRED_TYPES: dict[str, str] = {}
 # 中身の高さを確かめていない型（big-number の補足・team の2段）にも置かない（帯に重なる）
 # notice は枠そのものが言い切りの型なので置かない。deflist・steps は置ける
 TAKEAWAY_TYPES = ("cards", "flow", "compare", "bullets", "timeline", "summary", "kpi", "bar-chart", "line-chart",
-                  "table", "matrix", "equation", "hub", "pairs", "deflist", "steps")
+                  "table", "matrix", "equation", "hub", "pairs", "deflist", "steps", "layers")
 for _t in TAKEAWAY_TYPES:
     TYPES[_t] = (TYPES[_t][0], TYPES[_t][1] | {"takeaway", "takeaway_icon"}, TYPES[_t][2])
 

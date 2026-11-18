@@ -37,6 +37,7 @@ LOOK = {
     "band": ("small", "bar", "none"),                   # 中身の型の左上の印: 小さな印／上端の全幅の帯／無し
     "emphasis": ("default", "strong"),                  # 強調する箱（accent: true のカードなど）: 淡い地に枠／差し色のベタ塗りに白抜き（明るい色なら黒）
     "statement": ("plain", "panel"),                    # 主張の1枚（statement）: 地のまま／主役の色の全面に白抜き（明るい色なら黒）
+    "fill": ("content", "stretch"),                     # 並ぶ箱（カード・指標・比較）の高さ: 中身に沿う／置ける高さへ伸ばす（中身の 1.6 倍まで。箱の中は上下に振り分ける）
     "title": ("plain", "solid"),                        # 表紙・章扉: 地のまま／主役の色そのままの全面（文字は白か ink の読める方）
 }
 # 退役した変化形（look の項目, 値）→ 代わりの値。YAML には今までどおり書けて、代わりの値と同じに描くが、読んだときに注意を出し、
@@ -161,6 +162,8 @@ def look_css(look: dict) -> str:
         css.append(f"{BOXES} {{ background-color: var(--primary-soft); border-color: var(--primary-soft); }}")
         css.append(f"{HL} {{ border-color: var(--accent-soft); }}")
         css.append(".card-bar { display: none; }")
+        css.append(".dg-band { background-color: var(--primary-soft); border-color: var(--primary-soft); }")
+        css.append(".dg-node { border-color: var(--bg); }")
         css.append(".card { min-height: 240px; }")       # 枠が無いので、箱は中身に沿わせる（中身の少ない箱を 400 まで伸ばすと、空きが箱の中に残る）
         css.append(".tr.th { background-color: var(--primary-fill); border-bottom-color: var(--primary-fill); }")
         css.append(".tr.th .td div { color: var(--on-primary-fill); }")

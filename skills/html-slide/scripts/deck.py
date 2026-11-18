@@ -529,7 +529,7 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
             s = T.Slide(no, spec, pal, flat=not steps_on, script_dir=script_path.parent, assets=assets,
                         placeholder=placeholder, slots=slots, warnings=img_warns, overlays=used_overlays,
                         still=(mode == "handout"), image_look=image_look,   # 配る資料は動きなし（読む・直す・PDF にする用）
-                        gen_dir=gen_dir)
+                        gen_dir=gen_dir, look=sty["look"])
             parts, chrome = T.build_slide(s)
             if s.chars and not s.chars_used:
                 img_warns.append(f"{no}枚目（{spec['type']}）: _characters を描き込む枠が無い（prompt だけの画像の枠に描く。"
