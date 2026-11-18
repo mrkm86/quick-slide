@@ -9,7 +9,7 @@
     <style>
       @font-face { font-family: "Noto Sans JP"; font-weight: 400; src: url("file://{{HOME}}/fonts/noto-sans-jp/NotoSansJP-Regular.ttf"); ascent-override: 93.60%; descent-override: 6.40%; line-gap-override: 0%; }
       @font-face { font-family: "Noto Sans JP"; font-weight: 700; src: url("file://{{HOME}}/fonts/noto-sans-jp/NotoSansJP-Bold.ttf"); ascent-override: 93.60%; descent-override: 6.40%; line-gap-override: 0%; }
-      :root { --bg: #ffffff; --ink: #333333; --surface: #f2f2f2; --muted: #666666; --faint: #767676; --rule: #767676; --rule-weak: #949494; --bar: #949494; --tint: #eaf7ff; --deep: #18232a; --deep-pop: #0db4f2; --tone-good-bg: #eef7f3; --tone-good-text: #197a4b; --tone-warn-bg: #f9f6eb; --tone-warn-text: #8b6c00; --tone-bad-bg: #fdebeb; --tone-bad-text: #ce0000; --tone-neutral-bg: #f2f2f2; --tone-neutral-text: #666666; --ref-bg: #f8f8f8; --ref-text: #666666; --ref-rule: #767676; --group-a-bg: #eef7f3; --group-a-text: #197a4b; --group-a-rule: #259d63; --group-b-bg: #fff2eb; --group-b-text: #c54600; --group-b-rule: #f75900; --group-c-bg: #eff2ff; --group-c-text: #0017c1; --group-c-rule: #3460fb; --bar-good-strong: #005e37; --bar-good-strong-text: #197a4b; --bar-good: #007f4b; --bar-good-text: #197a4b; --bar-good-soft: #279e64; --bar-good-soft-text: #197a4b; --bar-warn: #ad8700; --bar-warn-text: #886a00; --bar-bad: #ec0000; --bar-bad-text: #ce0000; --primary-soft: #eaf7ff; --accent-soft: #eaf7ff; --on-deep: #ffffff; --primary: #0077a1; --primary-text: #0077a1; --primary-mark: #0096cb; --primary-decor: #009fd7; --primary-strong: #0077a1; --on-primary: #ffffff; --primary-fill: #0db4f2; --on-primary-fill: #333333; --primary-on-dark: #79cdea; --accent: #0077a1; --accent-text: #0077a1; --accent-mark: #0096cb; --accent-decor: #009fd7; --accent-strong: #0077a1; --on-accent: #ffffff; --accent-fill: #0db4f2; --on-accent-fill: #333333; --accent-on-dark: #79cdea; --scrim: rgba(51, 51, 51, 0.86); --scrim-0: rgba(51, 51, 51, 0); --scrim-quote: rgba(51, 51, 51, 0.86); --veil: rgba(255, 255, 255, 0.94); --veil-0: rgba(255, 255, 255, 0); --primary-on-light: #00769f; --accent-on-light: #00769f; --success-1: #259d63; --success-2: #197a4b; --error-1: #ec0000; --error-2: #ce0000; --warning-yellow-1: #b78f00; --warning-yellow-2: #927200; --warning-orange-1: #fb5b01; --warning-orange-2: #c74700; }
+      :root { --bg: #ffffff; --ink: #333333; --surface: #f2f2f2; --muted: #666666; --faint: #767676; --rule: #767676; --rule-weak: #949494; --bar: #949494; --tint: #eaf7ff; --deep: #18232a; --deep-pop: #0db4f2; --mark-off: #dedede; --deep-off: #596166; --tone-good-bg: #eef7f3; --tone-good-text: #197a4b; --tone-warn-bg: #f9f6eb; --tone-warn-text: #8b6c00; --tone-bad-bg: #fdebeb; --tone-bad-text: #ce0000; --tone-neutral-bg: #f2f2f2; --tone-neutral-text: #666666; --ref-bg: #f8f8f8; --ref-text: #666666; --ref-rule: #767676; --group-a-bg: #eef7f3; --group-a-text: #197a4b; --group-a-rule: #259d63; --group-b-bg: #fff2eb; --group-b-text: #c54600; --group-b-rule: #f75900; --group-c-bg: #eff2ff; --group-c-text: #0017c1; --group-c-rule: #3460fb; --bar-good-strong: #005e37; --bar-good-strong-text: #197a4b; --bar-good: #007f4b; --bar-good-text: #197a4b; --bar-good-soft: #279e64; --bar-good-soft-text: #197a4b; --bar-warn: #ad8700; --bar-warn-text: #886a00; --bar-bad: #ec0000; --bar-bad-text: #ce0000; --primary-soft: #eaf7ff; --accent-soft: #eaf7ff; --on-deep: #ffffff; --primary: #0077a1; --primary-text: #0077a1; --primary-mark: #0096cb; --primary-decor: #009fd7; --primary-strong: #0077a1; --on-primary: #ffffff; --primary-fill: #0db4f2; --on-primary-fill: #333333; --primary-on-dark: #79cdea; --accent: #0077a1; --accent-text: #0077a1; --accent-mark: #0096cb; --accent-decor: #009fd7; --accent-strong: #0077a1; --on-accent: #ffffff; --accent-fill: #0db4f2; --on-accent-fill: #333333; --accent-on-dark: #79cdea; --scrim: rgba(51, 51, 51, 0.86); --scrim-0: rgba(51, 51, 51, 0); --scrim-quote: rgba(51, 51, 51, 0.86); --veil: rgba(255, 255, 255, 0.94); --veil-0: rgba(255, 255, 255, 0); --primary-on-light: #00769f; --accent-on-light: #00769f; --success-1: #259d63; --success-2: #197a4b; --error-1: #ec0000; --error-2: #ce0000; --warning-yellow-1: #b78f00; --warning-yellow-2: #927200; --warning-orange-1: #fb5b01; --warning-orange-2: #c74700; }
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { background-color: #8a8f99; }
       section[data-slide] {
@@ -253,7 +253,7 @@
       .td.hl { background-color: var(--accent-soft); border-left: 4px solid var(--accent-mark); border-right: 4px solid var(--accent-mark); }
       .td.hl div { font-weight: 700; }
       .tr.th .td.hl { background-color: var(--accent-strong); }
-      .tr.th .td.hl div { color: var(--on-accent); }
+      .tr.th .td.hl div, .tr.th .td.hl em { color: var(--on-accent); }
       .td.tone-good { background-color: var(--tone-good-bg); }
       .td.tone-warn { background-color: var(--tone-warn-bg); }
       .td.tone-bad { background-color: var(--tone-bad-bg); }
@@ -432,6 +432,33 @@
       .dg-pill.hl { border-color: var(--accent-mark); color: var(--accent-text); }
       .dg-hlabel { position: absolute; line-height: 1.4; font-weight: 700; text-align: center; word-break: auto-phrase; }
       .dg-hlabel.hl { color: var(--accent-text); }
+      /* 自由なページ（型 free・ADR 0030）: 中身の箱と部品。色は free_body が要素ごとに style で書く（いちばん近い面に合わせる）。ここは並べ方と大きさだけ */
+      .f-body { position: absolute; display: flex; flex-direction: column; gap: 24px; font-size: 28px; line-height: 1.5; }
+      .f-body div { min-width: 0; word-break: auto-phrase; }
+      .f-row { display: flex; flex-direction: row; gap: 24px; }
+      .f-col { display: flex; flex-direction: column; gap: 16px; }
+      .f-grow { flex: 1 1 0px; }
+      /* 面の箱どうしの間は、型のページの箱と同じ（横は格子の溝 48・縦は 40）。箱の中の小さな並び（アイコンと文字など）は上の 24・16 のまま */
+      .f-row:has(> .f-box), .f-row:has(> .f-col > .f-box) { gap: 48px; }
+      .f-col:has(> .f-box), .f-body:has(> .f-box) { gap: 40px; }
+      .f-box { display: flex; flex-direction: column; gap: 16px; padding: 40px; border-radius: 16px; }
+      .f-num { font-size: 120px; line-height: 1.0; font-weight: 700; white-space: nowrap; }
+      .f-label { font-size: 28px; line-height: 1.5; font-weight: 700; }
+      .f-note { font-size: 22px; line-height: 1.5; }
+      .f-strong { font-weight: 700; }
+      .f-chip { align-self: flex-start; flex: none; padding: 8px 24px; border-radius: 9999px; font-size: 24px; line-height: 1.0; font-weight: 700; white-space: nowrap; }
+      .f-tag { margin-top: -64px; margin-bottom: 8px; }   /* 箱の上の縁にかける札（上の余白 40 を越えてはみ出す。札の高さ 40・下の余白 8・箱の間 16 で差し引き 0＝行の位置は札の無い箱と同じ。余白は 8 の倍数） */
+      .f-no { flex: none; width: 64px; height: 64px; border-radius: 9999px; display: flex; align-items: center; justify-content: center;
+              font-size: 32px; line-height: 1.0; font-weight: 700; }
+      .f-icon-disc { flex: none; display: flex; align-items: center; justify-content: center; border-radius: 9999px; }
+      .f-icon-plain { flex: none; display: flex; align-items: center; justify-content: center; }
+      .f-cells { flex: none; width: 480px; display: grid; align-content: start; }
+      .f-cell { aspect-ratio: 1 / 1; border-radius: 8px; }
+      .f-bars { flex: 1 1 0px; display: flex; flex-direction: row; align-items: stretch; gap: 24px; min-height: 240px; }
+      .f-bar-col { flex: 1 1 0px; display: flex; flex-direction: column; align-items: center; }
+      .f-bar-value { flex: none; font-size: 36px; line-height: 1.4; font-weight: 700; white-space: nowrap; }
+      .f-bar-fill { width: 64%; border-radius: 8px; min-height: 0; }
+      .f-bar-name { flex: none; font-size: 26px; line-height: 1.5; margin-top: 8px; text-align: center; }
       /* スタイルの見た目の調子（look・ADR 0005 追記）。deck.py が差し込む。standard は空 */
       .card, .cmp, .kpi, .callout { background-color: var(--primary-soft); border-color: var(--primary-soft); }
       .card.hl, .cmp.hl, .kpi.hl { border-color: var(--accent-soft); }
@@ -441,15 +468,25 @@
       .card { min-height: 240px; }
       .card.lead-row, .card.sum-col { min-height: 0; }
       .tr.th { background-color: var(--primary-fill); border-bottom-color: var(--primary-fill); }
-      .tr.th .td div { color: var(--on-primary-fill); }
+      .tr.th .td div, .tr.th .td em { color: var(--on-primary-fill); }
+      .tr.th .td.hl em { color: var(--on-accent); }
       .tr { border-bottom-color: var(--rule-weak); }
       .take { background-color: var(--primary-fill); border-color: var(--primary-fill); }
-      .take-t { color: var(--on-primary-fill); }
+      .take-t, .take-t em { color: var(--on-primary-fill); }
       section[data-slide] { --take-icon: var(--on-primary-fill); --disc-ground: var(--primary-fill); --disc-ink: var(--on-primary-fill); }
       section[data-type="cover"], section[data-type="section"] { background-color: var(--primary-fill); }
       .cover-title, .cover-subtitle, .cover-label, .cover-meta div, .sec-title, .sec-subtitle, .sec-label, .sec-no, .cover-title em, .sec-title em { color: var(--on-primary-fill); }
+      .cover-subtitle em, .sec-subtitle em { color: var(--on-primary-fill); font-weight: 700; }
       .cover-rule { background-color: var(--on-primary-fill); }
       .sec-panel { background-color: var(--primary-fill); }
+      .on-dark .cover-title, .on-dark .cover-subtitle, .on-dark div, .on-dark .sec-title, .on-dark .sec-subtitle { color: #ffffff; }
+      .on-dark em { color: var(--accent-on-dark); }
+      .on-dark .cover-label, .on-dark .sec-label, .on-dark .sec-no { color: var(--primary-on-dark); }
+      .on-dark .cover-rule { background-color: var(--primary-on-dark); }
+      .on-light .cover-title, .on-light .cover-subtitle, .on-light div, .on-light .sec-title, .on-light .sec-subtitle { color: var(--ink); }
+      .on-light em { color: var(--accent-on-light); }
+      .on-light .cover-label, .on-light .sec-label, .on-light .sec-no { color: var(--primary-on-light); }
+      .on-light .cover-rule { background-color: var(--primary-decor); }
       .band { display: none; }
       .card.hl, .cmp.hl, .kpi.hl { background-color: var(--accent-strong); border-color: var(--accent-strong); }
       .card.hl div, .cmp.hl div, .kpi.hl div:where(:not(.kpi-delta)), .card.hl em, .cmp.hl em, .kpi.hl em { color: var(--on-accent); }
@@ -463,12 +500,16 @@
       section[data-type="statement"] .stmt-bar, section[data-type="statement"] .band { background-color: var(--on-deep); }
       .take { background-color: var(--deep); border-color: var(--deep); }
       .take-t { color: var(--on-deep); }
+      .take-t em, .tr.th .td em { color: var(--deep-pop); }
+      .tr.th .td.hl em { color: var(--on-accent); }
       section[data-slide] { --take-icon: var(--deep-pop); }
       .tr.th { background-color: var(--deep); border-bottom-color: var(--deep); }
       .tr.th .td div { color: var(--on-deep); }
       section[data-type="closing"] { background-color: var(--deep); }
       section[data-type="closing"] .headline, section[data-type="closing"] .li-title, section[data-type="closing"] .li-body, section[data-type="closing"] .sub, section[data-type="closing"] .footer, section[data-type="closing"] .pageno { color: var(--on-deep); }
-      section[data-type="closing"] .kicker, section[data-type="closing"] .headline em { color: var(--deep-pop); }
+      section[data-type="closing"] .source { color: var(--on-deep); }
+      section[data-type="closing"] .kicker, section[data-type="closing"] em { color: var(--deep-pop); }
+      section[data-type="closing"] .contact em { color: var(--on-primary); }
     </style>
   </head>
   <body>
@@ -489,7 +530,7 @@
     <section data-slide data-type="big-number" data-transition="fade">
       <div class="band" data-keep="band" data-name="上の帯"></div>
       <div class="head" style="width:1680px; top:80px"><div class="kicker" style="font-size:28px" data-name="小見出し">型</div><h1 class="headline" style="font-size:80px; line-height:1.4" data-step="0" data-fx="rise" data-name="見出し">中身の形に合わせて、型を選んで組む</h1></div>
-      <div class="bn-main" style="left:120px; top:282px; width:920px; height:670px;"><div data-step="1" data-fx="pop" data-name="大きな数字"><div class="bn-row"><div class="bn-value" style="font-size:200px">30</div><div class="bn-unit" style="font-size:80px">種</div></div><div class="bn-label" style="font-size:45px">画面の型（比較・グラフ・表・手順など）</div></div></div>
+      <div class="bn-main" style="left:120px; top:282px; width:920px; height:670px;"><div data-step="1" data-fx="pop" data-name="大きな数字"><div class="bn-row"><div class="bn-value" style="font-size:200px">31</div><div class="bn-unit" style="font-size:80px">種</div></div><div class="bn-label" style="font-size:45px">画面の型（比較・グラフ・表・手順など）</div></div></div>
       <div class="bn-side" style="left:1120px; top:282px; width:680px; height:670px;"><div class="bn-item" style="border-bottom:2px solid var(--rule);" data-step="2" data-fx="rise" data-name="補足1"><div class="bn-item-value" style="font-size:64px">7</div><div class="bn-item-text" style="font-size:36px">この資料で使った型</div></div></div>
       <aside class="notes">型は中身の形で選びます。比べるなら比較や表、数字ならグラフ、順番なら矢羽根です。［クリック］この資料も、ページごとに違う型で組んでいます。［クリック］結論を1行で添える帯や、項目に添えるアイコンも使えます。</aside>
     </section>
