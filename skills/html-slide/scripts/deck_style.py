@@ -1,4 +1,4 @@
-"""スタイル（ADR 0005）。資料全体の見せ方の既定を決める。名前は image-slide とそろえる（standard・visual）。
+"""スタイル（ADR 0005）。資料全体の見せ方の既定を決める。名前は image-slide とそろえる（standard・visual・classic）。
 
 html-slide のスタイルは、**決まった項目の値だけ**を持つ（文章を読んで解釈する仕組みは無い）:
 
@@ -7,6 +7,9 @@ html-slide のスタイルは、**決まった項目の値だけ**を持つ（�
     defaults:                        # 任意。型ごとの変化形の既定（台本に書いてあれば台本が勝つ）
       cover: {layout: hero}
       photo: {layout: left, split: 1/2}
+    look:                            # 任意。見た目の調子（文字の大きさ・余白は変えない）
+      surface: flat
+      title: solid
     image_look: photo                # 任意。Codex で描く画像の枠の画風（photo・illustration・handdrawn。--image-look が勝つ・ADR 0011）
     expects_images: [cover, section] # 任意。画像を置くのが基本の型。image が無ければ警告する（止めない）
     motion:                          # 任意。動きの既定
@@ -15,7 +18,8 @@ html-slide のスタイルは、**決まった項目の値だけ**を持つ（�
 
 - 知らないキー・知らない型・その型に無い変化形・選べない値は rc=2（DeckError）
 - 画像が要る変化形は、そのページに画像があるときだけ当てる（無いページは型の既定のまま。止めない）
-- 組み込みは `styles/standard.yaml`（既定・今までの見た目）と `styles/visual.yaml`。カスタムは同じ形の YAML を `--style <パス>` で
+- 組み込みは `styles/standard.yaml`（既定・枠なしの淡い面・主役の色の表紙・濃い面の締め）・`styles/visual.yaml`・`styles/classic.yaml`（前の既定・箱に枠線を引く。look なし）。カスタムは同じ形の YAML を `--style <パス>` で
+- `look` は見た目の調子の項目（background・surface・radius・band・emphasis・statement・fill・title・deep）。書かない項目は型の既定のまま。項目と値は下の LOOK
 - 見た目の調子（余白・見出しの大きさの段階）はまだ持たない（文字のはみ出しの検査とぶつかりやすいため・ADR 0005）
 """
 from __future__ import annotations
@@ -32,14 +36,14 @@ FIELDS = {"name", "description", "defaults", "motion", "look", "image_look", "ex
 # 見た目の調子（look）。文字の大きさ・余白は変えない（はみ出しの検査は字体で実測しているため）。色は全部テーマから作り、読みやすさの検査も通す
 LOOK = {
     "background": ("plain", "tint"),                    # ページの地: テーマの地／主役の色（primary）をうっすら混ぜた地
-    "surface": ("soft", "white", "primary", "line", "flat"),     # カード・比較の列・KPI・吹き出しの地: 淡いグレー／（white は退役・RETIRED_LOOKS）／主役の色の淡い地／白に枠線
+    "surface": ("soft", "white", "primary", "line", "flat"),     # カード・比較の列・KPI・吹き出しの地: 淡いグレー／（white は退役・RETIRED_LOOKS）／主役の色の淡い地／白に枠線／枠なしの淡い面（flat・箱は主役の色の淡い地で、区切りは面と余白）
     "radius": ("default", "square", "round"),           # 箱の角: 16px／4px／32px（写真は 8px・square のときだけ 4px。notice の枠は default で 0・式の答えと NG／OK の箱は 16px・12px）
     "band": ("small", "bar", "none"),                   # 中身の型の左上の印: 小さな印／上端の全幅の帯／無し
-    "emphasis": ("default", "strong", "deep"),                  # 強調する箱（accent: true のカードなど）: 淡い地に枠／差し色のベタ塗りに白抜き（明るい色なら黒）
-    "statement": ("plain", "panel", "deep"),                    # 主張の1枚（statement）: 地のまま／主役の色の全面に白抜き（明るい色なら黒）
+    "emphasis": ("default", "strong", "deep"),                  # 強調する箱（accent: true のカードなど）: 淡い地に枠／差し色のベタ塗りに白抜き（明るい色なら黒）／濃い面（ほぼ黒）に白抜き
+    "statement": ("plain", "panel", "deep"),                    # 主張の1枚（statement）: 地のまま／主役の色の全面に白抜き（明るい色なら黒）／濃い面（ほぼ黒）に白抜き
     "fill": ("content", "stretch"),                     # 並ぶ箱（カード・指標・比較）の高さ: 中身に沿う／置ける高さへ伸ばす（中身の 1.6 倍まで。箱の中は上下に振り分ける）
-    "title": ("plain", "solid", "deep"),                # deep は濃い面（ほぼ黒）に白い文字
-    "deep": ("off", "on"),                              # 結論の帯・表の見出しの行・締めのページを濃い面にする                        # 表紙・章扉: 地のまま／主役の色そのままの全面（文字は白か ink の読める方）
+    "title": ("plain", "solid", "deep"),                # 表紙・章扉: 地のまま／主役の色そのままの全面（文字は白か ink の読める方）／濃い面（ほぼ黒）に白い文字
+    "deep": ("off", "on"),                              # 結論の帯・表の見出しの行・締めのページを濃い面（ほぼ黒）にする
 }
 # 退役した変化形（look の項目, 値）→ 代わりの値。YAML には今までどおり書けて、代わりの値と同じに描くが、読んだときに注意を出し、
 # 台本の書き方（deck-format.md）・台本係の一覧には載せない（ADR 0020・0021）。white は白に影（0 8px 28px）で、影は elevation の番号の丸だけにしたため
@@ -118,6 +122,8 @@ def load(spec: str | None) -> dict:
     look = {} if d.get("look") is None else d["look"]
     if not isinstance(look, dict):
         raise DeckError(f"{path}: look は「項目: 値」で書く")
+    if isinstance(look.get("deep"), bool):      # YAML は引用符なしの on・off を真偽値に読む。deep: on と書けるように語へ戻す
+        look = {**look, "deep": "on" if look["deep"] else "off"}
     for k, v in look.items():
         if k not in LOOK:
             raise DeckError(f"{path}: look に {k!r} は無い（あるのは {', '.join(LOOK)}）")

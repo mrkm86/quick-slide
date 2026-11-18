@@ -1,5 +1,13 @@
-# 組み込みのスタイル standard（既定）。今までの html-slide の見た目そのもの（ADR 0005）
-# 何も足さない（変化形は型の既定のまま）。名前は image-slide とそろえる。書式は scripts/deck_style.py の冒頭
+# 組み込みのスタイル standard（既定）。枠なしの淡い面・主役の色の表紙・濃い面の締めで整える。説明・報告・社内資料向け（ADR 0005・0029）
+# 前の既定（箱に枠線を引く見た目）は styles/classic.yaml。名前は image-slide とそろえる。書式は scripts/deck_style.py の冒頭
 name: standard
-description: 説明・報告・社内資料向け。文字と図を整理して並べる（表紙は右に写真、写真は全面）
+description: 説明・報告・社内資料向け。枠なしの淡い面で整え、表紙・章扉は主役の色、結論と締めは濃い面にする（表紙は右に写真、写真は全面）
 image_look: illustration        # Codex で描く画像の枠の画風（ADR 0011）。説明・報告ではやわらかいイラストに
+look:                           # 見た目の調子（文字の大きさ・余白は変えない）。項目と値は scripts/deck_style.py の LOOK
+  surface: flat                 # 箱は枠なしの淡い面
+  band: none                    # 上端の帯・左上の印は付けない
+  fill: stretch                 # 並ぶ箱は、置ける高さへ伸ばす
+  emphasis: strong              # 強調する箱は差し色のベタ塗り
+  statement: deep               # 主張の1枚は濃い面（ほぼ黒）
+  title: solid                  # 表紙・章扉は主役の色そのままの全面
+  deep: "on"                    # 結論の帯・表の見出しの行・締めのページは濃い面
