@@ -27,6 +27,12 @@ CONTRAST = 4.5
 SHAPE_CONTRAST = 3.0     # 図形（アイコン・マス・棒・線）が、地の上で見える比
 BODY_PX = 28             # 本文の下限。これより小さい段は、注記（f-note）と札（f-chip）だけ
 SMALL_OK = ("f-note", "f-chip")
+BAR_APART = 64           # 強める棒とふつうの棒の色の隔たり（RGB の距離）の下限。色相が違えば明るさが近くても見分けられるので、明るさの比でなく距離で見る
+
+
+def _apart(a: str, b: str) -> float:
+    """2 つの色（#rrggbb）の RGB の距離。"""
+    return sum((int(a[i:i + 2], 16) - int(b[i:i + 2], 16)) ** 2 for i in (1, 3, 5)) ** 0.5
 FX = ("rise", "fade", "pop", "wipe-right", "wipe-left", "wipe-up", "wipe-down", "wheel")
 
 BLOCKS = ("div",)
@@ -463,10 +469,10 @@ class _Render:
         plain = self.pick(node, "棒", bg, (s["mark"], s["strong"], s["text"]))
         hot = self.pick(node, "棒", bg, (s["pop"], s["strong"], s["text"]))
         ons = sum(b.has("on") for b in bars)
-        if 0 < ons < len(bars) and self.pal[hot] == self.pal[plain]:
-            # 強める棒とふつうの棒が同じ色になる（差し色の無いテーマ・色の面の上）: ふつうの棒を、色みの無い色に退かせる。無ければ誤り
+        if 0 < ons < len(bars) and _apart(self.pal[hot], self.pal[plain]) < BAR_APART:
+            # 強める棒とふつうの棒が同じ色・近い色になる（差し色の無いテーマ・色の面の上）: ふつうの棒を、色みの無い色に退かせる。無ければ誤り
             plain = next((n for n in dict.fromkeys(("rule", s["muted"], "muted", "ink", "bg"))
-                          if self.pal[n] != self.pal[hot] and ratio(self.pal[n], self.pal[bg]) >= SHAPE_CONTRAST - 1e-9), None)
+                          if _apart(self.pal[n], self.pal[hot]) >= BAR_APART and ratio(self.pal[n], self.pal[bg]) >= SHAPE_CONTRAST - 1e-9), None)
             if plain is None:
                 raise FreeError(f"body の {node.line} 行目: 強める棒（on）とふつうの棒を、地の色 --{bg} の上で見分けられる色が無い（淡い面の箱か、地の上に置く）")
         mo = self.motion(node, "棒")

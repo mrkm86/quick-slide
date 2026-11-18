@@ -3090,6 +3090,7 @@ def case_free_parts():
     import free_body as FB2
     for theme in (pal, deck.palette({"background": "#ffffff", "ink": "#333333", "primary": "#ffd400", "accent": "#ffd400"}),
                   deck.palette({"background": "#ffffff", "ink": "#333333", "primary": "#006f83", "accent": "#813f9d"}),
+                  deck.palette({"background": "#ffffff", "ink": "#333333", "primary": "#757575"}),      # 灰色の主役の色: 退かせる灰色と近い
                   deck.palette({"background": "#ffffff", "ink": "#333333", "primary": "#006f83"})):
         for g in FB2.COLOR_VARS:
             try:
@@ -3115,7 +3116,7 @@ def case_free_parts():
                 names = re.findall(pat, h)
                 assert names and all(ratio(theme[n], theme[g]) >= 3 for n in names), (g, what, names)
                 if what == "棒":
-                    assert theme[names[0]] != theme[names[1]], (g, "強める棒とふつうの棒が同じ色", names)
+                    assert FB._apart(theme[names[0]], theme[names[1]]) >= FB.BAR_APART, (g, "強める棒とふつうの棒の色が近い", names)
                 if what == "丸":
                     glyph = re.search(r'style="fill:var\(--([a-z-]+)\)"', h).group(1)
                     assert ratio(theme[glyph], theme[names[0]]) >= 3, (g, "丸の中の絵", glyph)
