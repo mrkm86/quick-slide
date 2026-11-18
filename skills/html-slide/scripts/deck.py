@@ -115,6 +115,7 @@ def palette(t: dict) -> dict:
     # 並びは前と同じ（CSS 変数の並び＝出す HTML を変えない）: 共通 → 主役の色の役 → 差し色の役 → 幕 → 意味の色
     p = {k: v for k, v in base.items() if k not in DP.SEMANTIC and not k.startswith(("primary", "accent", "on-"))}
     p["primary-soft"], p["accent-soft"] = base["primary-soft"], base["accent-soft"]
+    p["on-deep"] = base["on-deep"]
     pk = {"key": base["primary"], "deco": base["primary-decor"]}
     ak = {"key": base["accent"], "deco": base["accent-decor"]}
     # 写真の上（暗幕の地）: 色を白に寄せて、一番薄い暗幕を白い写真に重ねた地で 4.5 を越える一番濃い色

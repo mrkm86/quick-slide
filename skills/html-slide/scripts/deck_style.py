@@ -35,10 +35,11 @@ LOOK = {
     "surface": ("soft", "white", "primary", "line", "flat"),     # カード・比較の列・KPI・吹き出しの地: 淡いグレー／（white は退役・RETIRED_LOOKS）／主役の色の淡い地／白に枠線
     "radius": ("default", "square", "round"),           # 箱の角: 16px／4px／32px（写真は 8px・square のときだけ 4px。notice の枠は default で 0・式の答えと NG／OK の箱は 16px・12px）
     "band": ("small", "bar", "none"),                   # 中身の型の左上の印: 小さな印／上端の全幅の帯／無し
-    "emphasis": ("default", "strong"),                  # 強調する箱（accent: true のカードなど）: 淡い地に枠／差し色のベタ塗りに白抜き（明るい色なら黒）
-    "statement": ("plain", "panel"),                    # 主張の1枚（statement）: 地のまま／主役の色の全面に白抜き（明るい色なら黒）
+    "emphasis": ("default", "strong", "deep"),                  # 強調する箱（accent: true のカードなど）: 淡い地に枠／差し色のベタ塗りに白抜き（明るい色なら黒）
+    "statement": ("plain", "panel", "deep"),                    # 主張の1枚（statement）: 地のまま／主役の色の全面に白抜き（明るい色なら黒）
     "fill": ("content", "stretch"),                     # 並ぶ箱（カード・指標・比較）の高さ: 中身に沿う／置ける高さへ伸ばす（中身の 1.6 倍まで。箱の中は上下に振り分ける）
-    "title": ("plain", "solid"),                        # 表紙・章扉: 地のまま／主役の色そのままの全面（文字は白か ink の読める方）
+    "title": ("plain", "solid", "deep"),                # deep は濃い面（ほぼ黒）に白い文字
+    "deep": ("off", "on"),                              # 結論の帯・表の見出しの行・締めのページを濃い面にする                        # 表紙・章扉: 地のまま／主役の色そのままの全面（文字は白か ink の読める方）
 }
 # 退役した変化形（look の項目, 値）→ 代わりの値。YAML には今までどおり書けて、代わりの値と同じに描くが、読んだときに注意を出し、
 # 台本の書き方（deck-format.md）・台本係の一覧には載せない（ADR 0020・0021）。white は白に影（0 8px 28px）で、影は elevation の番号の丸だけにしたため
@@ -178,6 +179,13 @@ def look_css(look: dict) -> str:
                    ".cover-title em, .sec-title em { color: var(--on-primary-fill); }")
         css.append(".cover-rule { background-color: var(--on-primary-fill); }")
         css.append(".sec-panel { background-color: var(--primary-fill); }")     # 全面が主役の色なので、左の帯は面に溶かす
+    if look.get("title") == "deep":
+        tp = 'section[data-type="cover"], section[data-type="section"]'
+        css.append(f"{tp} {{ background-color: var(--deep); }}")
+        css.append(".cover-title, .cover-subtitle, .cover-meta div, .sec-title, .sec-subtitle { color: var(--on-deep); }")
+        css.append(".cover-label, .sec-label, .sec-no, .cover-title em, .sec-title em { color: var(--deep-pop); }")
+        css.append(".cover-rule { background-color: var(--deep-pop); }")
+        css.append(".sec-panel { background-color: var(--deep); }")
     r = {"square": 4, "round": 32}.get(look.get("radius"))
     if r:
         css.append(f"{BOXES}, .contact, .scrim, .side-img, .gal-img, .notice, .eq-res, .pair-box {{ border-radius: {r}px; }}")
@@ -189,7 +197,8 @@ def look_css(look: dict) -> str:
         css.append(".band { left: 0; width: 1920px; height: 16px; }")
     elif b == "none":
         css.append(".band { display: none; }")
-    if look.get("emphasis") == "strong":
+    em_at = len(css)
+    if look.get("emphasis") in ("strong", "deep"):
         css.append(f"{HL} {{ background-color: var(--accent-strong); border-color: var(--accent-strong); }}")
         css.append(f".card.hl div, .cmp.hl div, .kpi.hl div:where(:not(.kpi-delta)), .card.hl em, .cmp.hl em, .kpi.hl em {{ color: var(--on-accent); }}")   # 増減の札は tone の色のまま（:where で優先度は元のまま。札の色の規則に勝たない）
         css.append(".card.hl .card-bar, .cmp.hl .cmp-dot { background-color: var(--on-accent); }")
@@ -197,11 +206,26 @@ def look_css(look: dict) -> str:
         css.append(".kpi.hl .kpi-value, .kpi.hl .kpi-unit { color: var(--on-accent); }")   # 型の CSS の方が強いので名指しで上書き
         css.append(".cmp.hl .cmp-chip { background-color: var(--on-accent); color: var(--accent-strong); }")
         css.append(".card.hl .chip, .cmp.hl .chip, .kpi.hl .chip { background-color: var(--on-accent); color: var(--accent-strong); }")   # 強める箱の札は面と反対の色
-    if look.get("statement") == "panel":
+        if look.get("emphasis") == "deep":
+            css[em_at:] = [x.replace("var(--accent-strong)", "var(--deep)").replace("var(--on-accent)", "var(--on-deep)") for x in css[em_at:]]
+    st_at = len(css)
+    if look.get("statement") in ("panel", "deep"):
         st = 'section[data-type="statement"]'
         css.append(f"{st} {{ background-color: var(--primary-strong); }}")
         css.append(f"{st} div, {st} em {{ color: var(--on-primary); }}")
         css.append(f"{st} .stmt-bar, {st} .band {{ background-color: var(--on-primary); }}")
+    if look.get("statement") == "deep":
+        css[st_at:] = [x.replace("var(--primary-strong)", "var(--deep)").replace("var(--on-primary)", "var(--on-deep)") for x in css[st_at:]]
+    if look.get("deep") == "on":
+        cl = 'section[data-type="closing"]'
+        css.append(".take { background-color: var(--deep); border-color: var(--deep); }")
+        css.append(".take-t { color: var(--on-deep); }")
+        css.append("section[data-slide] { --take-icon: var(--deep-pop); }")
+        css.append(".tr.th { background-color: var(--deep); border-bottom-color: var(--deep); }")
+        css.append(".tr.th .td div { color: var(--on-deep); }")
+        css.append(f"{cl} {{ background-color: var(--deep); }}")
+        css.append(f"{cl} .headline, {cl} .li-title, {cl} .li-body, {cl} .sub, {cl} .footer, {cl} .pageno {{ color: var(--on-deep); }}")
+        css.append(f"{cl} .kicker, {cl} .headline em {{ color: var(--deep-pop); }}")
     return "\n      ".join(css)
 
 

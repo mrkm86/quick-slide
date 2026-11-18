@@ -118,6 +118,11 @@ def base_palette(t: dict) -> dict:
         raw = t.get(name) or t["primary"]
         on = next((c for c in (white, ink) if ratio(c, raw) >= 4.5), None)
         p[f"{name}-fill"], p[f"on-{name}-fill"] = (raw, on) if on else (k["strong"], p[f"on-{name}"])
+    # 濃い面（deep）: 主役の色の色相をわずかに残した、ほぼ黒の面。画面のいちばん暗い所を作る。その上の文字は白、強める語と印は deep-pop
+    _, c, h = KC.to_oklch(t["primary"])
+    p["deep"] = KC.from_oklch(0.27, min(c * 0.4, 0.05), h)
+    p["on-deep"] = white
+    p["deep-pop"] = next((x for x in (p["primary-fill"], p["accent-fill"]) if ratio(x, p["deep"]) >= 4.5), white)
     p.update(SEMANTIC)
     p.update(_tone_roles(p))
     p.update(_bar_roles(p))
@@ -216,7 +221,8 @@ def contrast_problems(p: dict) -> list[str]:
             need.append((fg, g, 4.5))
     need += [("faint", "bg", 4.5),
              ("on-primary", "primary-strong", 4.5), ("on-accent", "accent-strong", 4.5),
-             ("on-primary-fill", "primary-fill", 4.5), ("on-accent-fill", "accent-fill", 4.5)]
+             ("on-primary-fill", "primary-fill", 4.5), ("on-accent-fill", "accent-fill", 4.5),
+             ("on-deep", "deep", 4.5), ("deep-pop", "deep", 4.5)]
     for g in TEXT_GROUNDS:                      # 罫・枠・軸
         need.append(("rule", g, 3.0))
     need += [("rule-weak", "bg", 3.0), ("bar", "bg", 3.0)]
