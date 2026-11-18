@@ -3120,6 +3120,11 @@ def case_free_parts():
                 if what == "丸":
                     glyph = re.search(r'style="fill:var\(--([a-z-]+)\)"', h).group(1)
                     assert ratio(theme[glyph], theme[names[0]]) >= 3, (g, "丸の中の絵", glyph)
+    # 色の隔たりの物差しそのもの（本体の計算に頼らない、決まった値）と、灰色の主役の色で選ばれる色の役
+    assert FB._apart("#000000", "#000040") == 64 == FB.BAR_APART and FB._apart("#000000", "#00003f") == 63 and round(FB._apart("#757575", "#767676"), 2) == 1.73
+    gray = deck.palette({"background": "#ffffff", "ink": "#333333", "primary": "#757575"})
+    h, _ = FB.render('<div class="f-bars" data-max="10"><div class="f-bar on" data-value="5"></div><div class="f-bar" data-value="5"></div></div>', gray, lambda *a: "")
+    assert re.findall(r"background-color: var\(--([a-z-]+)\)", h) == ["accent-fill", "ink"], "近い灰色（rule）でなく、文字の色へ退く"
     # 棒: 名前は下の別の行（名前が何行でも、棒を描く高さは全部の列で同じ）。見える数を省いても、数は中身として残る
     bars = '<div class="f-bars" data-max="10"><div class="f-bar" data-value="10">短</div><div class="f-bar" data-value="10">とても長い名前で二行に折れる棒の名前</div></div>'
     h = build(one(_free(bars)), "free-p-bars")[0].read_text(encoding="utf-8")
