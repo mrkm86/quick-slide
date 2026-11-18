@@ -3057,6 +3057,8 @@ def case_free_parts():
         "値の中に > のある閉じていない div": ('<div>本文</div><div x="a>b"', "閉じていない"),
         "棒の上の数の style": ('<div class="f-bars" data-max="10"><div class="f-bar" data-value="5"><b style="position:absolute">5</b>名</div></div>', "<b> に style"),
         "棒の上の数の段": ('<div class="f-bars" data-max="10"><div class="f-bar" data-value="5"><b data-step="1">5</b>名</div></div>', "<b> に data-step"),
+        "棒の上の数が空": ('<div class="f-bars" data-max="10"><div class="f-bar" data-value="5"><b></b>短</div><div class="f-bar" data-value="5"><b>5</b>長</div></div>', "文字だけ"),
+        "棒の上の数が空白": ('<div class="f-bars" data-max="10"><div class="f-bar" data-value="5"><b> </b>短</div><div class="f-bar" data-value="5"><b>5</b>長</div></div>', "文字だけ"),
         "棒の上の数の中の大きさ": ('<div class="f-bars" data-max="10"><div class="f-bar" data-value="5"><b><span style="font-size: 64px">5</span></b>長</div></div>', "文字だけ"),
     }
     for name, (body, word) in bad.items():
@@ -3096,6 +3098,24 @@ def case_free_parts():
                 continue
             cs_ = re.findall(r'class="f-cell" style="background-color: var\(--([a-z-]+)\)', h)
             assert ratio(theme[cs_[0]], theme[g]) >= 3 and ratio(theme[cs_[0]], theme[cs_[-1]]) >= 3, (g, cs_[0], cs_[-1])
+        # アイコン・丸つきのアイコン・線・棒も同じ: 書いた地の上で 3:1 の色になるか、rc=2 で止まる
+        shapes = {"アイコン": ('<div class="f-icon" data-icon="users"></div>', r'style="fill:var\(--([a-z-]+)\)"'),
+                  "線": ('<div class="f-row"><div>a</div><div class="f-line"></div></div>', r'class="f-line" style="background-color: var\(--([a-z-]+)\)'),
+                  "棒": ('<div class="f-bars" data-max="10"><div class="f-bar on" data-value="7"></div><div class="f-bar" data-value="3"></div></div>',
+                        r'class="f-bar-fill" style="flex: [^;]+; background-color: var\(--([a-z-]+)\)'),
+                  "丸": ('<div class="f-icon disc" data-icon="users"></div>', r'class="f-icon-disc" style="[^"]*background-color: var\(--([a-z-]+)\)')}
+        for g in FB2.COLOR_VARS:
+            for what, (part, pat) in shapes.items():
+                try:
+                    h, _ = FB.render(f'<div style="background-color: var(--{g})">{part}</div>', theme, lambda *a: "")
+                except FB.FreeError as e:
+                    assert "見える色" in str(e) or "読めない" in str(e), (g, what, e)
+                    continue
+                names = re.findall(pat, h)
+                assert names and all(ratio(theme[n], theme[g]) >= 3 for n in names), (g, what, names)
+                if what == "丸":
+                    glyph = re.search(r'style="fill:var\(--([a-z-]+)\)"', h).group(1)
+                    assert ratio(theme[glyph], theme[names[0]]) >= 3, (g, "丸の中の絵", glyph)
     # 棒: 名前は下の別の行（名前が何行でも、棒を描く高さは全部の列で同じ）。見える数を省いても、数は中身として残る
     bars = '<div class="f-bars" data-max="10"><div class="f-bar" data-value="10">短</div><div class="f-bar" data-value="10">とても長い名前で二行に折れる棒の名前</div></div>'
     h = build(one(_free(bars)), "free-p-bars")[0].read_text(encoding="utf-8")

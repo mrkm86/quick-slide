@@ -299,15 +299,13 @@ class _Render:
             can = f"使えるのは {'・'.join(styles)}" if styles else "style は書けない"
             raise FreeError(f"body の {node.line} 行目: {what} の style に {'・'.join(extra)} は書けない（{can}）")
 
-    def pick(self, bg: str, names, apart: str | None = None) -> str:
-        """図形の色: names の順に、地（bg）の上で 3:1 に届く最初の色。apart があれば、その色とも 3:1 離れるものを先に採る。"""
-        names = list(dict.fromkeys(names))
-        ok = [n for n in names if ratio(self.pal[n], self.pal[bg]) >= SHAPE_CONTRAST - 1e-9]
-        if apart:
-            far = [n for n in ok if ratio(self.pal[n], self.pal[apart]) >= SHAPE_CONTRAST - 1e-9]
-            if far:
-                return far[0]
-        return ok[0] if ok else max(names, key=lambda n: ratio(self.pal[n], self.pal[bg]))
+    def pick(self, node: Node, what: str, bg: str, names) -> str:
+        """図形の色: names の順に、地（bg）の上で 3:1 に届く最初の色。面の候補に無ければ文字の色・地の色も試し、それでも無ければ誤り
+        （style で地の色を書いた箱の中では、面の既定の色が合わないことがある。見えないまま出さない）。"""
+        for n in dict.fromkeys((*names, "ink", "bg")):
+            if ratio(self.pal[n], self.pal[bg]) >= SHAPE_CONTRAST - 1e-9:
+                return n
+        raise FreeError(f"body の {node.line} 行目: {what} が、地の色 --{bg} の上で見える色が無い（面の箱か、別の地に置く）")
 
     def motion(self, node: Node, default_name: str | None = None) -> str:
         """動き（data-step・data-fx・data-delay）とまとまりの名前（data-name）の属性。段の中の段・名前の中の名前は止める。"""
@@ -414,12 +412,14 @@ class _Render:
         if "disc" in cs:
             d = int(math.ceil(size * 1.7 / 8) * 8)
             # 丸の地は地の上で、中の絵は丸の上で、どちらも 3:1。主役の色が地に近いテーマでは、強める文字の色・文字の色の丸に落とす
-            pairs = [(s["mark"], s["on-mark"]), (s["strong"], bg), (s["text"], bg)]
-            disc, glyph = next(((a, b) for a, b in pairs if min(ratio(self.pal[a], self.pal[bg]), ratio(self.pal[b], self.pal[a])) >= SHAPE_CONTRAST - 1e-9),
-                               pairs[-1])
+            pairs = [(s["mark"], s["on-mark"]), (s["strong"], bg), (s["text"], bg), ("ink", "bg"), ("bg", "ink")]
+            pair = next(((a, b) for a, b in pairs if min(ratio(self.pal[a], self.pal[bg]), ratio(self.pal[b], self.pal[a])) >= SHAPE_CONTRAST - 1e-9), None)
+            if pair is None:
+                raise FreeError(f"body の {node.line} 行目: 丸つきのアイコンが、地の色 --{bg} の上で見える色の組が無い（面の箱か、別の地に置く）")
+            disc, glyph = pair
             return (f'<div class="f-icon-disc" style="width: {d}px; height: {d}px; background-color: {_var(disc)};"{mo}>'
                     f'{ICON.svg(name, size, _var(glyph))}</div>')
-        c = self.pick(bg, (s["mark"], s["strong"], s["text"]))
+        c = self.pick(node, "アイコン", bg, (s["mark"], s["strong"], s["text"]))
         return f'<div class="f-icon-plain" style="width: {size}px; height: {size}px;"{mo}>{ICON.svg(name, size, _var(c))}</div>'
 
     def cells(self, node: Node, st: dict, surf: str, bg: str) -> str:
@@ -460,7 +460,8 @@ class _Render:
         if any(labels) and not all(labels):
             raise FreeError(f"body の {node.line} 行目: 棒の上の数（<b>…</b>）は、全部の f-bar に書くか、どれにも書かない（棒の高さの尺度をそろえるため）")
         # 棒の色: ふつうの棒と強める棒（on）。どちらも地の上で 3:1
-        plain, hot = self.pick(bg, (s["mark"], s["strong"], s["text"])), self.pick(bg, (s["pop"], s["strong"], s["text"]))
+        plain = self.pick(node, "棒", bg, (s["mark"], s["strong"], s["text"]))
+        hot = self.pick(node, "棒", bg, (s["pop"], s["strong"], s["text"]))
         mo = self.motion(node, "棒")
         gap = f' style="gap: {st["gap"]};"' if "gap" in st else ""
         cols, names = [], []
@@ -469,16 +470,18 @@ class _Render:
             if label is not None:                            # 棒の上の数は 1 行・同じ大きさ（高さが列ごとに違うと、棒を描く高さがずれて尺度が狂う）
                 if label.attrs:
                     raise FreeError(f"body の {b.line} 行目: 棒の上の数の <b> に {'・'.join(sorted(label.attrs))} は書けない（<b>数</b> とだけ書く）")
-                if any(k.tag != "#text" for k in label.kids):
-                    raise FreeError(f"body の {b.line} 行目: 棒の上の数の <b> の中は文字だけ（<br>・<span> は書けない）")
+                if not label.kids or any(k.tag != "#text" for k in label.kids):
+                    raise FreeError(f"body の {b.line} 行目: 棒の上の数の <b> の中は文字だけ（空・<br>・<span> は書けない。数を置かないなら、全部の棒で <b> を省く）")
             self.only(b, "f-bar", ("data-value",))
             v = _num(b, "data-value")
             if v > vmax:
                 raise FreeError(f"body の {b.line} 行目: data-value {v:g} が data-max {vmax:g} を越えている")
             rest = Node("div", line=b.line)
             rest.kids = [k for k in b.kids if k is not label]
-            self.contrast(b, s["strong"], bg)
-            self.contrast(b, s["muted"], bg)
+            if label is not None:
+                self.contrast(b, s["strong"], bg)
+            if rest.kids:
+                self.contrast(b, s["muted"], bg)
             head = f'<div class="f-bar-value" style="color: {_var(s["strong"])};">{self.inline(label, surf, bg)}</div>' if label else ""
             # 棒の長さは、数に比例した flex の伸び（丸めない）。上の空きが残りを取る。名前は下の別の行に置くので、
             # 名前が何行でも、棒を描く高さは全部の列で同じ＝同じ f-bars の中は同じ尺度
@@ -511,7 +514,7 @@ class _Render:
             if node.kids:
                 raise FreeError(f"body の {node.line} 行目: f-line の中には何も書かない")
             self.parts += 1
-            c = self.pick(bg, ("rule", SURFACES[surf]["muted"], SURFACES[surf]["text"]))
+            c = self.pick(node, "線", bg, ("rule", SURFACES[surf]["muted"], SURFACES[surf]["text"]))
             return f'<div class="f-line" style="background-color: {_var(c)};"{self.motion(node)}></div>'
         self.only(node, "<div>", ("data-name", "data-step", "data-fx", "data-delay"), st, tuple(st))
         new = self.surface_of(node, st, cs, surf)
