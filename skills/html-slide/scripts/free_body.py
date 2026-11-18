@@ -126,6 +126,9 @@ class _Parser(HTMLParser):
             self.stack.append(node)
 
     def handle_startendtag(self, tag, attrs):
+        if tag.lower() not in BLOCKS + INLINES + VOIDS:      # 独自のタグは、閉じ方より先に「書けない」と言う
+            raise FreeError(f"body の {self._where()}: <{tag.lower()}> は書けない（使えるのは {'・'.join(BLOCKS + INLINES + VOIDS)}。"
+                            "アイコンは <span class=\"f-icon\" data-icon=\"名前\"></span>）")
         if tag.lower() not in VOIDS:
             raise FreeError(f"body の {self._where()}: <{tag.lower()} /> のように閉じる書き方は使えない（<{tag.lower()} …></{tag.lower()}> と書く）")
         self.handle_starttag(tag, attrs)

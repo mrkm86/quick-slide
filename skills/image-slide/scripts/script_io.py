@@ -62,10 +62,11 @@ TYPES = {
     "deflist": (HEAD_KEYS | {"items"}, True, ("headline", "items")),
     "steps": (HEAD_KEYS | {"items", "current", "layout"}, True, ("headline", "items")),
     "layers": (HEAD_KEYS | {"rows", "links"}, True, ("headline", "rows")),
+    "free": (HEAD_KEYS | {"body"}, True, ("headline", "body")),
 }
 # 締めの帯（takeaway）を置ける型（html-slide の deck_types.TAKEAWAY_TYPES と同じ）
 TAKEAWAY_TYPES = ("cards", "flow", "compare", "bullets", "timeline", "summary", "kpi", "bar-chart", "line-chart",
-                  "table", "matrix", "equation", "hub", "pairs", "deflist", "steps", "layers")
+                  "table", "matrix", "equation", "hub", "pairs", "deflist", "steps", "layers", "free")
 for _t in TAKEAWAY_TYPES:
     TYPES[_t] = (TYPES[_t][0] | {"takeaway", "takeaway_icon"}, TYPES[_t][1], TYPES[_t][2])
 
@@ -284,6 +285,53 @@ def images_of(spec, script_dir: pathlib.Path, no: int) -> list[dict]:
     return out
 
 
+def free_texts(body) -> list[str]:
+    """自由なページ（型 free）の body（html-slide が組む HTML）から、見える文字と数を上から順に拾う。
+
+    絵で描くエンジンは、HTML の組みではなく中身だけを受ける。割合のマス（f-cells）は「100 のうち 21」、
+    棒（f-bar）は「名前: 値」にする（html-slide の free_body.visible_text と同じ考え方。こちらは組みを検査しない）。"""
+    from html.parser import HTMLParser
+    if not isinstance(body, str):
+        return []
+    out: list[str] = []
+
+    class P(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.bar: list[str] | None = None
+            self.depth = 0
+
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            cls = (a.get("class") or "").split()
+            if "f-cells" in cls:
+                out.append(f"{a.get('data-total', '')} のうち {a.get('data-on', '')}")
+            if "f-bar" in cls:
+                self.bar, self.depth = [], 0
+            elif self.bar is not None and tag != "br":
+                self.depth += 1
+
+        def handle_endtag(self, tag):
+            if self.bar is None:
+                return
+            if self.depth:
+                self.depth -= 1
+                return
+            if self.bar:
+                out.append(" ".join(self.bar))
+            self.bar = None
+
+        def handle_data(self, data):
+            t = " ".join(data.split())
+            if t:
+                (self.bar if self.bar is not None else out).append(t)
+
+    p = P()
+    p.feed(body)
+    p.close()
+    return out
+
+
 def content_of(spec, images: list[dict], ref_offset: int = 0) -> dict:
     """プロンプトの「描く文字」に入れる中身。一番外の共通キー（talk など）と配置の指定を外し、画像の枠は言葉に置き換える。
 
@@ -319,6 +367,8 @@ def content_of(spec, images: list[dict], ref_offset: int = 0) -> dict:
             continue
         if k == "image":
             out[k] = image_words("image")
+        elif k == "body" and typ == "free":            # 自由なページ: HTML の組みは渡さず、見える文字と数だけを中身にする
+            out[k] = free_texts(v)
         elif k in ("items", "members") and isinstance(v, list):
             out[k] = [walk(it, item_slot(typ, k, i)) for i, it in enumerate(v, 1)]
         elif k in ("left", "right") and isinstance(v, dict):

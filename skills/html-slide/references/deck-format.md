@@ -18,6 +18,7 @@
 9. **型は中身の形で選び、同じ型を続けない。** 順番のある段は `flow`、並列の要点は `cards`、観点×項目は `table`、2軸の位置づけは `matrix`、時期は `timeline`、
    一番言いたい1文は `statement`、冒頭の結論と根拠は `summary`、数字は 4. のとおり。順番の無い並びを `flow` にしない。
    進み具合（どこまで済んで今どこか）を見せるなら `steps`、補足・注意・決まりごとは `notice`、用語と説明・項目と内容の対は `deflist`（比べるなら `table`）、層と箱と矢印で見せる構成（システム・データの流れ・役割分担）は `layers`。
+   **どの型にも中身の形が合わないページ**（割合をマスの塗り分けで見せる・料金の数字を主役にする・数字の面と棒を並べる など）は `free`（下の「自由なページ」）。表・グラフ・構成図・表紙・章扉・締めは、型のほうが確か
    同じ型を3枚続けない。1つの型は表紙・締めを除いた枚数の3分の1まで。10枚を超えたら話の区切りに `section`（か `agenda` の再掲）を入れる
 10. **箱の中は名詞と短い補足まで。** 文で説明しない。題は全角10字まで、補足は20字まで（「文字起こし／Whisper・MLX」）。
    言い切りは見出しに、結論の1行は `takeaway` に置く。構成要素は `equation`、中心と周りは `hub`、直し方は `pairs`、並列の要点には `icon` を添える。
@@ -48,7 +49,7 @@
 | `talk` | 話す台本（文字の配列）。**1つ目は画面に入ったとき、2つ目以降は各クリックのときに話すこと**。省けば空 |
 | `transition` | `fade`（既定）／`none`。`morph` は退役した（書いてあれば fade で描き、警告する） |
 | `steps` | `false` にすると、その1枚のクリックをなくす（全部が自動で順に出る。`talk` は1つにする） |
-| `takeaway` | 中身の下に置く**結論の1行の帯**（全角でおよそ40字まで）。最後のクリックと一緒に出る（クリックは増えない）。頭にアイコンが付く。中身の型（`cards`・`flow`・`compare`・`bullets`・`timeline`・`summary`・`kpi`・`bar-chart`・`line-chart`・`table`・`matrix`・`equation`・`hub`・`pairs`・`deflist`・`steps`・`layers`）だけ。`notice` には置かない |
+| `takeaway` | 中身の下に置く**結論の1行の帯**（全角でおよそ40字まで）。最後のクリックと一緒に出る（クリックは増えない）。頭にアイコンが付く。中身の型（`cards`・`flow`・`compare`・`bullets`・`timeline`・`summary`・`kpi`・`bar-chart`・`line-chart`・`table`・`matrix`・`equation`・`hub`・`pairs`・`deflist`・`steps`・`layers`・`free`）だけ。`notice` には置かない |
 | `takeaway_icon` | 帯の頭のアイコンの名前（下の「アイコン」の一覧から。省くと `info`）。`takeaway` と一緒に書く |
 | `fx` | 並びの1つずつ（カード・矢羽根・比較の列・箇条書きの項目・大きな数字の補足・要約の根拠・指標・人）の出方を変える: `rise`・`fade`・`pop`・`wipe-right` など（contract.md の語彙） |
 
@@ -118,6 +119,7 @@
 | `deflist` | 用語と説明・項目と内容の対を、左右 2 列で 3〜8 行（DADS の説明リスト）。比べるなら `table` | 行の数 |
 | `steps` | 手順の進み具合（済・いま・これから）を、番号の丸と札で見せる。横 3〜5 段・縦 3〜6 段（DADS のステップナビゲーション）。順番の説明だけなら `flow` | 段の数 |
 | `layers` | 構成図。層（1〜3 段）に箱（1〜4 個）を並べ、箱と箱を矢印でつなぐ（システムの構成・データの流れ・役割分担） | 1 |
+| `free` | 自由なページ。見出しの下の「中身の箱」の中を、そのページの中身に合わせて組む（型に合う形が無いとき）。書き方は「[自由なページ](#自由なページtype-free)」 | `body` の `data-step` の種類の数（書かなければ 0） |
 
 ## 型ごとのキー
 
@@ -163,6 +165,7 @@
 | `deflist` | `items`★（`{term★, body★, icon}`・3〜8）。左に用語（太字）・右に説明。用語の列は格子の 3 列（長ければ 4 列）で固定。`icon` は書くなら全部の行に。1行ずつクリックで出る |
 | `steps` | `items`★（`{title★, body, state}`・横 3〜5・縦 3〜6）・`current`（いま何段目か・1から。それより前が済・後ろがこれから）・`layout`（`row` 既定＝横／`column`＝縦）。`state`（`done`＝済・`current`＝いま・`todo`＝これから）を段ごとに書けば `current` より優先。どちらも無ければ rc=2。状態は丸の形（済は塗り・いまは二重の輪・これからは白に枠）・札の語・線（済は実線・これからは破線）で示す。1段ずつクリックで出る |
 | `layers` | `rows`★（`{label, items★}`・1〜3 段。上から順。`label` は層の名前）・`items`（`{id★, title★, body, label, icon, accent, col}`・1 段に 1〜4 個。`id` は箱の名前で、このページの中で重ならない文字。`col` は列の番号（1〜4）で、省くと並び順。段をまたいで同じ `col` の箱は縦にそろう）・`links`（`{from★, to★, label, both, accent}`・0〜8 本。`from`・`to` は箱の `id`。つなげるのは、同じ層の隣どうし（横）と、隣の層の箱（同じ列なら縦・違う列なら鉤の手）だけ。層をまたいで飛ばす・間の箱をまたぐ矢印は rc=2。`label` は矢印の名札。`both: true` は両向き。`accent: true` の箱と矢印は差し色の太い枠・太い線）。箱が1クリックでまとめて出て、矢印と名札はそのあとに続けて出る（クリックは1）。アイコンは箱の幅が 400px 以上のときだけ付く |
+| `free` | `body`★（中身の箱に置く HTML。使ってよい書き方は「自由なページ」）・`kicker`・`headline`★・`sub`・`source`・`footnote`・`takeaway` |
 | `matrix` | `x`★・`y`★（`{label★, low, high}`）・`items`★（`{label★, x★, y★（0〜100）, accent}`・1〜8。accent の点は二重の輪。名前どうし・区切り線との重なりはずらし、置けなければ rc=2＝x・y を離す）・`quadrants`（`{title, body}` を 左上・右上・左下・右下 の順に4つ）・`focus`（淡く塗る象限・同じ順で1〜4）・`callout`（`{title, text}` 右に要点） |
 
 ### 主役を大きく置く（`layout: lead`）
@@ -172,6 +175,83 @@
 - 主役は、`cards` は `accent: true` の項目（無ければ1つ目）、`summary` は1つ目の根拠。`summary` の主役は `value` が大きく出る
 - クリックの数は `row` と同じ。`cards` は項目ごとに1つ、`summary` は1つ
 - 写真つきの `cards`（`image` のある項目）には使えない（rc=2）。`badge` は `accent` の項目にだけ書ける
+
+### 自由なページ（`type: free`）
+
+型に合う形が無いページを、そのページの中身に合わせて組む（[ADR 0030](../docs/adr/0030-free-pages.md)）。**枠はエンジンが置く**: 見出し（`kicker`・`headline`・`sub`）・出典・結論の帯（`takeaway`）・下の文字・ページ番号・ロゴは、ほかの型と同じ。
+書く側が書くのは `body`＝見出しの下の「中身の箱」（幅は本文の幅・高さは見出しの下から中身の下端まで）の中だけ。
+
+`body` は HTML だが、**使ってよい書き方が決まっている**（外れたら rc=2。理由を読んで直す）。
+
+| 何 | 決まり |
+|---|---|
+| 要素 | `div`・`span`・`br`・`b`・`em` だけ。必ず閉じる（`<div …></div>`）。独自のタグ・`<… />` は使えない |
+| 並べ方 | flex だけ。**`position`・`top`・`left`・`transform` は書けない**。`class="f-row"`（横に並べる）・`f-col`（縦に積む）・`f-grow`（残りの場所を取る）と、`style` の `flex`（数か `none`）・`gap`・`align-items`・`align-self`・`justify-content`・`flex-wrap`・`width`・`height`・`min-…`・`max-…`・`padding`・`margin`・`border-radius` |
+| 色 | `style` に書けるのは `color`・`background-color` だけで、値は `var(--名前)` だけ: `bg`・`ink`・`muted`・`primary-soft`・`accent-soft`・`primary-fill`／`on-primary-fill`・`accent-fill`／`on-accent-fill`・`deep`／`on-deep`／`deep-pop`・`primary-text`・`accent-text`・`success-2`・`error-2`。**ふつうは色を書かない**（下の「面の箱」と「文字の役」に任せれば、面に合う色になる）。文字の色と地の色の比が 4.5:1 に届かなければ rc=2 |
+| 文字の大きさ | `font-size` は 200・160・120・96・80・64・57・48・45・36・32・28・26・24・22 の px だけ（本文は 28 以上・注記は 22 以上）。`line-height` は 1.0・1.2・1.3・1.4・1.5・1.6・1.7・1.75。`font-weight` は 400 か 700。`text-align`・`white-space: nowrap` |
+| 長さ | px の整数（8 の倍数でなければ警告）か % |
+| 文字 | 見える文字は、要素の中の文字として書く（属性に書かない）。**文字と箱を同じ `<div>` に並べない**（文字は `<div>` で包む） |
+| 動き | 出したい `<div>` に `data-step="N"`（N クリック目）・`data-fx`・`data-delay`・`data-name`。`talk` の数は、`data-step` の 1 以上の値の種類の数 ＋ 1 |
+
+部品（class と `data-…`）:
+
+| 部品 | 書き方 | 何になるか |
+|---|---|---|
+| 面の箱 | `class="f-box"`（淡い面）・`f-box fill`（主役の色）・`f-box deep`（ほぼ黒）・`f-box accent`（差し色）・`f-box good`／`bad`／`warn`（良い・悪い・注意） | 地の色・角・内側の余白がそろう箱。**中の文字とアイコンの色は、面に合わせてエンジンが決める** |
+| 文字の役 | `f-num`（大きな数字・既定 120）・`f-label`（太い名札）・`f-note`（注記）・`f-muted`（補足の色）・`f-strong`（強める） | 大きさと色の組。文字の中では `<b>`（太字）・`<em>`（強める色）・`<span class="f-strong">`・`<span class="f-muted">` |
+| アイコン | `<span class="f-icon" data-icon="名前"></span>`。丸つきは `class="f-icon disc"`。大きさは `data-size`（24〜160・既定 56） | 図形のアイコン（名前は下の「アイコン」の一覧） |
+| 割合のマス | `<div class="f-cells" data-total="100" data-on="21" data-cols="10" style="width: 560px"></div>` | マスの塗り分け。`total` 1〜100・`on` 0〜`total`・`cols` 1〜20。幅は `style` の `width`（省くと 480） |
+| 棒 | `<div class="f-bars" data-max="21"><div class="f-bar on" data-value="21"><b>21%</b>導入前</div>…</div>` | 数に比例した長さの棒（1〜8 本・同じ `f-bars` の中は同じ尺度・丸めない）。`<b>` が棒の上の数字、残りの文字が下の名前。`on` の棒は差し色 |
+| 札・番号 | `class="f-chip"`（札）・`f-no`（番号の丸） | 札は、`f-box` の最初の子に `class="f-chip top"` と書くと、箱の中身の行を押し下げない（並ぶ箱の行がそろう） |
+| まとまり | `data-name="名前"` | PPTX でその要素と中身が 1 つのグループになる（マスと棒には、エンジンが付ける） |
+
+組み方のこつ:
+
+- **一番外の並びに `f-grow` を付ける**（中身の箱の高さを使い切る）。高さの 8 割を使っていなければ警告が出る。中身が箱から出たら rc=2
+- **そろえたい行は、同じ構造にする**（3 つ並ぶ料金の箱で、1 つだけ行が多いと数字の高さがずれる。札は `f-chip top`）
+- 主役の数字は `f-num` を大きく（`style="font-size: 160px"` や `200px`）。脇の数字は面の箱に入れて小さく
+- 原稿に無い数・言葉を足さない（図にするのは原稿にある数だけ）
+- 表・折れ線・棒グラフ（軸の要るもの）・構成図は、型（`table`・`line-chart`・`bar-chart`・`layers`）を使う
+
+例 1（割合のマスと、主役の数字と、脇の数字）:
+
+```html
+<div class="f-row f-grow" style="gap: 64px">
+  <div class="f-cells" data-total="100" data-on="62" data-cols="10" style="width: 560px"></div>
+  <div class="f-col f-grow" style="gap: 40px">
+    <div class="f-col f-grow" style="justify-content: center">
+      <div class="f-num" style="font-size: 200px; color: var(--accent-text)">62%</div>
+      <div class="f-label" style="font-size: 45px">「出なくてもよかった」会議の割合</div>
+    </div>
+    <div class="f-row">
+      <div class="f-box f-grow"><div class="f-strong" style="font-size: 57px">週11.5時間</div><div class="f-note f-muted">1人あたりの会議の時間</div></div>
+      <div class="f-box deep f-grow"><div class="f-strong" style="font-size: 57px">週5.8時間</div><div class="f-note">3つのルールで目指す時間</div></div>
+    </div>
+  </div>
+</div>
+```
+
+例 2（3 つ並ぶ箱。真ん中だけ濃い面と札。数字の行がそろう）:
+
+```html
+<div class="f-row f-grow">
+  <div class="f-box f-grow" style="justify-content: center">
+    <div class="f-label" style="font-size: 45px">小</div>
+    <div class="f-row" style="align-items: baseline; gap: 8px"><div class="f-num" style="font-size: 160px">2</div><div style="font-size: 57px; font-weight: 700">万円</div></div>
+  </div>
+  <div class="f-box deep f-grow" style="justify-content: center">
+    <div class="f-chip top">いちばん選ばれている</div>
+    <div class="f-label" style="font-size: 45px">中</div>
+    <div class="f-row" style="align-items: baseline; gap: 8px"><div class="f-num" style="font-size: 160px">4</div><div style="font-size: 57px; font-weight: 700">万円</div></div>
+  </div>
+  <div class="f-box f-grow" style="justify-content: center">
+    <div class="f-label" style="font-size: 45px">大</div>
+    <div class="f-row" style="align-items: baseline; gap: 8px"><div class="f-num" style="font-size: 160px">7</div><div style="font-size: 57px; font-weight: 700">万円</div></div>
+  </div>
+</div>
+```
+
+（台本の JSON では、`body` に 1 行の文字として書く。`"` は `\"` にする）
 
 ### アイコン（`icon`）
 

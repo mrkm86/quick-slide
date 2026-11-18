@@ -831,6 +831,16 @@
       ]
     },
     {
+      "type": "free",
+      "kicker": "数字で見る",
+      "headline": "会議の6割は、出なくてもよかった",
+      "body": "<div class=\"f-row f-grow\" style=\"gap: 64px\"><div class=\"f-cells\" data-total=\"100\" data-on=\"62\" data-cols=\"10\" style=\"width: 560px\"></div><div class=\"f-col f-grow\" style=\"gap: 40px\"><div class=\"f-col f-grow\" style=\"justify-content: center\"><div class=\"f-num\" style=\"font-size: 200px; color: var(--accent-text)\">62%</div><div class=\"f-label\" style=\"font-size: 45px\">「出なくてもよかった」会議の割合</div><div class=\"f-note f-muted\" style=\"font-size: 28px\">回答240人が先月出た会議のうち（架空）</div></div><div class=\"f-row\"><div class=\"f-box f-grow\"><div class=\"f-row\" style=\"align-items: center\"><span class=\"f-icon disc\" data-icon=\"clock\"></span><div class=\"f-col\" style=\"gap: 0\"><div class=\"f-strong\" style=\"font-size: 57px; line-height: 1.4\">週11.5時間</div><div class=\"f-note f-muted\" style=\"font-size: 26px\">1人あたりの会議の時間</div></div></div></div><div class=\"f-box deep f-grow\"><div class=\"f-row\" style=\"align-items: center\"><span class=\"f-icon disc\" data-icon=\"target\"></span><div class=\"f-col\" style=\"gap: 0\"><div class=\"f-strong\" style=\"font-size: 57px; line-height: 1.4\">週5.8時間</div><div class=\"f-note\" style=\"font-size: 26px\">3つのルールで目指す時間</div></div></div></div></div></div></div>",
+      "source": "出典: 社内アンケート（架空・全社員から回答240人・2026年9月）",
+      "talk": [
+        "数字を1枚にまとめます。回答者が先月出た会議のうち、62%は出なくてもよかったという答えでした。会議の時間は1人あたり週11.5時間で、3つのルールで週5.8時間を目指します。"
+      ]
+    },
+    {
       "type": "pairs",
       "kicker": "変えたこと",
       "headline": "会議は、3つの直しで短くなる",

@@ -76,6 +76,17 @@ def _walk(value: Any, key: str, path: str, depth: int = 0) -> Iterable[tuple[str
             yield from _walk(v, k, f"{path}.{k}" if path else k, depth + 1)
 
 
+_TAG = re.compile(r"<[^>]*>")
+
+
+def _visible(spec: dict[str, Any]) -> dict[str, Any]:
+    """自由なページ（型 free）の body は HTML。タグを外した見える文字だけを調べる（class・style・data-… の値は文字ではない）。"""
+    if spec.get("type") != "free" or not isinstance(spec.get("body"), str):
+        return spec
+    texts = [t for t in (" ".join(x.split()) for x in _TAG.split(spec["body"])) if t]
+    return {**spec, "body": texts}
+
+
 def talk_lines(spec: dict[str, Any]) -> list[str]:
     talk = spec.get("talk")
     if isinstance(talk, str):
@@ -94,7 +105,7 @@ def segments(slides: list[dict[str, Any]], only: set[str] | None = None) -> list
         pid = str(spec.get("id") or "")
         if only is not None and pid not in only:
             continue
-        for path, text in _walk(spec, "", ""):
+        for path, text in _walk(_visible(spec), "", ""):
             out.append(Segment(no, pid, "slide", path, text))
         for i, text in enumerate(talk_lines(spec), 1):
             if text.strip():

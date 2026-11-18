@@ -513,6 +513,9 @@ def minimal(type_: str, role: dict) -> dict:
         return head | {"rows": [{"label": "{層1}", "items": [{"id": "a", "title": "{箱1}", "body": "{補足}"}, {"id": "b", "title": "{箱2}", "body": "{補足}"}]},
                                 {"label": "{層2}", "items": [{"id": "c", "title": "{箱3}", "body": "{補足}"}]}],
                        "links": [{"from": "a", "to": "b", "label": "{名札}"}, {"from": "b", "to": "c"}]}
+    if type_ == "free":
+        return head | {"body": '<div class="f-row f-grow"><div class="f-box f-grow"><div class="f-label">{箱1}</div><div>{本文1}</div></div>'
+                               '<div class="f-box deep f-grow"><div class="f-label">{箱2}</div><div>{本文2}</div></div></div>'}
     raise T.DeckError(f"雛形を作れない型: {type_}")
 
 
@@ -2913,6 +2916,122 @@ def case_color_roles():
     assert p["primary-fill"] == "#ffd400" and p["on-primary-fill"] != "#ffffff", "黄の面の上の文字は白にしない（明るい色の上は黒に寄せる）"
     p = deck.palette(base)
     assert p["primary-fill"] == base["primary"], "テーマの色そのまま（明度を動かさない）"
+
+
+def _free(body: str, **kw) -> dict:
+    return {"type": "free", "headline": "h", "body": body, **kw}
+
+
+def case_free_parser():
+    """自由なページ（型 free・ADR 0030）の解析器: 許した要素・属性・CSS だけを通す。外れたものは、理由つきで rc=2。"""
+    import free_body as FB
+    bad = {
+        "独自のタグ": ('<icon name="users"/>', "書けない"),
+        "自己終了の div": ('<div class="f-box"/>', "閉じる書き方"),
+        "閉じない": ("<div><div>あ</div>", "閉じていない"),
+        "閉じが合わない": ("<div><b>あ</div></b>", "合わない"),
+        "position": ('<div style="position:absolute; left:0">あ</div>', "position"),
+        "transform": ('<div style="transform: rotate(3deg)">あ</div>', "transform"),
+        "色の直書き": ('<div style="color:#ff0000">あ</div>', "var(--名前)"),
+        "知らない色の変数": ('<div style="color:var(--rule)">あ</div>', "var(--名前)"),
+        "予備の値つきの var": ('<div style="color:var(--ink, #000)">あ</div>', "var(--名前)"),
+        "段の外の大きさ": ('<div style="font-size:30px">あ</div>', "font-size"),
+        "小さすぎる文字": ('<div style="font-size:16px">あ</div>', "font-size"),
+        "段の外の行高": ('<div style="line-height:1.1">あ</div>', "line-height"),
+        "読めない色の組": ('<div class="f-box deep"><div style="color:var(--ink)">あ</div></div>', "読めない"),
+        "文字と箱の混在": ("<div>あ<div>い</div></div>", "包む"),
+        "知らない class": ('<div class="card">あ</div>', "class card は無い"),
+        "知らない属性": ('<div id="x">あ</div>', "属性 id"),
+        "属性の on…": ('<div onclick="x()">あ</div>', "属性 onclick"),
+        "url の入る style": ('<div style="background-image:url(x.png)">あ</div>', "background-image"),
+        "コメント": ("<div>あ</div><!-- x -->", "コメント"),
+        "一番外に文字": ("あ", "一番外"),
+        "空": ("", "空"),
+        "マスの範囲": ('<div class="f-cells" data-total="100" data-on="120" data-cols="10"></div>', "data-on"),
+        "マスが多すぎる": ('<div class="f-cells" data-total="400" data-on="1" data-cols="10"></div>', "data-total"),
+        "棒が上限を越える": ('<div class="f-bars" data-max="10"><div class="f-bar" data-value="12">a</div></div>', "越えている"),
+        "棒の外の f-bar": ('<div class="f-bar" data-value="1">a</div>', "f-bars の中"),
+        "無いアイコン": ('<span class="f-icon" data-icon="no-such"></span>', "data-icon"),
+        "top の場所": ('<div class="f-box"><div>a</div><div class="f-chip top">札</div></div>', "最初の子"),
+        "箱の種類が 2 つ": ('<div class="f-box deep fill"><div>a</div></div>', "1 つだけ"),
+        "data-step を文字の中に": ('<div><span data-step="1">a</span></div>', "書けない"),
+        "data-fx だけ": ('<div data-fx="pop"><div>a</div></div>', "data-step と一緒"),
+    }
+    for name, (body, word) in bad.items():
+        msg = expect_error(one(_free(body)), "free-bad", word)
+        assert "1枚目（free）" in msg, (name, msg)
+    expect_error(one({"type": "free", "headline": "h"}), "free-nobody", "body")
+    expect_error(one(_free("<div>a</div>", items=[])), "free-key", "知らないキー")
+    pal = deck.palette({"background": "#ffffff", "ink": "#333333", "primary": "#006f83"})
+    assert "mark-off" in pal and "deep-off" in pal, "塗っていない側の色の役"
+    assert FB.visible_text('<div class="f-row"><div>割合<b>太字</b></div><div class="f-cells" data-total="100" data-on="21" data-cols="10"></div></div>') \
+        == ["割合", "太字", "100 のうち 21"]
+
+
+def case_free_render():
+    """自由なページの組み: 枠はほかの型と同じ部品・面の箱ごとに文字の色が決まる・部品の展開・クリックの段は data-step から。"""
+    body = ('<div class="f-row f-grow"><div class="f-box f-grow"><div class="f-label">淡い面</div><div>本文と<em>強調</em>と<b>太字</b></div>'
+            '<span class="f-icon disc" data-icon="users"></span></div>'
+            '<div class="f-box deep f-grow"><div class="f-chip top">札</div><div class="f-num">4.4</div><div class="f-note f-muted">注記</div></div>'
+            '<div class="f-box fill f-grow"><div class="f-strong">主役の色の面</div>'
+            '<div class="f-cells" data-total="20" data-on="5" data-cols="10"></div></div></div>')
+    path, info = build(one(_free(body, kicker="k", source="出典", takeaway="結論の1行"), ["x"]), "free-ok")
+    h = path.read_text(encoding="utf-8")
+    sec = h.split("<section data-slide")[1]
+    assert 'data-type="free"' in sec and 'class="kicker"' in sec and 'class="headline"' in sec and 'class="source"' in sec and 'class="take"' in sec, "枠はほかの型と同じ部品"
+    assert 'class="f-body"' in sec and "data-free-body" in sec and "left:120px" in sec.split('class="f-body"')[1][:120].replace(" ", ""), "中身の箱"
+    assert '<div class="f-box f-grow" style="background-color: var(--primary-soft);">' in sec
+    assert '<div class="f-label" style="color: var(--ink);">淡い面</div>' in sec
+    assert '<span style="color: var(--primary-text); font-weight: 700;">強調</span>' in sec and '<b style="font-weight: 700;">太字</b>' in sec
+    assert 'class="f-icon-disc" style="width: 96px; height: 96px; background-color: var(--primary-fill);"' in sec and "<svg" in sec
+    assert '<div class="f-box deep f-grow" style="background-color: var(--deep);">' in sec
+    assert '<div class="f-chip f-tag" style="background-color: var(--accent-fill); color: var(--on-accent-fill);">札</div>' in sec, "箱の上の縁の札"
+    assert '<div class="f-num" style="color: var(--deep-pop);">4.4</div>' in sec and '<div class="f-note f-muted" style="color: var(--on-deep);">注記</div>' in sec, "ほぼ黒の面の上の文字"
+    assert '<div class="f-strong" style="color: var(--on-primary-fill);">主役の色の面</div>' in sec
+    cells = sec[sec.index('class="f-cells"'):]
+    assert 'data-name="マス（20 のうち 5）"' in cells and "repeat(10, 1fr)" in cells
+    assert cells.count("background-color: var(--on-primary-fill);") == 5 and cells.count("background-color: var(--primary-soft);") >= 15, "塗った 5・塗っていない 15"
+    assert "onclick" not in sec and "position:absolute" not in sec.split('class="f-body"')[1].replace(" ", "")[200:], "body に position を書かせない"
+    # 棒: 長さは数に比例した flex の伸び（丸めない）・on の棒は差し色
+    bars = '<div class="f-box f-grow"><div class="f-bars" data-max="21"><div class="f-bar on" data-value="21"><b>21%</b>導入前</div><div class="f-bar" data-value="6.5"><b>6.5%</b>3か月目</div></div></div>'
+    h = build(one(_free(bars)), "free-bars")[0].read_text(encoding="utf-8")
+    assert 'style="flex: 21 1 0px; background-color: var(--accent-fill);"' in h and 'style="flex: 6.5 1 0px; background-color: var(--primary-fill);"' in h
+    assert 'style="flex: 14.5 1 0px;"' in h and 'class="f-bar-value" style="color: var(--primary-text);">6.5%</div>' in h and ">3か月目</div>" in h
+    # クリックの段: data-step の 1 以上の値の種類の数（talk と照合）。配る資料・steps: false は型と同じ扱い
+    steps = '<div class="f-row f-grow"><div class="f-box f-grow" data-step="1"><div>一</div></div><div class="f-box f-grow" data-step="2" data-fx="pop" data-name="二つ目"><div>二</div></div></div>'
+    path, _ = build(one(_free(steps), ["a", "b", "c"]), "free-steps")
+    sec = path.read_text(encoding="utf-8").split("<section data-slide")[1]
+    assert 'data-step="1" data-fx="rise"' in sec and 'data-step="2" data-fx="pop" data-name="二つ目"' in sec and "［クリック］" in sec
+    expect_error(one(_free(steps), ["a", "b"]), "free-talk", "talk")
+    path, _ = build({**one(_free(steps), ["a", "b", "c"]), "mode": "handout"}, "free-handout")
+    assert "data-step" not in path.read_text(encoding="utf-8").split("<section data-slide")[1].split("<aside")[0], "配る資料は動きなし"
+    path, _ = build(one(_free(steps, steps=False), ["a"]), "free-flat")
+    sec = path.read_text(encoding="utf-8").split("<section data-slide")[1]
+    assert 'data-step="1"' not in sec and 'data-delay="600"' in sec and 'data-delay="1200"' in sec, "steps: false は遅れに直す"
+    # 8 の倍数でない px は警告・部品が多すぎれば警告（止めない）
+    _, info = build(one(_free('<div class="f-box" style="padding: 30px"><div>a</div></div>')), "free-warn")
+    assert any("8 の倍数でない" in w for w in info["warnings"]), info["warnings"]
+    many = "".join('<div class="f-cells" data-total="100" data-on="1" data-cols="20" style="width: 240px"></div>' for _ in range(3))
+    _, info = build(one(_free(f'<div class="f-row f-grow">{many}</div>')), "free-many")
+    assert any("部品が多い" in w for w in info["warnings"]), info["warnings"]
+
+
+def case_free_chrome():
+    """自由なページの描き出しの検査（Chrome）: 中身の箱から出たら誤り・下が空けば警告・画像だけの出力でも誤りで止まる。"""
+    import subprocess
+    import render as R
+    ok = '<div class="f-row f-grow"><div class="f-box f-grow"><div>a</div></div><div class="f-box deep f-grow"><div class="f-chip top">札</div><div>b</div></div></div>'
+    vs = R.check(build(one(_free(ok)), "free-c-ok")[0])
+    assert not R.errors(vs) and not any(v["rule"].startswith("free-") for v in vs), vs
+    vs = R.check(build(one(_free('<div class="f-box"><div>箱が1つだけ</div></div>')), "free-c-sparse")[0])
+    assert [v["level"] for v in vs if v["rule"] == "free-sparse"] == ["warn"] and not R.errors(vs), vs
+    out_path = build(one(_free('<div class="f-row" style="min-height: 1200px"><div class="f-box f-grow"><div>高すぎる箱</div></div></div>')), "free-c-out")[0]
+    vs = R.check(out_path)
+    assert any(v["rule"] == "free-outside" and v.get("level", "error") == "error" for v in vs), vs
+    script = TMP / "free-c-out.json"
+    r = subprocess.run([sys.executable, str(SKILL / "scripts" / "html_slide.py"), "deck", "--script", str(script), "--out", str(TMP / "free-c-png"),
+                        "--no-fill", "--format", "png"], capture_output=True, text=True, encoding="utf-8", timeout=300)
+    assert r.returncode == 2 and "free-outside" in r.stderr and not (TMP / "free-c-png" / "slides").exists(), (r.returncode, r.stderr[-400:])
 
 
 CASES = {k[5:]: v for k, v in globals().items() if k.startswith("case_")}
