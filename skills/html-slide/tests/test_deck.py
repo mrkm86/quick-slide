@@ -2734,6 +2734,22 @@ def case_look_emphasis_on_fills():
     assert ".take-t, .take-t em { color: var(--on-primary-fill); }" in flat and ".tr.th .td div, .tr.th .td em { color: var(--on-primary-fill); }" in flat, "flat だけのとき"
     # 後に出る規則が勝つ: standard では、濃い面の規則が淡い面の規則より後ろ
     assert std.index(".take-t em, .tr.th .td em { color: var(--deep-pop); }") > std.index(".take-t, .take-t em { color: var(--on-primary-fill); }")
+    # 全面の写真（hero）の表紙・章扉: 題は幕の上に載るので、幕の上の色（検査済み）が、面の上の色の規則より後ろにあって勝つ（再査読の指摘）
+    for look in ({"title": "solid"}, {"title": "deep"}, DS.load("standard")["look"]):
+        css = DS.look_css(look)
+        last_title = max(css.rfind(".cover-subtitle em"), css.rfind(".cover-rule { background-color: var(--on-primary-fill); }"), css.rfind(".sec-panel"))
+        for rule in (".on-light .cover-title, .on-light .cover-subtitle, .on-light div, .on-light .sec-title, .on-light .sec-subtitle { color: var(--ink); }",
+                     ".on-light em { color: var(--accent-on-light); }", ".on-light .cover-label, .on-light .sec-label, .on-light .sec-no { color: var(--primary-on-light); }",
+                     ".on-dark .cover-title, .on-dark .cover-subtitle, .on-dark div, .on-dark .sec-title, .on-dark .sec-subtitle { color: #ffffff; }",
+                     ".on-dark em { color: var(--accent-on-dark); }", ".on-dark .cover-label, .on-dark .sec-label, .on-dark .sec-no { color: var(--primary-on-dark); }"):
+            assert rule in css and css.index(rule) > last_title, (look, rule)
+    assert ".on-light" not in DS.look_css({"surface": "flat"}), "title の look が無ければ足さない"
+    img = str(SKILL / "examples" / "images" / "s01-image.jpg")
+    for tone, cls in (("light", "on-light"), ("dark", "on-dark")):       # 組んだ HTML: 題・日付の箱が幕の class を持つ（上の規則が効く相手）
+        for spec in ({"type": "cover", "layout": "hero", "tone": tone, "title": "題の**強調**", "subtitle": "説明の**重要語**", "meta": ["日付"], "image": {"path": img}},
+                     {"type": "section", "layout": "hero", "tone": tone, "number": "01", "title": "章の**題**", "subtitle": "副題の**語**", "image": {"path": img}}):
+            h = build(one(spec), f"hero-{spec['type']}-{tone}")[0].read_text(encoding="utf-8")
+            assert f'-text {cls}"' in h, (spec["type"], tone)
     tpl = (SKILL / "templates" / "deck.html").read_text(encoding="utf-8")
     assert ".tr.th .td.hl div, .tr.th .td.hl em { color: var(--on-accent); }" in tpl, "強める列の見出しの強調の語（どのスタイルでも）"
     for th in ({"background": "#ffffff", "ink": "#333333", "primary": "#006f83"}, {"background": "#ffffff", "ink": "#1a1a1a", "primary": "#f5a623", "accent": "#399dd1"},

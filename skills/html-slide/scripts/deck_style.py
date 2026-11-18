@@ -195,6 +195,17 @@ def look_css(look: dict) -> str:
         css.append(".cover-label, .sec-label, .sec-no, .cover-title em, .sec-title em, .cover-subtitle em, .sec-subtitle em { color: var(--deep-pop); }")
         css.append(".cover-rule { background-color: var(--deep-pop); }")
         css.append(".sec-panel { background-color: var(--deep); }")
+    if look.get("title") in ("solid", "deep"):
+        # 全面の写真（layout: hero）では、題は写真の上の幕（.on-dark・.on-light）に載る。上の規則（面の上の色）が勝つと、明るい幕に白い題・
+        # 暗い幕に面用の強調の色が載って読めない。幕の上の色（雛形の規則と同じ値。幕に対して検査済み）を、後ろに置いて勝たせる
+        css.append(".on-dark .cover-title, .on-dark .cover-subtitle, .on-dark div, .on-dark .sec-title, .on-dark .sec-subtitle { color: #ffffff; }")
+        css.append(".on-dark em { color: var(--accent-on-dark); }")
+        css.append(".on-dark .cover-label, .on-dark .sec-label, .on-dark .sec-no { color: var(--primary-on-dark); }")
+        css.append(".on-dark .cover-rule { background-color: var(--primary-on-dark); }")
+        css.append(".on-light .cover-title, .on-light .cover-subtitle, .on-light div, .on-light .sec-title, .on-light .sec-subtitle { color: var(--ink); }")
+        css.append(".on-light em { color: var(--accent-on-light); }")
+        css.append(".on-light .cover-label, .on-light .sec-label, .on-light .sec-no { color: var(--primary-on-light); }")
+        css.append(".on-light .cover-rule { background-color: var(--primary-decor); }")
     r = {"square": 4, "round": 32}.get(look.get("radius"))
     if r:
         css.append(f"{BOXES}, .contact, .scrim, .side-img, .gal-img, .notice, .eq-res, .pair-box {{ border-radius: {r}px; }}")
