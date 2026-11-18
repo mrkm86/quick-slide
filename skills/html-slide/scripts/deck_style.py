@@ -165,7 +165,8 @@ def look_css(look: dict) -> str:
         css.append(".card-bar { display: none; }")
         css.append(".dg-band { background-color: var(--primary-soft); border-color: var(--primary-soft); }")
         css.append(".dg-node { border-color: var(--bg); }")
-        css.append(".card { min-height: 240px; }")       # 枠が無いので、箱は中身に沿わせる（中身の少ない箱を 400 まで伸ばすと、空きが箱の中に残る）
+        css.append(".card { min-height: 240px; }")
+        css.append(".card.lead-row, .card.sum-col { min-height: 0; }")       # 枠が無いので、箱は中身に沿わせる（中身の少ない箱を 400 まで伸ばすと、空きが箱の中に残る）
         css.append(".tr.th { background-color: var(--primary-fill); border-bottom-color: var(--primary-fill); }")
         css.append(".tr.th .td div { color: var(--on-primary-fill); }")
         css.append(".tr { border-bottom-color: var(--rule-weak); }")

@@ -956,6 +956,79 @@ def stretch_h(s: Slide, content: float, avail: float, floor: float = 0) -> int |
     return h if h > content else None
 
 
+LEAD_W = 5        # 主役の面の幅（格子の列の数）。残りは右の 7 列に縦に積む
+
+
+def lead_layout(s: Slide, top: float, items: list[dict], lead: int, *, step_of, name: str) -> list[str]:
+    """主役を大きく置く組み（layout: lead）: 項目の1つを左の大きな面（主役の色）に、残り（1〜3個）を右に縦に積む。
+
+    items は {label, value, title, body, icon} にそろえたもの。lead は主役の番号（0 から）。step_of(i) は i 個目が出る段。
+    同格に並べると主役が埋もれるページ（結論の数字と根拠・いちばん言いたい手と残りの手）で使う。
+    """
+    avail = s.bottom - top
+    lw, rx = span(LEAD_W), X0 + span(LEAD_W) + GUTTER
+    rw = CW - span(LEAD_W) - GUTTER
+    pad = 48
+    it = items[lead]
+    where = f"{name} の {lead + 1} 個目"
+    iw = lw - 2 * pad
+    head_part, room = "", avail - 2 * pad
+    if it.get("icon"):
+        head_part += icon_disc(it["icon"], 112, 64, ground="var(--on-primary-fill)", ink="var(--primary-fill)")
+        room -= 112
+    if it.get("label"):
+        ls, _ = fit(it["label"], 32, iw, what=f"{where}の label", lines=1, lh=1.5, min_size=24, bold=True)
+        head_part += f'<div class="lead-label" style="font-size:{ls}px">{esc(it["label"])}</div>'
+        room -= ls * 1.5
+    room -= 32                                    # 頭（アイコン・名札）と文字の間の最低の空き
+    body_part = ""
+    if it.get("value"):
+        vs, _ = fit(it["value"], 120, iw, what=f"{where}の value", lines=1, lh=1.2, min_size=57, bold=True)
+        body_part += f'<div class="lead-value" style="font-size:{vs}px">{esc(it["value"])}</div>'
+        room -= vs * 1.2 + 8
+    ts, tn = fit(it["title"], 57 if not it.get("value") else 45, iw, what=f"{where}の title", lines=3, lh=1.4, min_size=32, bold=True, tidy=True)
+    body_part += f'<div class="lead-title" style="font-size:{ts}px">{rich(it["title"])}</div>'
+    room -= tn * ts * 1.4
+    if it.get("body"):
+        bs, _ = fit(it["body"], min(32, ts), iw, what=f"{where}の body", height=room - 16, lh=1.6, min_size=24)
+        body_part += f'<div class="lead-body" style="font-size:{bs}px">{rich(it["body"])}</div>'
+    parts = [f'<div class="lead-panel" style="{box(X0, top, lw, avail)} padding:{pad}px" {s.anim(step_of(lead), "rise", 0, "主役")}>'
+             f'<div class="col">{head_part}</div><div class="col">{body_part}</div></div>']
+    rest = [(i, x) for i, x in enumerate(items) if i != lead]
+    k, gap = len(rest), 24
+    rh = (avail - gap * (k - 1)) / k
+    for j, (i, x) in enumerate(rest):
+        where = f"{name} の {i + 1} 個目"
+        disc = icon_disc(x["icon"], 96, 56, extra=" flex:none; margin-right:32px;") if x.get("icon") else ""
+        tw = rw - 2 * 40 - (96 + 32 if disc else 0)
+        inner, left = "", rh - 2 * 24
+        if x.get("label"):
+            ls, _ = s.fit("lead-row-label", x["label"], 26, tw, what=f"{where}の label", lines=1, lh=1.5, min_size=22, bold=True)
+            inner += f'<div class="card-label" style="font-size:{ls}px; margin-bottom:0">{esc(x["label"])}</div>'
+            left -= ls * 1.5
+        if x.get("value"):
+            vs, _ = s.fit("lead-row-value", x["value"], 57, tw, what=f"{where}の value", lines=1, lh=1.4, min_size=36, bold=True)
+            inner += f'<div class="lead-row-value" style="font-size:{vs}px">{esc(x["value"])}</div>'
+            left -= vs * 1.4
+        ts, tn = s.fit("lead-row-title", x["title"], 36 if k < 3 or not x.get("value") else 32, tw, what=f"{where}の title", lines=2, lh=1.4, min_size=28, bold=True, tidy=True)
+        inner += f'<div class="lead-row-title" style="font-size:{ts}px">{rich(x["title"])}</div>'
+        left -= tn * ts * 1.4
+        if x.get("body"):
+            bs, _ = s.fit("lead-row-body", x["body"], 28, tw, under="lead-row-title", what=f"{where}の body", height=left - 8, lh=1.5, min_size=24)
+            inner += f'<div class="lead-row-body" style="font-size:{bs}px">{rich(x["body"])}</div>'
+        parts.append(f'<div class="card lead-row" style="{box(rx, top + j * (rh + gap), rw, rh)}" {s.anim(step_of(i), "rise", 120 * j, f"項目{i + 1}", item=True)}>'
+                     f'{disc}<div class="col" style="flex:1">{inner}</div></div>')
+    s.need, s.avail = avail, avail
+    return parts
+
+
+def _layout_of(s: Slide) -> str:
+    layout = s.spec.get("layout", "row")
+    if layout not in ("row", "lead"):
+        s.err("layout は row（横に並べる・既定）か lead（主役の1つを左に大きく、残りを右に積む）")
+    return layout
+
+
 def t_cards(s: Slide):
     """カード: 2〜4枚を横に並べる（小見出し・見出し・本文）。1枚ずつクリックで出る。accent: true で1枚を強める。
 
@@ -966,6 +1039,16 @@ def t_cards(s: Slide):
     imaged = [bool(it.get("image")) for it in its]
     if any(imaged) and not all(imaged):
         s.err("items の image は、書くなら全部のカードに書く（並びがそろわない）")
+    if _layout_of(s) == "lead":                 # 主役（accent の1枚。無ければ1枚目）を左に大きく
+        if any(imaged):
+            s.err("layout: lead は、写真つきのカードには使えない")
+        for i, it in enumerate(its):
+            if it.get("badge") and not it.get("accent"):
+                s.err(f"items の {i + 1} 個目: badge は accent: true の項目にだけ書ける")
+            icon_of(s, it, f"items の {i + 1} 個目")
+        lead = next((i for i, it in enumerate(its) if it.get("accent")), 0)
+        norm = [{"label": s.text("label", spec=it), "title": it["title"], "body": s.text("body", spec=it), "icon": it.get("icon")} for it in its]
+        return [head] + lead_layout(s, top, norm, lead, step_of=lambda i: i + 1, name="items") + [source_line(s)]
     n, gap = len(its), GUTTER
     cw = (CW - gap * (n - 1)) // n         # 整数に切り下げる（px() が丸めて上げると、並べた行が版の幅を越える）
     avail = s.bottom - top
@@ -1716,13 +1799,19 @@ def t_summary(s: Slide):
     head, top = header(s, default_kicker="結論")
     pts = s.items("points", 2, 3, ("title", "body", "value"))
     label = s.text("label", default="根拠")
+    if _layout_of(s) == "lead":                 # 1つ目の根拠（いちばん言いたい数字）を左に大きく
+        norm = [{"label": f"{label}{i + 1}", "value": s.text("value", spec=p), "title": p["title"], "body": s.text("body", spec=p)} for i, p in enumerate(pts)]
+        return [head] + lead_layout(s, top, norm, 0, step_of=lambda i: 1, name="points") + [source_line(s)]
+    flat = s.look.get("surface") == "flat"      # 枠なしの見た目では、上の線をやめて淡い面の箱にする
+    pad = 40 if flat else 0
     n, gap = len(pts), GUTTER
-    cw = (CW - gap * (n - 1)) // n         # 整数に切り下げる（px() が丸めて上げると、並べた行が版の幅を越える）
+    bw = (CW - gap * (n - 1)) // n         # 整数に切り下げる（px() が丸めて上げると、並べた行が版の幅を越える）
+    cw = bw - 2 * pad
     avail = s.bottom - top
-    room = avail - 8 - 24 - 28 * 1.5 - 16
+    room = avail - 8 - 24 - 28 * 1.5 - 16 - 2 * pad
     cols, tallest = [], 0.0
     for i, p in enumerate(pts):
-        inner = f'<div class="sum-bar"></div><div class="sum-no">{esc(label)}{i + 1}</div>'
+        inner = ("" if flat else '<div class="sum-bar"></div>') + f'<div class="sum-no"{' style="margin-top:0"' if flat else ""}>{esc(label)}{i + 1}</div>'
         left = room
         v = s.text("value", spec=p)
         if v:
@@ -1738,9 +1827,13 @@ def t_summary(s: Slide):
             left -= bn * bs * 1.6
             inner += f'<div class="sum-body" style="font-size:{bs}px">{rich(body)}</div>'
         tallest = max(tallest, room - left)
-        cols.append(f'<div class="sum-col" style="width:{px(cw)}" {s.anim(1, "rise", 150 * i, f"根拠{i + 1}", item=True)}>'
-                    f'{inner}</div>')
-    s.need, s.avail = 8 + 24 + 28 * 1.5 + tallest, avail
+        cols.append((inner, i))
+    need = 8 + 24 + 28 * 1.5 + tallest + 2 * pad
+    tall = stretch_h(s, need, avail) if flat else None
+    box_style = f"padding:{pad}px; min-height:0" + (f"; height:{px(tall)}" if tall else "")
+    cols = [f'<div class="sum-col{" card" if flat else ""}" style="width:{px(bw)}{"; " + box_style if flat else ""}" '
+            f'{s.anim(1, "rise", 150 * i, f"根拠{i + 1}", item=True)}>{inner}</div>' for inner, i in cols]
+    s.need, s.avail = need, avail
     return [head, f'<div class="center" style="{box(X0, top, CW, avail)}"><div class="row" style="gap:{gap}px; align-items:flex-start">'
             + "".join(cols) + "</div></div>", source_line(s)]
 
@@ -3212,7 +3305,7 @@ TYPES = {
     "section": (t_section, {"number", "label", "title", "subtitle", "image", "layout", "text_side", "tone", "motif"}, False),
     "statement": (t_statement, {"kicker", "headline", "body", "source", "footnote"}, True),
     "big-number": (t_big_number, HEAD_KEYS | {"value", "unit", "label", "note", "side"}, True),
-    "cards": (t_cards, HEAD_KEYS | {"items"}, True),
+    "cards": (t_cards, HEAD_KEYS | {"items", "layout"}, True),
     "flow": (t_flow, HEAD_KEYS | {"items"}, True),
     "compare": (t_compare, HEAD_KEYS | {"left", "right", "accent", "arrow"}, True),
     "bar-chart": (t_bar_chart, HEAD_KEYS | {"bars", "unit", "note", "max", "callout"}, True),
@@ -3222,7 +3315,7 @@ TYPES = {
     "bullets": (t_bullets, HEAD_KEYS | {"items", "image", "side", "split"}, True),
     "timeline": (t_timeline, HEAD_KEYS | {"items", "current"}, True),
     "closing": (t_closing, HEAD_KEYS | {"items", "contact", "image"}, True),
-    "summary": (t_summary, HEAD_KEYS | {"points", "label"}, True),
+    "summary": (t_summary, HEAD_KEYS | {"points", "label", "layout"}, True),
     "kpi": (t_kpi, HEAD_KEYS | {"items", "image"}, True),
     "line-chart": (t_line_chart, HEAD_KEYS | {"labels", "series", "unit", "min", "max", "note", "callout", "value_labels"}, True),
     "team": (t_team, HEAD_KEYS | {"members"}, True),
