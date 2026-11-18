@@ -121,7 +121,7 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
     white_path = white_sha = None
     if logo_path is not None and mode in ("pitch", "presentation") and variant != "white" and "logo_white" in assets:
         white_path, white_sha, why = _asset_file(store, root, assets["logo_white"])
-        if white_path is not None and not _same_aspect(assets[VARIANT_TO_ROLE[variant]], assets["logo_white"]):
+        if white_path is not None and not _same_aspect(logo_path, white_path):
             white_path = white_sha = None
             why = "白いロゴの縦横比がロゴと違う"
         if why:
@@ -380,10 +380,22 @@ def _asset_file(store: Any, root: DataRoot, row: dict[str, Any] | None) -> tuple
     return path, sha, None
 
 
-def _same_aspect(a: dict[str, Any], b: dict[str, Any]) -> bool:
+def _drawn_size(path: Path) -> tuple[int, int]:
+    """画像の、透明な余白を切った大きさ（エンジンはロゴの余白を切ってから枠に収める。同じ測り方で比べる）。"""
+    from PIL import Image
+    with Image.open(path) as im:
+        im.load()
+        box = im.convert("RGBA").getchannel("A").getbbox() if "A" in im.getbands() or im.mode == "P" else None
+        return (box[2] - box[0], box[3] - box[1]) if box else im.size
+
+
+def _same_aspect(a: Path, b: Path) -> bool:
+    """ロゴと白いロゴの縦横比が合うか（透明な余白を切った大きさで比べる。ファイルの大きさで比べると、余白の違うだけの
+    白いロゴを捨ててしまう）。読めない画像は合わない扱い。"""
     try:
-        ra, rb = a["width"] / a["height"], b["width"] / b["height"]
-    except (KeyError, TypeError, ZeroDivisionError):
+        (aw, ah), (bw, bh) = _drawn_size(a), _drawn_size(b)
+        ra, rb = aw / ah, bw / bh
+    except (OSError, ValueError, ZeroDivisionError):
         return False
     return abs(rb - ra) <= WHITE_ASPECT_TOLERANCE * ra
 

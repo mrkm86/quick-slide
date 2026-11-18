@@ -346,13 +346,15 @@ def _contrast(a: float, b: float) -> float:
     return (hi + 0.05) / (lo + 0.05)
 
 
-def logo_look(lum: float, white_lum: float | None, ground: str) -> dict:
+def logo_look(lum: float | None, white_lum: float | None, ground: str) -> dict:
     """その場所の地の色（ground・#rrggbb）の上で、ロゴをどう置くか。{"variant": normal|white, "plate": 敷く色, "sticker": bool}。
 
     1. ロゴが地の上で読める（LOGO_CONTRAST 以上）: そのまま。地は今までどおり、その場所の色（見えない）
     2. 読めず、白いロゴ（--logo-white）なら読める: 白いロゴに替える
     3. どちらも読めない: ロゴの周りに余白をとった地（ステッカー）を敷く。色は白 → 黒 の順に、ロゴが読める方
     """
+    if lum is None:                                  # 透明な所の無いロゴは自分の地を持つ。そのまま置く
+        return {"variant": "normal", "plate": ground, "sticker": False}
     g = _lum(_rgb255(ground))
     if _contrast(lum, g) >= LOGO_CONTRAST:
         return {"variant": "normal", "plate": ground, "sticker": False}
@@ -385,10 +387,15 @@ def load_logo(logo, white=None) -> tuple[pathlib.Path, dict] | tuple[None, None]
         from PIL import Image
         with Image.open(p) as im:
             im.load()
-            box = im.convert("RGBA").getchannel("A").getbbox() if "A" in im.getbands() or im.mode == "P" else None
+            alpha = im.convert("RGBA").getchannel("A") if "A" in im.getbands() or im.mode == "P" else None
+            box = alpha.getbbox() if alpha else None
+            if alpha and box is None:
+                raise DeckError(f"{what}の画像が全部透明（描かれているものが無い）: {p.name}")
             size = (box[2] - box[0], box[3] - box[1]) if box else im.size
             trim = list(box) if box and box != (0, 0, *im.size) else None
-            return p, size, trim, _logo_lum(im.crop(tuple(trim)) if trim else im)
+            # 透明な所の無い画像（JPEG・地を塗った PNG）は、自分の地を持つ。どの面の上でもそのまま読めるので、明るさは測らない（None）
+            opaque = alpha is None or alpha.getextrema()[0] == 255
+            return p, size, trim, None if opaque else _logo_lum(im.crop(tuple(trim)) if trim else im)
 
     p, size, trim, lum = read(logo, "ロゴ")
     geo = logo_geometry(*size)
@@ -411,13 +418,13 @@ def logo_box(geo: dict, corner: str) -> tuple:
     return (geo["x"], geo["y"], w, h)
 
 
-def logo_parts(box: tuple, corner: str, name: str, plate: str, sticker: bool = False) -> list[str]:
+def logo_parts(box: tuple, corner: str, name: str, plate: str, sticker: bool = False, pad: int | None = None) -> list[str]:
     """ロゴと、その後ろの地（ロゴと同じ大きさ・その場所の地の色）。PPTX では別々の部品になる。
     sticker は、ロゴが読めない地の上の地: ロゴの周りに LOGO_STICKER_PAD の余白をとり、角を丸める。"""
     x, y, w, h = box
     css = f'left: {x}px; top: {y}px; width: {w}px; height: {h}px;'
     k = LOGO_KEEP[corner]
-    pad = LOGO_STICKER_PAD if sticker else 0
+    pad = (LOGO_STICKER_PAD if pad is None else pad) if sticker else 0
     pcss = (f'left: {x - pad}px; top: {y - pad}px; width: {w + 2 * pad}px; height: {h + 2 * pad}px; border-radius: {LOGO_STICKER_RADIUS}px;'
             if sticker else css)
     return [f'<div class="logo-plate" data-keep="logo-plate{k}" data-name="ロゴの地" style="background-color: {plate}; {pcss}"></div>',
@@ -454,7 +461,7 @@ def fit_logo_plates(html_path, info) -> None:
     with tempfile.TemporaryDirectory(prefix="html-slide-logo-") as tmp:
         r = subprocess.run([node, str(pathlib.Path(__file__).with_name("logo_ground.mjs")), str(html_path), tmp,
                             str(LOGO_RING), *(",".join(map(str, b)) for b in boxes)],
-                           capture_output=True, text=True, timeout=600, env=B.child_env(), encoding="utf-8")
+                           capture_output=True, text=True, timeout=600, env={**B.child_env(), "HTML_SLIDE_LOGO_PAD": str(LOGO_STICKER_PAD)}, encoding="utf-8")
         if r.returncode != 0:
             raise DeckError(f"ロゴの置き場を調べられなかった: {r.stderr.strip()[:300]}")
         hits = json.loads(r.stdout.strip().splitlines()[-1])["pages"]
@@ -467,7 +474,7 @@ def fit_logo_plates(html_path, info) -> None:
                 with Image.open(pathlib.Path(tmp) / f"ground-{i + 1:02d}-{k}.png") as im:
                     px = list(im.convert("RGB").getdata())
                 color, n = collections.Counter(px).most_common(1)[0]
-                choice.append((corner, (h["x"], *boxes[k][1:]), "#%02x%02x%02x" % color, n / len(px)))
+                choice.append((corner, (h["x"], *boxes[k][1:]), "#%02x%02x%02x" % color, n / len(px), bool(h.get("near"))))
                 break
             else:
                 choice.append(None)
@@ -480,7 +487,7 @@ def fit_logo_plates(html_path, info) -> None:
         if choice[i] is None:
             pages.append({"no": no, "off": True})
             continue
-        corner, box, color, share = choice[i]
+        corner, box, color, share, near = choice[i]
         x, _, w, _ = box
         if corner == "bottom-left":                                           # 下の文字はロゴの右
             left = x + w + LOGO_GAP
@@ -491,7 +498,8 @@ def fit_logo_plates(html_path, info) -> None:
             sec = re.sub(r'(data-name="下の文字")(?: style="[^"]*")?>', rf'\1 style="left: {left}px; width: {end - left}px;{fpx}">', sec, count=1)
         look = logo_look(lg["lum"], lg.get("white_lum"), color)                # 地の上で読めるか（読めなければ白いロゴ・それも無ければステッカー）
         use = lg["white_name"] if look["variant"] == "white" else name
-        sec = sec.replace('      <aside class="notes">', "".join(f"      {ln}\n" for ln in logo_parts(box, corner, use, look["plate"], look["sticker"]))
+        pad = 0 if near else LOGO_STICKER_PAD      # 余白の帯に絵や文字がかかるページでは、余白をとらずにロゴと同じ大きさの地にする（覆わない）
+        sec = sec.replace('      <aside class="notes">', "".join(f"      {ln}\n" for ln in logo_parts(box, corner, use, look["plate"], look["sticker"], pad))
                           + '      <aside class="notes">', 1)
         pages.append({"no": no, "corner": corner, "x": x, "plate": look["plate"], "variant": look["variant"], "sticker": look["sticker"]})
         if share < LOGO_GROUND_SHARE:
