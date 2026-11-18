@@ -332,6 +332,9 @@ class _Render:
                 cs = self.classes(k)
                 if any(c in PARTS | LAYOUT for c in cs):
                     raise FreeError(f"body の {k.line} 行目: <{k.tag}> に class {'・'.join(cs)} は付けられない（文字の中では f-strong・f-muted だけ）")
+                data = sorted(a for a in k.attrs if a.startswith("data-"))
+                if data:
+                    raise FreeError(f"body の {k.line} 行目: 文字の中の <{k.tag}> に {'・'.join(data)} は書けない（動きやまとまりは <div> に付ける）")
                 st = style_of(k, self.warns)
                 extra = sorted(set(st) - {"color", "font-weight", "font-size"})
                 if extra:
