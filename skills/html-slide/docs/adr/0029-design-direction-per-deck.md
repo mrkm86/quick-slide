@@ -103,7 +103,7 @@ html-slide の質を上げるにあたり、作り方を2つ比べた。
 |---|---|
 | 色の役 | `primary-fill`・`accent-fill`（テーマの色そのままの面）と `on-…-fill`（その上の文字。白か ink の読める方）。`deep`（ほぼ黒の面）・`on-deep`・`deep-pop`（その上で強める色）。どれも 4.5:1 を検査する |
 | look | `surface: flat`（枠なしの淡い面）・`fill: stretch`（並ぶ箱を置ける高さへ伸ばす。中身の 1.6 倍まで）・`title: solid`（表紙・章扉は主役の色の面）・`statement: deep`・`emphasis: deep`・`deep: on`（表の見出し・結論の帯・締め） |
-| 既定 | `standard` をこの look にした。前の見た目は `classic` として残す |
+| 既定 | `standard` をこの look にした。前の飾り（箱の枠・上の帯・白い表紙）は `classic` として残す。組み方の直しはどのスタイルにも効くので、`classic` でも前の版と同じ組みには戻らない |
 | 組み方 | 表の列の幅と揃えを中身から決める／カードの高さを中身で数える／カタカナの語を途中で折らない／`layout: lead`（主役の1つを左に大きく。cards・summary） |
 | 型 | `layers`（構成図。層に箱を並べ、矢印でつなぐ） |
 

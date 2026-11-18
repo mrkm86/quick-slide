@@ -174,6 +174,7 @@ deck "layers（構成図）: 層と箱の数・矢印の向き・col で縦に�
 deck "layout: lead（cards・summary）: 主役は accent の項目か1つ目・クリックの数は変わらない・写真つきカードと知らない値は rc=2" layout_lead
 deck "look の新しい値（flat・stretch・solid・deep）: CSS が出る・classic は出ない・standard は出る・知らない値は rc=2・deep: on も読める" look_new_values
 deck "look.fill: stretch は箱を8の倍数の高さへ伸ばす（中身の1.6倍まで）・classic は伸ばさない" look_fill_stretch
+deck "色の面の上の強調の語と出典は面の上の色・layers の矢印の型違いは rc=2・表の列の幅の合計は本文の幅" look_emphasis_on_fills
 deck "色の役（primary-fill・accent-fill・deep・deep-pop）: 3つのテーマと黄・淡い黄・紺の主役の色で文字が 4.5:1" color_roles
 
 # --- レビューモード（ADR 0028） ---

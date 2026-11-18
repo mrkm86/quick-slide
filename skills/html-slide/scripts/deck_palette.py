@@ -122,7 +122,9 @@ def base_palette(t: dict) -> dict:
     _, c, h = KC.to_oklch(t["primary"])
     p["deep"] = KC.from_oklch(0.25, min(c * 0.25, 0.02), h)     # 彩度はごくわずか（0.05 だと黄の主役の色で焦げ茶になり、色が濁って見えた）
     p["on-deep"] = white
-    p["deep-pop"] = next((x for x in (p["primary-fill"], p["accent-fill"]) if ratio(x, p["deep"]) >= 4.5), white)
+    # 濃い面の上で強める色: 主役の色そのまま → 差し色そのまま → どちらも 4.5:1 に届かなければ、主役の色を白へ寄せて届く一番濃い色（白にすると強調が消える）
+    p["deep-pop"] = next((x for x in (p["primary-fill"], p["accent-fill"]) if ratio(x, p["deep"]) >= 4.5),
+                         next((x for x in (mix(t["primary"], 1 - n / 40, white) for n in range(41)) if ratio(x, p["deep"]) >= 4.5), white))
     p.update(SEMANTIC)
     p.update(_tone_roles(p))
     p.update(_bar_roles(p))

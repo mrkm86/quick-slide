@@ -1377,7 +1377,8 @@ def t_table(s: Slide):
     if not isinstance(weights, list) or len(weights) != len(cols) or not all(isinstance(v, (int, float)) and v > 0 for v in weights):
         s.err("widths は columns と同じ数の正の数")
     total = sum(weights)
-    cws = [CW * v / total for v in weights]
+    cws = [int(CW * v / total) for v in weights]     # 整数に切り下げ、端数は最後の列へ（列ごとに丸めると、合計が版の幅を 1px 越えることがある）
+    cws[-1] = CW - sum(cws[:-1])
     # 揃え: align が無ければ、1列目は左。ほかの列は、全部のセルが短い（全角 8 字ぶんまで）なら中央、文が入る列は左
     short = [all(text_width(plain(row[c][0]), 28) <= 28 * 8 for row in cells_of[1:]) for c in range(len(cols))]
     aligns = s.spec.get("align", ["left"] + ["center" if short[c] else "left" for c in range(1, len(cols))])
@@ -2709,7 +2710,7 @@ def t_layers(s: Slide):
                 s.err(f"{where}: id は資料の中でなく、このページの中で重ならない文字で書く（{nid!r}）")
             nodes[nid] = {"row": r, "col": col, "it": it, "where": where}
         parsed.append((s.text("label", spec=row, where=f"rows の {r + 1} 段目の "), its))
-    links = s.spec.get("links") or []
+    links = s.spec["links"] if "links" in s.spec else []      # 書いたなら null も rc=2（未指定とは分ける）
     if not isinstance(links, list) or len(links) > 8:
         s.err("links は 8 本までの配列")
     R, C = len(parsed), max(n["col"] for n in nodes.values())
@@ -2778,6 +2779,9 @@ def t_layers(s: Slide):
             if abs(a["row"] - b["row"]) != 1:
                 s.err(f"{where}: 上下の矢印は、隣の層どうしだけ")
             kind = "v"
+        for k in ("both", "accent"):
+            if k in ln and not isinstance(ln[k], bool):
+                s.err(f"{where}: {k} は true か false（{ln[k]!r}）")
         conns.append({"a": a, "b": b, "kind": kind, "label": s.text("label", spec=ln, where=f"{where}の "),
                       "both": ln.get("both") is True, "hl": ln.get("accent") is True, "where": where})
     sides: dict[tuple, list] = {}

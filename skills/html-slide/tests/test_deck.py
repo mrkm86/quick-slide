@@ -2717,6 +2717,51 @@ def case_look_new_values():
     assert DS.load(str(SKILL / "templates" / "custom-style.example.yaml"))["look"]["fill"] == "content"
 
 
+def case_look_emphasis_on_fills():
+    """色の面の上の強調の語（**語**）・出典: 面と同じ色相の強調の色のまま残さない（査読の指摘。表紙の副題・締め・表の見出し・結論の帯）。
+    look の CSS に面ごとの規則があり、その色の役と面が 4.5:1（3 テーマと明るい主役の色）。layers の矢印の型違い・表の幅の合計も見る。"""
+    DS = deck.DS
+    std = DS.look_css(DS.load("standard")["look"])
+    for rule in (".cover-subtitle em, .sec-subtitle em { color: var(--on-primary-fill); font-weight: 700; }",
+                 ".take-t em, .tr.th .td em { color: var(--deep-pop); }",
+                 ".tr.th .td.hl em { color: var(--on-accent); }",
+                 'section[data-type="closing"] .source { color: var(--on-deep); }',
+                 'section[data-type="closing"] em { color: var(--deep-pop); }',
+                 'section[data-type="closing"] .contact em { color: var(--on-primary); }'):
+        assert rule in std, f"standard の look に無い: {rule}"
+    assert ".cover-subtitle em" in DS.look_css({"title": "deep"}) and "var(--deep-pop)" in DS.look_css({"title": "deep"})
+    flat = DS.look_css({"surface": "flat"})
+    assert ".take-t, .take-t em { color: var(--on-primary-fill); }" in flat and ".tr.th .td div, .tr.th .td em { color: var(--on-primary-fill); }" in flat, "flat だけのとき"
+    # 後に出る規則が勝つ: standard では、濃い面の規則が淡い面の規則より後ろ
+    assert std.index(".take-t em, .tr.th .td em { color: var(--deep-pop); }") > std.index(".take-t, .take-t em { color: var(--on-primary-fill); }")
+    tpl = (SKILL / "templates" / "deck.html").read_text(encoding="utf-8")
+    assert ".tr.th .td.hl div, .tr.th .td.hl em { color: var(--on-accent); }" in tpl, "強める列の見出しの強調の語（どのスタイルでも）"
+    for th in ({"background": "#ffffff", "ink": "#333333", "primary": "#006f83"}, {"background": "#ffffff", "ink": "#1a1a1a", "primary": "#f5a623", "accent": "#399dd1"},
+               {"background": "#faf7f0", "ink": "#333333", "primary": "#ac3e00"}, {"background": "#ffffff", "ink": "#333333", "primary": "#197a4b"}):
+        pal = deck.palette(th)
+        for fg, bg in (("on-primary-fill", "primary-fill"), ("deep-pop", "deep"), ("on-deep", "deep"), ("on-accent", "accent-strong"), ("on-primary", "primary-strong")):
+            assert deck.ratio(pal[fg], pal[bg]) >= 4.5 - 1e-9, (th["primary"], fg, bg, deck.ratio(pal[fg], pal[bg]))
+    # 組んだ HTML に、強調の語と出典がそのまま出ている（色は上の規則が決める）
+    h = build(one({"type": "closing", "headline": "締め", "items": [{"title": "**重要**な次の一手"}], "source": "出典"}), "em-closing")[0].read_text(encoding="utf-8")
+    assert "<em>重要</em>" in h and 'class="source"' in h
+    # layers: both・accent は真偽値だけ・links は書いたなら配列
+    base = {"type": "layers", "headline": "h", "rows": [{"items": [{"id": "a", "title": "A"}, {"id": "b", "title": "B"}]}]}
+    for bad in ({"links": [{"from": "a", "to": "b", "both": "true"}]}, {"links": [{"from": "a", "to": "b", "accent": 1}]}, {"links": None}):
+        try:
+            build(one({**base, **bad}), "ly-bad")
+            raise AssertionError(f"通った: {bad}")
+        except T.DeckError:
+            pass
+    build(one({**base, "links": [{"from": "a", "to": "b", "both": True, "accent": False}]}), "ly-ok")
+    build(one(base), "ly-nolinks")
+    # 表: 列の幅の合計は、いつも本文の幅ちょうど（列ごとに丸めて 1px 越えない）
+    import re as _re
+    h = build(one({"type": "table", "headline": "h", "columns": ["a", "b", "c"], "rows": [["1", "2", "3"]], "widths": [1, 1, 7]}), "tb-sum")[0].read_text(encoding="utf-8")
+    row = h[h.index('class="tr th"'):]
+    ws = [int(v) for v in _re.findall(r'class="td[^"]*" style="width:(\d+)px', row[:row.index("</div></div></div>")])][:3]
+    assert sum(ws) == T.CW, ws
+
+
 def case_look_fill_stretch():
     """fill: stretch は並ぶ箱の高さを置ける高さへ伸ばす（8 の倍数・中身の 1.6 倍まで）。classic は伸ばさず、中身に沿う。"""
     cards = {"type": "cards", "headline": "h", "items": [{"title": "a", "body": "短い"}, {"title": "b", "body": "短い"}, {"title": "c", "body": "短い"}]}

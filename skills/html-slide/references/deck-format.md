@@ -359,7 +359,7 @@ node scripts/snapshot.mjs /tmp/deck-try/deck.html /tmp/deck-try/png       # 1枚
 | スタイル | 中身 |
 |---|---|
 | `standard`（既定） | 説明・報告・社内資料向け。箱は枠なしの淡い面・並ぶ箱は置ける高さへ伸ばす・表紙と章扉は主役の色の全面・結論の帯と表の見出しの行と締めのページと主張の1枚は濃い面（ほぼ黒）・強調する箱は差し色のベタ塗り。上端の帯と左上の印は無し |
-| `classic` | 前の既定。箱に枠線を引く（何も足さない）。投影・印刷で境をはっきり見せたいとき |
+| `classic` | 前の既定の飾り。箱に枠線を引く（look を足さない）。投影・印刷で境をはっきり見せたいとき。表の列の幅など組み方は `standard` と同じ（前の版と同じ組みには戻らない） |
 | `visual` | ビジュアル寄り。プレゼン・ピッチ向け。表紙・章扉は全面写真、写真は全面、画像つきの箇条書きは写真1/2、3枚のギャラリーはコラージュ、出方はフェード。見た目は地に強調色をうっすら・上端に全幅の帯・白い箱に枠線・角を丸く・強調する箱と主張の1枚は強調色のベタ塗り |
 | カスタム（YAML） | `defaults`（型ごとの変化形の既定）・`motion`（fx・transition）・`look`（見た目の調子: background・surface・radius・band・emphasis・statement・fill・title・deep）。雛形は `templates/custom-style.example.yaml`。知らないキー・値は rc=2 |
 

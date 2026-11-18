@@ -174,23 +174,25 @@ def look_css(look: dict) -> str:
         css.append(".card { min-height: 240px; }")
         css.append(".card.lead-row, .card.sum-col { min-height: 0; }")       # 枠が無いので、箱は中身に沿わせる（中身の少ない箱を 400 まで伸ばすと、空きが箱の中に残る）
         css.append(".tr.th { background-color: var(--primary-fill); border-bottom-color: var(--primary-fill); }")
-        css.append(".tr.th .td div { color: var(--on-primary-fill); }")
+        css.append(".tr.th .td div, .tr.th .td em { color: var(--on-primary-fill); }")
+        css.append(".tr.th .td.hl em { color: var(--on-accent); }")
         css.append(".tr { border-bottom-color: var(--rule-weak); }")
         css.append(".take { background-color: var(--primary-fill); border-color: var(--primary-fill); }")
-        css.append(".take-t { color: var(--on-primary-fill); }")
+        css.append(".take-t, .take-t em { color: var(--on-primary-fill); }")
         css.append("section[data-slide] { --take-icon: var(--on-primary-fill); --disc-ground: var(--primary-fill); --disc-ink: var(--on-primary-fill); }")   # 淡い面の箱の上では、淡い丸が面に消える。丸は主役の色の面に
     if look.get("title") == "solid":
         tp = 'section[data-type="cover"], section[data-type="section"]'
         css.append(f"{tp} {{ background-color: var(--primary-fill); }}")
         css.append(".cover-title, .cover-subtitle, .cover-label, .cover-meta div, .sec-title, .sec-subtitle, .sec-label, .sec-no, "
                    ".cover-title em, .sec-title em { color: var(--on-primary-fill); }")
+        css.append(".cover-subtitle em, .sec-subtitle em { color: var(--on-primary-fill); font-weight: 700; }")   # 面と同じ色相の強調の色は面に消える。面の上の文字の色で、太さで強める
         css.append(".cover-rule { background-color: var(--on-primary-fill); }")
         css.append(".sec-panel { background-color: var(--primary-fill); }")     # 全面が主役の色なので、左の帯は面に溶かす
     if look.get("title") == "deep":
         tp = 'section[data-type="cover"], section[data-type="section"]'
         css.append(f"{tp} {{ background-color: var(--deep); }}")
         css.append(".cover-title, .cover-subtitle, .cover-meta div, .sec-title, .sec-subtitle { color: var(--on-deep); }")
-        css.append(".cover-label, .sec-label, .sec-no, .cover-title em, .sec-title em { color: var(--deep-pop); }")
+        css.append(".cover-label, .sec-label, .sec-no, .cover-title em, .sec-title em, .cover-subtitle em, .sec-subtitle em { color: var(--deep-pop); }")
         css.append(".cover-rule { background-color: var(--deep-pop); }")
         css.append(".sec-panel { background-color: var(--deep); }")
     r = {"square": 4, "round": 32}.get(look.get("radius"))
@@ -227,12 +229,16 @@ def look_css(look: dict) -> str:
         cl = 'section[data-type="closing"]'
         css.append(".take { background-color: var(--deep); border-color: var(--deep); }")
         css.append(".take-t { color: var(--on-deep); }")
+        css.append(".take-t em, .tr.th .td em { color: var(--deep-pop); }")
+        css.append(".tr.th .td.hl em { color: var(--on-accent); }")                 # 強める列の見出しは差し色の面のまま          # 濃い面の上の強調の語
         css.append("section[data-slide] { --take-icon: var(--deep-pop); }")
         css.append(".tr.th { background-color: var(--deep); border-bottom-color: var(--deep); }")
         css.append(".tr.th .td div { color: var(--on-deep); }")
         css.append(f"{cl} {{ background-color: var(--deep); }}")
         css.append(f"{cl} .headline, {cl} .li-title, {cl} .li-body, {cl} .sub, {cl} .footer, {cl} .pageno {{ color: var(--on-deep); }}")
-        css.append(f"{cl} .kicker, {cl} .headline em {{ color: var(--deep-pop); }}")
+        css.append(f"{cl} .source {{ color: var(--on-deep); }}")                     # 出典・脚注（.source.footnote）も濃い面の上の文字に
+        css.append(f"{cl} .kicker, {cl} em {{ color: var(--deep-pop); }}")
+        css.append(f"{cl} .contact em {{ color: var(--on-primary); }}")             # 連絡先の箱は文字を載せる面（primary-strong）のまま
     return "\n      ".join(css)
 
 
