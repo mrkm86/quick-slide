@@ -441,6 +441,8 @@
       .f-row:has(> .f-box), .f-row:has(> .f-col > .f-box) { gap: 48px; }
       .f-col:has(> .f-box), .f-body:has(> .f-box) { gap: 40px; }
       .f-box { display: flex; flex-direction: column; gap: 16px; padding: 40px; border-radius: 16px; }
+      .f-box.f-row { flex-direction: row; gap: 24px; }   /* 面の箱そのものを横並びにする書き方（class="f-box f-row"）。箱の中身が横に並ぶ */
+      .f-line { flex: 1 1 0px; min-width: 24px; height: 4px; align-self: center; }   /* 箱と箱をつなぐ線 */
       .f-num { font-size: 120px; line-height: 1.0; font-weight: 700; white-space: nowrap; }
       .f-label { font-size: 28px; line-height: 1.5; font-weight: 700; }
       .f-note { font-size: 22px; line-height: 1.5; }

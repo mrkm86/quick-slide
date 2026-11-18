@@ -61,7 +61,7 @@ BG_SURFACE = {"bg": "page", "primary-soft": "soft", "accent-soft": "soft", "prim
 
 LAYOUT = {"f-row", "f-col", "f-grow"}
 ROLES = {"f-num", "f-label", "f-note", "f-muted", "f-strong"}
-PARTS = {"f-box", "f-icon", "f-cells", "f-bars", "f-bar", "f-chip", "f-no"}
+PARTS = {"f-box", "f-icon", "f-cells", "f-bars", "f-bar", "f-chip", "f-no", "f-line"}
 MODIFIERS = set(BOX_KINDS) | {"disc", "on", "top"}
 CLASSES = LAYOUT | ROLES | PARTS | MODIFIERS
 
@@ -431,6 +431,11 @@ class _Render:
             return self.bars(node, st, surf, bg)
         if "f-bar" in cs:
             raise FreeError(f"body の {node.line} 行目: f-bar は f-bars の中に書く")
+        if "f-line" in cs:                                   # 箱と箱をつなぐ線（横に並べた箱の間に置く。残りの幅に伸びる）
+            if node.kids:
+                raise FreeError(f"body の {node.line} 行目: f-line の中には何も書かない")
+            self.parts += 1
+            return '<div class="f-line" style="background-color: var(--rule);"></div>'
         new = self.surface_of(node, st, cs, surf)
         chip = "f-chip" in cs or "f-no" in cs
         if chip:                                             # 札・番号の丸は、自分の面（差し色・主役の色）を持つ
