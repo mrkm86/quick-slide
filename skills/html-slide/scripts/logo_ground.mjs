@@ -66,6 +66,17 @@ try {
     const imgs = [...sec.querySelectorAll("img:not(.logo), svg.art")].filter(shown);
     const texts = [...sec.querySelectorAll("*")].filter((el) => shown(el) && !el.closest("svg") &&
       [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()));
+    // 透かしは測るときに隠すが、広げた帯は透かしの文字にかかることがある。箱（全幅）ではなく文字の範囲で見る
+    const hitsRect = (r, [bx, by, bw, bh]) => {
+      if (!r.width || !r.height) return false;
+      const l = r.left - o.left, t = r.top - o.top;
+      return l < bx + bw && l + r.width > bx && t < by + bh && t + r.height > by;
+    };
+    const marks = [...sec.querySelectorAll(".watermark")].map((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return range.getBoundingClientRect();
+    });
     const lefts = texts.map((el) => el.getBoundingClientRect()).filter((r) => r.width && r.left - o.left < 960)
       .map((r) => Math.round(r.left - o.left));
     return boxes.map(([bx, ...rest]) => {
@@ -73,7 +84,7 @@ try {
       // near: 枠を上下左右に pad だけ広げた帯（読めない地に敷く、余白つきの地の場所）に、絵か文字がかかるか
       const wide = [b[0] - pad, b[1] - pad, b[2] + 2 * pad, b[3] + 2 * pad];
       return { x: b[0], img: imgs.some((el) => hits(el, b)), text: texts.some((el) => hits(el, b)),
-               near: imgs.some((el) => hits(el, wide)) || texts.some((el) => hits(el, wide)) };
+               near: imgs.some((el) => hits(el, wide)) || texts.some((el) => hits(el, wide)) || marks.some((r) => hitsRect(r, wide)) };
     });
   }), boxes, Number(process.env.HTML_SLIDE_LOGO_PAD || 0));
   const sections = await page.$$("section[data-slide]");

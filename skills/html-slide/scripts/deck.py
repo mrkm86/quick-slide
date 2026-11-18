@@ -341,6 +341,15 @@ def _logo_lum(im) -> float:
     return statistics.median(_lum(p) for p in px)
 
 
+LOGO_OPAQUE_SHARE = 0.02   # 透けている画素（不透明度が 200 以下）がこの割合に満たない画像は、自分の地を持つロゴとみなす（縁の数画素だけ半透明な画像で扱いが切り替わらないように）
+
+
+def _see_through_share(alpha) -> float:
+    """余白を切った範囲のうち、透けている画素の割合。字や印の間が透けるロゴは大きく、地を塗ったロゴはほぼ 0。"""
+    hist = alpha.histogram()
+    return sum(hist[:201]) / max(1, sum(hist))
+
+
 def _contrast(a: float, b: float) -> float:
     hi, lo = max(a, b), min(a, b)
     return (hi + 0.05) / (lo + 0.05)
@@ -394,7 +403,7 @@ def load_logo(logo, white=None) -> tuple[pathlib.Path, dict] | tuple[None, None]
             size = (box[2] - box[0], box[3] - box[1]) if box else im.size
             trim = list(box) if box and box != (0, 0, *im.size) else None
             # 透明な所の無い画像（JPEG・地を塗った PNG）は、自分の地を持つ。どの面の上でもそのまま読めるので、明るさは測らない（None）
-            opaque = alpha is None or alpha.getextrema()[0] == 255
+            opaque = alpha is None or _see_through_share(alpha.crop(tuple(trim)) if trim else alpha) < LOGO_OPAQUE_SHARE
             return p, size, trim, None if opaque else _logo_lum(im.crop(tuple(trim)) if trim else im)
 
     p, size, trim, lum = read(logo, "ロゴ")
@@ -425,8 +434,9 @@ def logo_parts(box: tuple, corner: str, name: str, plate: str, sticker: bool = F
     css = f'left: {x}px; top: {y}px; width: {w}px; height: {h}px;'
     k = LOGO_KEEP[corner]
     pad = (LOGO_STICKER_PAD if pad is None else pad) if sticker else 0
+    # 余白をとれない所（pad 0）では角を丸めない（ロゴの四隅まで地で覆う）
     pcss = (f'left: {x - pad}px; top: {y - pad}px; width: {w + 2 * pad}px; height: {h + 2 * pad}px; border-radius: {LOGO_STICKER_RADIUS}px;'
-            if sticker else css)
+            if sticker and pad else css)
     return [f'<div class="logo-plate" data-keep="logo-plate{k}" data-name="ロゴの地" style="background-color: {plate}; {pcss}"></div>',
             f'<img class="logo" data-keep="logo{k}" data-name="ロゴ" src="assets/{name}" alt="ロゴ" style="{css}" />']
 
@@ -498,7 +508,10 @@ def fit_logo_plates(html_path, info) -> None:
             sec = re.sub(r'(data-name="下の文字")(?: style="[^"]*")?>', rf'\1 style="left: {left}px; width: {end - left}px;{fpx}">', sec, count=1)
         look = logo_look(lg["lum"], lg.get("white_lum"), color)                # 地の上で読めるか（読めなければ白いロゴ・それも無ければステッカー）
         use = lg["white_name"] if look["variant"] == "white" else name
-        pad = 0 if near else LOGO_STICKER_PAD      # 余白の帯に絵や文字がかかるページでは、余白をとらずにロゴと同じ大きさの地にする（覆わない）
+        bx, by, bw, bh = box
+        outside = bx - LOGO_STICKER_PAD < 0 or by - LOGO_STICKER_PAD < 0 or bx + bw + LOGO_STICKER_PAD > 1920 or by + bh + LOGO_STICKER_PAD > 1080
+        # 余白の帯に絵・文字・透かしがかかるか、帯がページの外へ出るページでは、余白をとらずにロゴと同じ大きさの地にする（覆わない・はみ出さない）
+        pad = 0 if near or outside else LOGO_STICKER_PAD
         sec = sec.replace('      <aside class="notes">', "".join(f"      {ln}\n" for ln in logo_parts(box, corner, use, look["plate"], look["sticker"], pad))
                           + '      <aside class="notes">', 1)
         pages.append({"no": no, "corner": corner, "x": x, "plate": look["plate"], "variant": look["variant"], "sticker": look["sticker"]})
