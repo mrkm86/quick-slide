@@ -536,7 +536,11 @@ def case_escape_all_types():
         spec = {"type": typ} | minimal(typ, {"hint": "h", "label": "l"})
         if typ == "summary":
             spec["label"] = "根拠"
+        body_html = spec.get("body") if typ == "free" else None
         spec = _poison(spec)
+        if typ == "free":                              # body は HTML の決まりで読む欄。タグを書けば止まり（下で確かめる）、文字の中の &lt; はそのまま出る
+            expect_error({"title": "t", "slides": [dict(spec)]}, "esc-free-tag", "<z> は書けない")
+            spec["body"] = body_html.replace("{箱1}", "&lt;z&gt;箱")
         spec.setdefault("kicker", "<z>k") if typ not in ("cover", "section", "agenda") else None
         sc = {"title": "<z>t", "footer": "<z>f", "slides": [spec]}
         try:

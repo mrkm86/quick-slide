@@ -437,13 +437,16 @@
       .f-row { display: flex; flex-direction: row; gap: 24px; }
       .f-col { display: flex; flex-direction: column; gap: 16px; }
       .f-grow { flex: 1 1 0px; }
+      /* 面の箱どうしの間は、型のページの箱と同じ（横は格子の溝 48・縦は 40）。箱の中の小さな並び（アイコンと文字など）は上の 24・16 のまま */
+      .f-row:has(> .f-box), .f-row:has(> .f-col > .f-box) { gap: 48px; }
+      .f-col:has(> .f-box), .f-body:has(> .f-box) { gap: 40px; }
       .f-box { display: flex; flex-direction: column; gap: 16px; padding: 40px; border-radius: 16px; }
       .f-num { font-size: 120px; line-height: 1.0; font-weight: 700; white-space: nowrap; }
       .f-label { font-size: 28px; line-height: 1.5; font-weight: 700; }
       .f-note { font-size: 22px; line-height: 1.5; }
       .f-strong { font-weight: 700; }
       .f-chip { align-self: flex-start; flex: none; padding: 8px 24px; border-radius: 9999px; font-size: 24px; line-height: 1.0; font-weight: 700; white-space: nowrap; }
-      .f-tag { margin-top: -60px; margin-bottom: 4px; }   /* 箱の上の縁にかける札（上の余白 40 を越えて半分はみ出す。下の余白と箱の間 16 で、行の位置は札の無い箱と同じ） */
+      .f-tag { margin-top: -64px; margin-bottom: 8px; }   /* 箱の上の縁にかける札（上の余白 40 を越えてはみ出す。札の高さ 40・下の余白 8・箱の間 16 で差し引き 0＝行の位置は札の無い箱と同じ。余白は 8 の倍数） */
       .f-no { flex: none; width: 64px; height: 64px; border-radius: 9999px; display: flex; align-items: center; justify-content: center;
               font-size: 32px; line-height: 1.0; font-weight: 700; }
       .f-icon-disc { flex: none; display: flex; align-items: center; justify-content: center; border-radius: 9999px; }
