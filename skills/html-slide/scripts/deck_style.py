@@ -32,11 +32,12 @@ FIELDS = {"name", "description", "defaults", "motion", "look", "image_look", "ex
 # 見た目の調子（look）。文字の大きさ・余白は変えない（はみ出しの検査は字体で実測しているため）。色は全部テーマから作り、読みやすさの検査も通す
 LOOK = {
     "background": ("plain", "tint"),                    # ページの地: テーマの地／主役の色（primary）をうっすら混ぜた地
-    "surface": ("soft", "white", "primary", "line"),     # カード・比較の列・KPI・吹き出しの地: 淡いグレー／（white は退役・RETIRED_LOOKS）／主役の色の淡い地／白に枠線
+    "surface": ("soft", "white", "primary", "line", "flat"),     # カード・比較の列・KPI・吹き出しの地: 淡いグレー／（white は退役・RETIRED_LOOKS）／主役の色の淡い地／白に枠線
     "radius": ("default", "square", "round"),           # 箱の角: 16px／4px／32px（写真は 8px・square のときだけ 4px。notice の枠は default で 0・式の答えと NG／OK の箱は 16px・12px）
     "band": ("small", "bar", "none"),                   # 中身の型の左上の印: 小さな印／上端の全幅の帯／無し
     "emphasis": ("default", "strong"),                  # 強調する箱（accent: true のカードなど）: 淡い地に枠／差し色のベタ塗りに白抜き（明るい色なら黒）
     "statement": ("plain", "panel"),                    # 主張の1枚（statement）: 地のまま／主役の色の全面に白抜き（明るい色なら黒）
+    "title": ("plain", "solid"),                        # 表紙・章扉: 地のまま／主役の色そのままの全面（文字は白か ink の読める方）
 }
 # 退役した変化形（look の項目, 値）→ 代わりの値。YAML には今までどおり書けて、代わりの値と同じに描くが、読んだときに注意を出し、
 # 台本の書き方（deck-format.md）・台本係の一覧には載せない（ADR 0020・0021）。white は白に影（0 8px 28px）で、影は elevation の番号の丸だけにしたため
@@ -156,6 +157,24 @@ def look_css(look: dict) -> str:
     elif s == "primary":
         css.append(f"{BOXES} {{ background-color: var(--primary-soft); }}")
         css.append(".tr.th { background-color: var(--primary-soft); }")
+    elif s == "flat":                              # 枠なしの淡い面。区切りは面の色と余白で作る（頭の短い線・締めの帯の輪郭も外す）
+        css.append(f"{BOXES} {{ background-color: var(--primary-soft); border-color: var(--primary-soft); }}")
+        css.append(f"{HL} {{ border-color: var(--accent-soft); }}")
+        css.append(".card-bar { display: none; }")
+        css.append(".card { min-height: 240px; }")       # 枠が無いので、箱は中身に沿わせる（中身の少ない箱を 400 まで伸ばすと、空きが箱の中に残る）
+        css.append(".tr.th { background-color: var(--primary-fill); border-bottom-color: var(--primary-fill); }")
+        css.append(".tr.th .td div { color: var(--on-primary-fill); }")
+        css.append(".tr { border-bottom-color: var(--rule-weak); }")
+        css.append(".take { background-color: var(--primary-fill); border-color: var(--primary-fill); }")
+        css.append(".take-t { color: var(--on-primary-fill); }")
+        css.append("section[data-slide] { --take-icon: var(--on-primary-fill); --disc-ground: var(--primary-fill); --disc-ink: var(--on-primary-fill); }")   # 淡い面の箱の上では、淡い丸が面に消える。丸は主役の色の面に
+    if look.get("title") == "solid":
+        tp = 'section[data-type="cover"], section[data-type="section"]'
+        css.append(f"{tp} {{ background-color: var(--primary-fill); }}")
+        css.append(".cover-title, .cover-subtitle, .cover-label, .cover-meta div, .sec-title, .sec-subtitle, .sec-label, .sec-no, "
+                   ".cover-title em, .sec-title em { color: var(--on-primary-fill); }")
+        css.append(".cover-rule { background-color: var(--on-primary-fill); }")
+        css.append(".sec-panel { background-color: var(--primary-fill); }")     # 全面が主役の色なので、左の帯は面に溶かす
     r = {"square": 4, "round": 32}.get(look.get("radius"))
     if r:
         css.append(f"{BOXES}, .contact, .scrim, .side-img, .gal-img, .notice, .eq-res, .pair-box {{ border-radius: {r}px; }}")

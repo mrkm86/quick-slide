@@ -114,6 +114,10 @@ def base_palette(t: dict) -> dict:
         p[f"{name}-decor"] = k["deco"]
         p[f"{name}-strong"] = k["strong"]
         p[f"on-{name}"] = white if ratio(white, k["strong"]) >= 4.5 else ink
+        # 面にそのまま使うテーマの色（明度を動かさない）と、その上の文字。白も ink も 4.5:1 に届かない色なら、文字を載せる面（strong）に落とす
+        raw = t.get(name) or t["primary"]
+        on = next((c for c in (white, ink) if ratio(c, raw) >= 4.5), None)
+        p[f"{name}-fill"], p[f"on-{name}-fill"] = (raw, on) if on else (k["strong"], p[f"on-{name}"])
     p.update(SEMANTIC)
     p.update(_tone_roles(p))
     p.update(_bar_roles(p))
@@ -211,7 +215,8 @@ def contrast_problems(p: dict) -> list[str]:
         for g in TEXT_GROUNDS:
             need.append((fg, g, 4.5))
     need += [("faint", "bg", 4.5),
-             ("on-primary", "primary-strong", 4.5), ("on-accent", "accent-strong", 4.5)]
+             ("on-primary", "primary-strong", 4.5), ("on-accent", "accent-strong", 4.5),
+             ("on-primary-fill", "primary-fill", 4.5), ("on-accent-fill", "accent-fill", 4.5)]
     for g in TEXT_GROUNDS:                      # 罫・枠・軸
         need.append(("rule", g, 3.0))
     need += [("rule-weak", "bg", 3.0), ("bar", "bg", 3.0)]

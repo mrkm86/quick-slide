@@ -672,7 +672,7 @@ def icon_of(s: Slide, it: dict, where: str) -> str | None:
     return name
 
 
-def icon_disc(name: str, d: float, icon: float, *, ground="var(--tint)", ink="var(--primary-text)", extra="") -> str:
+def icon_disc(name: str, d: float, icon: float, *, ground="var(--disc-ground, var(--tint))", ink="var(--disc-ink, var(--primary-text))", extra="") -> str:
     """丸い地の上のアイコン（d px の丸・icon px のアイコン）。アイコンの色は 4.5:1（地の上で文字と同じ扱い・ADR 0020）。"""
     return (f'<div class="icon-disc" style="width:{d:g}px; height:{d:g}px; border-radius:{FULL}px; '
             f'background-color:{ground};{extra}">{ICON.svg(name, icon, ink)}</div>')
@@ -952,7 +952,7 @@ def t_cards(s: Slide):
     cw = (CW - gap * (n - 1)) // n         # 整数に切り下げる（px() が丸めて上げると、並べた行が版の幅を越える）
     avail = s.bottom - top
     big = n <= 3
-    cards, tallest = [], 400.0                 # カードの最低の高さ（.card の min-height）
+    cards, tallest = [], 0.0                   # 中身の一番多い1枚の高さ（箱の最低の高さ 400 は数えない。数えると、中身が少ないのに大きく組む判定に掛からない）
     for i, it in enumerate(its):
         label, body = s.text("label", spec=it), s.text("body", spec=it)
         hl = bool(it.get("accent"))
@@ -1251,12 +1251,19 @@ def t_table(s: Slide):
     hl = s.spec.get("highlight")
     if hl is not None and (not isinstance(hl, int) or not 1 <= hl <= len(cols)):
         s.err(f"highlight は 1〜{len(cols)} の整数")
-    weights = s.spec.get("widths") or [1.4] + [1] * (len(cols) - 1)
+    # 列の幅: widths が無ければ中身から決める。列ごとに一番長いセルの幅（28px・左右の余白 48 込み）を測り、その比で分ける。
+    # 固定の比（1列目 1.4・ほか 1）だと、1列目が短い表で、ほかの列の長いセルが入らずに止まっていた
+    natural = [max(text_width(plain(row[c][0]), 28, True) for row in cells_of) + 48 for c in range(len(cols))]
+    floor = CW / len(cols) * 0.5                       # どの列も、等分の半分より狭くしない
+    natural = [max(v, floor) for v in natural]
+    weights = s.spec.get("widths") or natural
     if not isinstance(weights, list) or len(weights) != len(cols) or not all(isinstance(v, (int, float)) and v > 0 for v in weights):
         s.err("widths は columns と同じ数の正の数")
     total = sum(weights)
     cws = [CW * v / total for v in weights]
-    aligns = s.spec.get("align", ["left"] + ["center"] * (len(cols) - 1))
+    # 揃え: align が無ければ、1列目は左。ほかの列は、全部のセルが短い（全角 8 字ぶんまで）なら中央、文が入る列は左
+    short = [all(text_width(plain(row[c][0]), 28) <= 28 * 8 for row in cells_of[1:]) for c in range(len(cols))]
+    aligns = s.spec.get("align", ["left"] + ["center" if short[c] else "left" for c in range(1, len(cols))])
     if not isinstance(aligns, list) or len(aligns) != len(cols) or not all(isinstance(a, str) and a in TABLE_ALIGNS for a in aligns):
         s.err("align は columns と同じ数の配列で、値は left / center / right のどれか")
     top0, band, sum_h, tstep = top, "", 0, 1
@@ -1268,15 +1275,15 @@ def t_table(s: Slide):
     n_notes = bool(s.text("source")) + bool(s.text("footnote"))
     footer_h = legend_h + (40 + FOOT_H * (n_notes - 1) if n_notes else 0)     # source・脚注は表の下に続ける（s.bottom の脚注ぶんは数えない）
     rh = min(s.gap(112), int((s.bottom + s.foot - top - footer_h) / (len(rows) + 1)) // 8 * 8)     # 行の高さ（大きく組むときは上限を広げる）
-    if rh < 24 * 1.5 + 16:                             # 最小の文字 24px・行高 1.5・上下 16px が入らない
+    if rh < 24 * 1.5 + 12:                             # 最小の文字 24px・行高 1.5・上下 12px が入らない（7行の表に結論の帯と出典を添えた形が 48px の行で入る）
         if band:
             s.err(f"summary を置くと表が入らない（行の高さ {rh}px では文字 24px が入らない）。rows を減らすか、summary の label・note を短くする（legend・source・footnote・takeaway も高さを使う）")
         s.err(f"表が入らない（行の高さ {rh}px では文字 24px が入らない）。rows を減らすか、legend・source・footnote を外す")
     fs0 = 28 if rh >= 64 else 24                       # 表のセルは Std-28N-150（下限 24）。行が低ければ 24
     fs0 = s.g(fs0, 45)
-    while fs0 > 24 and fs0 * 1.5 + 16 > rh:            # 1行が行の高さに入る段まで
+    while fs0 > 24 and fs0 * 1.5 + 12 > rh:            # 1行が行の高さに入る段まで
         fs0 = step_down(fs0)
-    max_lines = max(1, int((rh - 16) / (fs0 * 1.5)))
+    max_lines = max(1, int((rh - 12) / (fs0 * 1.5)))
     out = []
     for r, row in enumerate(cells_of):
         cells = []
@@ -2862,7 +2869,7 @@ def takeaway_band(s: Slide) -> str:
     w = min(CW, -(-max(904.0, text_width(plain(text), ts, True) / SAFE + 128 + 56) // 16) * 16)    # 16 の倍数（左右の位置が 8 の倍数になる）
     step = max(s.steps) if s.steps else 0
     return (f'<div class="take" style="{box(X0 + (CW - w) / 2, s.body_bottom - TAKE_H, w, TAKE_H)}" '
-            f'{s.anim(step, "fade", 500, "締めの帯")}>{ICON.svg(name, 40, "var(--primary-text)")}'
+            f'{s.anim(step, "fade", 500, "締めの帯")}>{ICON.svg(name, 40, "var(--take-icon, var(--primary-text))")}'
             f'<div class="take-t" style="font-size:{ts}px">{rich(text)}</div></div>')
 
 

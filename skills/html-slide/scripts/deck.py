@@ -120,7 +120,7 @@ def palette(t: dict) -> dict:
     # 写真の上（暗幕の地）: 色を白に寄せて、一番薄い暗幕を白い写真に重ねた地で 4.5 を越える一番濃い色
     thin = mix(ink, min(T.OVERLAYS.values()), white)
     for name, k in (("primary", pk), ("accent", ak)):
-        for role in (name, f"{name}-text", f"{name}-mark", f"{name}-decor", f"{name}-strong", f"on-{name}"):
+        for role in (name, f"{name}-text", f"{name}-mark", f"{name}-decor", f"{name}-strong", f"on-{name}", f"{name}-fill", f"on-{name}-fill"):
             p[role] = base[role]
         p[f"{name}-on-dark"] = next((c for c in (mix(k["deco"], 1 - n / 40, white) for n in range(41)) if ratio(c, thin) >= 4.5), white)
     r, g, b = (int(p["ink"][i:i + 2], 16) for i in (1, 3, 5))
