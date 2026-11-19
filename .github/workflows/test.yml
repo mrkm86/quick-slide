@@ -1,5 +1,9 @@
-# PR のときに、Windows でテストを回す（docs/adr/0023-ci-windows-first.md）。
+# PR を main に入れる前に、Windows でテストを回す（docs/adr/0023-ci-windows-first.md）。
 #
+# - 回るのは、PR の下書きを外したとき（Ready for review）と、PR にラベル `windows` を付けたとき。push のたびには回さない
+#   （1 回 25 分あまり。直しを重ねる PR では、前の回が取り消されるだけで 1 回も終わらなかった）。
+#   PR は下書きで出し、レビューの直しが収まってから下書きを外す。そのあとに push したら、ラベルを付け直して回す
+#   （回っていないコミットには、Windows の結果が付かないので見て分かる）
 # - main への push では回さない（PR で回したのと同じ中身。1 回 25 分あまりで、Windows は 2 倍で数える）
 # - 試験が読まない文書（docs/・README.md・AGENTS.md・LICENSE）だけの変更では回さない。公開前の検査は文書だけの変更でも
 #   要るので、別の workflow（public-check.yml）で必ず回す
@@ -15,6 +19,7 @@ name: test
 
 on:
   pull_request:
+    types: [ready_for_review, labeled]
     paths-ignore:
       - "docs/**"
       - "README.md"
@@ -43,6 +48,11 @@ concurrency:
 
 jobs:
   windows:
+    # ラベルは `windows` だけ（ほかのラベルを付けても回さない）
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event.action == 'ready_for_review'
+      || (github.event.action == 'labeled' && github.event.label.name == 'windows')
     runs-on: windows-latest
     timeout-minutes: 40
     defaults:

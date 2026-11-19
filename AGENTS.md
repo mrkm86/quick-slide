@@ -50,7 +50,7 @@ QUICK_SLIDE_FRESH_E2E=1 bash tests/run.sh   # 上に加えて「配った機体�
 ```
 
 テストは使い捨ての `QUICK_SLIDE_HOME` とキャッシュで走り、実の置き場を読まない・書かない。
-PR では、GitHub Actions が同じものを Windows で回す（`.github/workflows/test.yml`。文書だけの変更・リリースの PR・main への push では回さない。macOS は公開後に足す・`docs/adr/0023-ci-windows-first.md`）。
+PR では、GitHub Actions が同じものを Windows で回す（`.github/workflows/test.yml`。**回るのは、PR の下書きを外したときと、ラベル `windows` を付けたとき**。push のたびには回さないので、PR は下書きで出し、直しが収まってから下書きを外す。そのあとに push したら、ラベルを付け直す。文書だけの変更・リリースの PR・main への push では回さない。macOS は公開後に足す・`docs/adr/0023-ci-windows-first.md`）。
 
 ## 4. 進め方
 
