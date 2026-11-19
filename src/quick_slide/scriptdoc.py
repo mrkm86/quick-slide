@@ -18,7 +18,7 @@ import json
 import re
 from typing import Any
 
-from . import motion
+from . import freepage, motion
 
 PAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 HIDDEN_KEY = "_hidden"
@@ -95,6 +95,9 @@ def body_of(spec: dict[str, Any]) -> str:
     if spec.get("type") == IMPORTED_TYPE:
         # 取り込んだページ（PPTX から）: HTML の見える文字だけ（タグ・背景・ノートは出さない）
         return "\n".join(motion.html_texts(spec.get("html")))[:4000]
+    if spec.get("type") == freepage.TYPE and isinstance(spec.get("body"), str):
+        # 自由なページ: body は HTML。見える文字と、マス・棒の数だけを出す（タグ・class・style は出さない）
+        spec = {**spec, "body": freepage.texts(spec["body"])}
     lines: list[str] = []
 
     def walk(value: Any, key: str | None = None) -> None:

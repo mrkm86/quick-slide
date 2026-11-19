@@ -146,7 +146,8 @@ PITCH_NO_FREE = ("自由なページ（type: free）は使わない（このモ�
                  "「書く前に」の 9 の「まず free」は読み替えて、中身の形に合う型（cards・steps・compare・kpi・big-number など）を選ぶ")
 # 自由なページの直し: 組みを保って文字だけ直す（指示が組み替えを求めたときだけ body を書き直す）
 FREE_EDIT_RULE = ("自由なページ（type: free）を直すとき、指示が組み替え・図解を求めていなければ、body の組み（要素・class・style・data-…）を"
-                  "変えず、文字だけを直す。見出し・出典・結論は台本のキー（headline・source・takeaway）で直す。"
+                  "変えず、文字だけを直す。数字を直すときは、その数を表す属性（f-cells の data-on・data-total、f-bars の data-max、"
+                  "f-bar の data-value）も同じ数に直す（図と文字を食い違わせない）。見出し・出典・結論は台本のキー（headline・source・takeaway）で直す。"
                   "body を書き直すときは「自由なページ」の節の決まりを守る")
 
 

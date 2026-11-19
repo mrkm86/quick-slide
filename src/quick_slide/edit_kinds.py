@@ -55,7 +55,7 @@ _DIAGRAM_BASE = {
 _DIAGRAM_SHAPE_WORDS = {
     "presentation": {
         "auto": "形は中身から選ぶ（「書く前に」の 9。まず free で組み、形の決まっているものは型）",
-        "flow": "流れの図にする（free で箱を矢印でつなぐか、flow・steps・timeline のどれか）",
+        "flow": "流れの図にする（free で箱を矢印でつなぐか、flow。進み具合が主役なら steps、時期が主役なら timeline）",
         "relation": "関係の図にする（hub・matrix・layers・equation のどれか。合う型が無ければ free で組む）",
         "compare": "比較の図にする（free で面の箱を左右に並べるか、観点が多ければ table。compare・pairs でもよい）",
         "numbers": "数字の図にする（free で数字を主役にしてマス・棒を添えるか、軸の要るグラフは bar-chart・line-chart）",

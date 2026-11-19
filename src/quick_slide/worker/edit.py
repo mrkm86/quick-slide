@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from .. import edit_kinds, importing, motion
+from .. import edit_kinds, freepage as FREEPAGE, importing, motion
 from .. import page_images as PI
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, engine_for
@@ -114,6 +114,19 @@ class EditResult:
     rebase: Callable[[dict[str, Any]], dict[str, Any]] | None = None
     # 検査の警告のうち、この直しでは書き直させるもの（`NG:` の行にして返す。最後の回は止めない）
     ng_warnings: Callable[[list[str]], list[str]] | None = None
+
+
+def free_shape_problems(req: dict[str, Any], before: list[dict[str, Any]], after: list[dict[str, Any]], changed: set[str]) -> list[str]:
+    """文字の直し（種類が「文字」）で、自由なページの組みが変わっていたら、書き直させる `NG:` の行（docs/adr/0033）。
+
+    組み替えてよい直し（図解・挿絵・画像・種類を選ばない自由な指示）では見ない。数を表す属性（data-on・data-value など）は
+    数字の直しで文字と一緒に変わるので、骨組みに入れていない（`freepage.skeleton`）。"""
+    if req.get("kind") != "text":
+        return []
+    was = {str(x.get("id")): x for x in before}
+    return [f"NG: {x.get('id')}: 文字の直しなのに、自由なページの body の組み（要素・class・style・data-step など）が変わった。"
+            "前の body の組みのまま、文字（と、その数を表す data-on・data-value など）だけを直す"
+            for x in after if str(x.get("id")) in changed and FREEPAGE.reshaped(was.get(str(x.get("id")), {}), x)]
 
 
 # ---- 同じデッキの仕事の順番（docs/adr/0012-parallel-edits.md）----
@@ -470,6 +483,8 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
         jl_ng, jl_notes = JLINT.problems_and_notes(lint_view(run["args"], slides_of(result.data)),
                                                    enforce=round_no < rounds, only=changed)
         ids += jl_ng
+        if round_no < rounds:   # 最後の回は止めない
+            ids += free_shape_problems(req, slides_of(data), slides_of(result.data), changed)
         if ids:
             ctx.call(store.set_script_check, candidate["id"], 2, ids)
             previous, problems = answer, ids
