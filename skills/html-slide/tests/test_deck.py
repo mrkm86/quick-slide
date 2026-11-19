@@ -3254,6 +3254,60 @@ def case_check_reports_every_page():
     assert r.returncode == 2 and len([l for l in r.stderr.splitlines() if l.startswith("NG:")]) == 1, r.stderr
 
 
+def case_diagram_labels():
+    """絵で描く図解: 画像の指定に labels（図の中に描く文字）を書くと、その枠だけ文字つきの図解として描かせる。"""
+    fig = lambda image: one({"type": "figure", "headline": "全体の構成", "image": image})
+    def write(sc: dict, name: str):
+        p = TMP / f"{name}.json"
+        p.write_text(json.dumps(sc, ensure_ascii=False), encoding="utf-8")
+        return p
+    labels = ["店頭", "倉庫のシステム", "宅配"]
+    slots = deck.image_slots(write(fig({"prompt": "左から右へ流れる全体図", "labels": labels, "alt": "全体図"}), "dl-ok"))
+    x = slots[0]
+    assert x["labels"] == labels and x["origin"] == "generated"
+    assert "「店頭」「倉庫のシステム」「宅配」" in x["prompt_full"] and "次の 3 個だけ" in x["prompt_full"], x["prompt_full"]
+    assert "文字・ロゴ・透かしを描かない。" not in x["prompt_full"], "ふつうの生成の決まり（文字を描かない）は入れない"
+    assert "平らな図解" in x["gen_text"] and "背景は #" in x["gen_text"] and "やわらかい色の平らなイラスト" not in x["gen_text"], x["gen_text"]
+    assert x["characters"] == [], "図解にはキャラを描き込まない"
+    plain = deck.image_slots(write(fig({"prompt": "左から右へ流れる全体図"}), "dl-plain"))[0]
+    assert plain["labels"] == [] and "文字・ロゴ・透かしを描かない" in plain["prompt_full"] and plain["key"] != x["key"], "labels の無い絵は今までどおり"
+    # 資料の画風（写真風）に関係なく、図解は図解の画風
+    photo = deck.image_slots(write(fig({"prompt": "左から右へ流れる全体図", "labels": labels}), "dl-photo"), image_look="photo")[0]
+    assert "平らな図解" in photo["gen_text"] and "写真" not in photo["gen_text"].split("画風:")[1][:20], photo["gen_text"]
+    assert x["image_look"] == "diagram" and photo["image_look"] == "diagram" and plain["image_look"] != "diagram", "枠の画風は、実際に描いた画風"
+    # 置き場に置いた絵は使わない（labels を直したら描き直す）。labels の無い枠は、今までどおり置いた絵を使う
+    from PIL import Image
+    (TMP / "images").mkdir(exist_ok=True)
+    Image.new("RGB", (160, 90), "#888888").save(TMP / "images" / "s01-image.png")
+    try:
+        a1 = deck.image_slots(write(fig({"prompt": "図", "labels": ["店頭"]}), "dl-placed"))[0]
+        a2 = deck.image_slots(write(fig({"prompt": "図", "labels": ["宅配"]}), "dl-placed"))[0]
+        assert a1["origin"] == a2["origin"] == "generated" and a1["key"] != a2["key"], (a1["origin"], a2["origin"])
+        assert deck.image_slots(write(fig({"prompt": "図"}), "dl-placed"))[0]["origin"] == "placed"
+    finally:
+        (TMP / "images" / "s01-image.png").unlink()
+    # キャラ: 図解には描き込まない。警告は「枠が無い」ではなく、図解だから描かなかったと言う
+    chara = TMP / "chara.png"
+    Image.new("RGB", (64, 64), "#888888").save(chara)
+    _, info = build(one({"type": "figure", "headline": "h", "image": {"prompt": "図", "labels": ["店頭"]},
+                         "_characters": [{"name": "A", "image": str(chara), "pose": "立つ"}]}), "dl-chara", placeholder="generated")
+    assert any("絵で描く図解の枠には、キャラを描かない" in w for w in info["warnings"]) and not any("描き込む枠が無い" in w for w in info["warnings"]), info["warnings"]
+    bad = {
+        "文字でない": ({"prompt": "p", "labels": "店頭"}, "labels は"),
+        "空の並び": ({"prompt": "p", "labels": []}, "labels は"),
+        "多すぎる": ({"prompt": "p", "labels": [f"名前{i}" for i in range(31)]}, "labels は"),
+        "長すぎる": ({"prompt": "p", "labels": ["あ" * 31]}, "labels は"),
+        "改行": ({"prompt": "p", "labels": ["a\nb"]}, "labels は"),
+        "復帰の文字": ({"prompt": "p", "labels": ["a\rb"]}, "labels は"),
+        "null": ({"prompt": "p", "labels": None}, "labels は"),
+        "末尾の改行": ({"prompt": "p", "labels": ["a\n"]}, "labels は"),
+        "同じ文字": ({"prompt": "p", "labels": ["a", "a"]}, "2 回"),
+        "prompt が無い": ({"path": "x.png", "labels": ["a"]}, "prompt"),
+    }
+    for name, (image, word) in bad.items():
+        expect_error(fig(image), "dl-bad", word)
+
+
 CASES = {k[5:]: v for k, v in globals().items() if k.startswith("case_")}
 
 

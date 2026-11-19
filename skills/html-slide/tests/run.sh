@@ -183,6 +183,7 @@ deck "自由なページの部品: 段と名前が残る・入れ子と読まな
 deck "自由なページの棒の尺度（Chrome）: 同じ値の棒は、名前の行数・上の数の長さが違っても同じ高さ" free_bars_scale
 deck "入らなくて組み直すとき、入らなかった試しの警告・段・画像の枠を残さない" retry_restores_state
 deck "check は全部のページの誤りを 1 回で出す・はみ出した自由なページは、どの列が詰まっているかを言う" check_reports_every_page
+deck "絵で描く図解: labels のある枠だけ、並べた文字を入れた図解として描かせる（画風・キャラ・誤りの形）" diagram_labels
 deck "色の役（primary-fill・accent-fill・deep・deep-pop）: 3つのテーマと黄・淡い黄・紺の主役の色で文字が 4.5:1" color_roles
 
 # --- レビューモード（ADR 0028） ---

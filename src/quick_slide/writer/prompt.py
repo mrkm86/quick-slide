@@ -151,6 +151,11 @@ FREE_EDIT_RULE = ("自由なページ（type: free）を直すとき、指示が
                   "body を書き直すときは「自由なページ」の節の決まりを守る")
 
 
+# 絵を生成しないとき: 台本の決まりの「絵で描く図解」の節は、生成の枠の書き方なので使わせない（docs/adr/0034）
+NO_PICTURE_DIAGRAM = ("「台本の決まり」の「絵で描く図解」（image の prompt と labels）も使わない"
+                      "（Codex が描く絵なので、生成の枠と同じ扱い）。図は、自由なページ・図解の型・挿絵（svg）で書く。")
+
+
 # 図解をできるだけ入れる（作るとき）。構造・手順・比較・数字・仕組みは、文字の箇条書きにせず図にする
 DIAGRAM_RULE = {
     "presentation": "構造・手順・比較・数字・仕組み・関係があるページは、文字だけの型（bullets・statement）にせず、図として見せる。"
@@ -158,6 +163,9 @@ DIAGRAM_RULE = {
                     "面の箱で比べる・箱を矢印でつなぐ。書き方は「自由なページ」の節）。形の決まっているもの"
                     "（表 table・折れ線 line-chart・軸の要る棒グラフ bar-chart・構成図 layers・中心と周り hub・2×2 matrix・年表 timeline）は型を使う。"
                     "表紙・締めを除くページの半分以上を図として見せるのを目安にする",
+    "presentation-picture": "全体の構成図・システムの構成・画面のイメージのように、箱を並べるだけでは伝わらない図は、**絵で描く図解**にする"
+                            "（型 figure の image に prompt と labels。書き方は「絵で描く図解」の節）。図の中に描く文字は labels に全部並べる。"
+                            "1 つの資料で 2〜5 枚を目安にし、数字・比較・手順のページには使わない",
     "pitch": "構造・手順・比較・数字・仕組み・関係があるページは、文字を並べず図（矢印・図形・グラフ・短いラベル）として描く"
              "（_visual にそう書いてよい）。表紙・締めを除くページの半分以上を図解にするのを目安にする",
     "motion": "構造・手順・比較・数字・仕組み・関係がある場面は、文字を並べず HTML・SVG の図で見せ、拍ごとに図が組み上がるようにする。"
@@ -228,14 +236,17 @@ def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
         "id は描くことには使わず、ページの同一性に使う。前の台本を直すときは、残すページの id を変えない",
     ]
     rules.append(DIAGRAM_RULE[engine.mode])
+    if engine.mode == "presentation" and args.get("images", True):
+        rules.append(DIAGRAM_RULE["presentation-picture"])     # 絵で描く図解は Codex が描く（画像を使わない資料には出さない）
     if engine.mode == "presentation":
         rules.append(illust_rule(args))
     if args.get("images", True):
         rules.append("生成の画像の枠は image: {\"prompt\": \"何を描くか\"} で書く。構造・手順・数字は図解にし、"
                      "空気・場面・気持ちを伝えるページにだけ画像を置く。prompt に画風（写真風・イラスト・手描きなど）を書かない"
-                     "（画風は描くときに資料全体で 1 つに揃う）。prompt に文字・ロゴ・実在の人物や会社や商品の名前を描かせない")
+                     "（画風は描くときに資料全体で 1 つに揃う）。prompt に文字・ロゴ・実在の人物や会社や商品の名前を描かせない"
+                     "（絵で描く図解＝labels のある枠だけは別。図の中の文字は labels に並べ、prompt には何をどう並べるかを書く）")
     else:
-        rules.append("生成の画像の枠（image の prompt）を使わない。" + (
+        rules.append("生成の画像の枠（image の prompt）を使わない。" + (NO_PICTURE_DIAGRAM if engine.mode == "presentation" else "") + (
             "image に書いてよいのは挿絵（svg）だけ。写真が必須の型（photo・gallery・figure・annotate）と quote の layout: full・portrait は、"
             "挿絵を置くときだけ使う" if engine.mode == "presentation" else
             "image キーをどこにも書かない。写真が必須の型（photo・gallery・figure・annotate）と、quote の layout: full・portrait は使わない"))
@@ -403,10 +414,12 @@ def _edit_rules(engine: Engine, args: dict[str, Any]) -> list[str]:
     if engine.mode == "presentation":
         rules.append(illust_rule(args))
     if args.get("images", True):
-        rules.append("生成の画像の枠は image: {\"prompt\": \"何を描くか\"} で書く。prompt に画風・文字・ロゴ・実在の人物や会社や商品の名前を書かない。"
+        rules.append("生成の画像の枠は image: {\"prompt\": \"何を描くか\"} で書く。prompt に画風・文字・ロゴ・実在の人物や会社や商品の名前を書かない"
+                     "（絵で描く図解＝labels のある枠だけは、図の中の文字を labels に並べる）。"
                      "指示が画像を求めていないページに、新しく画像の枠を足さない")
     else:
         rules.append("生成の画像の枠（image の prompt）を新しく書かない（この機械では絵を生成できない）。"
+                     + (NO_PICTURE_DIAGRAM if engine.mode == "presentation" else "") +
                      "下の「添えた画像」を入れるときは image: {\"path\": \"…\"} で書いてよい")
     if engine.mode == "presentation":
         rules.append("talk（話す台本）を書くなら、その数は型のクリックの段の数＋1 にそろえる。そろえられないページは talk を省く")
@@ -722,6 +735,10 @@ def build_rebuild_prompt(engine: Engine, args: dict[str, Any], *, page: dict[str
         "- 元のページに無い数字・事実・固有名詞を、指示に無いのに足さない。絵文字は使わない",
         "- _characters・_layout・_hidden・theme・footer・page_numbers は書かない",
         *([illust_rule(args)] if engine.mode == "presentation" else []),
+        # この機械で絵を生成できないとき（`args.images` が偽。直しでは機械に従う）: 台本の決まりの「絵で描く図解」は生成の枠なので、
+        # 使わせない。`generate` は「今回、画像を主役にして生成するか」で、機械の能力ではない（図解の組み直しではいつも偽）
+        *(["- 生成の画像の枠（image の prompt）を書かない（この機械では絵を生成できない）。" + NO_PICTURE_DIAGRAM]
+          if engine.mode == "presentation" and not args.get("images", True) else []),
         "",
         "# 元のページの言葉",
         "",

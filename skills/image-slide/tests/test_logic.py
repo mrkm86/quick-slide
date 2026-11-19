@@ -155,6 +155,10 @@ def t_script_errors():
     check(rc == 0, f"レビューの注記で落ちた: {err}")
     check("_memo" not in S.content_of(page, []) and "狙い" not in json.dumps(S.content_of(page, []), ensure_ascii=False),
           "レビューの注記が描く中身に混ざった")
+    # 絵で描く図解（html-slide の labels）: 図の中に描く文字を、描く絵の言葉に続けて渡す
+    page = {"type": "figure", "headline": "h", "image": {"prompt": "左から右へ流れる全体図", "labels": ["店頭", "宅配"]}}
+    c = S.content_of(page, S.images_of(page, pathlib.Path(root), 1))
+    check("図の中に描く文字: 「店頭」「宅配」" in json.dumps(c, ensure_ascii=False), f"labels が描く中身に入らない: {c}")
     # 自由なページ（型 free）の body: 見える文字に加えて、マスと棒の数を中身として渡す（見える数を省いた棒でも、長さを決める数が残る）
     body = ('<div class="f-row"><div>割合</div><div class="f-cells" data-total="100" data-on="21" data-cols="10"></div></div>'
             '<div class="f-bars" data-max="10"><div class="f-bar" data-value="7.5">導入前</div><div class="f-bar on" data-value="3"><b>3件</b>導入後</div></div>')

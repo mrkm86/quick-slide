@@ -116,6 +116,39 @@ class EditResult:
     ng_warnings: Callable[[list[str]], list[str]] | None = None
 
 
+def _has_picture_diagram(value: Any) -> bool:
+    """ページの中に、絵で描く図解の枠（image に prompt と labels）があるか。"""
+    if isinstance(value, dict):
+        im = value.get("image")
+        if isinstance(im, dict) and im.get("prompt") and isinstance(im.get("labels"), list) and im["labels"]:
+            return True
+        return any(_has_picture_diagram(v) for k, v in value.items() if k != "image")
+    return isinstance(value, list) and any(_has_picture_diagram(v) for v in value)
+
+
+def picture_problems(req: dict[str, Any], routes: dict[str, str], pages: dict[str, list[dict[str, Any]]]) -> list[str]:
+    """直しの「図解 → 絵で描く」を選んだのに、答えが絵で描く図解になっていないときの `NG:` の行（docs/adr/0034）。
+
+    `routes` は直したページの id → 答えの道、`pages` は id → そのページの直したあとの姿（2〜3 枚に分けたら、その全部）。
+    絵で描く図解は、台本を書き換えて頼む（route は script。型 figure の image に prompt と labels）。今ある絵の描き直し（route が
+    image・both）では、文字を描かせない元の指示のまま直すことになり、図解にならない。
+    ページを指定した直しは、指定したページのそれぞれが、直したあとの姿のどれか 1 枚で図解になっていること（分けたときは 1 枚でよい）。
+    スライド全体への直しは、変えないページ（keep）があってよく、書き換えたページのどれか 1 つが図解になっていること。"""
+    if req.get("kind") != "diagram" or "picture" not in (req.get("options") or []):
+        return []
+    whole = (req.get("scope") or "page") not in ("page", "pages")
+    out = [f"NG: {k}: 絵で描く図解は、台本を書き換えて頼む（route は script。今ある絵の描き直し image・both は使わない）"
+           for k, r in routes.items() if r in ("image", "both")]
+    done = [k for k, r in routes.items() if r == "script" and any(_has_picture_diagram(x) for x in pages.get(k) or [])]
+    how = "型 figure にし、image に prompt（何をどう並べて描くか）と labels（図の中に描く文字の並び）を書く"
+    if not whole:
+        out += [f"NG: {k}: 絵で描く図解になっていない。route を script にして、{how}" for k, r in routes.items()
+                if k not in done and r not in ("image", "both")]
+    elif not done:
+        out.append(f"NG: 絵で描く図解にしたページが無い。伝わりやすくなるページを選び、route を script にして、{how}")
+    return out
+
+
 def free_shape_problems(req: dict[str, Any], before: list[dict[str, Any]], after: list[dict[str, Any]], changed: set[str]) -> list[str]:
     """文字の直し（種類が「文字」）で、自由なページの組みが変わっていたら、書き直させる `NG:` の行（docs/adr/0033）。
 
@@ -583,6 +616,10 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
                                refs=template.ref_ctx if template is not None else None)
         if patch.problems:
             return None, patch.problems
+        wrong = picture_problems(req, {k: p.route for k, p in patch.pages.items()},
+                                 {k: list(p.slides or []) for k, p in patch.pages.items()})
+        if wrong:
+            return None, wrong
         image_keys = {pp.key for pp in patch.image_changes}
 
         def rebase(other: dict[str, Any]) -> dict[str, Any]:

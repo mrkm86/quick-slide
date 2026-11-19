@@ -33,6 +33,8 @@ IMAGE_LEAD_NO_GENERATE = "渡した画像を入れます。"
 TEXT_TOUCHES = (("short", "短くする"), ("firm", "言い切る"), ("plain", "やさしく"), ("numbers", "数字を先に"))
 DIAGRAM_SHAPES = (("auto", "おまかせ"), ("flow", "流れ"), ("relation", "関係"), ("compare", "比較"), ("numbers", "数字"))
 # 画像の入口は「＋」（貼り付け・ドラッグ・URL の貼り付けも同じ）の 1 つ。「渡した画像を入れる」は、渡した画像をスライドに置く
+# プレゼンで、絵を生成できる機械にだけ出す選択肢: 図を絵として描く（html-slide の「絵で描く図解」。図の中の文字も描く）
+DIAGRAM_PICTURE = ("picture", "絵で描く")
 IMAGE_SOURCES = (("generate", "生成する"), ("attached", "渡した画像を入れる"))
 # 添えた画像が要る出どころ
 NEEDS_ATTACHMENT = ("attached",)
@@ -59,6 +61,8 @@ _DIAGRAM_SHAPE_WORDS = {
         "relation": "関係の図にする（hub・matrix・layers・equation のどれか。合う型が無ければ free で組む）",
         "compare": "比較の図にする（free で面の箱を左右に並べるか、観点が多ければ table。compare・pairs でもよい）",
         "numbers": "数字の図にする（free で数字を主役にしてマス・棒を添えるか、軸の要るグラフは bar-chart・line-chart）",
+        "picture": "絵で描く図解にする（型 figure の image に prompt と labels。書き方は「絵で描く図解」の節）。"
+                   "図の中に描く文字は labels に全部並べ、ページの言いたいことは見出しに置く",
     },
     "_": {
         "auto": "図の形は中身から選ぶ",
@@ -99,7 +103,8 @@ def offered(mode: str, *, can_generate: bool) -> list[dict[str, Any]]:
         if kind == "text":
             entry.update(options=_options(TEXT_TOUCHES), many=True, empty_reason=TEXT_REQUIRED)
         elif kind == "diagram":
-            entry["options"] = _options(DIAGRAM_SHAPES)
+            shapes = DIAGRAM_SHAPES + ((DIAGRAM_PICTURE,) if mode == "presentation" and can_generate else ())
+            entry["options"] = _options(shapes)
         elif kind == "image":
             # `attachment_reason`: 添えた画像が要る出どころの、画像が無いときの文
             sources = [s for s in IMAGE_SOURCES if s[0] != "generate" or can_generate]
@@ -223,6 +228,6 @@ def summary(kind: str | None, options: list[str]) -> str:
     """選んだ方針の短い名前（「図解（流れ）」）。台本の版の控えと記録に使う。種類を選ばなければ空。"""
     if kind not in LABELS:
         return ""
-    names = dict({"text": TEXT_TOUCHES, "diagram": DIAGRAM_SHAPES, "image": IMAGE_SOURCES}.get(kind, ()))
+    names = dict({"text": TEXT_TOUCHES, "diagram": DIAGRAM_SHAPES + (DIAGRAM_PICTURE,), "image": IMAGE_SOURCES}.get(kind, ()))
     picked = [names[o] for o in options if o in names and not (kind == "diagram" and o == "auto")]
     return LABELS[kind] + (f"（{'・'.join(picked)}）" if picked else "")

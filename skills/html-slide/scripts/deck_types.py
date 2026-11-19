@@ -72,6 +72,9 @@ IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 DEFAULT_FONTS = OS.yu_gothic_files()   # mac は PowerPoint for Mac 同梱、Windows は OS の字体（oscompat）
 FONTS = dict(DEFAULT_FONTS)
 IMAGE_KEYS = {"path", "prompt", "focus", "alt"}
+# 図解として描く枠: 絵の中に描く文字（ラベル）の一覧。prompt と一緒に書く。これがある枠だけ、絵に文字を描かせる
+LABELS_KEY = "labels"
+MAX_LABELS, MAX_LABEL_CHARS = 30, 30
 FOCUS_WORDS = {"center": "50% 50%", "left": "0% 50%", "right": "100% 50%", "top": "50% 0%", "bottom": "50% 100%"}
 COMMON_KEYS = {"type", "talk", "transition", "steps", "fx", "id", "role"}
 
@@ -218,6 +221,7 @@ class Slide:
         self.image_look = G.look_of(image_look)  # 生成の枠の画風（ADR 0011）
         self.chars = G.characters_of(spec.get("_characters"), script_dir, no)   # 最初の生成の枠に参照画像として渡す
         self.chars_used = False
+        self.chars_skipped = False               # キャラを、図解の枠なので描き込まなかった
         self.still = still                       # 動きを付けない（handout）。段は数える（talk の照合は talk モードと同じ）
         self.type = spec.get("type")
         self.look = look or {}                   # スタイルの見た目の調子（deck_style.LOOK）。組み方に効くのは fill だけ
@@ -343,15 +347,24 @@ class Slide:
             spec = {"path": spec}
         if not isinstance(spec, dict):
             self.err(f"{key} はファイルのパスか、{{path, prompt, focus, alt}} のオブジェクトで書く")
-        extra = sorted(set(spec) - IMAGE_KEYS)
+        extra = sorted(set(spec) - IMAGE_KEYS - {LABELS_KEY})
         if extra:
-            self.err(f"{key} に知らないキー: {', '.join(extra)}（使えるのは {', '.join(sorted(IMAGE_KEYS))}）")
+            self.err(f"{key} に知らないキー: {', '.join(extra)}（使えるのは {', '.join(sorted(IMAGE_KEYS | {LABELS_KEY}))}）")
+        labels = spec.get(LABELS_KEY)
+        if LABELS_KEY in spec:                              # 書いてあれば、null も誤り（指定なしと取り違えない）
+            if (not isinstance(labels, list) or not 1 <= len(labels) <= MAX_LABELS
+                    or any(not isinstance(x, str) or not x.strip() or x.splitlines() != [x] or len(x.strip()) > MAX_LABEL_CHARS for x in labels)):
+                self.err(f"{key}.{LABELS_KEY} は、図の中に描く文字の並び（1〜{MAX_LABELS} 個・1 つ {MAX_LABEL_CHARS} 字まで・改行なし）")
+            if len({x.strip() for x in labels}) != len(labels):
+                self.err(f"{key}.{LABELS_KEY} に同じ文字が 2 回ある")
+            if not spec.get("prompt") or spec.get("path"):
+                self.err(f"{key}.{LABELS_KEY} は、描く絵（prompt）と一緒に書く（持ち込みの絵 path には書けない）")
         for k in IMAGE_KEYS:
             if k in spec and (not isinstance(spec[k], str) or not spec[k].strip()):
                 self.err(f"{key}.{k} は空でない文字で書く")
         if not spec.get("path") and not spec.get("prompt"):
             self.err(f"{key} には path か prompt のどちらかを書く")
-        return {k: spec[k].strip() for k in IMAGE_KEYS if spec.get(k)}
+        return {k: spec[k].strip() for k in IMAGE_KEYS if spec.get(k)} | ({LABELS_KEY: [x.strip() for x in labels]} if labels else {})
 
     def focus_css(self, focus, key) -> str:
         """focus → object-position の %（"center"・"right top"・"center 30%"・"40% 30%"）。px は rc=2。
@@ -397,7 +410,9 @@ class Slide:
                 self.err(f"{key} の画像は {' / '.join(IMAGE_EXTS)} のどれか: {p.name}")
             return (p if p.is_file() else None), p, "path"
         stem = self.script_dir / "images" / f"s{self.no:02d}-{key}"
-        for ext in (".png", ".jpg", ".jpeg", ".webp"):
+        # 絵で描く図解（labels）は、置き場に置いた絵を使わない: 描く指示（labels を含む）から作る鍵の絵だけを使う
+        # （置いた絵を先に使うと、labels を直しても描き直されない）
+        for ext in (() if im.get(LABELS_KEY) else (".png", ".jpg", ".jpeg", ".webp")):
             if stem.with_suffix(ext).is_file():
                 return stem.with_suffix(ext), stem.with_suffix(".png"), "placed"
         return None, stem.with_suffix(".png"), "generated"
@@ -416,19 +431,30 @@ class Slide:
         found, home, origin = self.find_image(im, key)
         prompt = im.get("prompt", "")
         full = ""
-        if prompt:
+        labels = im.get(LABELS_KEY) or []
+        if prompt and labels:
+            # 図解: 絵の中に文字を描かせる。描いてよい文字を一覧で渡し、その表記のまま描かせる（検品は、この一覧と絵を照らす）
+            full = (prompt.rstrip("。") + "。図の中に描く文字は、次の " + str(len(labels)) + " 個だけ。1 字も変えず、この表記のとおりに、"
+                    "はっきり読める大きさで描く（言い換え・翻訳・省略・足し書きをしない。ほかの文字・数字・ロゴ・透かしは描かない。"
+                    "書類や画面の絵の中も、読める文字や ABC・123 のような仮の文字を入れず、線や四角で表す）: "
+                    + "".join(f"「{x}」" for x in labels)
+                    + (f"。{clear}は文字を重ねるので、物を置かずに空ける" if clear else "") + "。")
+        elif prompt:
             full = prompt.rstrip("。") + "。文字・ロゴ・透かしを描かない" + (f"。{clear}は文字を重ねるので、物を置かずに空ける" if clear else "") + "。"
         gen = {}
         if origin == "generated":
-            chars = [] if self.chars_used else self.chars
+            chars = [] if (self.chars_used or labels) else self.chars     # 図解にはキャラを描き込まない
+            if labels and self.chars:
+                self.chars_skipped = True                                  # キャラの警告の言い方を変える（枠が無いのではない）
             self.chars_used = self.chars_used or bool(chars)
-            text = G.text_of(full, self.image_look, self.pal, chars)
+            text = G.text_of(full, G.DIAGRAM_LOOK if labels else self.image_look, self.pal, chars)
             shape = G.shape_of(w, h)
             k = G.key_of(text, shape, chars)
             gpath = (self.gen_dir or self.script_dir / "images") / f"gen-{k}.png"
             adopt_gen(self.script_dir / "images" / gpath.name, gpath)
             found = gpath if gpath.is_file() else None
-            gen = {"key": k, "gen_path": str(gpath), "gen_text": text, "shape": shape, "image_look": self.image_look,
+            gen = {"key": k, "gen_path": str(gpath), "gen_text": text, "shape": shape,
+                   "image_look": G.DIAGRAM_LOOK if labels else self.image_look,     # 実際に描いた画風（図解は資料の画風に依らない）
                    "characters": [{"name": c["name"], "pose": c["pose"], "path": str(c["path"])} for c in chars]}
             home = gpath
         gw, gh = gen_size(w, h)
@@ -441,7 +467,7 @@ class Slide:
                            "aspect": round(w / h, 3), "size": f"{gw}x{gh}", "size_exact": f"{ew}x{eh}", "fit": fit_mode,
                            "crop": crop, "note": SLOT_NOTE if fit_mode == "cover" else "端を切らずに見せる（図・スクショ・地図向き）",
                            "prompt": prompt, "prompt_full": full, "focus": im.get("focus"), "alt": im.get("alt", ""),
-                           "clear": clear, "origin": origin, "path": str(found or home), "default_path": str(home),
+                           "clear": clear, "labels": labels, "origin": origin, "path": str(found or home), "default_path": str(home),
                            "exists": found is not None, **gen})
         style = box(x, y, w, h, extra) + (f" object-position:{pos};" if pos else "")
         if found is None:
