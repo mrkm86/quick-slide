@@ -234,11 +234,12 @@ class ImagesFollowTheMachineTests(unittest.TestCase):
                                                                title_hint=None, skills_dir=skills))
         # 台本の決まりを渡す指示は 4 つ（作る・直す・差し込む・取り込んだページの組み直し）。組み直しにも届く
         pres = engines.engine_for("presentation")
-        for what in ("diagram", "image"):
-            for gen in (False, True):
-                text = P.build_rebuild_prompt(pres, {"images": gen}, page={"id": "p", "type": "html", "position": 1}, texts=["a"], what=what,
-                                              picture=None, generate=gen, instruction="", skills_dir=skills)
-                self.assertEqual(P.NO_PICTURE_DIAGRAM in text.split("# 台本の決まり")[0], not gen, (what, gen))
+        # worker から実際に渡る組み合わせ: 図解の組み直しは generate がいつも偽。画像の組み直しは、生成できて画像を渡さないときだけ真
+        for what, images, generate in (("diagram", False, False), ("diagram", True, False), ("image", False, False), ("image", True, True),
+                                       ("image", True, False)):
+            text = P.build_rebuild_prompt(pres, {"images": images}, page={"id": "p", "type": "html", "position": 1}, texts=["a"], what=what,
+                                          picture=None, generate=generate, instruction="", skills_dir=skills)
+            self.assertEqual(P.NO_PICTURE_DIAGRAM in text.split("# 台本の決まり")[0], not images, (what, images, generate))
         ins = P.build_insert_prompt(pres, {"images": False}, script={"title": "t", "slides": []}, after=None, instruction="1 枚足す",
                                     attachments=[], skills_dir=skills)
         self.assertIn(P.NO_PICTURE_DIAGRAM, ins.split("# 台本の決まり")[0])
