@@ -6,7 +6,7 @@
 
     FAKE_CODEX_LOG    呼ばれるたびに1行（JSON）を書くフォルダ（必須）
     FAKE_CODEX_MODE   ok（既定）/ auth（失効）/ auth_page1（1枚目だけすぐ失効・ほかは FAKE_CODEX_SLOW 秒かかる）/
-                      fail_first / band_first / band_then_fail（1回目は帯に物・2回目からは失敗）/ rate_first /
+                      fail_first / band_first / band_always（毎回、帯に物）/ band_then_fail（1回目は帯に物・2回目からは失敗）/ rate_first /
                       refresh / none（絵を返さない）/ leak（トークンらしき文字を出して失敗）/
                       warn_words（失効や枠切れの語を含む警告を出すが、絵は返す）/
                       auth_with_image（絵を返したうえで失効を出す）
@@ -133,7 +133,7 @@ def main():
         return 0
     if MODE == "refresh":
         (home / "auth.json").write_text((home / "auth.json").read_text(encoding="utf-8") + " ", encoding="utf-8")
-    draw(home / "generated_images" / str(uuid.uuid4()) / "exec-1.png", band_dark=(MODE in ("band_first", "band_then_fail") and n == 1))
+    draw(home / "generated_images" / str(uuid.uuid4()) / "exec-1.png", band_dark=(MODE == "band_always" or (MODE in ("band_first", "band_then_fail") and n == 1)))
     print('{"type":"thread.started","thread_id":"%s"}' % uuid.uuid4())
     print('{"type":"turn.completed"}')
     return 0

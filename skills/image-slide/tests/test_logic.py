@@ -471,7 +471,6 @@ def t_visual_bleed():
     check(rc == 0, se)
     t = (out / "prompts" / "slide-02.txt").read_text(encoding="utf-8")
     check("全面に使ってよい" in t and "1色の無地にする" not in t, "visual の本文に帯を頼んだ")
-    check(not any(c["n"] == 2 for c in _execs(calls)), "全面のページを帯の検査で描き直した")
     b = json.loads((out / "build.json").read_text(encoding="utf-8"))
     check(not any(s["plate"] for s in b["slides"]), "全面のページに帯の板を敷いた")
     check(all(s["band"] is None for s in b["slides"]), "全面のページを帯として記録した")
@@ -493,6 +492,79 @@ def t_visual_bleed():
     check(rc == 2 and "縦横比" in se, f"縦横比の違う白いロゴを通した: {se}")
     rc, so, se, _ = run(["check", "--script", str(SAMPLE), "--logo-white", str(root / "white.png")], root)
     check(rc == 2 and "--logo と一緒" in se, f"--logo なしの --logo-white を通した: {se}")
+
+
+def t_chrome_check():
+    """全面に描かせたページ: フッタ・ページ番号を載せる所で、重ねる文字が読めるかを見る（ADR 0019）。"""
+    from PIL import Image, ImageDraw
+    theme = {"background": "#ffffff", "ink": "#111111"}
+    boxes = {"footer": (120, 1015, 160, 22), "number": (954, 1015, 12, 22)}
+    white = Image.new("RGB", (L.W, L.H), "white")
+    check(C.chrome_check(white, boxes, theme) == {"ok": True, "busy": [], "share": {"footer": 0.0, "number": 0.0}}, "白い地で NG")
+    dark = Image.new("RGB", (L.W, L.H), (10, 20, 40))
+    check(C.chrome_check(dark, boxes, theme)["ok"], "暗い1色の地は、白い文字で読めるので OK")
+    pale = white.copy()   # 淡い飾り（文字は読める）は通す
+    ImageDraw.Draw(pale).rectangle((0, 1000, 600, L.H), fill=(205, 232, 200))
+    check(C.chrome_check(pale, boxes, theme)["ok"], "淡い飾りの上を NG にした")
+    edge = white.copy()   # 帯の縁がフッタを横切る（半分が濃い色）
+    ImageDraw.Draw(edge).rectangle((200, 960, 1700, 1030), fill=(20, 90, 30))
+    r = C.chrome_check(edge, boxes, theme)
+    check(r["busy"] == ["footer", "number"] and r["share"]["footer"] > L.CHROME_MAX_SHARE, f"帯の縁が横切るのに OK: {r}")
+    text = white.copy()   # 絵の中の文字と重なる
+    d = ImageDraw.Draw(text)
+    for x in range(124, 280, 12):
+        d.rectangle((x, 1016, x + 5, 1036), fill=(90, 90, 90))
+    r = C.chrome_check(text, boxes, theme)
+    check(r["busy"] == ["footer"], f"描かれた文字と重なるのに OK: {r}")
+    check(C.chrome_check(white, {"footer": None, "number": None}, theme)["ok"], "部品が無いページで NG")
+    # 読めない枠は、文字の後ろに地を敷き、文字はテーマの文字の色
+    ink = C.inks(edge, theme=theme, band=C.band_check(edge), plate=False, bleed=True, boxes=boxes, text_plates=("footer",))
+    check(ink["footer"] == "#111111", f"地の上の文字の色: {ink}")
+    shown = C.overlay(edge, theme=theme, plate=False, footer="", number="", ink=ink, logo=None, place=None, font_file=None,
+                      mid=L.row_mid(True), text_plates=("footer",))
+    check(shown.getpixel((300, 1020)) == (20, 90, 30), "部品の無い枠に地を敷いた")
+    px, py, pw, ph = L.text_plate_box((0, 1070, 50, 22))
+    check((px, py) == (0, 1062) and py + ph == L.H, "地が画面からはみ出す")
+
+
+def t_chrome_redraw_and_plate():
+    """全面のページで下端の文字が読めなければ描き直し、最後まで直らなければ文字の後ろに地を敷く（PPTX にも・記録にも）。"""
+    from PIL import Image
+    from pptx import Presentation
+    root = tmpdir()
+    out = root / "out"
+    rc, so, se, calls = run(["deck", "--script", str(SAMPLE), "--out", str(out), "--no-pdf"], root, mode="band_first")
+    check(rc == 0, se)
+    b = json.loads((out / "build.json").read_text(encoding="utf-8"))
+    body = [s for s in b["slides"] if s["chrome"] is not None]
+    check(body and all(s["attempts"] == 2 and s["chrome"]["ok"] and not s["text_plates"] for s in body),
+          f"1回目だけ読めない絵: 描き直して直るはず: {[(s['no'], s.get('attempts'), s['chrome']) for s in body]}")
+    check(all(s["attempts"] == 1 for s in b["slides"] if s["chrome"] is None), "全面でないページ（表紙など）を描き直した")
+    t = (out / "inspect.md").read_text(encoding="utf-8")
+    check("全面に描かせたページの下端（フッタ・ページ番号を載せる所だけ見る）: 全部読める" in t, "検品用の写しの行が無い")
+    check("帯（ロゴ・フッタ・ページ番号を載せる下端）: 全ページ空いていた" not in t, "見ていない帯を「空いていた」と書いた")
+    # 毎回読めない絵: 最後は地を敷く
+    out2 = root / "out2"
+    rc, so, se, calls = run(["deck", "--script", str(SAMPLE), "--out", str(out2)], root, mode="band_always")
+    check(rc == 0, se)
+    b = json.loads((out2 / "build.json").read_text(encoding="utf-8"))
+    body = [s for s in b["slides"] if s["chrome"] is not None]
+    check(body and all("footer" in s["text_plates"] and not s["plate"] for s in body), f"地を敷いていない: {[(s['no'], s['text_plates']) for s in body]}")
+    check("文字の後ろに地を敷いた" in se, "警告が出ていない")
+    no = body[0]["no"]
+    shown = Image.open(out2 / "slides" / f"slide-{no:02d}.png").convert("RGB")
+    fx, fy, _, fh = L.footer_box(0, True, L.row_mid(True))
+    check(shown.getpixel((fx - 6, fy + fh // 2)) == (255, 255, 255), "確認用の絵のフッタの後ろに地が無い")
+    names = [sh.name for sh in Presentation(str(out2 / "deck.pptx")).slides[no - 1].shapes]
+    check("フッタの地" in names and names.index("フッタの地") < names.index("フッタ"), f"PPTX に地が無いか、文字より上にある: {names}")
+    check("（後ろに地）" in (out2 / "inspect.md").read_text(encoding="utf-8"), "検品用の写しに地のことが無い")
+    # standard（帯を頼むページ）は今までどおり: 帯の検査と板で、文字の後ろの地は使わない
+    out3 = root / "out3"
+    rc, so, se, _ = run(["deck", "--script", str(SAMPLE), "--style", "standard", "--out", str(out3), "--no-pdf"], root, mode="band_always")
+    check(rc == 0, se)
+    b = json.loads((out3 / "build.json").read_text(encoding="utf-8"))
+    check(all(s["chrome"] is None and not s["text_plates"] for s in b["slides"]) and any(s["plate"] for s in b["slides"]),
+          "standard で文字の後ろの地を使ったか、帯の板が無い")
 
 
 def t_watermark():

@@ -59,6 +59,14 @@ WATERMARK_COLOR = "#767676"             # Gray-536（DADS・白の地で 4.5:1�
 WATERMARK_BOTTOM = 13                   # 文字のベースラインから画面の下端まで（1080 の 1.2%）
 ROW_MID_RAISED = BAND_TOP + LOGO_BOX_H / 2   # フッタか番号があるページの下の行の中心（1026。ロゴの上端が帯の上端にそろう）
 
+# 全面に描かせたページ（bleed）で、フッタ・ページ番号を載せる所の検査（compose.chrome_check・ADR 0019）
+CHROME_PAD = 8                          # 文字の枠の周りも見る幅（px）
+CHROME_CONTRAST = 3.0                   # 載せる文字と下の画素のコントラスト比がこれ未満なら、その画素では読めない（ロゴと同じ基準）
+CHROME_MAX_SHARE = 0.02                 # 読めない画素がこの割合を超えたら、その所は空いていない
+TEXT_PLATE_PAD_X = 12                   # 空かなかったときに文字の後ろへ敷く地の、左右の余白（px）
+TEXT_PLATE_PAD_Y = 8                    # 同じく上下の余白（px）
+TEXT_PLATE_RADIUS = 10                  # 地の角の丸み（ロゴのステッカーと同じ）
+
 
 def row_mid(text_row: bool = False) -> float:
     """フッタ・ページ番号・ロゴの行の中心。text_row（フッタかページ番号がある）なら上げて、下の端を透かしに空ける。
@@ -109,3 +117,11 @@ def footer_box(logo_w: int = 0, number: bool = False, mid: float = LOGO_MID_Y) -
     x = SIDE + (logo_w + LOGO_GAP if logo_w else 0)
     end = FOOTER_END_WITH_NO if number else W * 3 // 4
     return (x, int(mid - TEXT_PX / 2), end - x, TEXT_PX)
+
+
+def text_plate_box(box: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    """文字の枠 (x, y, w, h) の後ろに敷く地の (x, y, w, h)。画面からはみ出さない。"""
+    x, y, w, h = box
+    x0, y0 = max(0, x - TEXT_PLATE_PAD_X), max(0, y - TEXT_PLATE_PAD_Y)
+    x1, y1 = min(W, x + w + TEXT_PLATE_PAD_X), min(H, y + h + TEXT_PLATE_PAD_Y)
+    return (x0, y0, x1 - x0, y1 - y0)

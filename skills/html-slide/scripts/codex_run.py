@@ -399,7 +399,7 @@ def _verify_image(path: pathlib.Path) -> None:
 class Runner:
     """ページを並列に描く。work(item, attempt, last_error) が1回ぶんをやり、失敗は CodexError を投げる。"""
 
-    RETRY_KINDS = ("gen", "timeout", "band", "rate")
+    RETRY_KINDS = ("gen", "timeout", "band", "chrome", "rate")
 
     def __init__(self, max_parallel: int, attempts: int, log=print, sleep=time.sleep):
         self.max_parallel, self.attempts, self.log, self.sleep = max(1, max_parallel), max(1, attempts), log, sleep

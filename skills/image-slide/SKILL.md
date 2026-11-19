@@ -9,7 +9,7 @@ description: html-slide と同じ台本（資料用の JSON）から、画像生
 **html-slide と同じ段のエンジン**で、受け口（台本・テーマ・素材のパス）も出力の形も html-slide にそろえてある。
 違うのは「1枚をどう描くか」だけ（html-slide は型で HTML を組み、image-slide は絵として丸ごと描く）。
 
-> **ドキュメント**: 設計判断は [`docs/adr/`](docs/adr/)（0001 受け口を html-slide と同じに・0002 認証は1度だけ・並列・0003 帯の上の部品・0004 レイアウトの層（0005 で置き換え）・0005 構図は Codex に任せる・0006 レイアウトは持ち込める・0007 スタイルは standard・visual・カスタム・0008 ロゴは html-slide と同じ規則・0009 visual は全面に描く・0010 透かし・0011 キャラはページごとに `_characters`・参照画像は5枚まで・0012 revise＝微修正と作り直し・0013 出力は PPTX・PDF・ページの画像・サムネイル・0014 API で描く道は見送り（同じ gpt-image-2 でも呼び方で結果が変わる）・0015 描いた絵はキャッシュに置く・0016 置き場の根っこは ~/.quick-slide）、台本の読み方と描く指示の組み方は [`references/intake.md`](references/intake.md)、Codex の認証・並列・枠は [`references/codex.md`](references/codex.md)、機体に置く手順は [`references/deploy.md`](references/deploy.md)。
+> **ドキュメント**: 設計判断は [`docs/adr/`](docs/adr/)（0001 受け口を html-slide と同じに・0002 認証は1度だけ・並列・0003 帯の上の部品・0004 レイアウトの層（0005 で置き換え）・0005 構図は Codex に任せる・0006 レイアウトは持ち込める・0007 スタイルは standard・visual・カスタム・0008 ロゴは html-slide と同じ規則・0009 visual は全面に描く・0010 透かし・0011 キャラはページごとに `_characters`・参照画像は5枚まで・0012 revise＝微修正と作り直し・0013 出力は PPTX・PDF・ページの画像・サムネイル・0014 API で描く道は見送り（同じ gpt-image-2 でも呼び方で結果が変わる）・0015 描いた絵はキャッシュに置く・0016 置き場の根っこは ~/.quick-slide・0019 全面のページでもフッタとページ番号の所は見る）、台本の読み方と描く指示の組み方は [`references/intake.md`](references/intake.md)、Codex の認証・並列・枠は [`references/codex.md`](references/codex.md)、機体に置く手順は [`references/deploy.md`](references/deploy.md)。
 > **過去に受けた指摘** → [`FEEDBACK.md`](FEEDBACK.md)。**着手前に読む。**
 > **テスト**: `bash tests/run.sh`（本物の Codex は呼ばない）
 > **出荷検品**: [`INSPECTION.md`](INSPECTION.md)。検品役が読むのは `<出力先>/inspect.md` と `slides/slide-NN.png`。
@@ -34,7 +34,7 @@ description: html-slide と同じ台本（資料用の JSON）から、画像生
 
 1. **台本を書く。** 書き方は html-slide の [`deck-format.md`](../html-slide/references/deck-format.md) と同じ（型・キー・`talk`・画像の枠）。ストーリー（何をどの順で言うか・枚数）は台本を書く側が決める（html-slide の ADR 0004）。見本は [`examples/sample-pitch.json`](examples/sample-pitch.json)（架空の題材・5枚）
    - 絵で描くので、**文字の長さ・talk とクリックの数では止まらない**。それでも見出しは短く（絵の中の文字は直せない）
-   - **スタイル**は `--style visual`（既定・ビジュアル寄り。プレゼン・ピッチ向け。**本文のページも全面に描き**、フッタ・ページ番号・ロゴは絵の上に重ねる・ADR 0009）か `--style standard`（説明・報告・社内資料向け）か `--style infographic`（**台本の全ページを1枚に凝縮**したポスター。カスタムレイアウトは1枚目の `_layout` が効く）。カスタムスタイルは YAML で `--style <ファイル>`。一言足すなら `--style-note`
+   - **スタイル**は `--style visual`（既定・ビジュアル寄り。プレゼン・ピッチ向け。**本文のページも全面に描き**、フッタ・ページ番号・ロゴは絵の上に重ねる・ADR 0009。フッタとページ番号を載せる所で文字が読めなければ描き直し、直らなければ文字の後ろに地を敷く・ADR 0019）か `--style standard`（説明・報告・社内資料向け）か `--style infographic`（**台本の全ページを1枚に凝縮**したポスター。カスタムレイアウトは1枚目の `_layout` が効く）。カスタムスタイルは YAML で `--style <ファイル>`。一言足すなら `--style-note`
    - **構図は指定しない**（Codex が中身から決める・ADR 0005）
    - **見せ方が決まっている資料**（週報・月報など）は、カスタムスタイル（`--style`）とカスタムレイアウト（`--layout` とページの `_layout`）を持ち込む。雛形は `templates/custom-style.example.yaml`・`templates/custom-layout.example.yaml`（ADR 0006・0007）
    - そのページだけの描き方の注文は `_visual`（例: `"右上に、輪になって話す人のイラスト"`）

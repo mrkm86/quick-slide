@@ -66,6 +66,38 @@ def band_check(im) -> dict:
             "dark": lum < 0.45}
 
 
+def chrome_check(im, boxes: dict, theme: dict) -> dict:
+    """全面に描かせたページで、フッタ・ページ番号を載せる所で、載せる文字が読めるか（ADR 0019）。
+
+    boxes は chrome_boxes の返り値。枠ごとに、周り（CHROME_PAD）を含めた範囲で、載せる文字の色（area_ink。下の明るさで
+    白かテーマの文字の色）とのコントラスト比が CHROME_CONTRAST に届かない画素の割合を見る。平らな地・ぼかした背景・
+    淡い飾りは通り、描かれた文字・カードや帯の縁・明暗の細かい写真は通らない。
+    返り値 {"ok", "busy": [読めない枠の名前], "share": {名前: 割合}}。"""
+    share = {}
+    for name, box in boxes.items():
+        if not box:
+            continue
+        x, y, w, h = box
+        if w <= 0 or h <= 0:
+            continue
+        pad = L.CHROME_PAD
+        part = im.crop((max(0, x - pad), max(0, y - pad), min(L.W, x + w + pad), min(L.H, y + h + pad))).convert("RGB")
+        ink = _lum(_rgb(area_ink(im, box, theme)))
+        px = part.tobytes()
+        n = len(px) // 3
+        seen: dict = {}
+        low = 0
+        for i in range(0, len(px), 3):
+            c = px[i:i + 3]
+            v = seen.get(c)
+            if v is None:
+                v = seen[c] = contrast(ink, _lum(tuple(c))) < L.CHROME_CONTRAST
+            low += v
+        share[name] = round(low / n, 4) if n else 0.0
+    busy = [k for k, v in share.items() if v > L.CHROME_MAX_SHARE]
+    return {"ok": not busy, "busy": busy, "share": share}
+
+
 def read_logo(src: pathlib.Path, mid: float = L.LOGO_MID_Y):
     """(透明な余白を切ったロゴの RGBA 画像, 右下に置くときの寸法)。寸法は html-slide の deck.load_logo と同じ
     {"x", "y", "w", "h", "scale", "warning", "trim"（切った範囲・切らなければ None）}。読めなければ ValueError。
@@ -271,20 +303,22 @@ def chrome_boxes(footer: str, number: str, place: dict | None, font_file: str | 
     return out
 
 
-def inks(im, *, theme: dict, band: dict, plate: bool, bleed: bool, boxes: dict) -> dict:
-    """フッタとページ番号の文字の色 {"footer", "number"}。帯の上なら帯の明るさで、全面の絵の上ならそれぞれの下の明るさで決める。"""
+def inks(im, *, theme: dict, band: dict, plate: bool, bleed: bool, boxes: dict, text_plates=()) -> dict:
+    """フッタとページ番号の文字の色 {"footer", "number"}。帯の上なら帯の明るさで、全面の絵の上ならそれぞれの下の明るさで決める。
+    text_plates（後ろに地を敷く枠の名前）は、地の上なのでテーマの文字の色。"""
     if not bleed:
         c = text_color(band, theme, plate)
         return {"footer": c, "number": c}
-    return {k: area_ink(im, b, theme) if b else theme["ink"] for k, b in boxes.items()}
+    return {k: area_ink(im, b, theme) if b and k not in text_plates else theme["ink"] for k, b in boxes.items()}
 
 
 def overlay(base, *, theme: dict, plate: bool, footer: str, number: str, ink: dict,
-            logo: dict | None, place: dict | None, font_file: str | None, mid: float = L.LOGO_MID_Y):
+            logo: dict | None, place: dict | None, font_file: str | None, mid: float = L.LOGO_MID_Y, text_plates=()):
     """確認用に、帯の上の部品（板・フッタ・ロゴの地・ロゴ・ページ番号）を焼いた画像を返す。
 
     位置は layout.py。logo は load_logo の返り値、place は place_logo の返り値（置かないページは {"off": True}）。
-    ink は inks の返り値（フッタとページ番号の色）。"""
+    ink は inks の返り値（フッタとページ番号の色）。text_plates は、後ろに地を敷く枠の名前（"footer"・"number"。
+    全面に描かせたページで、その所に物が描かれていたとき・ADR 0019）。"""
     from PIL import Image, ImageDraw, ImageFont
     im = base.copy()
     d = ImageDraw.Draw(im)
@@ -293,6 +327,10 @@ def overlay(base, *, theme: dict, plate: bool, footer: str, number: str, ink: di
     font = ImageFont.truetype(font_file, L.TEXT_PX) if font_file else ImageFont.load_default()
     on = bool(logo and place and not place.get("off"))
     boxes = chrome_boxes(footer, number, place if on else None, font_file, mid)
+    for name in text_plates:
+        if boxes.get(name):
+            px, py, pw, ph = L.text_plate_box(boxes[name])
+            d.rounded_rectangle((px, py, px + pw - 1, py + ph - 1), radius=L.TEXT_PLATE_RADIUS, fill=_rgb(theme["background"]))
     if footer:
         d.text(boxes["footer"][:2], footer, font=font, fill=_rgb(ink["footer"]), anchor="lt")
     if number:
