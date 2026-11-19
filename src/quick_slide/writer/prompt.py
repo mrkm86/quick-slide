@@ -238,7 +238,8 @@ def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
     if args.get("images", True):
         rules.append("生成の画像の枠は image: {\"prompt\": \"何を描くか\"} で書く。構造・手順・数字は図解にし、"
                      "空気・場面・気持ちを伝えるページにだけ画像を置く。prompt に画風（写真風・イラスト・手描きなど）を書かない"
-                     "（画風は描くときに資料全体で 1 つに揃う）。prompt に文字・ロゴ・実在の人物や会社や商品の名前を描かせない")
+                     "（画風は描くときに資料全体で 1 つに揃う）。prompt に文字・ロゴ・実在の人物や会社や商品の名前を描かせない"
+                     "（絵で描く図解＝labels のある枠だけは別。図の中の文字は labels に並べ、prompt には何をどう並べるかを書く）")
     else:
         rules.append("生成の画像の枠（image の prompt）を使わない。" + (
             "image に書いてよいのは挿絵（svg）だけ。写真が必須の型（photo・gallery・figure・annotate）と quote の layout: full・portrait は、"
@@ -408,7 +409,8 @@ def _edit_rules(engine: Engine, args: dict[str, Any]) -> list[str]:
     if engine.mode == "presentation":
         rules.append(illust_rule(args))
     if args.get("images", True):
-        rules.append("生成の画像の枠は image: {\"prompt\": \"何を描くか\"} で書く。prompt に画風・文字・ロゴ・実在の人物や会社や商品の名前を書かない。"
+        rules.append("生成の画像の枠は image: {\"prompt\": \"何を描くか\"} で書く。prompt に画風・文字・ロゴ・実在の人物や会社や商品の名前を書かない"
+                     "（絵で描く図解＝labels のある枠だけは、図の中の文字を labels に並べる）。"
                      "指示が画像を求めていないページに、新しく画像の枠を足さない")
     else:
         rules.append("生成の画像の枠（image の prompt）を新しく書かない（この機械では絵を生成できない）。"

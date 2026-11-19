@@ -228,6 +228,6 @@ def summary(kind: str | None, options: list[str]) -> str:
     """選んだ方針の短い名前（「図解（流れ）」）。台本の版の控えと記録に使う。種類を選ばなければ空。"""
     if kind not in LABELS:
         return ""
-    names = dict({"text": TEXT_TOUCHES, "diagram": DIAGRAM_SHAPES, "image": IMAGE_SOURCES}.get(kind, ()))
+    names = dict({"text": TEXT_TOUCHES, "diagram": DIAGRAM_SHAPES + (DIAGRAM_PICTURE,), "image": IMAGE_SOURCES}.get(kind, ()))
     picked = [names[o] for o in options if o in names and not (kind == "diagram" and o == "auto")]
     return LABELS[kind] + (f"（{'・'.join(picked)}）" if picked else "")

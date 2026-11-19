@@ -447,6 +447,43 @@ def type_problems(slides: list[dict[str, Any]], args: dict[str, Any], *, only: s
     return out
 
 
+def _generated_prompts(value: Any) -> list[str]:
+    """ページの中の、生成の画像の枠（image に prompt があり、path も svg も無い）の描く指示。labels があれば、それも含めた文。"""
+    out: list[str] = []
+    if isinstance(value, dict):
+        im = value.get("image")
+        if isinstance(im, dict) and str(im.get("prompt") or "").strip() and not im.get("path") and not im.get("svg"):
+            out.append(json.dumps([im.get("prompt"), im.get("labels")], ensure_ascii=False))
+        for k, v in value.items():
+            if k != "image":
+                out += _generated_prompts(v)
+    elif isinstance(value, list):
+        for v in value:
+            out += _generated_prompts(v)
+    return out
+
+
+def generated_image_problems(slides: list[dict[str, Any]], args: dict[str, Any], *,
+                             before: list[dict[str, Any]] | None = None, only: set[str] | None = None) -> list[str]:
+    """絵を生成しない資料・機械（`images` が偽）なのに、台本係が生成の画像の枠を書いたページ（`NG:` の行）。
+
+    台本係には「生成の枠を使わない」と頼んでいるが、頼むだけでは守られない。通すと、描くときに Codex を呼びに行く
+    （生成できない機械では止まり、「画像を使わない」と選んだ資料でも絵を描いてしまう）。
+    直しでは `before`（直す前のページ）を渡す。前からある枠はそのまま通し、新しく書いた枠・書き換えた枠だけを見る。"""
+    if args.get("images", True) or engine_for(args.get("mode") or "presentation").mode != "presentation":
+        return []
+    was = {str(s.get("id")): set(_generated_prompts(s)) for s in before or [] if isinstance(s, dict)}
+    out = []
+    for i, s in enumerate(slides, 1):
+        if not isinstance(s, dict) or (only is not None and str(s.get("id")) not in only):
+            continue
+        new = [p for p in _generated_prompts(s) if p not in was.get(str(s.get("id")), set())]
+        if new:
+            out.append(f"NG: {i}枚目（id={s.get('id')}）: 生成の画像の枠（image の prompt・labels）は使えない（この資料・機械では絵を生成しない）。"
+                       "image を外すか、挿絵（image の svg）・自由なページ・図解の型で書く")
+    return out
+
+
 BRAND_COLOR_MESSAGE = ("ブランドの色の組み合わせでは読めない文字ができるため、描けません。"
                        "設定のブランドの色（地の色・基本色・強調色）を見直してから、もう一度頼んでください。")
 

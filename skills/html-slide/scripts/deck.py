@@ -634,7 +634,9 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
                         gen_dir=gen_dir, look=sty["look"])
             parts, chrome = T.build_slide(s)
             if s.chars and not s.chars_used:
-                img_warns.append(f"{no}枚目（{spec['type']}）: _characters を描き込む枠が無い（prompt だけの画像の枠に描く。"
+                img_warns.append(f"{no}枚目（{spec['type']}）: _characters を描き込まなかった（絵で描く図解の枠には、キャラを描かない）"
+                                 if s.chars_skipped else
+                                 f"{no}枚目（{spec['type']}）: _characters を描き込む枠が無い（prompt だけの画像の枠に描く。"
                                  "持ち込みの絵と枠の無いページには描かない）")
             if spec["type"] in sty.get("expects_images", ()) and not spec.get("image"):
                 img_warns.append(f"{no}枚目（{spec['type']}）: スタイル {sty['name']} では画像を置く型だが、image が無い"

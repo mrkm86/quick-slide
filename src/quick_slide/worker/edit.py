@@ -116,6 +116,36 @@ class EditResult:
     ng_warnings: Callable[[list[str]], list[str]] | None = None
 
 
+def _has_picture_diagram(value: Any) -> bool:
+    """ページの中に、絵で描く図解の枠（image に prompt と labels）があるか。"""
+    if isinstance(value, dict):
+        im = value.get("image")
+        if isinstance(im, dict) and im.get("prompt") and isinstance(im.get("labels"), list) and im["labels"]:
+            return True
+        return any(_has_picture_diagram(v) for k, v in value.items() if k != "image")
+    return isinstance(value, list) and any(_has_picture_diagram(v) for v in value)
+
+
+def picture_problems(req: dict[str, Any], routes: dict[str, str], after: list[dict[str, Any]]) -> list[str]:
+    """直しの「図解 → 絵で描く」を選んだのに、答えが絵で描く図解になっていないときの `NG:` の行（docs/adr/0034）。
+
+    絵で描く図解は、台本を書き換えて頼む（route は script。型 figure の image に prompt と labels）。今ある絵の描き直し（route が
+    image・both）では、文字を描かせない元の指示のまま直すことになり、図解にならない。ページを指定した直しは、直したページの
+    全部が図解になっていること。スライド全体への直しは、どれか 1 ページ。"""
+    if req.get("kind") != "diagram" or "picture" not in (req.get("options") or []):
+        return []
+    out = [f"NG: {k}: 絵で描く図解は、台本を書き換えて頼む（route は script。今ある絵の描き直し image・both は使わない）"
+           for k, r in routes.items() if r != "script"]
+    by_id = {str(s.get("id")): s for s in after if isinstance(s, dict)}
+    done = [k for k in routes if _has_picture_diagram(by_id.get(k))]
+    how = "型 figure にし、image に prompt（何をどう並べて描くか）と labels（図の中に描く文字の並び）を書く"
+    if (req.get("scope") or "page") in ("page", "pages"):
+        out += [f"NG: {k}: 絵で描く図解になっていない。{how}" for k in routes if k not in done]
+    elif not done:
+        out.append(f"NG: 絵で描く図解にしたページが無い。伝わりやすくなるページを選び、{how}")
+    return out
+
+
 def free_shape_problems(req: dict[str, Any], before: list[dict[str, Any]], after: list[dict[str, Any]], changed: set[str]) -> list[str]:
     """文字の直し（種類が「文字」）で、自由なページの組みが変わっていたら、書き直させる `NG:` の行（docs/adr/0033）。
 
@@ -483,6 +513,8 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
         changed = {str(x.get("id")) for x in slides_of(result.data) if before.get(str(x.get("id"))) != dumps(x)}
         ids = page_id_problems(slides_of(result.data)) + LOOK.type_problems(
             slides_of(result.data), run["args"], only=changed)
+        # 直しでは、いまの機械で絵を生成できるかに従う（_edit_args）。前からある枠は通し、新しく書いた枠だけを見る
+        ids += LOOK.generated_image_problems(slides_of(result.data), _edit_args(run["args"], req), before=slides_of(data), only=changed)
         # 日本語の検査（絵文字・前置き）。直したページだけ。最後の回は止めずに記録だけ
         jl_ng, jl_notes = JLINT.problems_and_notes(lint_view(run["args"], slides_of(result.data)),
                                                    enforce=round_no < rounds, only=changed)
@@ -583,6 +615,10 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
                                refs=template.ref_ctx if template is not None else None)
         if patch.problems:
             return None, patch.problems
+        wrong = picture_problems(req, {k: p.route for k, p in patch.pages.items()},
+                                 slides_of(apply_revision(data, patch) if patch.script_changes else data))
+        if wrong:
+            return None, wrong
         image_keys = {pp.key for pp in patch.image_changes}
 
         def rebase(other: dict[str, Any]) -> dict[str, Any]:

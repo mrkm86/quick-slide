@@ -221,6 +221,7 @@ class Slide:
         self.image_look = G.look_of(image_look)  # 生成の枠の画風（ADR 0011）
         self.chars = G.characters_of(spec.get("_characters"), script_dir, no)   # 最初の生成の枠に参照画像として渡す
         self.chars_used = False
+        self.chars_skipped = False               # キャラを、図解の枠なので描き込まなかった
         self.still = still                       # 動きを付けない（handout）。段は数える（talk の照合は talk モードと同じ）
         self.type = spec.get("type")
         self.look = look or {}                   # スタイルの見た目の調子（deck_style.LOOK）。組み方に効くのは fill だけ
@@ -350,9 +351,9 @@ class Slide:
         if extra:
             self.err(f"{key} に知らないキー: {', '.join(extra)}（使えるのは {', '.join(sorted(IMAGE_KEYS | {LABELS_KEY}))}）")
         labels = spec.get(LABELS_KEY)
-        if labels is not None:
+        if LABELS_KEY in spec:                              # 書いてあれば、null も誤り（指定なしと取り違えない）
             if (not isinstance(labels, list) or not 1 <= len(labels) <= MAX_LABELS
-                    or any(not isinstance(x, str) or not x.strip() or "\n" in x or len(x.strip()) > MAX_LABEL_CHARS for x in labels)):
+                    or any(not isinstance(x, str) or not x.strip() or len(x.splitlines()) != 1 or len(x.strip()) > MAX_LABEL_CHARS for x in labels)):
                 self.err(f"{key}.{LABELS_KEY} は、図の中に描く文字の並び（1〜{MAX_LABELS} 個・1 つ {MAX_LABEL_CHARS} 字まで・改行なし）")
             if len({x.strip() for x in labels}) != len(labels):
                 self.err(f"{key}.{LABELS_KEY} に同じ文字が 2 回ある")
@@ -409,7 +410,9 @@ class Slide:
                 self.err(f"{key} の画像は {' / '.join(IMAGE_EXTS)} のどれか: {p.name}")
             return (p if p.is_file() else None), p, "path"
         stem = self.script_dir / "images" / f"s{self.no:02d}-{key}"
-        for ext in (".png", ".jpg", ".jpeg", ".webp"):
+        # 絵で描く図解（labels）は、置き場に置いた絵を使わない: 描く指示（labels を含む）から作る鍵の絵だけを使う
+        # （置いた絵を先に使うと、labels を直しても描き直されない）
+        for ext in (() if im.get(LABELS_KEY) else (".png", ".jpg", ".jpeg", ".webp")):
             if stem.with_suffix(ext).is_file():
                 return stem.with_suffix(ext), stem.with_suffix(".png"), "placed"
         return None, stem.with_suffix(".png"), "generated"
@@ -441,6 +444,8 @@ class Slide:
         gen = {}
         if origin == "generated":
             chars = [] if (self.chars_used or labels) else self.chars     # 図解にはキャラを描き込まない
+            if labels and self.chars:
+                self.chars_skipped = True                                  # キャラの警告の言い方を変える（枠が無いのではない）
             self.chars_used = self.chars_used or bool(chars)
             text = G.text_of(full, G.DIAGRAM_LOOK if labels else self.image_look, self.pal, chars)
             shape = G.shape_of(w, h)
@@ -448,7 +453,8 @@ class Slide:
             gpath = (self.gen_dir or self.script_dir / "images") / f"gen-{k}.png"
             adopt_gen(self.script_dir / "images" / gpath.name, gpath)
             found = gpath if gpath.is_file() else None
-            gen = {"key": k, "gen_path": str(gpath), "gen_text": text, "shape": shape, "image_look": self.image_look,
+            gen = {"key": k, "gen_path": str(gpath), "gen_text": text, "shape": shape,
+                   "image_look": G.DIAGRAM_LOOK if labels else self.image_look,     # 実際に描いた画風（図解は資料の画風に依らない）
                    "characters": [{"name": c["name"], "pose": c["pose"], "path": str(c["path"])} for c in chars]}
             home = gpath
         gw, gh = gen_size(w, h)
