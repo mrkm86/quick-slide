@@ -526,8 +526,13 @@ def t_chrome_check():
     px, py, pw, ph = L.text_plate_box((0, 1070, 50, 22))
     check((px, py) == (0, 1062) and py + ph == L.H, "地が画面からはみ出す")
     # 字体のファイルが無い機械では、文字の幅を広めに見積もる（PIL の小さな既定の字体で測らない）
-    check(C.text_width("資料のフッタ", None) == 6 * L.TEXT_PX and C.text_width("ab", None) == round(2 * 0.6 * L.TEXT_PX),
-          f"字体が無いときの幅: {C.text_width('資料のフッタ', None)}")
+    check(C.text_width("資料のフッタ", None) == 6 * L.TEXT_PX and C.text_width("WW", None) == 2 * L.TEXT_PX, "字体が無いときの幅")
+    from PIL import ImageFont
+    real = C.font_path({"font": "x", "font_files": {}}, {})
+    if real:   # 実際の字体で測った幅を下回らない（幅広い半角でも）
+        for t in ("WWWWWWWWWW", "MMMM 2026", "資料のフッタ ABC"):
+            got = ImageFont.truetype(real, L.TEXT_PX).getlength(t)
+            check(C.text_width(t, None) >= got, f"見積もりが実際の幅より狭い: {t} {C.text_width(t, None)} < {got}")
     # 左下を指定したロゴが右下へ移ると、フッタは左端に戻る。検査もその位置を見る（仕上げと同じ計算）
     import image_slide as M
     root = tmpdir()

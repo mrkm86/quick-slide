@@ -287,9 +287,9 @@ def text_width(text: str, font_file: str | None) -> int:
         return 0
     if not font_file:
         # 字体のファイルが無い機械: PIL の小さな既定の字体で測ると、PowerPoint が置く文字より狭くなる。
-        # 全角は文字の高さ、半角はその 0.6 倍で見積もる（広めに取る。検査の枠と文字の後ろの地が、文字より狭くならないように）
-        import unicodedata
-        return int(round(sum(L.TEXT_PX * (1.0 if unicodedata.east_asian_width(c) in "WFA" else 0.6) for c in text)))
+        # どの文字も文字の高さぶんの幅（全角の幅）で見積もる。半角の幅広い字（W・M）でも高さを超えないので、
+        # 検査の枠と文字の後ろの地が、PowerPoint の文字より狭くならない（広すぎる側に倒す）
+        return L.TEXT_PX * len(text)
     f = ImageFont.truetype(font_file, L.TEXT_PX)
     return int(round(f.getlength(text)))
 
