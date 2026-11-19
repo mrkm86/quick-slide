@@ -280,8 +280,13 @@ def images_of(spec, script_dir: pathlib.Path, no: int) -> list[dict]:
             found = next((stem.with_suffix(e) for e in IMAGE_EXTS if stem.with_suffix(e).is_file()), None)
             if found is None and not im.get("prompt"):
                 raise ScriptError(f"{no}枚目: {slot} に path も prompt も無い")
+        # 絵で描く図解（html-slide の labels）: 図の中に描く文字の一覧。こちらでは、描く絵の言葉に続けて渡す
+        labels = [str(x).strip() for x in im.get("labels") or [] if isinstance(x, str) and x.strip()] if isinstance(im.get("labels"), list) else []
+        prompt = str(im.get("prompt") or "")
+        if prompt and labels:
+            prompt = prompt.rstrip("。") + "。図の中に描く文字: " + "".join(f"「{x}」" for x in labels)
         out.append({"slot": slot, "path": found.resolve() if found else None,
-                    "prompt": str(im.get("prompt") or ""), "alt": str(im.get("alt") or "")})
+                    "prompt": prompt, "alt": str(im.get("alt") or "")})
     return out
 
 

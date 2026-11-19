@@ -69,6 +69,12 @@ def _walk(value: Any, key: str, path: str, depth: int = 0) -> Iterable[tuple[str
             yield from _walk(v, key, f"{path}[{i}]", depth)
     elif isinstance(value, dict):
         for k, v in value.items():
+            if k == "image" and isinstance(v, dict) and isinstance(v.get("labels"), list):
+                # 絵で描く図解: 図の中に描く文字は、表示される文字（画像のほかのキー prompt・alt は調べない）
+                for i, label in enumerate(v["labels"]):
+                    if isinstance(label, str) and label.strip():
+                        yield f"{path + '.' if path else ''}image.labels[{i}]", label
+                continue
             if not isinstance(k, str) or k.startswith("_") or k not in VISIBLE_KEYS:
                 continue
             if depth == 0 and k in NESTED_ONLY_KEYS:

@@ -203,6 +203,32 @@ class ImagesFollowTheMachineTests(unittest.TestCase):
             r = runner.check_script(Engine(), tools=Tools(), home=Path(tmp), script=Path(tmp) / "script.json", args={})
         self.assertEqual((r.rc, len(r.problems), r.problems[0], r.problems[-1]), (2, 300, "NG: slide1", "NG: slide300"), "先頭のページの誤りを落とさない")
 
+    def test_picture_diagrams_follow_the_mode_and_the_machine(self) -> None:
+        """絵で描く図解（図の中の文字も描く）: プレゼンで、絵を生成できる機械にだけ出す・台本係に頼む。図の中の文字も日本語の検査に掛ける。"""
+        from pathlib import Path
+        from quick_slide import engines
+        from quick_slide.writer import jlint
+        from quick_slide.writer import prompt as P
+        shapes = lambda mode, gen: [o["value"] for e in E.offered(mode, can_generate=gen) if e["kind"] == "diagram" for o in e["options"]]
+        self.assertEqual(shapes("presentation", True)[-1], "picture")
+        for mode, gen in (("presentation", False), ("pitch", True), ("motion", True)):
+            self.assertNotIn("picture", shapes(mode, gen), (mode, gen))
+        self.assertEqual(E.parse("presentation", "diagram", ["picture"], can_generate=True), ("diagram", ["picture"]))
+        with self.assertRaises(ValueError):
+            E.parse("presentation", "diagram", ["picture"], can_generate=False)
+        said = "".join(E.direction("presentation", "diagram", ["picture"]))
+        self.assertIn("figure", said)
+        self.assertIn("labels", said)
+        skills = Path(__file__).resolve().parent.parent / "skills"
+        rule = P.DIAGRAM_RULE["presentation-picture"]
+        for mode, images, want in (("presentation", True, True), ("presentation", False, False), ("pitch", True, False)):
+            text = P.build_prompt(engines.engine_for(mode), {"images": images}, manuscript="原稿", title_hint=None, skills_dir=skills)
+            self.assertEqual(rule in text, want, (mode, images))
+        self.assertIn("### 絵で描く図解", P.contract_text(engines.engine_for("presentation"), skills))
+        segs = jlint.segments([{"id": "p", "type": "figure", "headline": "見出し",
+                                "image": {"prompt": "調べない指示", "alt": "調べない説明", "labels": ["紙の帳票", "CSV"]}}])
+        self.assertEqual([s.text for s in segs], ["見出し", "紙の帳票", "CSV"])
+
     def test_prompts_ask_for_diagrams_and_allow_given_pictures(self) -> None:
         from pathlib import Path
         from quick_slide.engines import ENGINES
