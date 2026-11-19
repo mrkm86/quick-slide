@@ -215,11 +215,15 @@ class BrandlessBackfillTests(unittest.TestCase):
         conn.execute("INSERT INTO styles(id,name,current_revision_id,kind,created_at,updated_at) VALUES('s','s','sr','user',?,?)", (t, t))
         conn.execute("INSERT INTO style_revisions(id,style_id,revision,config_json,created_at) VALUES('sr','s',1,'{}',?)", (t,))
         # 取り込んだデッキ（取り込みの回のあとに直しの回がある）・ふつうのデッキ
+        # 直したあとの複製（写した回に imported が無い）と、その複製。ふつうのデッキの複製
         runs = {"took": [{"mode": "presentation", "imported": True}, {"mode": "presentation", "edit": {}}],
-                "made": [{"mode": "presentation"}]}
+                "made": [{"mode": "presentation"}],
+                "took-copy": [{"mode": "presentation", "edit": "revise"}], "took-copy-copy": [{"mode": "presentation", "edit": "revise"}],
+                "made-copy": [{"mode": "presentation"}]}
+        origin = {"took-copy": "took", "took-copy-copy": "took-copy", "made-copy": "made"}
         for did, args in runs.items():
-            conn.execute("INSERT INTO decks(id,title,mode,brand_revision_id,style_revision_id,created_at,updated_at)"
-                         " VALUES(?,?,'presentation','br','sr',?,?)", (did, did, t, t))
+            conn.execute("INSERT INTO decks(id,title,mode,brand_revision_id,style_revision_id,origin_deck_id,created_at,updated_at)"
+                         " VALUES(?,?,'presentation','br','sr',?,?,?)", (did, did, origin.get(did), t, t))
             for n, a in enumerate(args, 1):
                 conn.execute("INSERT INTO runs(id,deck_id,number,mode,engine,args_json,state,created_at,updated_at,ended_at)"
                              " VALUES(?,?,?,'presentation','html-slide',?,'failed',?,?,?)",
@@ -227,4 +231,5 @@ class BrandlessBackfillTests(unittest.TestCase):
         conn.execute("COMMIT")
         run_migrate(conn)
         self.assertEqual(user_version(conn), LATEST_VERSION)
-        self.assertEqual({r[0]: r[1] for r in conn.execute("SELECT id,brandless FROM decks")}, {"took": 1, "made": 0})
+        self.assertEqual({r[0]: r[1] for r in conn.execute("SELECT id,brandless FROM decks")},
+                         {"took": 1, "took-copy": 1, "took-copy-copy": 1, "made": 0, "made-copy": 0})

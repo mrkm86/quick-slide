@@ -84,7 +84,7 @@ class EndToEndTests(unittest.TestCase):
             cfg = json.loads(json.dumps(fx.store.brand_revision(fx.store.preset_brand_revision_id())["config"]))
             cfg["footer"] = {"text": "足されては困るフッタ"}
             cfg["format"] = {**(cfg.get("format") or {}), "page_numbers": True, "watermark": "社外秘"}
-            fx.store.create_brand("試験のブランド", cfg)
+            brand_id = fx.store.create_brand("試験のブランド", cfg)["id"]
         r = fx.request("POST", "/api/imports?runtime=cli&name=deck.pptx", raw_body=pptx_bytes(temp_dir(self)), session=True)
         self.assertEqual(r.status, 201, r.body)
         deck = r.json()["deck_id"]
@@ -95,6 +95,18 @@ class EndToEndTests(unittest.TestCase):
         def bare(run: dict) -> None:
             look = run["args"]["look"]
             self.assertEqual((look["logo"], look["footer"], look["page_numbers"], look["watermark"]), (None, "", False, ""))
+            # 描いたもの（書き出す PPTX の中の XML の全部）にも、ブランドのフッタ・透かしの文字が入っていない
+            import zipfile
+
+            with zipfile.ZipFile(fx.root.run_dir(run["deck_id"], run["id"]) / "deck.pptx") as z:
+                xml = "".join(z.read(n).decode("utf-8", "replace") for n in z.namelist() if n.endswith(".xml"))
+            self.assertIn("取り込み", xml, "ページの文字は入っている")
+            self.assertNotIn("足されては困るフッタ", xml)
+            self.assertNotIn("社外秘", xml)
+
+        # 一覧: ブランドで絞ると、ブランドなしの資料は出ない（絞らなければ出る）
+        self.assertIn(deck, [d["id"] for d in fx.get("/api/decks").json()["items"]])
+        self.assertNotIn(deck, [d["id"] for d in fx.get(f"/api/decks?brand={brand_id}").json()["items"]])
 
         sid = view["pages"][0]["slide_id"]
         r = fx.post(f"/api/decks/{deck}/instructions", {"scope": "page", "slide_id": sid, "text": "見出しを言い切って"})
