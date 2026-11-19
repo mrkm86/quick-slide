@@ -158,6 +158,9 @@ DIAGRAM_RULE = {
                     "面の箱で比べる・箱を矢印でつなぐ。書き方は「自由なページ」の節）。形の決まっているもの"
                     "（表 table・折れ線 line-chart・軸の要る棒グラフ bar-chart・構成図 layers・中心と周り hub・2×2 matrix・年表 timeline）は型を使う。"
                     "表紙・締めを除くページの半分以上を図として見せるのを目安にする",
+    "presentation-picture": "全体の構成図・システムの構成・画面のイメージのように、箱を並べるだけでは伝わらない図は、**絵で描く図解**にする"
+                            "（型 figure の image に prompt と labels。書き方は「絵で描く図解」の節）。図の中に描く文字は labels に全部並べる。"
+                            "1 つの資料で 2〜5 枚を目安にし、数字・比較・手順のページには使わない",
     "pitch": "構造・手順・比較・数字・仕組み・関係があるページは、文字を並べず図（矢印・図形・グラフ・短いラベル）として描く"
              "（_visual にそう書いてよい）。表紙・締めを除くページの半分以上を図解にするのを目安にする",
     "motion": "構造・手順・比較・数字・仕組み・関係がある場面は、文字を並べず HTML・SVG の図で見せ、拍ごとに図が組み上がるようにする。"
@@ -228,6 +231,8 @@ def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
         "id は描くことには使わず、ページの同一性に使う。前の台本を直すときは、残すページの id を変えない",
     ]
     rules.append(DIAGRAM_RULE[engine.mode])
+    if engine.mode == "presentation" and args.get("images", True):
+        rules.append(DIAGRAM_RULE["presentation-picture"])     # 絵で描く図解は Codex が描く（画像を使わない資料には出さない）
     if engine.mode == "presentation":
         rules.append(illust_rule(args))
     if args.get("images", True):

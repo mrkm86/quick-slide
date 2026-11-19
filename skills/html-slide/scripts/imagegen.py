@@ -24,6 +24,10 @@ IMAGE_LOOKS = {
     "handdrawn": "画風: 手描きのスケッチ。ペンや鉛筆の線に水彩の淡い色、白い紙の質感",
 }
 DEFAULT_LOOK = "illustration"
+# 図解（labels のある枠）の画風。資料の画風（写真風など）に関係なく、いつもこれ。台本からは選べない
+DIAGRAM_LOOK = "diagram"
+DIAGRAM_WORDS = ("画風: 資料に載せる平らな図解。箱・矢印・線・単純なアイコンで、関係と流れが一目で分かるように組む。"
+                 "写真・立体の影・飾りの模様は使わない。文字は太めのゴシック体で、横書き")
 COLOR_LOOKS = ("illustration", "handdrawn")     # 色をテーマに寄せる画風（写真は寄せない。不自然な色かぶりになる）
 MAX_REFS = 5                                     # Codex の画像ツールの上限（image-slide の ADR 0011）
 
@@ -99,8 +103,11 @@ def shape_of(w: float, h: float) -> str:
 
 def text_of(prompt_full: str, look: str, pal: dict, chars: list[dict]) -> str:
     """生成の枠1つの描く指示（ページ番号は入れない。鍵がページについていかないように）。"""
-    parts = [prompt_full, IMAGE_LOOKS[look] + (f"。主な色は {pal['primary']} と {pal['accent']} に寄せる"
-                                               if look in COLOR_LOOKS else "") + "。"]
+    if look == DIAGRAM_LOOK:
+        parts = [prompt_full, DIAGRAM_WORDS + f"。背景は {pal['bg']} の無地。主な色は {pal['primary']} と {pal['accent']}、文字は {pal['ink']}。"]
+    else:
+        parts = [prompt_full, IMAGE_LOOKS[look] + (f"。主な色は {pal['primary']} と {pal['accent']} に寄せる"
+                                                   if look in COLOR_LOOKS else "") + "。"]
     if chars:
         parts.append(character_words(chars))
     return "\n".join(parts)
