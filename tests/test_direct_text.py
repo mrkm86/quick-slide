@@ -39,6 +39,23 @@ class UnitTests(unittest.TestCase):
         labels = [f["label"] for f in pagetext.fields(FREE)]
         self.assertEqual(labels, ["小見出し", "見出し", "本文 1", "本文 2"], "同じ見出しの欄には番号を振る")
 
+    def test_drawing_choices_are_not_fields(self) -> None:
+        """描き方の指定（図柄・札の描き方・進み具合・並べ方）は、文字列でも欄にしない。知らないキーも欄にしない。"""
+        cover = {"id": "c", "type": "cover", "title": "表紙", "label": "提案", "motif": "wave", "layout": "graphic", "tone": "dark"}
+        self.assertEqual(self.refs(cover), {"k:title": "表紙", "k:label": "提案"})
+        notice = {"id": "n", "type": "notice", "headline": "注意", "label_style": "tag", "unknown_key": "見えない値",
+                  "items": [{"label": "重要", "body": "止める", "state": "done", "icon": "alert"}, "文字だけの項目"]}
+        self.assertEqual(self.refs(notice), {"k:headline": "注意", "k:items/0/label": "重要", "k:items/0/body": "止める",
+                                            "k:items/1": "文字だけの項目"})
+
+    def test_the_list_title_follows_only_the_heading_segment(self) -> None:
+        """本文に見出しと同じ文字があっても、本文の書き換えでは一覧の見出し（title）を変えない。"""
+        page = {"id": "p", "type": "html", "title": "同じ文字", "html": "<p>同じ文字</p><p>同じ文字</p>"}
+        body = pagetext.apply(page, [{"ref": "n:2", "from": "同じ文字", "text": "本文だけ"}])
+        self.assertEqual((body["title"], body["html"]), ("同じ文字", "<p>同じ文字</p><p>本文だけ</p>"))
+        head = pagetext.apply(page, [{"ref": "n:1", "from": "同じ文字", "text": "新しい見出し"}])
+        self.assertEqual((head["title"], head["html"]), ("新しい見出し", "<p>新しい見出し</p><p>同じ文字</p>"))
+
     def test_apply_changes_only_the_named_texts(self) -> None:
         got = pagetext.apply(IMPORTED, [{"ref": "n:3", "from": "一つ目 & 二つ目", "text": "A < B"},
                                         {"ref": "n:1", "from": "見出し", "text": "新しい見出し"}])
@@ -133,6 +150,50 @@ class MadeDeckTests(edit_helpers.PresentationEditBase):
                 self.assertEqual(before_pieces[k], after_pieces[k], k)
         self.assertEqual(self.view(deck)["pages"][3]["title"], "人が書いた見出し")
         self.assert_screen_matches_pptx(deck)
+
+
+    def test_a_text_the_engine_refuses_is_not_applied(self) -> None:
+        """検査に落ちた書き換えは当てない（仕事は失敗で終わり、台本もページも元のまま。理由が残る）。"""
+        from unittest import mock
+
+        from quick_slide.worker import edit as worker_edit
+        from quick_slide.worker.pipeline import CheckResult
+
+        deck = self.make_deck()
+        _, before_bytes = self.head(deck)
+        page = self.view(deck)["pages"][3]
+        got = self.fx.get(f"/api/decks/{deck}/pages/{page['slide_id']}/texts").json()
+        head = next(f for f in got["fields"] if f["ref"] == "k:headline")
+        refused = CheckResult(rc=2, problems=["NG: 見出しが長すぎる"], warnings=[], stopped=False)
+        with mock.patch.object(worker_edit, "check_candidate", return_value=refused):
+            r = self.fx.post(f"/api/decks/{deck}/pages/{page['slide_id']}/texts",
+                             {"changes": [{"ref": head["ref"], "from": head["text"], "text": "検査に落ちる見出し"}]})
+            self.assertEqual(r.status, 200, r.body)
+            run = self.wait(deck)
+        self.assertEqual(run["state"], "failed")
+        self.assertIn("見出しが長すぎる", run["message"])
+        self.assertEqual(self.head(deck)[1], before_bytes, "台本は元のまま")
+        job = self.fx.get(f"/api/decks/{deck}/jobs/{r.json()['job_id']}").json()
+        self.assertEqual((job["finished"], job["ok"]), (True, False))
+        self.assertEqual(self.view(deck)["pages"][3]["title"], head["text"])
+
+    def test_template_and_one_page_decks_are_refused(self) -> None:
+        from quick_slide.server import edit_routes
+
+        deck = self.make_deck()
+        sid = self.view(deck)["pages"][0]["slide_id"]
+        for args, word in (({"template_snapshot": {"snapshot_id": "x"}}, "デザインテンプレート"),
+                           ({"mode": "pitch", "style": "infographic"}, "1 枚")):
+            with self.fx.server.store_lock:
+                real = self.fx.store.deck_run_args(deck)
+            from unittest import mock
+            with mock.patch.object(type(self.fx.store), "deck_run_args", return_value={**real, **args}):
+                got = self.fx.get(f"/api/decks/{deck}/pages/{sid}/texts").json()
+                self.assertEqual(got["editable"], False)
+                self.assertIn(word, got["reason"])
+                r = self.fx.post(f"/api/decks/{deck}/pages/{sid}/texts", {"changes": [{"ref": "k:title", "from": "a", "text": "b"}]})
+                self.assertEqual((r.status, r.json()["error"]["code"]), (409, "text_not_editable"), r.body)
+        self.assertTrue(edit_routes.TEMPLATE_TEXT_REASON)
 
 
 class PitchTests(edit_helpers.EditBase):

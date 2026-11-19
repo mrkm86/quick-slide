@@ -1425,6 +1425,7 @@ html.is-locked { overflow: hidden; }
   width: 100%; min-height: 40px; padding: var(--space-2); resize: none; overflow: hidden; font: inherit; line-height: var(--line-height-150);
   color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--border-radius-8);
 }
+.panel__self-input[readonly] { color: var(--color-text-muted); background: var(--color-surface-muted); }
 .panel__self-input.is-changed { border: 2px solid var(--color-primary); background: var(--brand-soft); }
 .panel__self-note { margin: 0; color: var(--color-text-muted); }
 .panel__self-said p { margin: 0; }

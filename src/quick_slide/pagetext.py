@@ -21,16 +21,22 @@ from . import freepage, importing
 from .scriptdoc import IMPORTED_TYPE, deep
 
 MAX_TEXT_CHARS = 2000
-# 文字ではないキー（話す台本・動き・描き方の注文・画像の枠・アイコンの名前など）。この下は欄にしない
-_SKIP_KEYS = {"type", "talk", "transition", "steps", "fx", "id", "role", "image", "layout", "split", "side", "text_side",
-              "tone", "fit", "widths", "focus", "accent", "highlight", "current", "arrow", "value_labels", "min", "max",
-              "x", "y", "trend", "initials", "path", "prompt", "alt", "svg", "html", "notes", "icon", "kind", "variant",
-              "align", "color", "style", "class", "src", "href", "illustrations"}
+# 欄にするのは、**見える文字のキーだけ**（名前で許可する）。描き方の指定（図柄 motif・札の描き方 label_style・進み具合 state・
+# 並べ方 layout など）は文字列でも欄にしない。知らないキーは欄にしない（その文字は「AI に頼む」で直す）
+_TEXT_KEYS = {"headline", "title", "subtitle", "kicker", "lead", "caption", "takeaway", "label", "body", "source", "footnote",
+              "quote", "name", "value", "unit", "text", "note", "heading", "description", "meta", "by", "position", "role",
+              "desc", "detail", "summary", "contact", "callout", "result", "center", "number", "bad_label", "good_label",
+              "before", "after", "bad", "good", "term", "definition", "date", "when", "period", "tag", "question", "answer",
+              # 文字の並び（文字列がそのまま並ぶ配列）
+              "items", "points", "rows", "columns", "labels", "legend"}
+# この下は読まない（話す台本・動き・画像の枠・取り込んだページの HTML など。中に文字の名前のキーがあっても欄にしない）
+_SKIP_KEYS = {"talk", "transition", "steps", "fx", "image", "html", "notes", "svg", "illustrations", "series", "bars"}
 # 欄の見出し（キーの名前 → 画面の言葉）。無いものは「文字」
 _LABELS = {"headline": "見出し", "title": "見出し", "subtitle": "副題", "kicker": "小見出し", "lead": "リード",
            "caption": "注記", "takeaway": "まとめ", "label": "ラベル", "body": "本文", "source": "出典",
            "footnote": "脚注", "quote": "引用", "name": "名前", "value": "数字", "unit": "単位", "text": "本文",
-           "note": "補足", "heading": "見出し", "description": "説明"}
+           "note": "補足", "heading": "見出し", "description": "説明", "items": "項目", "points": "項目",
+           "rows": "表", "columns": "表の見出し", "labels": "ラベル", "by": "発言者", "contact": "連絡先"}
 
 NOT_EDITABLE = {
     "pitch": "ピッチは文字も絵として描くので、ここでは書き換えられません。「AI に頼む」から直してください。",
@@ -47,7 +53,7 @@ class TextEditRefused(Exception):
 
 
 def _skip(key: str) -> bool:
-    return key.startswith("_") or key in _SKIP_KEYS or key.endswith("_icon") or key.endswith("icon")
+    return key.startswith("_") or key in _SKIP_KEYS
 
 
 def _html_fields(html: Any, prefix: str, label: str) -> list[dict[str, Any]]:
@@ -61,8 +67,8 @@ def _html_fields(html: Any, prefix: str, label: str) -> list[dict[str, Any]]:
 
 def _key_fields(value: Any, path: list[str], out: list[dict[str, Any]]) -> None:
     if isinstance(value, str):
-        if value.strip():
-            name = _named(path)
+        name = _named(path)
+        if value.strip() and name in _TEXT_KEYS:
             label = "項目" if len(path) > 1 and name in ("title", "heading", "name", "label") else _LABELS.get(name, "文字")
             out.append({"ref": "k:" + "/".join(path), "label": label, "text": value})
     elif isinstance(value, list):
@@ -155,11 +161,12 @@ def apply(page: dict[str, Any], changes: list[dict[str, str]]) -> dict[str, Any]
         else:
             node[last] = c["text"]
     if html_changes["n"]:
+        # 一覧に出す見出し（取り込みの title）は、**見出しの節**（title と同じ文字の、いちばん上の節）を書き換えたときだけ直す。
+        # 本文に同じ文字があっても、その節の書き換えでは title を変えない
         old_title = (out.get("title") or "").strip()
-        segs = {s["n"]: s["text"] for s in importing.text_segments(out.get("html") or "")}
-        for n, text in html_changes["n"].items():   # 一覧に出す見出し（取り込みの title）も、同じ文字なら直す
-            if old_title and segs.get(n) == old_title:
-                out["title"] = text
+        head = next((s["n"] for s in importing.text_segments(out.get("html") or "") if old_title and s["text"] == old_title), None)
+        if head in html_changes["n"]:
+            out["title"] = html_changes["n"][head]
         out["html"] = importing.replace_texts(out.get("html") or "", html_changes["n"])
     if html_changes["b"]:
         out["body"] = importing.replace_texts(out.get("body") or "", html_changes["b"])

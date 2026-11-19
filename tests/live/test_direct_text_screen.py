@@ -107,8 +107,33 @@ class DirectTextScreenTest(unittest.TestCase):
             data = self.fx.store.load_script(self.fx.store.head_script(deck))
         self.assertIn("人が書いた文字", str(data["slides"][1]))
         # 描き終えたら、欄は台本から読み直される（書き換えた文字が元の文字になり、保存は押せない）
-        page.until(f"{SAVE} && {SAVE}.disabled && {FIELDS}.indexOf('人が書いた文字') >= 0", seconds=30, what="読み直した欄")
+        page.until(f"{SAVE} && {SAVE}.disabled && {FIELDS}.indexOf('人が書いた文字') >= 0"
+                   f" && !document.querySelector('{P}.panel__self-input').readOnly"
+                   f" && !document.querySelector('{P}.panel__self-input.is-changed')", seconds=30, what="読み直した欄")
         self.assertEqual(page.eval(f"document.querySelectorAll('{P}.panel__self-input.is-changed').length"), 0)
+        # 検査に落ちた書き換えは当たらない。欄には書きかけが残り、理由が出て、もう一度保存できる（「保存済み」と見せない）
+        from unittest import mock
+
+        from quick_slide.worker import edit as worker_edit
+        from quick_slide.worker.pipeline import CheckResult
+
+        refused = CheckResult(rc=2, problems=["NG: 見出しが長すぎる"], warnings=[], stopped=False)
+        with mock.patch.object(worker_edit, "check_candidate", return_value=refused):
+            page.eval(SET + "('検査に落ちる文字')")
+            page.eval(SAVE + ".click()")
+            self.assertTrue(page.eval(f"document.querySelector('{P}.panel__self-input').readOnly"), "送ってからは欄を書けない")
+            why = page.until(f"(function(){{ var p = document.querySelector('{P}.panel__self-said .editbox__refused');"
+                             " return p && p.textContent; })()", seconds=40, what="当たらなかった理由")
+        self.assertIn("見出しが長すぎる", why)
+        self.assertEqual(page.eval(f"document.querySelector('{P}.panel__self-input').value"), "検査に落ちる文字", "書きかけは残る")
+        self.assertFalse(page.eval(f"document.querySelector('{P}.panel__self-input').readOnly"))
+        self.assertFalse(page.eval(SAVE + ".disabled"), "もう一度保存できる")
+        with self.fx.server.store_lock:
+            data = self.fx.store.load_script(self.fx.store.head_script(deck))
+        self.assertNotIn("検査に落ちる文字", str(data["slides"][1]))
+        # 読み上げ: 2 つのタブは、それぞれの板を指す
+        self.assertEqual(page.eval(f"Array.from(document.querySelectorAll('{P}.panel__tab')).map(b => b.getAttribute('aria-controls'))"),
+                         ["panel-how-self", "panel-how-ai"])
         # AI に頼む に戻すと、今までの欄
         page.eval(f"document.querySelector('{P}#panel-tab-ai').click()")
         self.assertFalse(page.eval(f"document.querySelector('{P}.panel__slot').hidden"))
