@@ -533,6 +533,21 @@ def t_chrome_check():
         for t in ("WWWWWWWWWW", "MMMM 2026", "資料のフッタ ABC"):
             got = ImageFont.truetype(real, L.TEXT_PX).getlength(t)
             check(C.text_width(t, None) >= got, f"見積もりが実際の幅より狭い: {t} {C.text_width(t, None)} < {got}")
+    # 長いフッタ（字体が無くて幅を広めに見積もるときも）: 枠と地は中央のページ番号に届かない
+    long = C.chrome_boxes("A" * 40, "1", None, None, L.row_mid(True))
+    fx, _, fw, _ = L.text_plate_box(long["footer"])
+    check(long["footer"][2] == L.FOOTER_END_WITH_NO - L.SIDE and fx + fw < long["number"][0], f"フッタの地が番号にかかる: {long}")
+    night = Image.new("RGB", (L.W, L.H), (0, 0, 0))
+    d = ImageDraw.Draw(night)
+    for x in range(120, 350, 8):
+        d.rectangle((x, 1000, x + 3, 1050), fill=(255, 255, 255))
+    chk = C.chrome_check(night, long, theme)
+    ink = C.inks(night, theme=theme, band=C.band_check(night), plate=False, bleed=True, boxes=long, text_plates=tuple(chk["busy"]))
+    shown = C.overlay(night, theme=theme, plate=False, footer="A" * 40, number="1", ink=ink, logo=None, place=None, font_file=None,
+                      mid=L.row_mid(True), text_plates=tuple(chk["busy"]))
+    nx, ny, nw, nh = long["number"]
+    cols = {shown.getpixel((x, y)) for x in range(nx - 4, nx + nw + 4) for y in range(ny - 2, ny + nh + 2)}
+    check(chk["busy"] == ["footer"] and ink["number"] == "#ffffff" and (0, 0, 0) in cols and len(cols) > 1, "ページ番号がフッタの地に消えた")
     # 左下を指定したロゴが右下へ移ると、フッタは左端に戻る。検査もその位置を見る（仕上げと同じ計算）
     import image_slide as M
     root = tmpdir()
