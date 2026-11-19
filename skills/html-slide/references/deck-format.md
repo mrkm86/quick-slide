@@ -15,10 +15,16 @@
 6. **数字には母集団と単位を書く。** 「62%」だけにせず「回答者が先月出た会議のうち 62%」。`n=240` のような記号は「回答240人」と言葉にする
 7. **同じ表・同じグラフで単位を混ぜない。** 週と月、人と件を並べない。換算したら注記に書く
 8. **ラベルも日本語で書く。** 「RULE 1」ではなく「ルール1」（固有名詞は英語のままでよい）
-9. **型は中身の形で選び、同じ型を続けない。** 順番のある段は `flow`、並列の要点は `cards`、観点×項目は `table`、2軸の位置づけは `matrix`、時期は `timeline`、
-   一番言いたい1文は `statement`、冒頭の結論と根拠は `summary`、数字は 4. のとおり。順番の無い並びを `flow` にしない。
-   進み具合（どこまで済んで今どこか）を見せるなら `steps`、補足・注意・決まりごとは `notice`、用語と説明・項目と内容の対は `deflist`（比べるなら `table`）、層と箱と矢印で見せる構成（システム・データの流れ・役割分担）は `layers`。
-   同じ型を3枚続けない。1つの型は表紙・締めを除いた枚数の3分の1まで。10枚を超えたら話の区切りに `section`（か `agenda` の再掲）を入れる
+9. **中身のページは、まず `free`（下の「自由なページ」）で、そのページの中身に合う形を組む。型は、形の決まっているものに使う。**
+   - **型を使うもの**: 表紙 `cover`・章扉 `section`・目次 `agenda`・締め `closing`・一番言いたい1文 `statement`・観点×項目の表 `table`・推移の線 `line-chart`・軸の要る棒グラフ `bar-chart`・
+     層と箱と矢印の構成図 `layers`・**中心と周りを線でつなぐ図 `hub`**（1 つの仕組みと関わる人や部品。線は型が引く）・2軸の位置づけ `matrix`・時期が主役の `timeline`・写真の型（`photo`・`gallery`・`figure`・`annotate`・`quote`）
+   - **`free` で組むもの**: それ以外の中身（数字・割合・料金・要点の並び・2つの比較・手順・原因と対策・冒頭の結論と根拠 など）。`cards`・`kpi`・`big-number`・`compare`・`flow`・`summary` などの型もあるが、
+     型は中身の種類しか知らず（どこが数字でどこが名前かを知らない）、どの資料でも同じ形になる。`free` なら、**主役（数字・図）を大きく、脇を小さく**組める（割合はマスの塗り分け・推移は棒・料金は数字を主役に・比べる2つは面の色を変える）
+   - `free` は形が毎回違うので、下の「同じ型」の数には数えない。ただし、同じ組み（箱を横に3つ、など）を続けない
+   - 型を使うときの選び方: （`free` で組まずに型で済ませるなら）順番のある段は `flow`、並列の要点は `cards`、結論と根拠は `summary`、数字は 4. のとおり。順番の無い並びを `flow` にしない。進み具合（どこまで済んで今どこか）は `steps`、
+     補足・注意・決まりごとは `notice`、用語と説明・項目と内容の対は `deflist`（比べるなら `table`）
+   - 同じ型を3枚続けない。1つの型は表紙・締めを除いた枚数の3分の1まで。10枚を超えたら話の区切りに `section`（か `agenda` の再掲）を入れる
+   - **小見出し（`kicker`）は、付けるなら中身のページ全部に付ける**（型のページと自由なページで、見出しの位置がそろう）
 10. **箱の中は名詞と短い補足まで。** 文で説明しない。題は全角10字まで、補足は20字まで（「文字起こし／Whisper・MLX」）。
    言い切りは見出しに、結論の1行は `takeaway` に置く。構成要素は `equation`、中心と周りは `hub`、直し方は `pairs`、並列の要点には `icon` を添える。
    強める項目（`accent`・`highlight`・`current`）は色だけに頼らない: 型が札（「注目」など）・太い輪郭・二重の丸で示す。札の語は `badge` で替えられる（全角6字まで）
@@ -48,7 +54,7 @@
 | `talk` | 話す台本（文字の配列）。**1つ目は画面に入ったとき、2つ目以降は各クリックのときに話すこと**。省けば空 |
 | `transition` | `fade`（既定）／`none`。`morph` は退役した（書いてあれば fade で描き、警告する） |
 | `steps` | `false` にすると、その1枚のクリックをなくす（全部が自動で順に出る。`talk` は1つにする） |
-| `takeaway` | 中身の下に置く**結論の1行の帯**（全角でおよそ40字まで）。最後のクリックと一緒に出る（クリックは増えない）。頭にアイコンが付く。中身の型（`cards`・`flow`・`compare`・`bullets`・`timeline`・`summary`・`kpi`・`bar-chart`・`line-chart`・`table`・`matrix`・`equation`・`hub`・`pairs`・`deflist`・`steps`・`layers`）だけ。`notice` には置かない |
+| `takeaway` | 中身の下に置く**結論の1行の帯**（全角でおよそ40字まで）。最後のクリックと一緒に出る（クリックは増えない）。頭にアイコンが付く。中身の型（`cards`・`flow`・`compare`・`bullets`・`timeline`・`summary`・`kpi`・`bar-chart`・`line-chart`・`table`・`matrix`・`equation`・`hub`・`pairs`・`deflist`・`steps`・`layers`・`free`）だけ。`notice` には置かない |
 | `takeaway_icon` | 帯の頭のアイコンの名前（下の「アイコン」の一覧から。省くと `info`）。`takeaway` と一緒に書く |
 | `fx` | 並びの1つずつ（カード・矢羽根・比較の列・箇条書きの項目・大きな数字の補足・要約の根拠・指標・人）の出方を変える: `rise`・`fade`・`pop`・`wipe-right` など（contract.md の語彙） |
 
@@ -118,6 +124,7 @@
 | `deflist` | 用語と説明・項目と内容の対を、左右 2 列で 3〜8 行（DADS の説明リスト）。比べるなら `table` | 行の数 |
 | `steps` | 手順の進み具合（済・いま・これから）を、番号の丸と札で見せる。横 3〜5 段・縦 3〜6 段（DADS のステップナビゲーション）。順番の説明だけなら `flow` | 段の数 |
 | `layers` | 構成図。層（1〜3 段）に箱（1〜4 個）を並べ、箱と箱を矢印でつなぐ（システムの構成・データの流れ・役割分担） | 1 |
+| `free` | 自由なページ。見出しの下の「中身の箱」の中を、そのページの中身に合わせて組む（型に合う形が無いとき）。書き方は「[自由なページ](#自由なページtype-free)」 | `body` の `data-step` の種類の数（書かなければ 0） |
 
 ## 型ごとのキー
 
@@ -151,7 +158,7 @@
 | `gallery` | `items`★（`{image★, caption}`・2〜4）。枠は全部同じ大きさ（縦横比は枚数で決まる。2:3 より縦長にしない）・`layout`（`row` 既定／`collage`＝3枚を大1枚（左は格子の 7 列）＋小2枚（5 列）） |
 | `annotate` | `image`★・`items`★（`{x★, y★（0〜100 の %）, title★, body}`・1〜6）・`fit`（`cover` 既定＝枠いっぱいに切り抜き、% は枠に対して／`contain`＝切らずに縮め、% は描いた画像に対して）。画像は左の格子の 8 列（1104 幅）、説明は右。印と説明は同じクリックで1つずつ |
 | `figure` | `image`★（`object-fit: contain` で縮めて全体を見せる。余りは地の色）・`caption`（図のすぐ下に1行） |
-| `closing` | `items`（次の一手 `{title, body}`・0〜4）・`contact`（文字・配列・`{label, name, lines}`）。どちらかは必須・`image`（右に写真 768×1080。次の一手と連絡先は左に縦に積む。ページ番号は出さない） |
+| `closing` | `items`（次の一手 `{title, body}`・0〜4。**番号の丸は型が付けるので、題に「1.」と書かない**）・`contact`（文字・配列・`{label, name, lines}`。文字は 1 行ぶんだけ。組織名・担当・連絡先のように長ければ `{name, lines: [...]}` に分ける）。どちらかは必須・`image`（右に写真 768×1080。次の一手と連絡先は左に縦に積む。ページ番号は出さない） |
 | `summary` | `headline`★（結論）・`points`★（`{title★, body, value}`・2〜3）・`label`（根拠の番号の前の語。既定「根拠」）・`layout`（`row`＝横に並べる・既定／`lead`＝1つ目の根拠を左に大きく置く）。`kicker` は省くと「結論」 |
 | `kpi` | `items`★（`{label★, value★, unit, delta（前年比など。淡い地の札になる）, trend（up・down・flat → ▲▼→）, tone（good・bad・neutral。増減の札の色）, note, accent, badge, group}`・3〜4。accent の指標の頭に札「注目」が付く）・`image`（上に現場の写真の帯 1920×296。見出しと数字はその下）。`tone` を省くと trend から決まる（up＝good 緑・down＝bad 赤・flat と trend なし＝neutral 灰）。増えるほど悪い数字（滞留日数など）は `tone: bad` で上書きする。▲▼→ は trend のまま変わらない（色だけで示さない）。`delta` が無ければ札は出ない。`group` は `{label★, tone★}`: カードの種類分けで、tone は `a`（緑系）・`b`（橙系）・`c`（青系）。どれもテーマを変えても同じ色。同じ group のカードは同じ淡い地と枠・同じ札（label は全角6字くらいまで）になる。**札は必ず出る**。評価の良し悪しとは関係がない。group を書かないカードはいつもの面のまま（一部のカードだけに書いてよい）。`accent` と `group` は同時に書けない（rc=2）。`reference` は `true` だけ（それ以外の値は rc=2）: 主役ではなく参考として並べた数字のカードで、退いた灰の地・点線の枠・一段薄い文字（ラベル・数字・単位）・頭の札「参考」（語は固定で `badge` では替えない）で出る。参考のカードの増減の札は `tone`・`trend` によらず灰で、▲▼→ は `trend` のまま。`accent`・`group` とは同時に書けない（rc=2。どちらも札を出すため）。全部のカードを参考にしてもよく、主役のカードと混ぜても数字の上端がそろう。3枚のときはカードが使える高さいっぱいに伸び、中身は縦の中央に並ぶ |
 | `line-chart` | `labels`★（横軸の時点・3〜12）・`series`★（`{name, values★（labels と同じ数）, highlight}`・1〜3。2本以上は `name` 必須。線は点の形（丸・四角・ひし形）と線種（実線・破線・点線）を台本の順に変え、線の端に名前と最後の値を出す。名前が長くて入らないときだけ凡例）・`unit`・`min`（既定 0。負の値があれば必須）・`max`（省くと切りのよい上限）・`note`・`callout`（`{value, text}`）・`value_labels`（`all`／`last`／`none`。既定は1本で8時点までなら all、ほかは last） |
@@ -163,6 +170,7 @@
 | `deflist` | `items`★（`{term★, body★, icon}`・3〜8）。左に用語（太字）・右に説明。用語の列は格子の 3 列（長ければ 4 列）で固定。`icon` は書くなら全部の行に。1行ずつクリックで出る |
 | `steps` | `items`★（`{title★, body, state}`・横 3〜5・縦 3〜6）・`current`（いま何段目か・1から。それより前が済・後ろがこれから）・`layout`（`row` 既定＝横／`column`＝縦）。`state`（`done`＝済・`current`＝いま・`todo`＝これから）を段ごとに書けば `current` より優先。どちらも無ければ rc=2。状態は丸の形（済は塗り・いまは二重の輪・これからは白に枠）・札の語・線（済は実線・これからは破線）で示す。1段ずつクリックで出る |
 | `layers` | `rows`★（`{label, items★}`・1〜3 段。上から順。`label` は層の名前）・`items`（`{id★, title★, body, label, icon, accent, col}`・1 段に 1〜4 個。`id` は箱の名前で、このページの中で重ならない文字。`col` は列の番号（1〜4）で、省くと並び順。段をまたいで同じ `col` の箱は縦にそろう）・`links`（`{from★, to★, label, both, accent}`・0〜8 本。`from`・`to` は箱の `id`。つなげるのは、同じ層の隣どうし（横）と、隣の層の箱（同じ列なら縦・違う列なら鉤の手）だけ。層をまたいで飛ばす・間の箱をまたぐ矢印は rc=2。`label` は矢印の名札。`both: true` は両向き。`accent: true` の箱と矢印は差し色の太い枠・太い線）。箱が1クリックでまとめて出て、矢印と名札はそのあとに続けて出る（クリックは1）。アイコンは箱の幅が 400px 以上のときだけ付く |
+| `free` | `body`★（中身の箱に置く HTML。使ってよい書き方は「自由なページ」）・`kicker`・`headline`★・`sub`・`source`・`footnote`・`takeaway` |
 | `matrix` | `x`★・`y`★（`{label★, low, high}`）・`items`★（`{label★, x★, y★（0〜100）, accent}`・1〜8。accent の点は二重の輪。名前どうし・区切り線との重なりはずらし、置けなければ rc=2＝x・y を離す）・`quadrants`（`{title, body}` を 左上・右上・左下・右下 の順に4つ）・`focus`（淡く塗る象限・同じ順で1〜4）・`callout`（`{title, text}` 右に要点） |
 
 ### 主役を大きく置く（`layout: lead`）
@@ -172,6 +180,91 @@
 - 主役は、`cards` は `accent: true` の項目（無ければ1つ目）、`summary` は1つ目の根拠。`summary` の主役は `value` が大きく出る
 - クリックの数は `row` と同じ。`cards` は項目ごとに1つ、`summary` は1つ
 - 写真つきの `cards`（`image` のある項目）には使えない（rc=2）。`badge` は `accent` の項目にだけ書ける
+
+### 自由なページ（`type: free`）
+
+型に合う形が無いページを、そのページの中身に合わせて組む（[ADR 0030](../docs/adr/0030-free-pages.md)）。**枠はエンジンが置く**: 見出し（`kicker`・`headline`・`sub`）・出典・結論の帯（`takeaway`）・下の文字・ページ番号・ロゴは、ほかの型と同じ。
+書く側が書くのは `body`＝見出しの下の「中身の箱」（幅は本文の幅・高さは見出しの下から中身の下端まで）の中だけ。
+
+`body` は HTML だが、**使ってよい書き方が決まっている**（外れたら rc=2。理由を読んで直す）。
+
+| 何 | 決まり |
+|---|---|
+| 要素 | `div`・`span`・`br`・`b`・`em` だけ。必ず閉じる（`<div …></div>`）。独自のタグ・`<… />` は使えない |
+| 並べ方 | flex だけ。**`position`・`top`・`left`・`transform` は書けない**。`class="f-row"`（横に並べる）・`f-col`（縦に積む）・`f-grow`（残りの場所を取る）と、`style` の `flex`（数か `none`）・`gap`・`align-items`・`align-self`・`justify-content`・`flex-wrap`・`width`・`height`・`min-…`・`max-…`・`padding`・`margin`・`border-radius` |
+| 色 | `style` に書けるのは `color`・`background-color` だけで、値は `var(--名前)` だけ: `bg`・`ink`・`muted`・`primary-soft`・`accent-soft`・`primary-fill`／`on-primary-fill`・`accent-fill`／`on-accent-fill`・`deep`／`on-deep`／`deep-pop`・`primary-text`・`accent-text`・`success-2`・`error-2`。**ふつうは色を書かない**（下の「面の箱」と「文字の役」に任せれば、面に合う色になる）。文字の色と地の色の比が 4.5:1 に届かなければ rc=2 |
+| 文字の大きさ | `font-size` は 200・160・120・96・80・64・57・48・45・36・32・28・26・24・22 の px だけ（**本文は 28 以上**。22・24・26 を書けるのは、注記の `f-note` と札の `f-chip` だけ。ほかの所に書くと rc=2）。`line-height` は 1.0・1.2・1.3・1.4・1.5・1.6・1.7・1.75。`font-weight` は 400 か 700。`text-align`・`white-space: nowrap` |
+| 長さ | px の整数（8 の倍数でなければ警告）か % |
+| 文字 | 見える文字は、要素の中の文字として書く（属性に書かない）。**文字と箱を同じ `<div>` に並べない**（文字は `<div>` で包む） |
+| 動き | 出したい `<div>` に `data-step="N"`（N クリック目）・`data-fx`・`data-delay`・`data-name`。マス・棒・線にも付けられる（アイコンは `<div class="f-icon" …>` と書くか、`<div>` で包む。棒の 1 本ずつには付けられない）。**`data-step` の付いた要素の中に、もう 1 つ `data-step` は書けない**（並べて書く）。`talk` の数は、`data-step` の 1 以上の値の種類の数 ＋ 1 |
+| 高さ | 見出しと中身の箱の間は、いつも 64（型のページのように 40 へ詰め直さない）。箱に入らなければ rc=2 なので、中身を減らすか、文字を小さい段にする |
+
+部品（class と `data-…`）:
+
+| 部品 | 書き方 | 何になるか |
+|---|---|---|
+| 面の箱 | `class="f-box"`（淡い面）・`f-box fill`（主役の色）・`f-box deep`（ほぼ黒）・`f-box accent`（差し色）・`f-box good`／`bad`／`warn`（良い・悪い・注意） | 地の色・角・内側の余白がそろう箱。**中の文字とアイコンの色は、面に合わせてエンジンが決める** |
+| 文字の役 | `f-num`（大きな数字・既定 120）・`f-label`（太い名札）・`f-note`（注記）・`f-muted`（補足の色）・`f-strong`（強める） | 大きさと色の組。文字の中では `<b>`（太字）・`<em>`（強める色）・`<span class="f-strong">`・`<span class="f-muted">` |
+| アイコン | `<span class="f-icon" data-icon="名前"></span>`。丸つきは `class="f-icon disc"`。大きさは `data-size`（24〜160・既定 56） | 図形のアイコン（名前は下の「アイコン」の一覧）。`style` は書けない（余白は外の並びの `gap` で取る） |
+| 割合のマス | `<div class="f-cells" data-total="100" data-on="21" data-cols="10" style="width: 560px"></div>` | マスの塗り分け。`total` 1〜100・`on` 0〜`total`・`cols` 1〜20。幅は `style` の `width`（省くと 480。ほかに書ける `style` は `flex`・`align-self`・`margin`）。塗った側の色は、地の上で見える色をエンジンが選ぶ。塗っていない側は地に近い薄い面なので、**数は文字でも書く** |
+| 棒 | `<div class="f-bars" data-max="21"><div class="f-bar on" data-value="21"><b>21%</b>導入前</div>…</div>` | 数に比例した長さの棒（1〜8 本・同じ `f-bars` の中は同じ尺度・丸めない）。`<b>` が棒の上の数字、残りの文字が下の名前。`<b>` は**全部の棒に書くか、どれにも書かない**。`<b>` の中は文字だけ（属性・`<span>`・`<br>` は書けない。1 行・同じ大きさにして、棒の尺度をそろえる）。`on` の棒は差し色（差し色の無いテーマや色の面の上で、ふつうの棒と同じ色・近い色になるときは、ふつうの棒が色みの無い色に退く。見分けられる色が無ければ rc=2）。`f-bars` に書ける `style` は `width`・`height`・`flex`・`gap`・`align-self`・`margin`。`f-bar` には `class` と `data-value` だけ |
+| 札・番号 | `class="f-chip"`（札）・`f-no`（番号の丸） | 札は、`f-box` の最初の子に `class="f-chip top"` と書くと、箱の中身の行を押し下げない（並ぶ箱の行がそろう） |
+| つなぐ線・矢印 | 線は `<div class="f-line"></div>`（横に並べた箱の間に置くと、間の幅に伸びる。`style` は書けない）。矢印は `<span class="f-icon" data-icon="arrow-right"></span>`（`arrow-down`・`chevron-right` も） | 箱と箱の関係（つながる・次へ進む）を見せる。**並びに意味（順番・行き来）があるときは、間に置く** |
+| まとまり | `data-name="名前"` | PPTX でその要素と中身が 1 つのグループになる（マスと棒には、エンジンが付ける）。**まとまりは外側の 1 つ**: `data-name` の付いた要素の中に、もう 1 つ `data-name` は書けない（中のマス・棒も、外のまとまりに入る）。グループになるのは、重なりの順で続いている部品 |
+
+組み方のこつ:
+
+- **一番外の並びに `f-grow` を付ける**（中身の箱の高さを使い切る）。高さの 8 割を使っていなければ警告が出る。中身が箱から出たら rc=2
+- 面の箱は、中身を縦に積む（`f-box`）。**箱の中身を横に並べるなら `class="f-box f-row"`**、または中に `<div class="f-row">` を入れる。箱の内側の余白は 40（狭い箱では `style="padding: 24px"` に詰めてよい）
+- **2 つを比べるページは、左右の面の箱で組む**（片方を `f-box deep` か `fill` にして、行ごとに `check`・`cross` のアイコンを添える）。表（`table`）にするのは、観点が 4 つ以上あるとき
+- 良い・悪い・注意は、面の箱の種類（`f-box good`・`bad`・`warn`）で示す。短い語の札は `f-chip`（「いちばん選ばれている」「注目」など。良い・悪いの語を札にしてもよい）
+- **そろえたい行は、同じ構造にする**（3 つ並ぶ料金の箱で、1 つだけ行が多いと数字の高さがずれる。札は `f-chip top`）
+- 伸ばした面の箱（`f-box f-grow`）の中身は、上から並ぶ。箱の中で縦の中央に置くなら `style="justify-content: center"`、上下に振り分けるなら `space-between`。**並ぶ箱は同じ寄せ方にする**（行数が違っても題の高さがそろうのは、上から並べる形）
+- 幅をそろえたい札・名札には `style="min-width: …"`（例: 月の札「1月」「11月」）。`f-num` は大きさを `style` で変えてよい（数字だけでなく「月45件」のような短い語にも使える）
+- 大きな文字を横に並べるときは、箱の幅に入るかを考える（64px の文字は 1 字で 64px。幅 600 の箱なら 9 字まで）。入らなければ rc=2 になるので、1 段小さくするか、縦に積む
+- 主役の数字は `f-num` を大きく（`style="font-size: 160px"` や `200px`）。脇の数字は面の箱に入れて小さく
+- 原稿に無い数・言葉を足さない（図にするのは原稿にある数だけ）
+- 表・折れ線・棒グラフ（軸の要るもの）・構成図は、型（`table`・`line-chart`・`bar-chart`・`layers`）を使う
+
+例 1（割合のマスと、主役の数字と、脇の数字）:
+
+```html
+<div class="f-row f-grow" style="gap: 64px">
+  <div class="f-cells" data-total="100" data-on="62" data-cols="10" style="width: 560px"></div>
+  <div class="f-col f-grow" style="gap: 40px">
+    <div class="f-col f-grow" style="justify-content: center">
+      <div class="f-num" style="font-size: 200px; color: var(--accent-text)">62%</div>
+      <div class="f-label" style="font-size: 45px">「出なくてもよかった」会議の割合</div>
+    </div>
+    <div class="f-row">
+      <div class="f-box f-grow"><div class="f-strong" style="font-size: 57px">週11.5時間</div><div class="f-note f-muted">1人あたりの会議の時間</div></div>
+      <div class="f-box deep f-grow"><div class="f-strong" style="font-size: 57px">週5.8時間</div><div class="f-note">3つのルールで目指す時間</div></div>
+    </div>
+  </div>
+</div>
+```
+
+例 2（3 つ並ぶ箱。真ん中だけ濃い面と札。数字の行がそろう）:
+
+```html
+<div class="f-row f-grow">
+  <div class="f-box f-grow" style="justify-content: center">
+    <div class="f-label" style="font-size: 45px">小</div>
+    <div class="f-row" style="align-items: baseline; gap: 8px"><div class="f-num" style="font-size: 160px">2</div><div style="font-size: 57px; font-weight: 700">万円</div></div>
+  </div>
+  <div class="f-box deep f-grow" style="justify-content: center">
+    <div class="f-chip top">いちばん選ばれている</div>
+    <div class="f-label" style="font-size: 45px">中</div>
+    <div class="f-row" style="align-items: baseline; gap: 8px"><div class="f-num" style="font-size: 160px">4</div><div style="font-size: 57px; font-weight: 700">万円</div></div>
+  </div>
+  <div class="f-box f-grow" style="justify-content: center">
+    <div class="f-label" style="font-size: 45px">大</div>
+    <div class="f-row" style="align-items: baseline; gap: 8px"><div class="f-num" style="font-size: 160px">7</div><div style="font-size: 57px; font-weight: 700">万円</div></div>
+  </div>
+</div>
+```
+
+（台本の JSON では、`body` に 1 行の文字として書く。`"` は `\"` にする）
 
 ### アイコン（`icon`）
 

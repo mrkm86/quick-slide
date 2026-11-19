@@ -26,17 +26,17 @@
  "engine": "html-slide",
  "files": {
   "build.json": "589a200a726df95c93d6ed8b3bd5800305736742d46e3c423f07ba80c919cfd6",
-  "deck-info.json": "51dc348a44f3da4339ad258b8e0f44073fb7290b50ff27f6bbe9d1f913fd5b14",
-  "pictures/index.json": "b7560e142f1eaac87afe0931409fc5fdf0f9499526b4e4611278df92ca455ddc",
-  "present/deck.html": "7cfe546d3176b7d5b9e8d8fe9526a91fa5941f5a38c358a7f604fd3d6c3467ee",
+  "deck-info.json": "c0ed78923b023dc4e0d8a92b331362ba59c199f48a7fe7cf59f60dcb771f8134",
+  "pictures/index.json": "073ad8e2447adf8b498f7a6b31c7f8cc9498c562d923ba7c10faa70743645a0f",
+  "present/deck.html": "8d6a508f814bc87f589fe55c8bc32c75e88e16907dbfe903424b8beec7ea77cd",
   "settings/theme.yaml": "6a90509a82d7b287c2fade753a959ec6cbb9ceaa3722d7489ffddc27ee5ecab5",
   "slides/slide-01.png": "3654709848ca168522d3c85d57c8959ef548f0a05a429982266129052fafc36b",
-  "slides/slide-02.png": "3aa21bc12f4e729ec10b2abc7e028f0d3b74880b1884b56ce48cf351757955b1",
-  "slides/slide-03.png": "5b625d8dd26212c37c65116ea2e2a52627b98ccf5d59c674d207cb73b8295c5d",
-  "slides/slide-04.png": "ef806c05e72ed08cdee5be06d205ff0ad7ceae742db0ae1f5319e562107a549b",
-  "slides/slide-05.png": "4c6d2b38a5ea28383e108a35d331d9664754a0ad3e24b3a4226cad02b002a8e8",
-  "slides/slide-06.png": "b95c8c5d154dfb3abeb026cd9f45bc445eef18c995f7f37f9052223c97ba0948",
-  "slides/slide-07.png": "3bd8cf4a4b7034736a02d2e0a91c3b34bdbddb00ca29a15b2fdad18fa3ba841b"
+  "slides/slide-02.png": "1777f6308410180329753ea644c893e13351112a52606bb04bc7020c8a03140a",
+  "slides/slide-03.png": "f05346f6e188dd2ddb0fe5db74965d4388e5f4e76fd622ac142ddc543a6b918f",
+  "slides/slide-04.png": "e8f7daa176309028c694f106b99a8b5671f4de734626e133f73e3a88c25c1402",
+  "slides/slide-05.png": "4a3611dbb8b34d6ace421f4cdf4698cec2c2191240f0eeca47c35dfe72b6f13e",
+  "slides/slide-06.png": "64b53227f04aba133ac5b7a4005d3c718d39d7b72b02f0f16e00130bc03f274e",
+  "slides/slide-07.png": "8b09dff789a14cb0a2cfa7cf6657fa5ec2215460a2f85383f688a6d88ffe77c2"
  },
  "format": "quick-slide-sample",
  "format_version": 1,
@@ -87,6 +87,6 @@
    "warnings": []
   }
  ],
- "script_sha256": "f96aceb7b7abb9b717a0e67ae8f612556d358912f96a759ab5708886af65c4b1",
- "version": "b7d224d191d58b12152efdfb664b3d3ba0591d2910dfcdf29487e812798c8dd4"
+ "script_sha256": "6f127a0500462fe7c67acd6409dcfecfb1ae47dae1fcb888e746085062f4cf47",
+ "version": "dacc42e03819aab8fee368ac68a0ea733803e47c2262089ae274284f2888f65e"
 }

@@ -265,9 +265,15 @@ def variants() -> list[dict]:
             {"items": [{"id": "a", "title": "申込", "body": "フォームに入力"}, {"id": "b", "title": "確認", "body": "担当が確かめる"},
                        {"id": "c", "title": "承認", "body": "部長が決裁", "accent": True}]}],
             "links": [{"from": "a", "to": "b"}, {"from": "b", "to": "c", "accent": True}]}, "1層・名札なし"),
+        V("free", {"headline": "会議の6割は、**出なくてもよかった**", "body": FREE_CELLS}, "割合のマスと数字"),
+        V("free", {"headline": "先に試したチームは、4週で**半分以下**になった", "body": FREE_BARS}, "棒と数字の面"),
     ]
     return out
 
+
+# 自由なページ（型 free）の見本の中身
+FREE_CELLS = '<div class="f-row f-grow" style="gap: 64px"><div class="f-cells" data-total="100" data-on="62" data-cols="10" style="width: 560px"></div><div class="f-col f-grow" style="gap: 40px"><div class="f-col f-grow" style="justify-content: center"><div class="f-num" style="font-size: 200px; color: var(--accent-text)">62%</div><div class="f-label" style="font-size: 45px">「出なくてもよかった」会議の割合</div><div class="f-note f-muted" style="font-size: 28px">回答240人が先月出た会議のうち（架空）</div></div><div class="f-row"><div class="f-box f-grow"><div class="f-row" style="align-items: center"><span class="f-icon disc" data-icon="clock"></span><div class="f-col" style="gap: 0"><div class="f-strong" style="font-size: 57px; line-height: 1.4">週11.5時間</div><div class="f-note f-muted" style="font-size: 26px">1人あたりの会議の時間</div></div></div></div><div class="f-box deep f-grow"><div class="f-row" style="align-items: center"><span class="f-icon disc" data-icon="target"></span><div class="f-col" style="gap: 0"><div class="f-strong" style="font-size: 57px; line-height: 1.4">週5.8時間</div><div class="f-note" style="font-size: 26px">3つのルールで目指す時間</div></div></div></div></div></div></div>'
+FREE_BARS = '<div class="f-row f-grow"><div class="f-box f-grow" style="flex: 3"><div class="f-label">1人あたりの会議の時間（週）</div><div class="f-bars" data-max="6"><div class="f-bar on" data-value="6"><b>6.0時間</b>試行前</div><div class="f-bar" data-value="4.6"><b>4.6時間</b>1週目</div><div class="f-bar" data-value="3.9"><b>3.9時間</b>2週目</div><div class="f-bar" data-value="2.8"><b>2.8時間</b>4週目</div></div></div><div class="f-col f-grow" style="flex: 2; gap: 24px"><div class="f-box f-grow" style="justify-content: center"><div class="f-note f-muted" style="font-size: 28px">減った割合</div><div class="f-num">53%</div></div><div class="f-box deep f-grow" style="justify-content: center"><div class="f-chip top">次の目標</div><div class="f-note" style="font-size: 28px">全社に広げたとき</div><div class="f-row" style="align-items: baseline; gap: 16px"><div class="f-num">5.8</div><div style="font-size: 32px">時間／週</div></div></div></div></div>'
 
 def select(vs: list[dict], only: str | None) -> list[dict]:
     if only in (None, "", "all"):

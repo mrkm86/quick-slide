@@ -28,7 +28,8 @@ W, H = 1920, 1080
 X0 = 120                 # 左右の余白
 CW = W - 2 * X0          # 中身の幅 1680
 HEAD_TOP = 80
-BODY_GAP = 40            # 見出しと中身の間（余白の段 4）
+BODY_GAP = 64            # 見出しと中身の間（余白の段 5。40 から広げた・ADR 0030 の追記。見出しのすぐ下から箱が始まり、窮屈に見えていた）
+BODY_GAP_TIGHT = 40      # 64 では中身が入らないページだけ、前の間に詰めて組む（build_slide。今まで通っていた台本を止めない）
 BODY_BOTTOM = 952        # 中身の下端（下の文字とページ番号は 1008 から。上下の余白 64 を引いた 1016 の手前）
 FOOT_H = 33              # 脚注（footnote）1 行ぶんの高さ（22px・行高 1.5）。あれば中身の下端・source をその分だけ上げる
 TAKE_H, TAKE_GAP = 88, 40    # 締めの帯（takeaway）の高さと、中身との間（ADR 0019）
@@ -239,6 +240,7 @@ class Slide:
         self.bottom = self.body_bottom - (TAKE_H + TAKE_GAP if spec.get("takeaway") else 0)
         self.caps: dict[str, int] = {}           # 並ぶ項目の同じ役の文字（カードの題など）の大きさの上限（build_slide がそろえる）
         self.big_head = False                    # 1行に収まる見出しを 80 にするか（build_slide が画像のないページで立てる・ADR 0022）
+        self.body_gap = BODY_GAP                 # 見出しと中身の間（入らないページは build_slide が BODY_GAP_TIGHT に詰める）
         self.seen: dict[str, list[int]] = {}     # 役ごとに、組んだ文字の大きさ
         self.fx = spec.get("fx")
         if self.fx is not None and self.fx not in FX:
@@ -557,7 +559,7 @@ def header(s: Slide, default_headline=None, width=CW, default_kicker=None, top=H
         parts.append(f'<div class="sub" style="font-size:{ss}px" {s.anim(0, "rise", 150, "リード")}>{rich(sub)}</div>')
         h += SPACE[2] + sn * ss * 1.5
     parts.append("</div>")
-    return "".join(parts), top + h + BODY_GAP
+    return "".join(parts), top + h + s.body_gap
 
 
 def source_line(s: Slide, y=None, on_dark=False, width=CW):
@@ -1534,9 +1536,9 @@ def _photo_band(s: Slide):
     head, top = header(s, top=BAND_H + 64)
     parts.append(head)
     if body:
-        room = BODY_BOTTOM - (top - BODY_GAP + 24)
+        room = BODY_BOTTOM - (top - s.body_gap + 24)
         bs, _ = fit(body, 32, CW, what="本文（body）", height=min(room, 32 * 1.6 * 3), lh=1.6, min_size=28)
-        parts.append(f'<div class="sub" style="{box(X0, top - BODY_GAP + 24, CW)} position:absolute; font-size:{bs}px; '
+        parts.append(f'<div class="sub" style="{box(X0, top - s.body_gap + 24, CW)} position:absolute; font-size:{bs}px; '
                      f'line-height:1.6; color:var(--ink)" {s.anim(0, "rise", 300, "本文")}>{rich(body)}</div>')
     return parts
 
@@ -2852,6 +2854,29 @@ def t_layers(s: Slide):
     return parts
 
 
+FREE_PARTS_WARN = 200      # 自由なページの部品（PPTX の図形）がこれを越えたら警告する（PowerPoint での扱いが重くなる）
+
+
+def t_free(s: Slide):
+    """自由なページ: 見出し・出典・下の文字はほかの型と同じ部品で置き、見出しの下の「中身の箱」の中だけを、書く側の body で組む（ADR 0030）。
+
+    body は free_body が解析する（許した要素・属性・CSS だけ・部品の展開・色の組の検査）。箱は左右が本文の幅、上は見出しの下
+    （間はいつも 64。箱の中の高さはブラウザで組むまで分からないので、型のように 40 へ詰め直さない。入らなければ検査の free-outside が止める）、
+    下は中身の下端（出典・結論の帯の上）。クリックの段は body の data-step（Slide.anim を通すので、配る資料・steps: false も型と同じ扱い）。
+    """
+    import free_body as FB
+    head, top = header(s)
+    try:
+        inner, info = FB.render(s.spec.get("body"), s.pal, lambda step, fx, delay, name: s.anim(step, fx, delay, name))
+    except FB.FreeError as e:
+        s.err(str(e))
+    for w in info["warnings"]:
+        s.warnings.append(f"{s.no}枚目（free）: {w}")
+    if info["parts"] > FREE_PARTS_WARN:
+        s.warnings.append(f"{s.no}枚目（free）: 部品が多い（およそ {info['parts']} 個）。PowerPoint で直しにくくなるので、マスの数などを減らす")
+    return [head, f'<div class="f-body" style="{box(X0, top, CW, s.bottom - top)}" data-free-body>{inner}</div>', source_line(s)]
+
+
 def t_pairs(s: Slide):
     """対: よくない例 → よい例 を 2〜4 組（label・before・after・icon）。1組ずつクリックで出る。4組は 2×2、2組は横に2つ、3組は縦に3つ。"""
     head, top = header(s, big=True)
@@ -3335,6 +3360,7 @@ TYPES = {
     "deflist": (t_deflist, HEAD_KEYS | {"items"}, True),
     "steps": (t_steps, HEAD_KEYS | {"items", "current", "layout"}, True),
     "layers": (t_layers, HEAD_KEYS | {"rows", "links"}, True),
+    "free": (t_free, HEAD_KEYS | {"body"}, True),
 }
 # 退役した型（型の名前 → 代わりの型の案内）。台本に書いてあれば今までどおり描くが、使うと警告し、台本の書き方（deck-format.md）・
 # 台本係の一覧・カタログには載せない。描く部分は残す（過去のデッキを組み直せるように）。今は無し（ADR 0021）
@@ -3343,7 +3369,7 @@ RETIRED_TYPES: dict[str, str] = {}
 # 中身の高さを確かめていない型（big-number の補足・team の2段）にも置かない（帯に重なる）
 # notice は枠そのものが言い切りの型なので置かない。deflist・steps は置ける
 TAKEAWAY_TYPES = ("cards", "flow", "compare", "bullets", "timeline", "summary", "kpi", "bar-chart", "line-chart",
-                  "table", "matrix", "equation", "hub", "pairs", "deflist", "steps", "layers")
+                  "table", "matrix", "equation", "hub", "pairs", "deflist", "steps", "layers", "free")
 for _t in TAKEAWAY_TYPES:
     TYPES[_t] = (TYPES[_t][0], TYPES[_t][1] | {"takeaway", "takeaway_icon"}, TYPES[_t][2])
 
@@ -3366,13 +3392,22 @@ def build_slide(s: Slide) -> tuple[list[str], bool]:
     if s.type in RETIRED_TYPES:
         s.warnings.append(f"{s.no}枚目: 型 {s.type} は退役した（{RETIRED_TYPES[s.type]}）。今までどおり描くが、新しい台本では使わない")
     s.big_head = not _has_image(s.spec)        # 画像のないページは、1行に収まる見出しを 80 に（ADR 0022）
-    try:
-        parts = _compose(s, fn)
-    except DeckError:
-        if not s.big_head:
-            raise
-        s.big_head = False                     # 大きな見出しで中身が入らなければ、今までの見出しで組む
-        parts = _compose(s, fn)
+    # 中身が入らなければ、順にゆるめる: 大きな見出し（80）をやめる → 見出しと中身の間を詰める（64 → 40）。どれでも入らなければ、最初の誤りを出す
+    tries = [(True, BODY_GAP), (False, BODY_GAP), (False, BODY_GAP_TIGHT)] if s.big_head else [(False, BODY_GAP), (False, BODY_GAP_TIGHT)]
+    first = None
+    # 組むたびに足されるもの（画像の枠・素材・キャラの参照・警告・段）は、やり直す前に戻す（入らなかった試しの分が残ると、枠が二重になる）
+    keep = (len(s.slots), len(s.assets), s.chars_used, len(s.warnings), set(s.steps))
+    for big, gap in tries:
+        s.big_head, s.body_gap = big, gap
+        try:
+            parts = _compose(s, fn)
+            break
+        except DeckError as e:
+            first = first or e
+            del s.slots[keep[0]:], s.assets[keep[1]:], s.warnings[keep[3]:]
+            s.chars_used, s.steps = keep[2], set(keep[4])
+    else:
+        raise first
     if s.type in GROWABLE and not _has_image(s.spec) and s.need is not None and s.need < GROW_FILL * s.avail:
         base = {k: min(v) for k, v in s.seen.items() if v}
         for f in GROW_STEPS:                    # 中身が少ないときは、文字を大きくして場所を使う。入る一番大きい倍率
