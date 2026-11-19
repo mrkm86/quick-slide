@@ -516,8 +516,6 @@ def _writer_loop(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: di
         changed = {str(x.get("id")) for x in slides_of(result.data) if before.get(str(x.get("id"))) != dumps(x)}
         ids = page_id_problems(slides_of(result.data)) + LOOK.type_problems(
             slides_of(result.data), run["args"], only=changed)
-        # 直しでは、いまの機械で絵を生成できるかに従う（_edit_args）。前からある枠は通し、新しく書いた枠だけを見る
-        ids += LOOK.generated_image_problems(slides_of(result.data), _edit_args(run["args"], req), before=slides_of(data), only=changed)
         # 日本語の検査（絵文字・前置き）。直したページだけ。最後の回は止めずに記録だけ
         jl_ng, jl_notes = JLINT.problems_and_notes(lint_view(run["args"], slides_of(result.data)),
                                                    enforce=round_no < rounds, only=changed)

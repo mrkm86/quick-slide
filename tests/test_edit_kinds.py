@@ -229,31 +229,11 @@ class ImagesFollowTheMachineTests(unittest.TestCase):
                                 "image": {"prompt": "調べない指示", "alt": "調べない説明", "labels": ["店頭", "宅配"]}}])
         self.assertEqual([s.text for s in segs], ["見出し", "店頭", "宅配"])
 
-    def test_generated_frames_and_picture_answers_are_checked_by_the_server(self) -> None:
-        """頼むだけでは守られないものを、サーバが確かめる（docs/adr/0034）: 絵を生成しない設定で生成の枠を書かせない・
-        「絵で描く」を選んだ直しは、絵で描く図解になっていること。"""
-        from quick_slide.render import look as LOOK
+    def test_picture_answers_are_checked_by_the_server(self) -> None:
+        """「絵で描く」を選んだ直しは、絵で描く図解になっていること（頼むだけにしないで、サーバが確かめる。docs/adr/0034）。"""
         from quick_slide.worker.edit import picture_problems
         fig = {"id": "p", "type": "figure", "headline": "h", "image": {"prompt": "全体図", "labels": ["店頭", "宅配"]}}
         photo = {"id": "q", "type": "photo", "headline": "h", "image": {"prompt": "風景"}}
-        svg = {"id": "r", "type": "photo", "headline": "h", "image": {"svg": "<svg/>"}}
-        cards = {"id": "s", "type": "cards", "headline": "h", "items": [{"title": "a", "image": {"prompt": "小さな絵"}}]}
-        off, on = {"mode": "presentation", "images": False}, {"mode": "presentation", "images": True}
-        self.assertEqual(LOOK.generated_image_problems([fig, photo, svg, cards], on), [])
-        got = LOOK.generated_image_problems([fig, photo, svg, cards], off)
-        self.assertEqual([g.split("（id=")[1].split("）")[0] for g in got], ["p", "q", "s"], "挿絵（svg）は通す・入れ子の枠も見る")
-        self.assertEqual(LOOK.generated_image_problems([photo], {"mode": "pitch", "images": False}), [], "ピッチはページごと絵で描く")
-        # 直し: 前からある枠は通す。新しく書いた枠・labels を変えた枠は止める。直していないページは見ない
-        self.assertEqual(LOOK.generated_image_problems([fig, photo], off, before=[fig, photo], only={"p", "q"}), [])
-        changed = {**fig, "image": {"prompt": "全体図", "labels": ["店頭", "倉庫"]}}
-        self.assertEqual(len(LOOK.generated_image_problems([changed, photo], off, before=[fig, photo], only={"p", "q"})), 1)
-        self.assertEqual(LOOK.generated_image_problems([changed, photo], off, before=[fig, photo], only={"q"}), [])
-        # 同じ指示の枠を足す・型を替えて枠の形が変わるのも、新しい絵を描くことになるので止める
-        gal = {"id": "g", "type": "gallery", "headline": "h", "items": [{"image": {"prompt": "a"}}, {"image": {"prompt": "b"}}]}
-        more = {**gal, "items": gal["items"] + [{"image": {"prompt": "a"}}]}
-        self.assertEqual(len(LOOK.generated_image_problems([more], off, before=[gal], only={"g"})), 1)
-        self.assertEqual(len(LOOK.generated_image_problems([{**photo, "type": "figure"}], off, before=[photo], only={"q"})), 1)
-        self.assertEqual(LOOK.generated_image_problems([{**photo, "headline": "見出しだけ直す"}], off, before=[photo], only={"q"}), [])
         # 「絵で描く」: route は script・直したページが絵で描く図解になっていること
         req = {"kind": "diagram", "options": ["picture"], "scope": "page"}
         plain = {"id": "p", "type": "statement", "headline": "h"}

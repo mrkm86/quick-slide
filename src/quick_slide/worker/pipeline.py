@@ -732,7 +732,7 @@ def write_script(ctx: Context, job: dict[str, Any], run: dict[str, Any], *, temp
         script = ctx.call(store.save_script, deck_id, data, written_by="writer", writer_backend=backend,
                           intake_id=intake["id"], run_id=run_id, round_no=round_no)
         ctx.call(store.set_run_state, run_id, "checking", progress=_writer_progress(round_no, rounds, backend, "checking"))
-        own = page_id_problems(slides) + LOOK.type_problems(slides, args) + LOOK.generated_image_problems(slides, args)
+        own = page_id_problems(slides) + LOOK.type_problems(slides, args)
         # 日本語の検査（絵文字・前置き）。最後の回は止めずに記録だけ（リンターのせいで 1 冊が作れなくなるのを避ける）
         jl_ng, jl_notes = JLINT.problems_and_notes(lint_view(args, slides), enforce=round_no < rounds)
         own += jl_ng
