@@ -50,6 +50,16 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(self.refs(notice), {"k:headline": "注意", "k:items/0/label": "重要", "k:items/0/body": "止める",
                                             "k:items/1": "文字だけの項目"})
 
+    def test_chart_names_are_fields_but_values_are_not(self) -> None:
+        bar = {"id": "b", "type": "bar-chart", "headline": "季節ごとの売上", "unit": "万円",
+               "bars": [{"label": "春", "value": 120, "display": "120 万"}, {"label": "夏", "value": "95", "tone": "accent"}]}
+        self.assertEqual(self.refs(bar), {"k:headline": "季節ごとの売上", "k:unit": "万円", "k:bars/0/label": "春",
+                                         "k:bars/0/display": "120 万", "k:bars/1/label": "夏"})
+        line = {"id": "l", "type": "line-chart", "headline": "店舗ごとの推移", "labels": ["4 月", "5 月"],
+                "series": [{"name": "店舗A", "values": [1, 2]}, {"name": "店舗B", "values": [2, 3], "tone": "muted"}]}
+        self.assertEqual(self.refs(line), {"k:headline": "店舗ごとの推移", "k:labels/0": "4 月", "k:labels/1": "5 月",
+                                          "k:series/0/name": "店舗A", "k:series/1/name": "店舗B"})
+
     def test_the_list_title_follows_only_the_heading_segment(self) -> None:
         """本文に見出しと同じ文字があっても、本文の書き換えでは一覧の見出し（title）を変えない。"""
         page = {"id": "p", "type": "html", "title": "同じ文字", "html": "<p>同じ文字</p><p>同じ文字</p>"}

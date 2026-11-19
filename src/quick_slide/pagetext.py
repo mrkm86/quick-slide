@@ -30,13 +30,16 @@ _TEXT_KEYS = {"headline", "title", "subtitle", "kicker", "lead", "caption", "tak
               # 文字の並び（文字列がそのまま並ぶ配列）
               "items", "points", "rows", "columns", "labels", "legend"}
 # この下は読まない（話す台本・動き・画像の枠・取り込んだページの HTML など。中に文字の名前のキーがあっても欄にしない）
-_SKIP_KEYS = {"talk", "transition", "steps", "fx", "image", "html", "notes", "svg", "illustrations", "series", "bars"}
+_SKIP_KEYS = {"talk", "transition", "steps", "fx", "image", "html", "notes", "svg", "illustrations"}
+# グラフの棒・線の中は、描いてある名前だけを欄にする（値は数で、文字の名前のキーでも欄にしない）
+_CHART_KEYS = {"bars": {"label", "display"}, "series": {"name"}}
 # 欄の見出し（キーの名前 → 画面の言葉）。無いものは「文字」
 _LABELS = {"headline": "見出し", "title": "見出し", "subtitle": "副題", "kicker": "小見出し", "lead": "リード",
            "caption": "注記", "takeaway": "まとめ", "label": "ラベル", "body": "本文", "source": "出典",
            "footnote": "脚注", "quote": "引用", "name": "名前", "value": "数字", "unit": "単位", "text": "本文",
            "note": "補足", "heading": "見出し", "description": "説明", "items": "項目", "points": "項目",
-           "rows": "表", "columns": "表の見出し", "labels": "ラベル", "by": "発言者", "contact": "連絡先"}
+           "rows": "表", "columns": "表の見出し", "labels": "ラベル", "by": "発言者", "contact": "連絡先",
+           "display": "値の表示"}
 
 NOT_EDITABLE = {
     "pitch": "ピッチは文字も絵として描くので、ここでは書き換えられません。「AI に頼む」から直してください。",
@@ -68,7 +71,8 @@ def _html_fields(html: Any, prefix: str, label: str) -> list[dict[str, Any]]:
 def _key_fields(value: Any, path: list[str], out: list[dict[str, Any]]) -> None:
     if isinstance(value, str):
         name = _named(path)
-        if value.strip() and name in _TEXT_KEYS:
+        allowed = _CHART_KEYS.get(path[0], _TEXT_KEYS)
+        if value.strip() and name in allowed:
             label = "項目" if len(path) > 1 and name in ("title", "heading", "name", "label") else _LABELS.get(name, "文字")
             out.append({"ref": "k:" + "/".join(path), "label": label, "text": value})
     elif isinstance(value, list):
