@@ -819,12 +819,15 @@ function contractMain() {
     // 箱の下端では見分けられない。中の文字・部品の下端で比べる）。直す側が、関係のない列を詰めて同じ誤りを繰り返さないため
     const shown = el => [...el.children].filter(k => k.namespaceURI === 'http://www.w3.org/1999/xhtml' &&
       (r => r.width > 0 || r.height > 0)(k.getBoundingClientRect()));
-    const leafBottom = el => { const ks = shown(el); return ks.length ? Math.max(...ks.map(leafBottom)) : el.getBoundingClientRect().bottom; };
+    // 中身（文字・描いた部品）の下端。空の箱は伸びた分だけ下端が下がるので、中身に数えない
+    const hasContent = el => !!(el.textContent || '').trim() || el.matches('.f-cell, .f-bar-fill, .f-line') || !!el.querySelector('svg');
+    const leafBottom = el => { const ks = shown(el); return ks.length ? Math.max(...ks.map(leafBottom)) : hasContent(el) ? el.getBoundingClientRect().bottom : -Infinity; };
     const tallest = el => {
       for (let cur = el, guard = 0; guard < 40; guard++) {
         const ks = shown(cur);
         if (!ks.length) return '';
         const lb = ks.map(leafBottom), mx = Math.max(...lb), top = ks[lb.indexOf(mx)];
+        if (mx === -Infinity) return '';
         if (ks.length > 1 && getComputedStyle(cur).flexDirection === 'row' && mx - Math.min(...lb) > 8) {
           const t = (top.textContent || '').replace(/\s+/g, '').slice(0, 14);
           return `横に並ぶ列のうち、中身がいちばん下まで詰まっているのは「${t}…」の列（ここを減らす・詰める。ほかの列を直しても入らない）。`;

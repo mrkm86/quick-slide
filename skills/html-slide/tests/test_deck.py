@@ -3224,6 +3224,18 @@ def case_check_reports_every_page():
     assert out and all("slide5" in l for l in out), ng
     assert "「左の箱" in out[0] and "の列" in out[0] and "右の箱" not in out[0].split("詰まっているのは")[1], out[0]
     assert not any("slide2" in l or "slide4" in l for l in ng), ("組めなかったページの札を検査しない", ng)
+    # 詰まっている列は、中身（文字・描いた部品）の下端で比べる: 伸びただけの空の箱・短い箱を指さない。マスの列が詰まっていれば、その列を指す
+    import render as R
+    def column(right: str, left: str = tall) -> str:
+        body = ('<div class="f-row f-grow" style="align-items: stretch"><div class="f-col" style="flex: 1; gap: 16px">' + left + '</div>' + right + '</div>')
+        vs = [v for v in R.check(build(one(_free(body)), "check-col")[0]) if v["rule"] == "free-outside"]
+        assert vs, "はみ出すはず"
+        return vs[0]["detail"]
+    assert "「左の箱" in column('<div class="f-box f-grow" style="flex: 1"></div>'), "右が空の箱"
+    assert "「左の箱" in column('<div class="f-col" style="flex: 1"><div class="f-box f-grow"><span class="f-icon" data-icon="users"></span></div></div>'), "右がアイコンだけの箱"
+    cells = '<div class="f-col" style="flex: 1"><div>右のマス</div><div class="f-cells" data-total="100" data-on="3" data-cols="5" style="width: 400px"></div></div>'
+    d = column(cells, left='<div class="f-box"><div>左は短い</div></div>')
+    assert "「右のマス" in d and "左は短い" not in d.split("詰まっているのは")[1], d
     # 正しい台本は今までどおり
     ok = TMP / "check-ok.json"
     ok.write_text(json.dumps({"title": "t", "slides": [sc["slides"][0], sc["slides"][2]]}, ensure_ascii=False), encoding="utf-8")

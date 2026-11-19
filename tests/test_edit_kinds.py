@@ -175,6 +175,26 @@ class ImagesFollowTheMachineTests(unittest.TestCase):
         self.assertIn("自由なページ free", P.build_rebuild_prompt(pres, {}, page={"id": "p", "type": "html", "position": 1}, texts=["a"], what="diagram",
                                                               picture=None, generate=False, instruction="", skills_dir=skills))
 
+    def test_every_problem_of_the_check_reaches_the_writer_with_page_ids(self) -> None:
+        """検査は全部のページの誤りを 1 回で出す。サーバは全部の行を読み、直しではページの id を添える（docs/adr/0033 の追記）。"""
+        import sys
+        import tempfile
+        from pathlib import Path
+        from quick_slide.render import runner
+        from quick_slide.worker.edit import _engine_problems
+        from quick_slide.worker.proc import run_process
+        data = {"slides": [{"id": "cover", "type": "cover"}, {"id": "p-two", "type": "closing"}, {"id": "p-three", "type": "free"}]}
+        got = _engine_problems(["NG: 2枚目（closing）: headline が無い",
+                                "NG: slide3 div.f-body > div: [free-outside] 中身の箱からはみ出す（1枚目ではない）",
+                                "NG: 9枚目（table）: 範囲の外", "NG: 決まり違反が 2 件"], data)
+        self.assertEqual(got, ["NG: 2枚目（id=p-two）（closing）: headline が無い",
+                               "NG: 3枚目（id=p-three） div.f-body > div: [free-outside] 中身の箱からはみ出す（1枚目ではない）",
+                               "NG: 9枚目（table）: 範囲の外", "NG: 決まり違反が 2 件"])
+        code = "import sys\nfor i in range(1, 301): print(f'NG: slide{i}', file=sys.stderr)"
+        with tempfile.TemporaryDirectory() as tmp:
+            r = run_process([sys.executable, "-c", code], cwd=Path(tmp), env={}, timeout=60, tail_lines=runner.CHECK_TAIL_LINES)
+        self.assertEqual((len(r.stderr_tail), r.stderr_tail[0].strip()), (300, "NG: slide1"), "先頭のページの誤りを落とさない")
+
     def test_prompts_ask_for_diagrams_and_allow_given_pictures(self) -> None:
         from pathlib import Path
         from quick_slide.engines import ENGINES
