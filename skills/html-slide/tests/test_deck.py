@@ -3300,6 +3300,7 @@ def case_diagram_labels():
         "改行": ({"prompt": "p", "labels": ["a\nb"]}, "labels は"),
         "復帰の文字": ({"prompt": "p", "labels": ["a\rb"]}, "labels は"),
         "null": ({"prompt": "p", "labels": None}, "labels は"),
+        "末尾の改行": ({"prompt": "p", "labels": ["a\n"]}, "labels は"),
         "同じ文字": ({"prompt": "p", "labels": ["a", "a"]}, "2 回"),
         "prompt が無い": ({"path": "x.png", "labels": ["a"]}, "prompt"),
     }

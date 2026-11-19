@@ -248,16 +248,27 @@ class ImagesFollowTheMachineTests(unittest.TestCase):
         changed = {**fig, "image": {"prompt": "全体図", "labels": ["店頭", "倉庫"]}}
         self.assertEqual(len(LOOK.generated_image_problems([changed, photo], off, before=[fig, photo], only={"p", "q"})), 1)
         self.assertEqual(LOOK.generated_image_problems([changed, photo], off, before=[fig, photo], only={"q"}), [])
+        # 同じ指示の枠を足す・型を替えて枠の形が変わるのも、新しい絵を描くことになるので止める
+        gal = {"id": "g", "type": "gallery", "headline": "h", "items": [{"image": {"prompt": "a"}}, {"image": {"prompt": "b"}}]}
+        more = {**gal, "items": gal["items"] + [{"image": {"prompt": "a"}}]}
+        self.assertEqual(len(LOOK.generated_image_problems([more], off, before=[gal], only={"g"})), 1)
+        self.assertEqual(len(LOOK.generated_image_problems([{**photo, "type": "figure"}], off, before=[photo], only={"q"})), 1)
+        self.assertEqual(LOOK.generated_image_problems([{**photo, "headline": "見出しだけ直す"}], off, before=[photo], only={"q"}), [])
         # 「絵で描く」: route は script・直したページが絵で描く図解になっていること
         req = {"kind": "diagram", "options": ["picture"], "scope": "page"}
-        self.assertEqual(picture_problems(req, {"p": "script"}, [fig]), [])
-        self.assertEqual(len(picture_problems(req, {"q": "image"}, [photo])), 2, "今ある絵の描き直しは、図解にならない")
-        self.assertEqual(len(picture_problems(req, {"q": "script"}, [photo])), 1, "labels の無い絵は、図解ではない")
-        self.assertEqual(len(picture_problems(req, {"p": "both"}, [fig])), 1)
+        plain = {"id": "p", "type": "statement", "headline": "h"}
+        self.assertEqual(picture_problems(req, {"p": "script"}, {"p": [fig]}), [])
+        self.assertEqual(len(picture_problems(req, {"q": "image"}, {"q": []})), 1, "今ある絵の描き直しは、図解にならない")
+        self.assertEqual(len(picture_problems(req, {"q": "script"}, {"q": [photo]})), 1, "labels の無い絵は、図解ではない")
+        self.assertEqual(len(picture_problems(req, {"p": "both"}, {"p": [fig]})), 1)
+        self.assertEqual(len(picture_problems(req, {"p": "keep"}, {"p": []})), 1, "指定したページを変えないのは、頼みに応えていない")
+        self.assertEqual(picture_problems(req, {"p": "script"}, {"p": [plain, {**fig, "id": "new"}]}), [], "分けたときは、どれか 1 枚が図解")
+        self.assertEqual(len(picture_problems(req, {"p": "script"}, {"p": [plain, {**plain, "id": "new"}]})), 1)
         whole = {**req, "scope": "deck"}
-        self.assertEqual(picture_problems(whole, {"p": "script", "q": "script"}, [fig, photo]), [], "全体への直しは、どれか 1 ページ")
-        self.assertEqual(len(picture_problems(whole, {"q": "script"}, [photo])), 1)
-        self.assertEqual(picture_problems({"kind": "diagram", "options": ["flow"]}, {"q": "image"}, [photo]), [], "ほかの直しでは見ない")
+        self.assertEqual(picture_problems(whole, {"p": "script", "q": "keep"}, {"p": [fig], "q": []}), [], "全体への直しは、変えないページがあってよい")
+        self.assertEqual(len(picture_problems(whole, {"q": "script", "p": "keep"}, {"q": [photo], "p": []})), 1)
+        self.assertEqual(len(picture_problems(whole, {"p": "script", "q": "image"}, {"p": [fig], "q": []})), 1)
+        self.assertEqual(picture_problems({"kind": "diagram", "options": ["flow"]}, {"q": "image"}, {"q": []}), [], "ほかの直しでは見ない")
         self.assertEqual(E.summary("diagram", ["picture"]), "図解（絵で描く）")
 
     def test_prompts_ask_for_diagrams_and_allow_given_pictures(self) -> None:

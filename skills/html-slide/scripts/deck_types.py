@@ -353,7 +353,7 @@ class Slide:
         labels = spec.get(LABELS_KEY)
         if LABELS_KEY in spec:                              # 書いてあれば、null も誤り（指定なしと取り違えない）
             if (not isinstance(labels, list) or not 1 <= len(labels) <= MAX_LABELS
-                    or any(not isinstance(x, str) or not x.strip() or len(x.splitlines()) != 1 or len(x.strip()) > MAX_LABEL_CHARS for x in labels)):
+                    or any(not isinstance(x, str) or not x.strip() or x.splitlines() != [x] or len(x.strip()) > MAX_LABEL_CHARS for x in labels)):
                 self.err(f"{key}.{LABELS_KEY} は、図の中に描く文字の並び（1〜{MAX_LABELS} 個・1 つ {MAX_LABEL_CHARS} 字まで・改行なし）")
             if len({x.strip() for x in labels}) != len(labels):
                 self.err(f"{key}.{LABELS_KEY} に同じ文字が 2 回ある")

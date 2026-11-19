@@ -447,19 +447,25 @@ def type_problems(slides: list[dict[str, Any]], args: dict[str, Any], *, only: s
     return out
 
 
-def _generated_prompts(value: Any) -> list[str]:
-    """ページの中の、生成の画像の枠（image に prompt があり、path も svg も無い）の描く指示。labels があれば、それも含めた文。"""
+def _generated_prompts(value: Any, where: str = "", page: dict[str, Any] | None = None) -> list[str]:
+    """ページの中の、生成の画像の枠（image に prompt があり、path も svg も無い）の印。1 枠に 1 つ。
+
+    印は、描く指示（prompt・labels）と、枠の場所（`items[2].image` など）・ページの型と並べ方。同じ指示でも、枠を増やしたり、
+    型や並べ方を変えて枠の形が変われば、別の絵を描くことになる（絵の鍵は、指示と枠の形から作る）。"""
     out: list[str] = []
+    if page is None and isinstance(value, dict):
+        page = value
     if isinstance(value, dict):
         im = value.get("image")
         if isinstance(im, dict) and str(im.get("prompt") or "").strip() and not im.get("path") and not im.get("svg"):
-            out.append(json.dumps([im.get("prompt"), im.get("labels")], ensure_ascii=False))
+            shape = {k: page.get(k) for k in ("type", "layout", "split", "fit", "side", "text_side")} if page else {}
+            out.append(json.dumps([im.get("prompt"), im.get("labels"), f"{where}.image", shape], ensure_ascii=False, sort_keys=True))
         for k, v in value.items():
             if k != "image":
-                out += _generated_prompts(v)
+                out += _generated_prompts(v, f"{where}.{k}", page)
     elif isinstance(value, list):
-        for v in value:
-            out += _generated_prompts(v)
+        for n, v in enumerate(value):
+            out += _generated_prompts(v, f"{where}[{n}]", page)
     return out
 
 
@@ -477,6 +483,7 @@ def generated_image_problems(slides: list[dict[str, Any]], args: dict[str, Any],
     for i, s in enumerate(slides, 1):
         if not isinstance(s, dict) or (only is not None and str(s.get("id")) not in only):
             continue
+        # 印には枠の場所が入るので、同じ指示の枠を足しても別の印になる（1 枠 1 印）
         new = [p for p in _generated_prompts(s) if p not in was.get(str(s.get("id")), set())]
         if new:
             out.append(f"NG: {i}枚目（id={s.get('id')}）: 生成の画像の枠（image の prompt・labels）は使えない（この資料・機械では絵を生成しない）。"

@@ -126,23 +126,26 @@ def _has_picture_diagram(value: Any) -> bool:
     return isinstance(value, list) and any(_has_picture_diagram(v) for v in value)
 
 
-def picture_problems(req: dict[str, Any], routes: dict[str, str], after: list[dict[str, Any]]) -> list[str]:
+def picture_problems(req: dict[str, Any], routes: dict[str, str], pages: dict[str, list[dict[str, Any]]]) -> list[str]:
     """直しの「図解 → 絵で描く」を選んだのに、答えが絵で描く図解になっていないときの `NG:` の行（docs/adr/0034）。
 
+    `routes` は直したページの id → 答えの道、`pages` は id → そのページの直したあとの姿（2〜3 枚に分けたら、その全部）。
     絵で描く図解は、台本を書き換えて頼む（route は script。型 figure の image に prompt と labels）。今ある絵の描き直し（route が
-    image・both）では、文字を描かせない元の指示のまま直すことになり、図解にならない。ページを指定した直しは、直したページの
-    全部が図解になっていること。スライド全体への直しは、どれか 1 ページ。"""
+    image・both）では、文字を描かせない元の指示のまま直すことになり、図解にならない。
+    ページを指定した直しは、指定したページのそれぞれが、直したあとの姿のどれか 1 枚で図解になっていること（分けたときは 1 枚でよい）。
+    スライド全体への直しは、変えないページ（keep）があってよく、書き換えたページのどれか 1 つが図解になっていること。"""
     if req.get("kind") != "diagram" or "picture" not in (req.get("options") or []):
         return []
+    whole = (req.get("scope") or "page") not in ("page", "pages")
     out = [f"NG: {k}: 絵で描く図解は、台本を書き換えて頼む（route は script。今ある絵の描き直し image・both は使わない）"
-           for k, r in routes.items() if r != "script"]
-    by_id = {str(s.get("id")): s for s in after if isinstance(s, dict)}
-    done = [k for k in routes if _has_picture_diagram(by_id.get(k))]
+           for k, r in routes.items() if r in ("image", "both")]
+    done = [k for k, r in routes.items() if r == "script" and any(_has_picture_diagram(x) for x in pages.get(k) or [])]
     how = "型 figure にし、image に prompt（何をどう並べて描くか）と labels（図の中に描く文字の並び）を書く"
-    if (req.get("scope") or "page") in ("page", "pages"):
-        out += [f"NG: {k}: 絵で描く図解になっていない。{how}" for k in routes if k not in done]
+    if not whole:
+        out += [f"NG: {k}: 絵で描く図解になっていない。route を script にして、{how}" for k, r in routes.items()
+                if k not in done and r not in ("image", "both")]
     elif not done:
-        out.append(f"NG: 絵で描く図解にしたページが無い。伝わりやすくなるページを選び、{how}")
+        out.append(f"NG: 絵で描く図解にしたページが無い。伝わりやすくなるページを選び、route を script にして、{how}")
     return out
 
 
@@ -616,7 +619,7 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
         if patch.problems:
             return None, patch.problems
         wrong = picture_problems(req, {k: p.route for k, p in patch.pages.items()},
-                                 slides_of(apply_revision(data, patch) if patch.script_changes else data))
+                                 {k: list(p.slides or []) for k, p in patch.pages.items()})
         if wrong:
             return None, wrong
         image_keys = {pp.key for pp in patch.image_changes}
