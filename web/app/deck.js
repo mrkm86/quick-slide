@@ -2155,7 +2155,9 @@
           if (selfBusy[sid] !== jobId) { return; }
           if (!j.finished) { again(); return; }
           delete selfBusy[sid];
-          if (!j.ok) { selfFailed[sid] = (j.run && j.run.message) || tw.failed; }
+          // 当たったら、台本の文字が確定（サーバが改行・前後の空白をそろえるので、書きかけとは 1 字ずつ同じとは限らない）。
+          // 書きかけを残すのは、当たらなかったときだけ
+          if (j.ok) { drafts[sid] = {}; } else { selfFailed[sid] = (j.run && j.run.message) || tw.failed; }
           if (mode === "page" && how === "self" && activeSlide === sid) { loadSelf(sid, true); }
           else if (selfSid === sid) { selfSid = null; }
         }, again);
@@ -2253,6 +2255,9 @@
         tabAi.tabIndex = self ? -1 : 0;
         selfBox.hidden = !self;
         slot.hidden = self;
+        // 「AI に頼む」の欄も、切り替えがあるとき（1 ページ）はタブの板として読み上げる
+        if (page) { slot.setAttribute("role", "tabpanel"); slot.setAttribute("aria-labelledby", "panel-tab-ai"); }
+        else { slot.removeAttribute("role"); slot.removeAttribute("aria-labelledby"); }
         panel.dataset.how = page ? how : "";
         if (self) { loadSelf(activeSlide, false); }
       };

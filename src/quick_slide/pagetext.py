@@ -95,7 +95,8 @@ def fields(page: dict[str, Any]) -> list[dict[str, Any]]:
         out = _html_fields(page.get("html"), "n", "文字")
     else:
         for k, v in page.items():
-            if not isinstance(k, str) or _skip(k):
+            # ページ直下の role は、見えない印（前の台本との互換のためにエンジンが読み飛ばす）。項目の中の role（役職）は見える
+            if not isinstance(k, str) or _skip(k) or k == "role":
                 continue
             if page.get("type") == freepage.TYPE and k == "body" and isinstance(v, str):
                 out += _html_fields(v, "b", "本文")
@@ -161,12 +162,13 @@ def apply(page: dict[str, Any], changes: list[dict[str, str]]) -> dict[str, Any]
         else:
             node[last] = c["text"]
     if html_changes["n"]:
-        # 一覧に出す見出し（取り込みの title）は、**見出しの節**（title と同じ文字の、いちばん上の節）を書き換えたときだけ直す。
-        # 本文に同じ文字があっても、その節の書き換えでは title を変えない
+        # 一覧に出す見出し（取り込みの title）は、title と同じ文字の節が**ちょうど 1 つ**で、それを書き換えたときだけ直す。
+        # 同じ文字の節がいくつもある（マスターの文字・本文の同じ文）・1 つも無い（つないだ・切り詰めた title）ときは、
+        # どれが見出しか決められないので title は変えない（違う文字を変えるより、一覧が古いままのほうを選ぶ）
         old_title = (out.get("title") or "").strip()
-        head = next((s["n"] for s in importing.text_segments(out.get("html") or "") if old_title and s["text"] == old_title), None)
-        if head in html_changes["n"]:
-            out["title"] = html_changes["n"][head]
+        heads = [s["n"] for s in importing.text_segments(out.get("html") or "") if old_title and s["text"] == old_title]
+        if len(heads) == 1 and heads[0] in html_changes["n"]:
+            out["title"] = html_changes["n"][heads[0]]
         out["html"] = importing.replace_texts(out.get("html") or "", html_changes["n"])
     if html_changes["b"]:
         out["body"] = importing.replace_texts(out.get("body") or "", html_changes["b"])

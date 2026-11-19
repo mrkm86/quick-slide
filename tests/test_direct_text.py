@@ -43,6 +43,8 @@ class UnitTests(unittest.TestCase):
         """描き方の指定（図柄・札の描き方・進み具合・並べ方）は、文字列でも欄にしない。知らないキーも欄にしない。"""
         cover = {"id": "c", "type": "cover", "title": "表紙", "label": "提案", "motif": "wave", "layout": "graphic", "tone": "dark"}
         self.assertEqual(self.refs(cover), {"k:title": "表紙", "k:label": "提案"})
+        team = {"id": "t", "type": "team", "role": "closing", "members": [{"name": "山田", "role": "店長"}]}
+        self.assertEqual(self.refs(team), {"k:members/0/name": "山田", "k:members/0/role": "店長"}, "ページ直下の role は見えない印")
         notice = {"id": "n", "type": "notice", "headline": "注意", "label_style": "tag", "unknown_key": "見えない値",
                   "items": [{"label": "重要", "body": "止める", "state": "done", "icon": "alert"}, "文字だけの項目"]}
         self.assertEqual(self.refs(notice), {"k:headline": "注意", "k:items/0/label": "重要", "k:items/0/body": "止める",
@@ -54,7 +56,10 @@ class UnitTests(unittest.TestCase):
         body = pagetext.apply(page, [{"ref": "n:2", "from": "同じ文字", "text": "本文だけ"}])
         self.assertEqual((body["title"], body["html"]), ("同じ文字", "<p>同じ文字</p><p>本文だけ</p>"))
         head = pagetext.apply(page, [{"ref": "n:1", "from": "同じ文字", "text": "新しい見出し"}])
-        self.assertEqual((head["title"], head["html"]), ("新しい見出し", "<p>新しい見出し</p><p>同じ文字</p>"))
+        self.assertEqual((head["title"], head["html"]), ("同じ文字", "<p>新しい見出し</p><p>同じ文字</p>"),
+                         "同じ文字の節が 2 つあると、どれが見出しか決められないので title は変えない")
+        cut = {"id": "p", "type": "html", "title": "つないだ 見出し", "html": "<p>つないだ</p><p>見出し</p>"}
+        self.assertEqual(pagetext.apply(cut, [{"ref": "n:1", "from": "つないだ", "text": "x"}])["title"], "つないだ 見出し")
 
     def test_apply_changes_only_the_named_texts(self) -> None:
         got = pagetext.apply(IMPORTED, [{"ref": "n:3", "from": "一つ目 & 二つ目", "text": "A < B"},

@@ -134,6 +134,9 @@ class DirectTextScreenTest(unittest.TestCase):
         # 読み上げ: 2 つのタブは、それぞれの板を指す
         self.assertEqual(page.eval(f"Array.from(document.querySelectorAll('{P}.panel__tab')).map(b => b.getAttribute('aria-controls'))"),
                          ["panel-how-self", "panel-how-ai"])
+        self.assertEqual(page.eval("['panel-how-self', 'panel-how-ai'].map(id => document.getElementById(id).getAttribute('role')"
+                                   " + '/' + document.getElementById(id).getAttribute('aria-labelledby'))"),
+                         ["tabpanel/panel-tab-self", "tabpanel/panel-tab-ai"])
         # AI に頼む に戻すと、今までの欄
         page.eval(f"document.querySelector('{P}#panel-tab-ai').click()")
         self.assertFalse(page.eval(f"document.querySelector('{P}.panel__slot').hidden"))
