@@ -69,6 +69,7 @@ class DirectTextScreenTest(unittest.TestCase):
         page = self.open_panel(deck)
         self.assertEqual(page.eval(f"Array.from(document.querySelectorAll('{P}.panel__tab')).map(b => b.textContent)"),
                          ["自分で直す", "AI に頼む"])
+        self.assertEqual(page.eval(f"document.querySelectorAll('{P}.panel__tab svg.icon').length"), 2, "どちらにもアイコン")
         self.assertEqual(page.eval(f"document.querySelector('{P}.panel__tab[aria-selected=true]').textContent"), "AI に頼む")
         self.assertTrue(page.eval(f"document.querySelector('{P}.panel__self').hidden"))
         self.assertFalse(page.eval(f"document.querySelector('{P}.panel__slot').hidden"), "はじめは今までの欄")
@@ -80,6 +81,9 @@ class DirectTextScreenTest(unittest.TestCase):
         title = self.fx.get(f"/api/decks/{deck}").json()["pages"][1]["title"]
         self.assertIn(title, before, "見出しが欄にある")
         self.assertTrue(page.eval(SAVE + ".disabled"), "書き換えるまで保存は押せない")
+        # どの欄にも名前がある（見出しを左に出すか、読み上げにだけ渡すか）
+        self.assertTrue(page.eval(f"Array.from(document.querySelectorAll('{P}.panel__self-input')).every(t =>"
+                                  " !!t.getAttribute('aria-label') || !!document.querySelector('label[for=\"' + t.id + '\"]'))"))
 
         calls = len(writer_calls(self.log))
         page.eval(SET + "('人が書いた文字')")

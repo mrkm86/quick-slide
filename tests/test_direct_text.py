@@ -38,6 +38,9 @@ class UnitTests(unittest.TestCase):
                                            "k:items/0/body": "4,500 万円"})
         labels = [f["label"] for f in pagetext.fields(FREE)]
         self.assertEqual(labels, ["小見出し", "見出し", "本文 1", "本文 2"], "同じ見出しの欄には番号を振る")
+        # 何の文字か分からない欄（HTML の文字）には plain の印（画面は見出しを出さずに並べる）
+        self.assertEqual([f["plain"] for f in pagetext.fields(FREE)], [False, False, True, True])
+        self.assertEqual({f["plain"] for f in pagetext.fields(IMPORTED)}, {True})
 
     def test_drawing_choices_are_not_fields(self) -> None:
         """描き方の指定（図柄・札の描き方・進み具合・並べ方）は、文字列でも欄にしない。知らないキーも欄にしない。"""

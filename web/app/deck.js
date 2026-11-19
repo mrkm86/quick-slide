@@ -2046,10 +2046,10 @@
       // 直し方の切り替え（1 ページのときだけ）。「自分で直す」はページの文字を欄に並べて、人が書き換える（台本係は通らない）。
       // 「AI に頼む」は今までの欄。どちらを選んだかは、この画面にいる間は覚える（ページを送っても同じ直し方のまま）
       var tw = textEditWords();
-      var tabSelf = h("button", { class: "panel__tab", type: "button", role: "tab", id: "panel-tab-self", "aria-controls": "panel-how-self",
-        text: tw.tab_self });
-      var tabAi = h("button", { class: "panel__tab", type: "button", role: "tab", id: "panel-tab-ai", "aria-controls": "panel-how-ai",
-        text: tw.tab_ai });
+      var tabSelf = h("button", { class: "panel__tab", type: "button", role: "tab", id: "panel-tab-self", "aria-controls": "panel-how-self" },
+        SS.icon("edit"), h("span", { text: tw.tab_self }));
+      var tabAi = h("button", { class: "panel__tab", type: "button", role: "tab", id: "panel-tab-ai", "aria-controls": "panel-how-ai" },
+        SS.icon("sparkle"), h("span", { text: tw.tab_ai }));
       var tabs = h("div", { class: "panel__tabs", role: "tablist", "aria-label": tw.tabs_label, hidden: true }, tabSelf, tabAi);
       var selfBox = h("div", { class: "panel__self", id: "panel-how-self", role: "tabpanel", "aria-labelledby": "panel-tab-self", hidden: true });
       slot.id = "panel-how-ai";
@@ -2193,7 +2193,14 @@
           ta.dataset.from = f.text;
           ta.value = Object.prototype.hasOwnProperty.call(draft, f.ref) ? draft[f.ref] : f.text;
           ta.addEventListener("input", sync);
-          list.appendChild(h("div", { class: "panel__self-field" }, h("label", { class: "small", for: id, text: f.label }), ta));
+          // 欄の見出しは小さく左に置く（縦に長くしない）。何の文字か分からない欄（取り込んだページ・自由なページの本文）は
+          // 見出しを出さずに並べ、読み上げにだけ名前を渡す
+          if (f.plain) {
+            ta.setAttribute("aria-label", f.label);
+            list.appendChild(h("div", { class: "panel__self-field panel__self-field--plain" }, ta));
+          } else {
+            list.appendChild(h("div", { class: "panel__self-field" }, h("label", { class: "panel__self-label", for: id, text: f.label }), ta));
+          }
         });
         save.addEventListener("click", function () {
           if (selfBusy[sid]) { return; }

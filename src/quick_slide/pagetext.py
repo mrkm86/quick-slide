@@ -64,7 +64,8 @@ def _html_fields(html: Any, prefix: str, label: str) -> list[dict[str, Any]]:
     for seg in importing.text_segments(html if isinstance(html, str) else ""):
         if seg["bullet"] or not seg["text"]:
             continue
-        out.append({"ref": f"{prefix}:{seg['n']}", "label": label, "text": seg["text"]})
+        # HTML の文字は、何の文字か（見出し・本文）が分からない。見出しを出さずに並べる印（plain）を付ける
+        out.append({"ref": f"{prefix}:{seg['n']}", "label": label, "text": seg["text"], "plain": True})
     return out
 
 
@@ -74,7 +75,7 @@ def _key_fields(value: Any, path: list[str], out: list[dict[str, Any]]) -> None:
         allowed = _CHART_KEYS.get(path[0], _TEXT_KEYS)
         if value.strip() and name in allowed:
             label = "項目" if len(path) > 1 and name in ("title", "heading", "name", "label") else _LABELS.get(name, "文字")
-            out.append({"ref": "k:" + "/".join(path), "label": label, "text": value})
+            out.append({"ref": "k:" + "/".join(path), "label": label, "text": value, "plain": False})
     elif isinstance(value, list):
         for i, v in enumerate(value):
             _key_fields(v, [*path, str(i)], out)
@@ -93,7 +94,8 @@ def _named(path: list[str]) -> str:
 
 
 def fields(page: dict[str, Any]) -> list[dict[str, Any]]:
-    """そのページの書き換えられる文字（{ref, label, text}。上から順）。同じ見出しの欄には番号を振る。"""
+    """そのページの書き換えられる文字（{ref, label, text, plain}。上から順）。同じ見出しの欄には番号を振る。
+    plain は、何の文字か分からない欄（画面は見出しを出さずに並べる。読み上げには label を使う）。"""
     out: list[dict[str, Any]] = []
     if page.get("type") == IMPORTED_TYPE:
         out = _html_fields(page.get("html"), "n", "文字")
