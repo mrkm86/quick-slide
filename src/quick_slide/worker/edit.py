@@ -124,8 +124,8 @@ def free_shape_problems(req: dict[str, Any], before: list[dict[str, Any]], after
     if req.get("kind") != "text":
         return []
     was = {str(x.get("id")): x for x in before}
-    return [f"NG: {x.get('id')}: 文字の直しなのに、自由なページの body の組み（要素・class・style・data-step など）が変わった。"
-            "前の body の組みのまま、文字（と、その数を表す data-on・data-value など）だけを直す"
+    return [f"NG: {x.get('id')}: 文字の直しなのに、自由なページの組み（型・body の要素・class・style・data-step・data-cols など）が変わった。"
+            "type は free のまま、前の body の組みのまま、文字（と、その数を表す data-on・data-value など）だけを直す"
             for x in after if str(x.get("id")) in changed and FREEPAGE.reshaped(was.get(str(x.get("id")), {}), x)]
 
 

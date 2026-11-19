@@ -145,7 +145,8 @@ class ImagesFollowTheMachineTests(unittest.TestCase):
         numbers = {**page, "body": body.replace("62", "65").replace("7.5", "8")}
         self.assertFalse(freepage.reshaped(page, numbers), "数字と、その数の属性だけの直しは組みを変えていない")
         for name, changed in {"並べ方": body.replace("f-row", "f-col"), "style": body.replace('class="f-num"', 'class="f-num" style="font-size: 160px"'),
-                              "段": body.replace('data-step="1"', 'data-step="2"'), "要素を足す": body + "<div>追記</div>"}.items():
+                              "段": body.replace('data-step="1"', 'data-step="2"'), "要素を足す": body + "<div>追記</div>",
+                              "マスの列の数": body.replace('data-cols="10"', 'data-cols="5"')}.items():
             after = {**page, "body": changed}
             self.assertTrue(freepage.reshaped(page, after), name)
             self.assertEqual(len(free_shape_problems({"kind": "text"}, [page], [after], {"p"})), 1, name)
@@ -153,7 +154,13 @@ class ImagesFollowTheMachineTests(unittest.TestCase):
             self.assertEqual(free_shape_problems({}, [page], [after], {"p"}), [], "種類を選ばない指示は組み替えてよい")
             self.assertEqual(free_shape_problems({"kind": "text"}, [page], [after], set()), [], "直していないページは見ない")
         self.assertEqual(free_shape_problems({"kind": "text"}, [page], [numbers], {"p"}), [])
-        self.assertEqual(free_shape_problems({"kind": "text"}, [page], [{"id": "p", "type": "cards", "headline": "h"}], {"p"}), [], "型を替えた直しは、型の検査に任せる")
+        self.assertEqual(len(free_shape_problems({"kind": "text"}, [page], [{"id": "p", "type": "cards", "headline": "h"}], {"p"})), 1, "別の型に替えるのも組み替え")
+        self.assertEqual(free_shape_problems({"kind": "text"}, [{"id": "p", "type": "cards"}], [page], {"p"}), [], "元が自由なページでなければ見ない")
+        same = {**page, "body": body.replace('class="f-row f-grow"', 'class="f-grow  f-row" style=""')}
+        self.assertFalse(freepage.reshaped(page, same), "class の語の順・空の style は、組みの違いにしない")
+        styled = {**page, "body": '<div style="gap: 24px; align-items: center"><div>a</div></div>'}
+        self.assertFalse(freepage.reshaped(styled, {**page, "body": '<div style="align-items:center;gap:24px;"><div>b</div></div>'}), "style の空白と順")
+        self.assertTrue(freepage.reshaped(styled, {**page, "body": '<div style="gap: 32px; align-items: center"><div>a</div></div>'}), "style の値")
         self.assertEqual(scriptdoc.body_of(page).split("\n"), ["見出し", "62%", "100 のうち 62", "導入前: 7.5（最大 10）"])
         self.assertNotIn("<", scriptdoc.body_of(page))
         # 直しの指示（完成した文）に、組みを保つ決まりと、数の属性を一緒に直す決まりが入る。差し込み・組み直しにも届く

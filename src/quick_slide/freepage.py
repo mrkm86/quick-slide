@@ -10,8 +10,21 @@ from html.parser import HTMLParser
 from typing import Any
 
 TYPE = "free"
-# 数を表す属性（割合のマス・棒）。数字の直しでは文字と一緒に変わるので、骨組みの見比べからは外す
-VALUE_ATTRS = ("data-total", "data-on", "data-cols", "data-max", "data-value")
+# 中身の数を表す属性（割合のマス・棒）。数字の直しでは文字と一緒に変わるので、骨組みの見比べからは外す。
+# マスの列の数（data-cols）は並べ方なので、骨組みに入れる
+VALUE_ATTRS = ("data-total", "data-on", "data-max", "data-value")
+
+
+def _style(text: str) -> tuple[tuple[str, str], ...]:
+    """style を（プロパティ, 値）の並びにそろえる（空白・大文字小文字・宣言の順の違いは、組みの違いにしない）。"""
+    out = []
+    for decl in text.split(";"):
+        if ":" in decl:
+            k, v = decl.split(":", 1)
+            out.append((k.strip().lower(), " ".join(v.split()).lower()))
+        elif decl.strip():
+            out.append((decl.strip().lower(), ""))
+    return tuple(sorted(out))
 
 
 class _Reader(HTMLParser):
@@ -25,7 +38,7 @@ class _Reader(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         a = {k: (v or "") for k, v in attrs}
-        self.skeleton.append((tag, " ".join(a.get("class", "").split()), ";".join(x.strip() for x in a.get("style", "").split(";") if x.strip()),
+        self.skeleton.append((tag, tuple(sorted(set(a.get("class", "").split()))), _style(a.get("style", "")),
                               tuple(sorted((k, v) for k, v in a.items() if k.startswith("data-") and k not in VALUE_ATTRS))))
         cls = a.get("class", "").split()
         if "f-cells" in cls:
@@ -74,6 +87,5 @@ def skeleton(body: Any) -> list[tuple[Any, ...]]:
 
 
 def reshaped(before: dict[str, Any], after: dict[str, Any]) -> bool:
-    """自由なページのまま、組みが変わったか（文字だけの直しでは、変わってはいけない）。"""
-    return (before.get("type") == TYPE and after.get("type") == TYPE
-            and skeleton(before.get("body")) != skeleton(after.get("body")))
+    """自由なページの組みが変わったか（文字だけの直しでは、変わってはいけない）。別の型に替えたのも、組みを変えたことになる。"""
+    return before.get("type") == TYPE and (after.get("type") != TYPE or skeleton(before.get("body")) != skeleton(after.get("body")))
