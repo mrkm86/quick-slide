@@ -672,8 +672,11 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
             info_slides.append({"no": no, "type": spec["type"], "styled": styled,
                                 "clicks": clicks if mode == "talk" else 0, "transition": tr})
         except DeckError as e:
+            if not str(e).startswith(f"{no}枚目"):      # 何枚目かを言わない誤り（表のマスが入らない、など）にも、ページを添える
+                kind = spec.get("type") if isinstance(spec, dict) else None
+                e = DeckError(f"{no}枚目{'（' + str(kind) + '）' if kind else ''}: {e}")
             if page_errors is None:
-                raise
+                raise e
             # 止まらずに描く（review）。この回が途中まで足した素材・画像の枠・警告・色の使用を捨てる。章の番号は台本の順で数えたまま
             del assets[state[0]:], slots[state[1]:], img_warns[state[2]:]
             used_overlays.clear()

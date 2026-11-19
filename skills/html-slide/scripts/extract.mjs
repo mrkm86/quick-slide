@@ -815,6 +815,24 @@ function contractMain() {
       if (!H.isInline(el) && el.clientWidth > 0 && (el.textContent || '').trim() &&
           (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)) overflow.push(el);
     }
+    // 下にはみ出したとき、横に並ぶ列のうち「どの列の中身がいちばん下まで詰まっているか」を言う（伸ばした列は高さがそろうので、
+    // 箱の下端では見分けられない。中の文字・部品の下端で比べる）。直す側が、関係のない列を詰めて同じ誤りを繰り返さないため
+    const shown = el => [...el.children].filter(k => k.namespaceURI === 'http://www.w3.org/1999/xhtml' &&
+      (r => r.width > 0 || r.height > 0)(k.getBoundingClientRect()));
+    const leafBottom = el => { const ks = shown(el); return ks.length ? Math.max(...ks.map(leafBottom)) : el.getBoundingClientRect().bottom; };
+    const tallest = el => {
+      for (let cur = el, guard = 0; guard < 40; guard++) {
+        const ks = shown(cur);
+        if (!ks.length) return '';
+        const lb = ks.map(leafBottom), mx = Math.max(...lb), top = ks[lb.indexOf(mx)];
+        if (ks.length > 1 && getComputedStyle(cur).flexDirection === 'row' && mx - Math.min(...lb) > 8) {
+          const t = (top.textContent || '').replace(/\s+/g, '').slice(0, 14);
+          return `横に並ぶ列のうち、中身がいちばん下まで詰まっているのは「${t}…」の列（ここを減らす・詰める。ほかの列を直しても入らない）。`;
+        }
+        cur = top;
+      }
+      return '';
+    };
     // 自由なページ（型 free・ADR 0030）: 中身の箱（[data-free-body]）から出た部品は誤り。箱の高さの 8 割を使っていなければ警告
     for (const fb of sec.querySelectorAll('[data-free-body]')) {
       const b = fb.getBoundingClientRect();
@@ -827,7 +845,7 @@ function contractMain() {
           let anc = false;
           for (let n = el.parentNode; n && n !== fb; n = n.parentNode) if (out.has(n)) { anc = true; break; }
           out.add(el);
-          if (!anc) V(no, el, 'free-outside', `中身の箱からはみ出す（箱 ${Math.round(b.width)}×${Math.round(b.height)} に対して 右 ${Math.round(r.right - b.right)}・下 ${Math.round(r.bottom - b.bottom)}px）。中身を減らすか、文字を小さい段にするか、箱を flex で割り直す`, 'error', sec);
+          if (!anc) V(no, el, 'free-outside', `中身の箱からはみ出す（箱 ${Math.round(b.width)}×${Math.round(b.height)} に対して 右 ${Math.round(r.right - b.right)}・下 ${Math.round(r.bottom - b.bottom)}px）。${r.bottom > b.bottom + 1 ? tallest(el) : ''}中身を減らすか、文字を小さい段にするか、箱を flex で割り直す`, 'error', sec);
         }
       }
       const kids = [...fb.children].map(k => k.getBoundingClientRect()).filter(r => r.width > 0 || r.height > 0);

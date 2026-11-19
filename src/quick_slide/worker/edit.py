@@ -396,11 +396,15 @@ def _engine_problems(problems: list[str], data: dict[str, Any]) -> list[str]:
 
     visible = [str(s.get("id")) for s in slides_of(engine_view(data))]
 
-    def name(m: "re.Match[str]") -> str:
-        n = int(m.group(1))
-        return f"{n}枚目（id={visible[n - 1]}）" if 1 <= n <= len(visible) else m.group(0)
+    def page(n: int, plain: str) -> str:
+        return f"{n}枚目（id={visible[n - 1]}）" if 1 <= n <= len(visible) else plain
 
-    return [re.sub(r"(\d+)枚目", name, p, count=1) for p in problems]
+    def one(p: str) -> str:
+        if re.match(r"NG: slide\d+\b", p):      # 描き出しの検査の行は「slideN」で始まる
+            return re.sub(r"slide(\d+)\b", lambda m: page(int(m.group(1)), m.group(0)), p, count=1)
+        return re.sub(r"(\d+)枚目", lambda m: page(int(m.group(1)), m.group(0)), p, count=1)
+
+    return [one(p) for p in problems]
 
 
 # --- 台本係を呼ぶ直し ------------------------------------------------------------------------------------------
