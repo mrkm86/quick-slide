@@ -303,7 +303,9 @@ def chrome_boxes(footer: str, number: str, place: dict | None, font_file: str | 
     if footer:
         x, y, room, h = L.footer_box(place["w"] if on and place["corner"] == "bottom-left" else 0, bool(number), mid)
         # 幅は、フッタに割り当てた範囲まで（中央のページ番号・右下のロゴの手前）。文字の後ろの地が番号やロゴを覆わないように
-        out["footer"] = (x, y, min(text_width(footer, font_file), room), h)
+        if number:   # 桁の多い番号は左へ広がる。地どうし（左右の余白 2 つぶん）が触れない所まで
+            room = min(room, L.page_number_box(nw, mid)[0] - 2 * L.TEXT_PLATE_PAD_X - x)
+        out["footer"] = (x, y, max(0, min(text_width(footer, font_file), room)), h)
     if number:
         out["number"] = L.page_number_box(nw, mid)
     return out

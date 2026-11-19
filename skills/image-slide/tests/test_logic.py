@@ -537,6 +537,10 @@ def t_chrome_check():
     long = C.chrome_boxes("A" * 40, "1", None, None, L.row_mid(True))
     fx, _, fw, _ = L.text_plate_box(long["footer"])
     check(long["footer"][2] == L.FOOTER_END_WITH_NO - L.SIDE and fx + fw < long["number"][0], f"フッタの地が番号にかかる: {long}")
+    for no in ("1000", "123456"):   # 桁の多い番号でも、フッタの地は番号の地に触れない
+        wide = C.chrome_boxes("A" * 40, no, None, None, L.row_mid(True))
+        fx, _, fw, _ = L.text_plate_box(wide["footer"])
+        check(fx + fw <= L.text_plate_box(wide["number"])[0], f"フッタの地が {no} の番号にかかる: {wide}")
     night = Image.new("RGB", (L.W, L.H), (0, 0, 0))
     d = ImageDraw.Draw(night)
     for x in range(120, 350, 8):
