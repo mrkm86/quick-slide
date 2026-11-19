@@ -371,7 +371,7 @@ def cmd_deck(a) -> int:
                 chrome = None
                 if pg["bleed"]:   # 全面に描かせたページ: フッタ・ページ番号を載せる所だけ見る（ADR 0019）
                     im, _ = C.normalize(cand, theme["background"])
-                    chrome = C.chrome_check(im, chrome_boxes_before(pg, deck, pl, check_font, check_logo), theme)
+                    chrome = C.chrome_check(im, bottom_row(im, pg, deck, pl, theme, check_font, check_logo)["boxes"], theme)
                     if not chrome["ok"] and attempt < attempts:
                         raise X.CodexError("chrome", chrome)
                 meta = {"key": pg["key"], "attempts": attempt, "seconds": got["seconds"],
@@ -434,11 +434,6 @@ def finish(a, cfg: dict, pl: dict, out: pathlib.Path, build: dict, fmts, t0: flo
     wm_font = C.font_path(theme, cfg, "regular") if watermark else None
     logo = C.load_logo(pl["logo"], out, pl.get("logo_white"), L.row_mid(bool(deck["footer"] or deck["page_numbers"]))) if pl["logo"] else None
     for pg in pages:
-        # 下の行を上げるのは、フッタかページ番号があるページだけ（下の端は透かしの場所）。ロゴだけのページ（表紙・写真・
-        # フッタの無いポスター）は上げない。ロゴは角なので中央の透かしに届かず、上げると周りの絵や枠にかかる（ADR 0010）
-        footer = deck["footer"] if pg["chrome"] else ""
-        mid = L.row_mid(bool(footer or pg["number"]))
-        lg = {**logo, "y": round(mid - logo["h"] / 2)} if logo else None
         im, norm = C.normalize(pg["raw"], theme["background"])
         base = basedir / f"slide-{pg['no']:02d}.png"
         im.save(base)
@@ -446,11 +441,10 @@ def finish(a, cfg: dict, pl: dict, out: pathlib.Path, build: dict, fmts, t0: flo
         plate = pg["needs_band"] and not band["ok"]
         if plate:
             log(f"警告: {pg['no']}枚目の帯が空いていない（{band['share']:.1%}）。地の色の板を敷いてから部品を載せた")
-        place = (C.place_logo(im, lg, band=("plate" if plate else "ok") if pg["needs_band"] else None,
-                              position=pl["logo_position"], bleed=pg["bleed"], background=theme["background"]) if logo else None)
+        row = bottom_row(im, pg, deck, pl, theme, font_file, logo, plate)
+        footer, mid, lg, place, boxes = row["footer"], row["mid"], row["logo"], row["place"], row["boxes"]
         if place and place.get("off"):
             log(f"{pg['no']}枚目: ロゴを置ける角に1色の地が無い（写真・絵がかかっている）ので、ロゴは置かない")
-        boxes = C.chrome_boxes(footer, pg["number"], place if logo and place and not place.get("off") else None, font_file, mid)
         # 全面に描かせたページ: フッタ・ページ番号を載せる所に物が描かれていたら、その文字の後ろに地を敷く（ADR 0019）
         chrome = C.chrome_check(im, boxes, theme) if pg["bleed"] else None
         text_plates = tuple(chrome["busy"]) if chrome else ()
@@ -516,12 +510,18 @@ def chrome_notice(chk: dict) -> str:
             "写真や背景は下端まで続けてよいが、左下と中央下は、文字を重ねても読める平らで落ち着いた背景にする。")
 
 
-def chrome_boxes_before(pg: dict, deck: dict, pl: dict, font_file, logo) -> dict:
-    """描いた直後（ロゴの置き場を決める前）に見る、フッタ・ページ番号の枠。左下のロゴの指定なら、フッタはロゴの右から。"""
+def bottom_row(im, pg: dict, deck: dict, pl: dict, theme: dict, font_file, logo, plate: bool = False) -> dict:
+    """1枚の絵の下の行の置き方 {"footer", "mid", "logo"（y を合わせたロゴ）, "place"（place_logo の返り値）, "boxes"}。
+    描いた直後の検査と、仕上げの合成が同じ計算を使う（ロゴが別の角へ移ると、フッタの位置も変わるため）。"""
     footer = deck["footer"] if pg["chrome"] else ""
+    # 下の行を上げるのは、フッタかページ番号があるページだけ（下の端は透かしの場所）。ロゴだけのページ（表紙・写真・
+    # フッタの無いポスター）は上げない。ロゴは角なので中央の透かしに届かず、上げると周りの絵や枠にかかる（ADR 0010）
     mid = L.row_mid(bool(footer or pg["number"]))
-    left = {"w": logo["w"], "corner": "bottom-left"} if logo and pl["logo_position"] == "bottom-left" else None
-    return C.chrome_boxes(footer, pg["number"], left, font_file, mid)
+    lg = {**logo, "y": round(mid - logo["h"] / 2)} if logo else None
+    place = (C.place_logo(im, lg, band=("plate" if plate else "ok") if pg["needs_band"] else None,
+                          position=pl["logo_position"], bleed=pg["bleed"], background=theme["background"]) if logo else None)
+    boxes = C.chrome_boxes(footer, pg["number"], place if logo and place and not place.get("off") else None, font_file, mid)
+    return {"footer": footer, "mid": mid, "logo": lg, "place": place, "boxes": boxes}
 
 
 def band_parts(pg: dict, deck: dict, logo, watermark: str = "") -> str:

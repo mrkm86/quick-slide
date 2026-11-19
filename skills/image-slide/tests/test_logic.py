@@ -525,6 +525,22 @@ def t_chrome_check():
     check(shown.getpixel((300, 1020)) == (20, 90, 30), "部品の無い枠に地を敷いた")
     px, py, pw, ph = L.text_plate_box((0, 1070, 50, 22))
     check((px, py) == (0, 1062) and py + ph == L.H, "地が画面からはみ出す")
+    # 字体のファイルが無い機械では、文字の幅を広めに見積もる（PIL の小さな既定の字体で測らない）
+    check(C.text_width("資料のフッタ", None) == 6 * L.TEXT_PX and C.text_width("ab", None) == round(2 * 0.6 * L.TEXT_PX),
+          f"字体が無いときの幅: {C.text_width('資料のフッタ', None)}")
+    # 左下を指定したロゴが右下へ移ると、フッタは左端に戻る。検査もその位置を見る（仕上げと同じ計算）
+    import image_slide as M
+    root = tmpdir()
+    Image.new("RGBA", (200, 44), (0, 0, 0, 255)).save(root / "logo.png")
+    logo = C.load_logo(root / "logo.png", root / "w", None, L.row_mid(True))
+    stripes = white.copy()
+    d = ImageDraw.Draw(stripes)
+    for x in range(120, 320, 8):
+        d.rectangle((x, 1000, x + 3, 1050), fill=(0, 0, 0))
+    pg = {"chrome": True, "number": "1", "needs_band": False, "bleed": True}
+    row = M.bottom_row(stripes, pg, {"footer": "Footer"}, {"logo_position": "bottom-left"}, theme, None, logo)
+    check(row["place"]["corner"] == "bottom-right" and row["boxes"]["footer"][0] == L.SIDE, f"ロゴが右下へ移っていないか、フッタが左端でない: {row}")
+    check(C.chrome_check(stripes, row["boxes"], theme)["busy"] == ["footer"], "ロゴが移ったあとのフッタの位置を見ていない")
 
 
 def t_chrome_redraw_and_plate():
@@ -558,6 +574,11 @@ def t_chrome_redraw_and_plate():
     names = [sh.name for sh in Presentation(str(out2 / "deck.pptx")).slides[no - 1].shapes]
     check("フッタの地" in names and names.index("フッタの地") < names.index("フッタ"), f"PPTX に地が無いか、文字より上にある: {names}")
     check("（後ろに地）" in (out2 / "inspect.md").read_text(encoding="utf-8"), "検品用の写しに地のことが無い")
+    # 前に描いた絵は、読めなくても描き直さない（地を敷くだけ）。一度見せた絵を、頼まれていないのに替えない
+    rc, so, se, calls = run(["deck", "--script", str(SAMPLE), "--out", str(out2)], root, mode="band_always")
+    check(rc == 0 and "generated=0" in so, f"使い回す絵を描き直した: {so}")
+    b = json.loads((out2 / "build.json").read_text(encoding="utf-8"))
+    check(all("footer" in s["text_plates"] for s in b["slides"] if s["chrome"] is not None), "使い回した絵に地を敷いていない")
     # standard（帯を頼むページ）は今までどおり: 帯の検査と板で、文字の後ろの地は使わない
     out3 = root / "out3"
     rc, so, se, _ = run(["deck", "--script", str(SAMPLE), "--style", "standard", "--out", str(out3), "--no-pdf"], root, mode="band_always")
