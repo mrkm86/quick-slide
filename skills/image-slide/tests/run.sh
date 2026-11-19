@@ -101,7 +101,9 @@ run "透明な余白を切る・縮めるだけ・右下 → 左下 → 置か�
 run "deck: 表紙に帯を頼まない・ふさがった角には置かない・帯の板の上・地とロゴは別の部品・ページ番号は中央下・左下ならフッタはロゴの右・左上は止める" logo_deck
 run "ページ番号は既定でオフ（page_numbers: true のときだけ）" page_numbers_default_off
 run "透かし（--watermark）: 全ページの中央下の端・PPTX の絵にも焼く・下の行はフッタか番号があるときだけ上げる（透かしの有無では動かない）" watermark
-run "visual は本文も全面に描かせる（帯を頼まない・描き直さない・板を敷かない）・standard は帯" visual_bleed
+run "visual は本文も全面に描かせる（帯を頼まない・板を敷かない）・standard は帯" visual_bleed
+run "全面のページ: フッタ・ページ番号を載せる所で、重ねる文字が読めるかを見る" chrome_check
+run "全面のページ: 読めなければ描き直し、直らなければ文字の後ろに地を敷く（PPTX・記録にも）" chrome_redraw_and_plate
 echo "--- PPTX"
 run "PPTX: 16:9・全面の絵・代替テキスト・ロゴ・フッタ・ページ番号のフィールド・ノート" pptx_structure
 

@@ -345,6 +345,10 @@ def cmd_deck(a) -> int:
         attempts = 1 + max(0, a.retries)
         runner = X.Runner(a.parallel or int(cfg.get("max_parallel") or DEFAULT_PARALLEL), attempts, log=log)
         timeout = int(cfg.get("timeout") or DEFAULT_TIMEOUT)
+        # 全面に描かせたページの検査に使う、文字の幅を測る字体と、左下のロゴの幅
+        check_font = C.font_path(theme, cfg)
+        check_logo = (C.load_logo(pl["logo"], out, pl.get("logo_white"), L.row_mid(bool(deck["footer"] or deck["page_numbers"])))
+                      if pl["logo"] and any(pg["bleed"] for pg in todo) else None)
 
         def work(pg, attempt, last):
             """1回ぶん。候補は別名（.try.png）に描き、受け入れたときだけ絵と鍵（.json）を一緒に入れ替える。
@@ -352,6 +356,8 @@ def cmd_deck(a) -> int:
             text = pg["text"]
             if last is not None and last.kind == "band":
                 text += "\n\n" + band_notice(last.detail)
+            if last is not None and last.kind == "chrome":
+                text += "\n\n" + chrome_notice(last.detail)
             cand = pg["raw"].with_name(pg["raw"].stem + ".try.png")
             try:
                 got = X.generate(cli, auth["snapshot"], text, pg["refs"], cand, out / "logs",
@@ -362,8 +368,15 @@ def cmd_deck(a) -> int:
                     band = C.band_check(im)
                     if not band["ok"] and attempt < attempts:
                         raise X.CodexError("band", band)
+                chrome = None
+                if pg["bleed"]:   # 全面に描かせたページ: フッタ・ページ番号を載せる所だけ見る（ADR 0019）
+                    im, _ = C.normalize(cand, theme["background"])
+                    chrome = C.chrome_check(im, bottom_row(im, pg, deck, pl, theme, check_font, check_logo)["boxes"], theme)
+                    if not chrome["ok"] and attempt < attempts:
+                        raise X.CodexError("chrome", chrome)
                 meta = {"key": pg["key"], "attempts": attempt, "seconds": got["seconds"],
                         "band_ok": None if band is None else band["ok"],
+                        "chrome_ok": None if chrome is None else chrome["ok"],
                         "worker_refreshed": got["worker_refreshed"], "extra_images": got["extra_images"],
                         **({"revision": pg["revision"]} if pg.get("revision") else {})}
                 # 入れ替えの順: 新しい鍵を一時ファイルに書き切る → 古い鍵を消す → 絵を入れ替える → 鍵を入れ替える。
@@ -421,11 +434,6 @@ def finish(a, cfg: dict, pl: dict, out: pathlib.Path, build: dict, fmts, t0: flo
     wm_font = C.font_path(theme, cfg, "regular") if watermark else None
     logo = C.load_logo(pl["logo"], out, pl.get("logo_white"), L.row_mid(bool(deck["footer"] or deck["page_numbers"]))) if pl["logo"] else None
     for pg in pages:
-        # 下の行を上げるのは、フッタかページ番号があるページだけ（下の端は透かしの場所）。ロゴだけのページ（表紙・写真・
-        # フッタの無いポスター）は上げない。ロゴは角なので中央の透かしに届かず、上げると周りの絵や枠にかかる（ADR 0010）
-        footer = deck["footer"] if pg["chrome"] else ""
-        mid = L.row_mid(bool(footer or pg["number"]))
-        lg = {**logo, "y": round(mid - logo["h"] / 2)} if logo else None
         im, norm = C.normalize(pg["raw"], theme["background"])
         base = basedir / f"slide-{pg['no']:02d}.png"
         im.save(base)
@@ -433,20 +441,26 @@ def finish(a, cfg: dict, pl: dict, out: pathlib.Path, build: dict, fmts, t0: flo
         plate = pg["needs_band"] and not band["ok"]
         if plate:
             log(f"警告: {pg['no']}枚目の帯が空いていない（{band['share']:.1%}）。地の色の板を敷いてから部品を載せた")
-        place = (C.place_logo(im, lg, band=("plate" if plate else "ok") if pg["needs_band"] else None,
-                              position=pl["logo_position"], bleed=pg["bleed"], background=theme["background"]) if logo else None)
+        row = bottom_row(im, pg, deck, pl, theme, font_file, logo, plate)
+        footer, mid, lg, place, boxes = row["footer"], row["mid"], row["logo"], row["place"], row["boxes"]
         if place and place.get("off"):
             log(f"{pg['no']}枚目: ロゴを置ける角に1色の地が無い（写真・絵がかかっている）ので、ロゴは置かない")
-        boxes = C.chrome_boxes(footer, pg["number"], place if logo and place and not place.get("off") else None, font_file, mid)
-        ink = C.inks(im, theme=theme, band=band, plate=plate, bleed=pg["bleed"], boxes=boxes)
+        # 全面に描かせたページ: フッタ・ページ番号を載せる所に物が描かれていたら、その文字の後ろに地を敷く（ADR 0019）
+        chrome = C.chrome_check(im, boxes, theme) if pg["bleed"] else None
+        text_plates = tuple(chrome["busy"]) if chrome else ()
+        if text_plates:
+            names = "・".join({"footer": "フッタ", "number": "ページ番号"}[k] for k in text_plates)
+            log(f"警告: {pg['no']}枚目の下端は、重ねる文字が読めない（{names}を載せる所）。文字の後ろに地を敷いた")
+        ink = C.inks(im, theme=theme, band=band, plate=plate, bleed=pg["bleed"], boxes=boxes, text_plates=text_plates)
         if watermark:   # 測り終えてから焼く。PPTX の絵にも焼いたまま渡す（全ページ・表紙も写真も）
             im = C.burn_watermark(im, watermark, wm_font)
             base = basedir / f"slide-{pg['no']:02d}.watermark.png"
             im.save(base)
         shown = C.overlay(im, theme=theme, plate=plate, footer=footer, number=pg["number"], ink=ink,
-                          logo=lg, place=place, font_file=font_file, mid=mid)
+                          logo=lg, place=place, font_file=font_file, mid=mid, text_plates=text_plates)
         shown.save(out / "slides" / f"slide-{pg['no']:02d}.png")
-        pg.update(base=base, band=band, plate=plate, normalize=norm, logo=place, ink=ink, mid=mid)
+        pg.update(base=base, band=band, plate=plate, normalize=norm, logo=place, ink=ink, mid=mid,
+                  chrome_check=chrome, text_plates=text_plates)
     # 出力（ADR 0013）。ページの画像（slides/）は PDF と検品の元なので、png を選ばなくても残す
     pngs = [out / "slides" / f"slide-{pg['no']:02d}.png" for pg in pages]
     made = {"png": [str(p) for p in pngs]}
@@ -461,7 +475,8 @@ def finish(a, cfg: dict, pl: dict, out: pathlib.Path, build: dict, fmts, t0: flo
         made["thumbs"] = [str(p) for p in OUT.write_thumbs(pngs, [pg["alt"] for pg in pages], out, deck["title"])]
     build["outputs"] = {"format": list(fmts), **made}
     for row, pg in zip(build["slides"], pages):
-        row.update(normalize=pg["normalize"], band=pg["band"] if pg["needs_band"] else None, plate=pg["plate"])
+        row.update(normalize=pg["normalize"], band=pg["band"] if pg["needs_band"] else None, plate=pg["plate"],
+                   chrome=pg["chrome_check"], text_plates=list(pg["text_plates"]))
     if logo:   # html-slide の deck-info.json の logo と同じ形
         build["logo"] = {"path": logo["src"], "position": pl["logo_position"], **{k: logo[k] for k in ("x", "y", "w", "h", "scale", "trim")},
                          "pages": [{"no": pg["no"], "off": True} if pg["logo"].get("off") else
@@ -488,13 +503,35 @@ def finish(a, cfg: dict, pl: dict, out: pathlib.Path, build: dict, fmts, t0: flo
     return 0
 
 
+def chrome_notice(chk: dict) -> str:
+    where = "・".join({"footer": "左下（フッタを載せる所）", "number": "中央下（ページ番号を載せる所）"}[k] for k in chk["busy"])
+    return (f"【やり直しの理由】前回の絵は、下端から {L.BAND_RATIO:.0%} の中の{where}は、上に重ねる小さな文字が読めない絵だった（物が描かれているか、明暗が細かい）。同じ構図をもう一度描かない。"
+            f"文字・数字・アイコン・図・カード・帯・グラフは、下端から {L.BAND_RATIO:.0%}（高さ {L.BAND_H}px）より上で終える。"
+            "写真や背景は下端まで続けてよいが、左下と中央下は、文字を重ねても読める平らで落ち着いた背景にする。")
+
+
+def bottom_row(im, pg: dict, deck: dict, pl: dict, theme: dict, font_file, logo, plate: bool = False) -> dict:
+    """1枚の絵の下の行の置き方 {"footer", "mid", "logo"（y を合わせたロゴ）, "place"（place_logo の返り値）, "boxes"}。
+    描いた直後の検査と、仕上げの合成が同じ計算を使う（ロゴが別の角へ移ると、フッタの位置も変わるため）。"""
+    footer = deck["footer"] if pg["chrome"] else ""
+    # 下の行を上げるのは、フッタかページ番号があるページだけ（下の端は透かしの場所）。ロゴだけのページ（表紙・写真・
+    # フッタの無いポスター）は上げない。ロゴは角なので中央の透かしに届かず、上げると周りの絵や枠にかかる（ADR 0010）
+    mid = L.row_mid(bool(footer or pg["number"]))
+    lg = {**logo, "y": round(mid - logo["h"] / 2)} if logo else None
+    place = (C.place_logo(im, lg, band=("plate" if plate else "ok") if pg["needs_band"] else None,
+                          position=pl["logo_position"], bleed=pg["bleed"], background=theme["background"]) if logo else None)
+    boxes = C.chrome_boxes(footer, pg["number"], place if logo and place and not place.get("off") else None, font_file, mid)
+    return {"footer": footer, "mid": mid, "logo": lg, "place": place, "boxes": boxes}
+
+
 def band_parts(pg: dict, deck: dict, logo, watermark: str = "") -> str:
     """帯に載せた部品の一覧（検品役が、絵の下端の文字を台本と照らせるように）。"""
     parts = []
+    plates = pg.get("text_plates") or ()
     if pg["chrome"] and deck["footer"]:
-        parts.append(f"フッタ「{deck['footer']}」")
+        parts.append(f"フッタ「{deck['footer']}」" + ("（後ろに地）" if "footer" in plates else ""))
     if pg["number"]:
-        parts.append(f"ページ番号「{pg['number']}」")
+        parts.append(f"ページ番号「{pg['number']}」" + ("（後ろに地）" if "number" in plates else ""))
     place = pg.get("logo")
     if logo and place and not place.get("off"):
         parts.append("ロゴ（" + {"bottom-right": "右下", "bottom-left": "左下", "top-right": "右上"}[place["corner"]]
@@ -507,6 +544,22 @@ def band_parts(pg: dict, deck: dict, logo, watermark: str = "") -> str:
     return "・".join(parts)
 
 
+def inspect_bottom(pages: list, plates: list) -> list[str]:
+    """検品用の写しの、下端の検査の行。帯を頼んだページと、全面に描かせたページは見方が違うので、行を分ける。
+    見ていないものを「空いていた」と書かない。"""
+    lines = []
+    if any(pg["needs_band"] for pg in pages):
+        lines.append("- 帯（ロゴ・フッタ・ページ番号を載せる下端）: "
+                     + ("頼んだページは全部空いていた" if not plates else f"空いていなかったページ {plates}（地の色の板を敷いた）"))
+    if any(pg["bleed"] for pg in pages):
+        busy = [pg["no"] for pg in pages if pg.get("text_plates")]
+        lines.append("- 全面に描かせたページの下端（フッタ・ページ番号を載せる所だけ見る）: "
+                     + ("全部読める" if not busy else f"重ねる文字が読めなかったページ {busy}（文字の後ろに地を敷いた）"))
+    if not lines:
+        lines.append("- 帯（ロゴ・フッタ・ページ番号を載せる下端）: 載せる部品が無いので見ていない")
+    return lines
+
+
 def write_inspect(out: pathlib.Path, pl: dict, build: dict) -> pathlib.Path:
     """INSPECTION.md の検品役が読む写し。絵そのものは slides/ の画像を検品する側に渡す。"""
     deck, pages = pl["deck"], pl["pages"]
@@ -516,7 +569,7 @@ def write_inspect(out: pathlib.Path, pl: dict, build: dict) -> pathlib.Path:
              f"- スタイル: {pl['style']['name']}" + (f"（{pl['style']['description']}）" if pl['style']['description'] else ""),
              f"- テーマ: {pl['theme']['name']}（地 {pl['theme']['background']}・文字 {pl['theme']['ink']}・主役の色 {pl['theme']['primary']}" + (f"・差し色 {pl['theme']['accent']}" if pl['theme'].get('accent') else "") + "）",
              "", "## 機械の検査", "",
-             "- 帯（ロゴ・フッタ・ページ番号を載せる下端）: " + ("全ページ空いていた" if not plates else f"空いていなかったページ {plates}（地の色の板を敷いた）"),
+             *inspect_bottom(pages, plates),
              "- 文字は絵の中にある。**描く文字（台本の中身）と、絵の文字が一字一句合っているかは機械では見ていない**（検品役が絵を見て照らす）",
              ""]
     for pg in pages:

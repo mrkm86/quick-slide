@@ -2,6 +2,7 @@
 
 PPTX の1枚 = 全面の絵（生成した絵を 16:9 にそろえたもの・帯の上の部品は焼かない）
            ＋ 帯の板（帯が空いていなかったときだけ・地の色）
+           ＋ フッタの地・ページ番号の地（全面に描かせたページで、その所の文字が読めなかったときだけ・ADR 0019）
            ＋ フッタの文字・ページ番号・ロゴの地・ロゴ（PowerPoint の部品。あとで直せる。ロゴの置き場はページごと・ADR 0008）
            ＋ ノート（台本の talk）
 絵には「画面の文字」が無いので、見出しを絵の代替テキストに入れる（検索と読み上げのため）。
@@ -65,7 +66,8 @@ def _textbox(slide, box, text, *, font, color, align_right=False, align_center=F
 def write_pptx(pages: list[dict], out: pathlib.Path, *, theme: dict, footer: str, logo: dict | None,
                font_file: str | None, title: str) -> None:
     """pages: [{no, base（16:9 にそろえた絵。透かしはここに焼いてある）, band, plate, chrome, notes, alt, number, logo（place_logo の返り値）,
-    mid（下の行の中心・layout.row_mid）}]。logo は compose.load_logo の返り値。"""
+    mid（下の行の中心・layout.row_mid）,
+    text_plates（後ろに地を敷く枠の名前。無ければ空）}]。logo は compose.load_logo の返り値。"""
     from pptx import Presentation
     from pptx.enum.shapes import MSO_SHAPE
     from pptx.util import Emu
@@ -92,6 +94,17 @@ def write_pptx(pages: list[dict], out: pathlib.Path, *, theme: dict, footer: str
         on = bool(logo and not place.get("off"))
         foot = footer if pg["chrome"] else ""
         boxes = C.chrome_boxes(foot, number, place if on else None, font_file, pg.get("mid", L.LOGO_MID_Y))
+        # 全面に描かせたページで、文字を載せる所に物が描かれていたら、文字の後ろに地を敷く（ADR 0019）
+        for name, label in (("footer", "フッタの地"), ("number", "ページ番号の地")):
+            if name in (pg.get("text_plates") or ()) and boxes.get(name):
+                px, py, pw, ph = L.text_plate_box(boxes[name])
+                r = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, _emu(px), _emu(py), _emu(pw), _emu(ph))
+                r.adjustments[0] = L.TEXT_PLATE_RADIUS / min(pw, ph)
+                r.name = label
+                r.fill.solid()
+                _color(r.fill.fore_color, theme["background"])
+                r.line.fill.background()
+                r.shadow.inherit = False
         if foot:
             x, y, _, h = boxes["footer"]
             fw = L.footer_box(place["w"] if on and place["corner"] == "bottom-left" else 0, bool(number))[2]
