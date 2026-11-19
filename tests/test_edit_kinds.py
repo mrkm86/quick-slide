@@ -114,6 +114,67 @@ class ImagesFollowTheMachineTests(unittest.TestCase):
         self.assertIs(_edit_args(made, {}), made, "前の形の頼みはそのまま")
         self.assertFalse(_edit_args({"mode": "motion", "images": False}, {"can_generate": True})["images"], "モーションは画像を持たない")
 
+    def test_free_pages_are_asked_for_in_presentation_and_refused_in_pitch(self) -> None:
+        """プレゼンは「まず自由なページ」、ピッチは「自由なページを使わない」（docs/adr/0033）。"""
+        from pathlib import Path
+        from quick_slide import engines
+        from quick_slide.writer import prompt as P
+        skills = Path(__file__).resolve().parent.parent / "skills"
+        for mode, made, edited in (("presentation", "まず自由なページ（type: free）", P.FREE_EDIT_RULE), ("pitch", P.PITCH_NO_FREE, P.PITCH_NO_FREE)):
+            engine = engines.engine_for(mode)
+            text = P.build_prompt(engine, {}, manuscript="原稿", title_hint=None, skills_dir=skills)
+            self.assertIn(made, text.split("# 台本の決まり")[0], mode)
+            self.assertEqual(mode == "pitch", P.PITCH_NO_FREE in text, mode)
+            rules = P._edit_rules(engine, {"mode": mode})
+            self.assertIn(edited, rules, mode)
+            self.assertEqual(mode == "presentation", P.FREE_EDIT_RULE in rules, mode)
+        for shape in ("auto", "flow", "relation", "compare", "numbers"):
+            self.assertIn("free", "".join(E.direction("presentation", "diagram", [shape])), shape)
+            self.assertNotIn("free", "".join(E.direction("pitch", "diagram", [shape])), shape)
+
+    def test_free_page_edits_keep_the_shape_and_show_only_text(self) -> None:
+        """自由なページ: 文字の直しで組みが変われば書き直させる・数の属性は一緒に変えてよい・記録の欄には文字だけ（docs/adr/0033）。"""
+        from pathlib import Path
+        from quick_slide import engines, freepage, scriptdoc
+        from quick_slide.worker.edit import free_shape_problems
+        from quick_slide.writer import prompt as P
+        body = ('<div class="f-row f-grow"><div class="f-num">62%</div>'
+                '<div class="f-cells" data-total="100" data-on="62" data-cols="10" data-step="1"></div></div>'
+                '<div class="f-bars" data-max="10"><div class="f-bar" data-value="7.5">導入前</div></div>')
+        page = {"id": "p", "type": "free", "headline": "見出し", "body": body}
+        numbers = {**page, "body": body.replace("62", "65").replace("7.5", "8")}
+        self.assertFalse(freepage.reshaped(page, numbers), "数字と、その数の属性だけの直しは組みを変えていない")
+        for name, changed in {"並べ方": body.replace("f-row", "f-col"), "style": body.replace('class="f-num"', 'class="f-num" style="font-size: 160px"'),
+                              "段": body.replace('data-step="1"', 'data-step="2"'), "要素を足す": body + "<div>追記</div>",
+                              "マスの列の数": body.replace('data-cols="10"', 'data-cols="5"')}.items():
+            after = {**page, "body": changed}
+            self.assertTrue(freepage.reshaped(page, after), name)
+            self.assertEqual(len(free_shape_problems({"kind": "text"}, [page], [after], {"p"})), 1, name)
+            self.assertEqual(free_shape_problems({"kind": "diagram"}, [page], [after], {"p"}), [], "図解の直しは組み替えてよい")
+            self.assertEqual(free_shape_problems({}, [page], [after], {"p"}), [], "種類を選ばない指示は組み替えてよい")
+            self.assertEqual(free_shape_problems({"kind": "text"}, [page], [after], set()), [], "直していないページは見ない")
+        self.assertEqual(free_shape_problems({"kind": "text"}, [page], [numbers], {"p"}), [])
+        self.assertEqual(len(free_shape_problems({"kind": "text"}, [page], [{"id": "p", "type": "cards", "headline": "h"}], {"p"})), 1, "別の型に替えるのも組み替え")
+        self.assertEqual(free_shape_problems({"kind": "text"}, [{"id": "p", "type": "cards"}], [page], {"p"}), [], "元が自由なページでなければ見ない")
+        same = {**page, "body": body.replace('class="f-row f-grow"', 'class="f-grow  f-row" style=""')}
+        self.assertFalse(freepage.reshaped(page, same), "class の語の順・空の style は、組みの違いにしない")
+        styled = {**page, "body": '<div style="gap: 24px; align-items: center"><div>a</div></div>'}
+        self.assertFalse(freepage.reshaped(styled, {**page, "body": '<div style="align-items:center;gap:24px;"><div>b</div></div>'}), "style の空白と順")
+        self.assertTrue(freepage.reshaped(styled, {**page, "body": '<div style="gap: 32px; align-items: center"><div>a</div></div>'}), "style の値")
+        self.assertEqual(scriptdoc.body_of(page).split("\n"), ["見出し", "62%", "100 のうち 62", "導入前: 7.5（最大 10）"])
+        self.assertNotIn("<", scriptdoc.body_of(page))
+        # 直しの指示（完成した文）に、組みを保つ決まりと、数の属性を一緒に直す決まりが入る。差し込み・組み直しにも届く
+        skills = Path(__file__).resolve().parent.parent / "skills"
+        script = {"title": "t", "slides": [page]}
+        pres, pitch = engines.engine_for("presentation"), engines.engine_for("pitch")
+        rev = P.build_revision_prompt(pres, {}, script=script, targets=[{"id": "p", "position": 1, "title": "見出し", "picture": None}], instruction="62% を 65% に", attachments=[], skills_dir=skills)
+        self.assertIn(P.FREE_EDIT_RULE, rev)
+        self.assertIn("data-on", P.FREE_EDIT_RULE)
+        self.assertIn(P.PITCH_NO_FREE, P.build_revision_prompt(pitch, {}, script=script, targets=[{"id": "p", "position": 1, "title": "見出し", "picture": None}], instruction="短く", attachments=[], skills_dir=skills))
+        self.assertIn(P.PITCH_NO_FREE, P.build_insert_prompt(pitch, {}, script=script, after={"id": "p", "position": 1, "title": "見出し"}, instruction="1 枚足す", attachments=[], skills_dir=skills))
+        self.assertIn("自由なページ free", P.build_rebuild_prompt(pres, {}, page={"id": "p", "type": "html", "position": 1}, texts=["a"], what="diagram",
+                                                              picture=None, generate=False, instruction="", skills_dir=skills))
+
     def test_prompts_ask_for_diagrams_and_allow_given_pictures(self) -> None:
         from pathlib import Path
         from quick_slide.engines import ENGINES
