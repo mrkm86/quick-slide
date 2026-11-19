@@ -37,6 +37,9 @@ from ..worker.proc import run_process
 from ..worker.tools import Tools
 
 CHECK_TIMEOUT_SECONDS = 300.0
+# 検査の出力のうち、読む末尾の行数。検査は全部のページの誤りを 1 回で出すので（docs/adr/0033 の追記）、ふつうの子プロセスの
+# 200 行では先頭のページの誤りが落ちることがある
+CHECK_TAIL_LINES = 5000
 
 # 導入の確かめと入れる口（skills/quick-slide/scripts/quick_slide_setup.py）。止まっている帯の文がこれを言う
 SETUP_SCRIPT = SKILLS_DIR / "quick-slide" / "scripts" / "quick_slide_setup.py"
@@ -81,7 +84,7 @@ def check_script(engine: Engine, *, tools: Tools, home: Path, script: Path, args
     `quick` は形だけの検査（`Engine.quick_check` のエンジンだけ。Chrome を使わず速い）。"""
     cmd = engine.check_command(tools.python, tools.skills_dir, script, args, quick=quick)
     r = run_process(cmd, cwd=script.parent, env=child_env(home=home, extra=tools.extra_env),
-                    timeout=timeout, stop=stop)
+                    timeout=timeout, stop=stop, tail_lines=CHECK_TAIL_LINES)
     lines = [ln.strip() for ln in r.stderr_tail if ln.strip()]
     rc = None if r.launch_error else r.rc
     return CheckResult(rc=rc, problems=[ln for ln in lines if ln.startswith("NG")],

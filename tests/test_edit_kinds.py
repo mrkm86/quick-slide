@@ -175,6 +175,34 @@ class ImagesFollowTheMachineTests(unittest.TestCase):
         self.assertIn("自由なページ free", P.build_rebuild_prompt(pres, {}, page={"id": "p", "type": "html", "position": 1}, texts=["a"], what="diagram",
                                                               picture=None, generate=False, instruction="", skills_dir=skills))
 
+    def test_every_problem_of_the_check_reaches_the_writer_with_page_ids(self) -> None:
+        """検査は全部のページの誤りを 1 回で出す。サーバは全部の行を読み、直しではページの id を添える（docs/adr/0033 の追記）。"""
+        import sys
+        import tempfile
+        from pathlib import Path
+        from quick_slide.render import runner
+        from quick_slide.worker.edit import _engine_problems
+        data = {"slides": [{"id": "cover", "type": "cover"}, {"id": "p-two", "type": "closing"}, {"id": "p-three", "type": "free"}]}
+        got = _engine_problems(["NG: 2枚目（closing）: headline が無い",
+                                "NG: slide3 div.f-body > div: [free-outside] 中身の箱からはみ出す（1枚目ではない）",
+                                "NG: 9枚目（table）: 範囲の外", "NG: 決まり違反が 2 件"], data)
+        self.assertEqual(got, ["NG: 2枚目（id=p-two）（closing）: headline が無い",
+                               "NG: 3枚目（id=p-three） div.f-body > div: [free-outside] 中身の箱からはみ出す（1枚目ではない）",
+                               "NG: 9枚目（table）: 範囲の外", "NG: 決まり違反が 2 件"])
+# 検査の入口（check_script）そのものを通す: 300 行の NG が、先頭から全部 problems に入る
+        code = "import sys\nfor i in range(1, 301): print(f'NG: slide{i}', file=sys.stderr)\nsys.exit(2)"
+
+        class Engine:
+            def check_command(self, python, skills_dir, script, args, quick=False):
+                return [python, "-c", code]
+
+        class Tools:
+            python, skills_dir, extra_env = sys.executable, Path("."), {}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            r = runner.check_script(Engine(), tools=Tools(), home=Path(tmp), script=Path(tmp) / "script.json", args={})
+        self.assertEqual((r.rc, len(r.problems), r.problems[0], r.problems[-1]), (2, 300, "NG: slide1", "NG: slide300"), "先頭のページの誤りを落とさない")
+
     def test_prompts_ask_for_diagrams_and_allow_given_pictures(self) -> None:
         from pathlib import Path
         from quick_slide.engines import ENGINES

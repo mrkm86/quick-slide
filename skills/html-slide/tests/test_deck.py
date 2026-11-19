@@ -3196,6 +3196,64 @@ def case_free_chrome():
     assert r.returncode == 2 and "free-outside" in r.stderr and not (TMP / "free-c-png" / "slides").exists(), (r.returncode, r.stderr[-400:])
 
 
+def case_check_reports_every_page():
+    """check は、ページごとの誤りを最初の 1 件で止めずに全部出す。組めたページの描き出しの誤りも一緒に出す。台本全体の誤りは 1 件。
+    下にはみ出した自由なページは、横に並ぶ列のうち、どの列が詰まっているかを言う。"""
+    import subprocess
+    tall = "".join(f'<div class="f-box"><div>左の箱 {i}</div></div>' for i in range(1, 8))
+    free = ('<div class="f-row f-grow" style="align-items: stretch"><div class="f-col" style="flex: 1; gap: 16px">' + tall + '</div>'
+            '<div class="f-box f-grow" style="flex: 1"><div>右の箱は短い</div></div></div>')
+    sc = {"title": "t", "slides": [
+        {"type": "cover", "title": "表紙"},
+        {"type": "closing", "items": [{"title": "a"}]},                       # 2 枚目: headline が無い
+        {"type": "bullets", "headline": "h", "items": ["a", "b"]},            # 3 枚目: 正しい
+        {"type": "statement", "headline": "h", "nope": 1},                    # 4 枚目: 知らないキー
+        _free(free),                                                          # 5 枚目: 組めるが、箱から下にはみ出す
+        {"type": "table", "headline": "h", "columns": ["a", "b"], "rows": [["x", "長いマス" * 40]]},   # 6 枚目: マスが入らない
+    ]}
+    path = TMP / "check-all.json"
+    path.write_text(json.dumps(sc, ensure_ascii=False), encoding="utf-8")
+    run = lambda p: subprocess.run([sys.executable, str(SKILL / "scripts" / "html_slide.py"), "check", "--script", str(p)],
+                                   capture_output=True, text=True, encoding="utf-8", timeout=300)
+    r = run(path)
+    ng = [l for l in r.stderr.splitlines() if l.startswith("NG:")]
+    assert r.returncode == 2 and "OK" not in r.stdout, (r.returncode, r.stdout)
+    assert any("2枚目（closing）" in l and "headline" in l for l in ng) and any("4枚目（statement）" in l and "nope" in l for l in ng), ng
+    assert any(l.startswith("NG: 6枚目（table）") for l in ng), ("何枚目かを言わない誤りにも、ページを添える", ng)
+    out = [l for l in ng if "free-outside" in l]
+    assert out and all("slide5" in l for l in out), ng
+    assert "「左の箱" in out[0] and "の列" in out[0] and "右の箱" not in out[0].split("詰まっているのは")[1], out[0]
+    assert not any("slide2" in l or "slide4" in l for l in ng), ("組めなかったページの札を検査しない", ng)
+    # 詰まっている列は、中身（文字・描いた部品）の下端で比べる: 伸びただけの空の箱・短い箱を指さない。マスの列が詰まっていれば、その列を指す
+    import render as R
+    def column(right: str, left: str = tall) -> str:
+        body = ('<div class="f-row f-grow" style="align-items: stretch"><div class="f-col" style="flex: 1; gap: 16px">' + left + '</div>' + right + '</div>')
+        vs = [v for v in R.check(build(one(_free(body)), "check-col")[0]) if v["rule"] == "free-outside"]
+        assert vs, "はみ出すはず"
+        return vs[0]["detail"]
+    assert "「左の箱" in column('<div class="f-box f-grow" style="flex: 1"></div>'), "右が空の箱"
+    assert "「左の箱" in column('<div class="f-col" style="flex: 1"><div class="f-box f-grow"><span class="f-icon" data-icon="users"></span></div></div>'), "右がアイコンだけの箱"
+    assert "「左の箱" in column('<div class="f-box f-grow" style="flex: 1">右は短い</div>'), "右は、短い文字を直に持つ伸びた箱"
+    d = column('<div class="f-box" style="flex: 1; min-height: 1200px"></div>', left='<div class="f-box"><div>左は短い</div></div>')
+    assert "の列" not in d, ("高さを書いた空の箱が原因のときは、列を言わない", d)
+    two = '<div class="f-cells" data-total="100" data-on="50" data-cols="5" style="width: 400px"></div>'
+    vs = [v for v in R.check(build(one(_free(f'<div class="f-row f-grow">{two}{two}</div>')), "check-same")[0]) if v["rule"] == "free-outside"]
+    assert vs and "の列" not in vs[0]["detail"], ("同じ高さの列が並ぶときは、列を言わない（マスの 1 つを列と見なさない）", vs)
+    cells = '<div class="f-col" style="flex: 1"><div>右のマス</div><div class="f-cells" data-total="100" data-on="3" data-cols="5" style="width: 400px"></div></div>'
+    d = column(cells, left='<div class="f-box"><div>左は短い</div></div>')
+    assert "「右のマス" in d and "左は短い" not in d.split("詰まっているのは")[1], d
+    # 正しい台本は今までどおり
+    ok = TMP / "check-ok.json"
+    ok.write_text(json.dumps({"title": "t", "slides": [sc["slides"][0], sc["slides"][2]]}, ensure_ascii=False), encoding="utf-8")
+    r = run(ok)
+    assert r.returncode == 0 and r.stdout.strip().endswith("OK"), (r.returncode, r.stdout, r.stderr[-300:])
+    # 台本全体の誤り（slides が無い）は 1 件で止まる
+    bad = TMP / "check-bad.json"
+    bad.write_text(json.dumps({"title": "t"}, ensure_ascii=False), encoding="utf-8")
+    r = run(bad)
+    assert r.returncode == 2 and len([l for l in r.stderr.splitlines() if l.startswith("NG:")]) == 1, r.stderr
+
+
 CASES = {k[5:]: v for k, v in globals().items() if k.startswith("case_")}
 
 

@@ -303,13 +303,24 @@ def cmd_check(a) -> int:
         return 4
     if a.script:
         with tempfile.TemporaryDirectory(prefix="html-slide-check-") as tmp:
+            # ページごとの誤りは、最初の 1 件で止めずに全部のページぶんを集めて出す（直す側が 1 回で直せる。1 件ずつだと、
+            # 直すたびに次のページの誤りが出て、書き直しの回数を使い切る）。組めたページは、描き出しの検査も続けて見る
+            page_errors: dict = {}
             try:
                 html, _ = deck.build_html(a.script, tmp, theme=a.theme, style=a.style, image_look=a.image_look,
-                                          placeholder="generated")      # Codex で描く枠は、描く前でも検査を通す
-            except deck.DeckError as e:
+                                          placeholder="generated",      # Codex で描く枠は、描く前でも検査を通す
+                                          page_errors=page_errors)
+            except deck.DeckError as e:                                  # 台本全体の誤り（形・テーマなど）は、今までどおり 1 件
                 print(f"NG: {e}", file=sys.stderr)
                 return 2
-            vs = R.check(html)
+            for no in sorted(page_errors):
+                print(f"NG: {page_errors[no]}", file=sys.stderr)
+            vs = [v for v in R.check(html) if v.get("slide") not in page_errors]   # 組めなかったページ（誤りの札を置いた所）は見ない
+            say_violations(vs)
+            if page_errors or R.errors(vs):
+                return 2
+            print("OK")
+            return 0
     else:
         vs = R.check(a.html)
     say_violations(vs)
