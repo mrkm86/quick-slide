@@ -219,7 +219,9 @@ class BrandlessBackfillTests(unittest.TestCase):
         runs = {"took": [{"mode": "presentation", "imported": True}, {"mode": "presentation", "edit": {}}],
                 "made": [{"mode": "presentation"}],
                 "took-copy": [{"mode": "presentation", "edit": "revise"}], "took-copy-copy": [{"mode": "presentation", "edit": "revise"}],
-                "made-copy": [{"mode": "presentation"}]}
+                "made-copy": [{"mode": "presentation"}],
+                # 複製元を完全に消した複製（複製元を指していない・取り込みの回も無い）。台本の取り込んだページで見分ける
+                "orphan-copy": [{"mode": "presentation", "edit": "revise"}]}
         origin = {"took-copy": "took", "took-copy-copy": "took-copy", "made-copy": "made"}
         for did, args in runs.items():
             conn.execute("INSERT INTO decks(id,title,mode,brand_revision_id,style_revision_id,origin_deck_id,created_at,updated_at)"
@@ -228,8 +230,13 @@ class BrandlessBackfillTests(unittest.TestCase):
                 conn.execute("INSERT INTO runs(id,deck_id,number,mode,engine,args_json,state,created_at,updated_at,ended_at)"
                              " VALUES(?,?,?,'presentation','html-slide',?,'failed',?,?,?)",
                              (f"r-{did}-{n}", did, n, json.dumps(a), t, t, t))
+        for did, kind in (("orphan-copy", "html"), ("made", "cover")):
+            conn.execute("INSERT INTO scripts(id,deck_id,version,path,sha256,written_by,page_count,created_at)"
+                         " VALUES(?,?,1,'1.json',?,'screen',1,?)", (f"s-{did}", did, "a" * 64, t))
+            conn.execute("INSERT INTO page_ids(id,deck_id,key,created_at) VALUES(?,?,'p-001',?)", (f"pg-{did}", did, t))
+            conn.execute("INSERT INTO script_pages(script_id,page_no,page_id,type) VALUES(?,1,?,?)", (f"s-{did}", f"pg-{did}", kind))
         conn.execute("COMMIT")
         run_migrate(conn)
         self.assertEqual(user_version(conn), LATEST_VERSION)
         self.assertEqual({r[0]: r[1] for r in conn.execute("SELECT id,brandless FROM decks")},
-                         {"took": 1, "took-copy": 1, "took-copy-copy": 1, "made": 0, "made-copy": 0})
+                         {"took": 1, "took-copy": 1, "took-copy-copy": 1, "orphan-copy": 1, "made": 0, "made-copy": 0})

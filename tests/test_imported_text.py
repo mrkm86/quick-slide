@@ -22,6 +22,17 @@ HTML = ('<div style="position:absolute;left:10px;top:10px;width:500px;height:80p
         '<div style="display:flex"><div><span>•</span></div><div><span> 要点 </span><span>の続き</span></div></div>')
 
 
+def logo_png() -> bytes:
+    """ロゴに見立てた横長の PNG（毎回同じバイト列）。"""
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (800, 140), (200, 30, 30)).save(buf, "PNG")
+    return buf.getvalue()
+
+
 class UnitTests(unittest.TestCase):
     def test_segments_are_numbered_and_bullets_marked(self) -> None:
         self.assertEqual([(s["n"], s["text"], s["bullet"]) for s in importing.text_segments(HTML)],
@@ -84,7 +95,12 @@ class EndToEndTests(unittest.TestCase):
             cfg = json.loads(json.dumps(fx.store.brand_revision(fx.store.preset_brand_revision_id())["config"]))
             cfg["footer"] = {"text": "足されては困るフッタ"}
             cfg["format"] = {**(cfg.get("format") or {}), "page_numbers": True, "watermark": "社外秘"}
-            brand_id = fx.store.create_brand("試験のブランド", cfg)["id"]
+            cfg["logo"] = {**(cfg.get("logo") or {}), "variant": "normal"}
+        logo = fx.request("POST", "/api/settings/images", raw_body=logo_png(), session=True)
+        self.assertEqual(logo.status, 201, logo.body)
+        with fx.server.store_lock:
+            brand_id = fx.store.create_brand("試験のブランド", cfg,
+                                             assets=[{"role": "logo_normal", "asset_id": logo.json()["asset_id"]}])["id"]
         r = fx.request("POST", "/api/imports?runtime=cli&name=deck.pptx", raw_body=pptx_bytes(temp_dir(self)), session=True)
         self.assertEqual(r.status, 201, r.body)
         deck = r.json()["deck_id"]
@@ -100,7 +116,9 @@ class EndToEndTests(unittest.TestCase):
 
             with zipfile.ZipFile(fx.root.run_dir(run["deck_id"], run["id"]) / "deck.pptx") as z:
                 xml = "".join(z.read(n).decode("utf-8", "replace") for n in z.namelist() if n.endswith(".xml"))
+                media = [z.read(n) for n in z.namelist() if n.startswith("ppt/media/")]
             self.assertIn("取り込み", xml, "ページの文字は入っている")
+            self.assertNotIn(logo_png(), media, "ブランドのロゴの画像は入っていない")
             self.assertNotIn("足されては困るフッタ", xml)
             self.assertNotIn("社外秘", xml)
 
