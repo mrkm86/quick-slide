@@ -735,6 +735,9 @@ def build_rebuild_prompt(engine: Engine, args: dict[str, Any], *, page: dict[str
         "- 元のページに無い数字・事実・固有名詞を、指示に無いのに足さない。絵文字は使わない",
         "- _characters・_layout・_hidden・theme・footer・page_numbers は書かない",
         *([illust_rule(args)] if engine.mode == "presentation" else []),
+        # 絵を生成できないとき（渡した画像・挿絵で組むとき）: 台本の決まりの「絵で描く図解」は生成の枠なので、使わせない
+        *(["- 生成の画像の枠（image の prompt）を書かない（この機械では絵を生成できない）。" + NO_PICTURE_DIAGRAM]
+          if engine.mode == "presentation" and not generate else []),
         "",
         "# 元のページの言葉",
         "",

@@ -232,6 +232,16 @@ class ImagesFollowTheMachineTests(unittest.TestCase):
         self.assertFalse(any(P.NO_PICTURE_DIAGRAM in r for r in P._edit_rules(engines.engine_for("presentation"), {"images": True})))
         self.assertNotIn(P.NO_PICTURE_DIAGRAM, P.build_prompt(engines.engine_for("presentation"), {"images": True}, manuscript="原稿",
                                                                title_hint=None, skills_dir=skills))
+        # 台本の決まりを渡す指示は 4 つ（作る・直す・差し込む・取り込んだページの組み直し）。組み直しにも届く
+        pres = engines.engine_for("presentation")
+        for what in ("diagram", "image"):
+            for gen in (False, True):
+                text = P.build_rebuild_prompt(pres, {"images": gen}, page={"id": "p", "type": "html", "position": 1}, texts=["a"], what=what,
+                                              picture=None, generate=gen, instruction="", skills_dir=skills)
+                self.assertEqual(P.NO_PICTURE_DIAGRAM in text.split("# 台本の決まり")[0], not gen, (what, gen))
+        ins = P.build_insert_prompt(pres, {"images": False}, script={"title": "t", "slides": []}, after=None, instruction="1 枚足す",
+                                    attachments=[], skills_dir=skills)
+        self.assertIn(P.NO_PICTURE_DIAGRAM, ins.split("# 台本の決まり")[0])
         segs = jlint.segments([{"id": "p", "type": "figure", "headline": "見出し",
                                 "image": {"prompt": "調べない指示", "alt": "調べない説明", "labels": ["店頭", "宅配"]}}])
         self.assertEqual([s.text for s in segs], ["見出し", "店頭", "宅配"])
