@@ -48,17 +48,17 @@ _TOUCH_WORDS = {
     "numbers": "数字を先に出す（結論の数字を見出しか先頭に置く）",
 }
 _DIAGRAM_BASE = {
-    "presentation": "このページを図解にする。中身に合う図解の型に替え、言葉の中身は保つ",
+    "presentation": "このページを図解にする。自由なページ（free）で中身に合う形に組むか、形の決まっている図解の型に替え、言葉の中身は保つ",
     "pitch": "このページを図解として描き直す（図形・矢印・短いラベルが主役。文は減らす）",
     "motion": "この場面を図解にする（HTML・SVG の図で描き、拍ごとに図が組み上がるように見せる。言葉の中身は保つ）",
 }
 _DIAGRAM_SHAPE_WORDS = {
     "presentation": {
-        "auto": "型は中身から選ぶ（flow・steps・timeline・hub・matrix・equation・compare・pairs・table・bar-chart・line-chart・kpi など）",
-        "flow": "流れの図にする（flow・steps・timeline のどれか）",
-        "relation": "関係の図にする（hub・matrix・equation のどれか）",
-        "compare": "比較の図にする（compare・pairs・table のどれか）",
-        "numbers": "数字の図にする（bar-chart・line-chart・kpi・big-number のどれか）",
+        "auto": "形は中身から選ぶ（「書く前に」の 9。まず free で組み、形の決まっているものは型）",
+        "flow": "流れの図にする（free で箱を矢印でつなぐか、flow・steps・timeline のどれか）",
+        "relation": "関係の図にする（hub・matrix・layers・equation のどれか。合う型が無ければ free で組む）",
+        "compare": "比較の図にする（free で面の箱を左右に並べるか、観点が多ければ table。compare・pairs でもよい）",
+        "numbers": "数字の図にする（free で数字を主役にしてマス・棒を添えるか、軸の要るグラフは bar-chart・line-chart）",
     },
     "_": {
         "auto": "図の形は中身から選ぶ",

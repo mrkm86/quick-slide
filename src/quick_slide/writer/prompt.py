@@ -42,8 +42,8 @@ _OUTLINE_RULES = [
     "（見出し）を変えない**。ページを足さない・減らさない・入れ替えない・2 枚に分けない・まとめない",
     "あなたが決めるのは表現（見出しを主張として整える・本文を短くする）・各ページの型・画像の枠だけ。"
     "見出しの言い回しは整えてよいが、言っていることを変えない",
-    "型は「書く前に」の 9. のとおり中身の形で選び、同じ型を続けない（構成どおりに書くと同じ型が並ぶときは、"
-    "言い切りのページを statement に、数字のページを big-number・kpi に、比べるページを table にするなど型を替える。章扉は足さない）",
+    "ページの形は「書く前に」の 9. のとおり選び、同じ形を続けない（構成どおりに書くと同じ形が並ぶときは、"
+    "言い切りのページを statement に、数字のページは数字を主役にし、比べるページは左右に並べるか table にするなど形を替える。章扉は足さない）",
     "箱の中の文は「書く前に」の 10. のとおり名詞と短い補足に縮める（構成の文をそのまま箱に入れない。言いたいことは見出しと takeaway に置く）",
     "構成に「画像: なし」とあるページには image を置かない。「画像: …」とあるページには、その中身を image の prompt に書く",
 ]
@@ -141,11 +141,22 @@ def contract_text(engine: Engine, skills_dir: Path) -> str:
     return "\n\n".join(parts)
 
 
+# ピッチは 1 枚ずつ絵で描く。自由なページの body（HTML の組み）は絵にならないので、型で書かせる（html-slide の ADR 0030・docs/adr/0033）
+PITCH_NO_FREE = ("自由なページ（type: free）は使わない（このモードは各ページを絵で描くので、body の HTML の組みは使われない）。"
+                 "「書く前に」の 9 の「まず free」は読み替えて、中身の形に合う型（cards・steps・compare・kpi・big-number など）を選ぶ")
+# 自由なページの直し: 組みを保って文字だけ直す（指示が組み替えを求めたときだけ body を書き直す）
+FREE_EDIT_RULE = ("自由なページ（type: free）を直すとき、指示が組み替え・図解を求めていなければ、body の組み（要素・class・style・data-…）を"
+                  "変えず、文字だけを直す。見出し・出典・結論は台本のキー（headline・source・takeaway）で直す。"
+                  "body を書き直すときは「自由なページ」の節の決まりを守る")
+
+
 # 図解をできるだけ入れる（作るとき）。構造・手順・比較・数字・仕組みは、文字の箇条書きにせず図にする
 DIAGRAM_RULE = {
-    "presentation": "構造・手順・比較・数字・仕組み・関係があるページは、文字だけの型（bullets・statement）にせず図解の型"
-                    "（flow・steps・timeline・hub・matrix・equation・compare・pairs・table・bar-chart・line-chart・kpi など）で見せる。"
-                    "表紙・締めを除くページの半分以上を図解の型にするのを目安にする",
+    "presentation": "構造・手順・比較・数字・仕組み・関係があるページは、文字だけの型（bullets・statement）にせず、図として見せる。"
+                    "**まず自由なページ（type: free）で、そのページの中身に合う形に組む**（数字を主役にする・割合をマスで見せる・"
+                    "面の箱で比べる・箱を矢印でつなぐ。書き方は「自由なページ」の節）。形の決まっているもの"
+                    "（表 table・折れ線 line-chart・軸の要る棒グラフ bar-chart・構成図 layers・中心と周り hub・2×2 matrix・年表 timeline）は型を使う。"
+                    "表紙・締めを除くページの半分以上を図として見せるのを目安にする",
     "pitch": "構造・手順・比較・数字・仕組み・関係があるページは、文字を並べず図（矢印・図形・グラフ・短いラベル）として描く"
              "（_visual にそう書いてよい）。表紙・締めを除くページの半分以上を図解にするのを目安にする",
     "motion": "構造・手順・比較・数字・仕組み・関係がある場面は、文字を並べず HTML・SVG の図で見せ、拍ごとに図が組み上がるようにする。"
@@ -191,7 +202,7 @@ def illust_rule(args: dict[str, Any]) -> str:
             "で書ける（Codex は要らない。書き方は illust/references/authoring.md。描き方 A・B は場面で選ぶ）。"
             "viewBox の比は枠に合わせる: 縦長の枠（photo の left・right、cover・section・closing の右、bullets・quote の脇）は 960×1080、"
             "横長の枠（photo の full・band、cards・compare・kpi の画像）は 1600×900。"
-            f"色はこの配色だけを使う: {pal}。構造・手順・比較・数字は挿絵にせず図解の型にする")
+            f"色はこの配色だけを使う: {pal}。構造・手順・比較・数字は挿絵にせず図解（自由なページか図解の型）にする")
 
 
 def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
@@ -219,7 +230,7 @@ def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
     if engine.mode == "presentation":
         rules.append(illust_rule(args))
     if args.get("images", True):
-        rules.append("生成の画像の枠は image: {\"prompt\": \"何を描くか\"} で書く。構造・手順・数字は図解の型にし、"
+        rules.append("生成の画像の枠は image: {\"prompt\": \"何を描くか\"} で書く。構造・手順・数字は図解にし、"
                      "空気・場面・気持ちを伝えるページにだけ画像を置く。prompt に画風（写真風・イラスト・手描きなど）を書かない"
                      "（画風は描くときに資料全体で 1 つに揃う）。prompt に文字・ロゴ・実在の人物や会社や商品の名前を描かせない")
     else:
@@ -234,6 +245,7 @@ def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
     else:
         rules.append("このモードは各ページを画像生成で 1 枚丸ごと描く。見出しは短く、1 ページの文字は少なめにする"
                      "（絵の中の文字はあとで直せない）。そのページだけの描き方の注文があれば _visual に書いてよい")
+        rules.append(PITCH_NO_FREE)
     return rules
 
 
@@ -397,9 +409,11 @@ def _edit_rules(engine: Engine, args: dict[str, Any]) -> list[str]:
                      "下の「添えた画像」を入れるときは image: {\"path\": \"…\"} で書いてよい")
     if engine.mode == "presentation":
         rules.append("talk（話す台本）を書くなら、その数は型のクリックの段の数＋1 にそろえる。そろえられないページは talk を省く")
+        rules.append(FREE_EDIT_RULE)
     else:
         rules.append("このモードは各ページを画像生成で 1 枚丸ごと描く。見出しは短く、1 ページの文字は少なめにする。"
                      "そのページだけの描き方の注文があれば _visual に書いてよい")
+        rules.append(PITCH_NO_FREE)
     return rules
 
 
@@ -690,8 +704,8 @@ def build_rebuild_prompt(engine: Engine, args: dict[str, Any], *, page: dict[str
         else:
             lead = "画像を主役にする型（photo など）にし、画像の枠には挿絵 image: {\"svg\": …} を書く（この機械では生成できない）"
     else:
-        lead = ("中身に合う図解の型（flow・steps・timeline・hub・matrix・equation・compare・pairs・table・bar-chart・line-chart・kpi など）"
-                "にする")
+        lead = ("中身に合う図解にする（自由なページ free で中身に合う形に組むか、形の決まっている型"
+                "（table・bar-chart・line-chart・layers・hub・matrix・timeline など）にする）")
     out = [
         "# あなたの仕事",
         "",

@@ -114,6 +114,24 @@ class ImagesFollowTheMachineTests(unittest.TestCase):
         self.assertIs(_edit_args(made, {}), made, "前の形の頼みはそのまま")
         self.assertFalse(_edit_args({"mode": "motion", "images": False}, {"can_generate": True})["images"], "モーションは画像を持たない")
 
+    def test_free_pages_are_asked_for_in_presentation_and_refused_in_pitch(self) -> None:
+        """プレゼンは「まず自由なページ」、ピッチは「自由なページを使わない」（docs/adr/0033）。"""
+        from pathlib import Path
+        from quick_slide import engines
+        from quick_slide.writer import prompt as P
+        skills = Path(__file__).resolve().parent.parent / "skills"
+        for mode, made, edited in (("presentation", "まず自由なページ（type: free）", P.FREE_EDIT_RULE), ("pitch", P.PITCH_NO_FREE, P.PITCH_NO_FREE)):
+            engine = engines.engine_for(mode)
+            text = P.build_prompt(engine, {}, manuscript="原稿", title_hint=None, skills_dir=skills)
+            self.assertIn(made, text.split("# 台本の決まり")[0], mode)
+            self.assertEqual(mode == "pitch", P.PITCH_NO_FREE in text, mode)
+            rules = P._edit_rules(engine, {"mode": mode})
+            self.assertIn(edited, rules, mode)
+            self.assertEqual(mode == "presentation", P.FREE_EDIT_RULE in rules, mode)
+        for shape in ("auto", "flow", "relation", "compare", "numbers"):
+            self.assertIn("free", "".join(E.direction("presentation", "diagram", [shape])), shape)
+            self.assertNotIn("free", "".join(E.direction("pitch", "diagram", [shape])), shape)
+
     def test_prompts_ask_for_diagrams_and_allow_given_pictures(self) -> None:
         from pathlib import Path
         from quick_slide.engines import ENGINES
