@@ -225,6 +225,13 @@ class ImagesFollowTheMachineTests(unittest.TestCase):
             text = P.build_prompt(engines.engine_for(mode), {"images": images}, manuscript="原稿", title_hint=None, skills_dir=skills)
             self.assertEqual(rule in text, want, (mode, images))
         self.assertIn("### 絵で描く図解", P.contract_text(engines.engine_for("presentation"), skills))
+        # 絵を生成しないとき: 台本の決まりの節は同じ文書で渡るので、作るとき・直すとき・差し込むときの「守ること」で使わせない
+        made = P.build_prompt(engines.engine_for("presentation"), {"images": False}, manuscript="原稿", title_hint=None, skills_dir=skills)
+        self.assertIn(P.NO_PICTURE_DIAGRAM, made.split("# 台本の決まり")[0])
+        self.assertTrue(any(P.NO_PICTURE_DIAGRAM in r for r in P._edit_rules(engines.engine_for("presentation"), {"images": False})))
+        self.assertFalse(any(P.NO_PICTURE_DIAGRAM in r for r in P._edit_rules(engines.engine_for("presentation"), {"images": True})))
+        self.assertNotIn(P.NO_PICTURE_DIAGRAM, P.build_prompt(engines.engine_for("presentation"), {"images": True}, manuscript="原稿",
+                                                               title_hint=None, skills_dir=skills))
         segs = jlint.segments([{"id": "p", "type": "figure", "headline": "見出し",
                                 "image": {"prompt": "調べない指示", "alt": "調べない説明", "labels": ["店頭", "宅配"]}}])
         self.assertEqual([s.text for s in segs], ["見出し", "店頭", "宅配"])

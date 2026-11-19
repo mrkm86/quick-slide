@@ -151,6 +151,11 @@ FREE_EDIT_RULE = ("自由なページ（type: free）を直すとき、指示が
                   "body を書き直すときは「自由なページ」の節の決まりを守る")
 
 
+# 絵を生成しないとき: 台本の決まりの「絵で描く図解」の節は、生成の枠の書き方なので使わせない（docs/adr/0034）
+NO_PICTURE_DIAGRAM = ("「台本の決まり」の「絵で描く図解」（image の prompt と labels）も使わない"
+                      "（Codex が描く絵なので、生成の枠と同じ扱い）。図は、自由なページ・図解の型・挿絵（svg）で書く。")
+
+
 # 図解をできるだけ入れる（作るとき）。構造・手順・比較・数字・仕組みは、文字の箇条書きにせず図にする
 DIAGRAM_RULE = {
     "presentation": "構造・手順・比較・数字・仕組み・関係があるページは、文字だけの型（bullets・statement）にせず、図として見せる。"
@@ -241,7 +246,7 @@ def _rules(engine: Engine, args: dict[str, Any]) -> list[str]:
                      "（画風は描くときに資料全体で 1 つに揃う）。prompt に文字・ロゴ・実在の人物や会社や商品の名前を描かせない"
                      "（絵で描く図解＝labels のある枠だけは別。図の中の文字は labels に並べ、prompt には何をどう並べるかを書く）")
     else:
-        rules.append("生成の画像の枠（image の prompt）を使わない。" + (
+        rules.append("生成の画像の枠（image の prompt）を使わない。" + (NO_PICTURE_DIAGRAM if engine.mode == "presentation" else "") + (
             "image に書いてよいのは挿絵（svg）だけ。写真が必須の型（photo・gallery・figure・annotate）と quote の layout: full・portrait は、"
             "挿絵を置くときだけ使う" if engine.mode == "presentation" else
             "image キーをどこにも書かない。写真が必須の型（photo・gallery・figure・annotate）と、quote の layout: full・portrait は使わない"))
@@ -414,6 +419,7 @@ def _edit_rules(engine: Engine, args: dict[str, Any]) -> list[str]:
                      "指示が画像を求めていないページに、新しく画像の枠を足さない")
     else:
         rules.append("生成の画像の枠（image の prompt）を新しく書かない（この機械では絵を生成できない）。"
+                     + (NO_PICTURE_DIAGRAM if engine.mode == "presentation" else "") +
                      "下の「添えた画像」を入れるときは image: {\"path\": \"…\"} で書いてよい")
     if engine.mode == "presentation":
         rules.append("talk（話す台本）を書くなら、その数は型のクリックの段の数＋1 にそろえる。そろえられないページは talk を省く")
