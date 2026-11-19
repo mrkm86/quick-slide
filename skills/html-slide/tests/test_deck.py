@@ -3236,6 +3236,9 @@ def case_check_reports_every_page():
     assert "「左の箱" in column('<div class="f-box f-grow" style="flex: 1">右は短い</div>'), "右は、短い文字を直に持つ伸びた箱"
     d = column('<div class="f-box" style="flex: 1; min-height: 1200px"></div>', left='<div class="f-box"><div>左は短い</div></div>')
     assert "の列" not in d, ("高さを書いた空の箱が原因のときは、列を言わない", d)
+    two = '<div class="f-cells" data-total="100" data-on="50" data-cols="5" style="width: 400px"></div>'
+    vs = [v for v in R.check(build(one(_free(f'<div class="f-row f-grow">{two}{two}</div>')), "check-same")[0]) if v["rule"] == "free-outside"]
+    assert vs and "の列" not in vs[0]["detail"], ("同じ高さの列が並ぶときは、列を言わない（マスの 1 つを列と見なさない）", vs)
     cells = '<div class="f-col" style="flex: 1"><div>右のマス</div><div class="f-cells" data-total="100" data-on="3" data-cols="5" style="width: 400px"></div></div>'
     d = column(cells, left='<div class="f-box"><div>左は短い</div></div>')
     assert "「右のマス" in d and "左は短い" not in d.split("詰まっているのは")[1], d

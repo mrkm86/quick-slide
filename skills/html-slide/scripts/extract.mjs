@@ -840,8 +840,12 @@ function contractMain() {
         const lb = ks.map(contentBottom), mx = Math.max(...lb), top = ks[lb.indexOf(mx)];
         // 中身が箱の下端の近く（内側の余白ぶん）まで来ていなければ、はみ出しの原因は中身ではない（高さを書いた箱など）。列を言わない
         if (mx < limit - 64) return '';
-        if (ks.length > 1 && getComputedStyle(cur).flexDirection === 'row' && mx - Math.min(...lb) > 8) {
+        const cs = getComputedStyle(cur);
+        if (!cs.display.includes('flex')) return '';           // 並びでない箱（マスの grid など）の中までは降りない
+        if (ks.length > 1 && cs.flexDirection.startsWith('row')) {
           const t = (top.textContent || '').replace(/\s+/g, '').slice(0, 14);
+          // 横に並ぶ列の中身の下端がそろっていれば、どれか 1 つの列のせいではない。文字の無い列（マスだけ）は名指しできない
+          if (mx - Math.min(...lb) <= 8 || !t) return '';
           return `横に並ぶ列のうち、中身がいちばん下まで詰まっているのは「${t}…」の列（ここを減らす・詰める。ほかの列を直しても入らない）。`;
         }
         cur = top;
