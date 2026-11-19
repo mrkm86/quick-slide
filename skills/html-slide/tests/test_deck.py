@@ -3233,6 +3233,9 @@ def case_check_reports_every_page():
         return vs[0]["detail"]
     assert "「左の箱" in column('<div class="f-box f-grow" style="flex: 1"></div>'), "右が空の箱"
     assert "「左の箱" in column('<div class="f-col" style="flex: 1"><div class="f-box f-grow"><span class="f-icon" data-icon="users"></span></div></div>'), "右がアイコンだけの箱"
+    assert "「左の箱" in column('<div class="f-box f-grow" style="flex: 1">右は短い</div>'), "右は、短い文字を直に持つ伸びた箱"
+    d = column('<div class="f-box" style="flex: 1; min-height: 1200px"></div>', left='<div class="f-box"><div>左は短い</div></div>')
+    assert "の列" not in d, ("高さを書いた空の箱が原因のときは、列を言わない", d)
     cells = '<div class="f-col" style="flex: 1"><div>右のマス</div><div class="f-cells" data-total="100" data-on="3" data-cols="5" style="width: 400px"></div></div>'
     d = column(cells, left='<div class="f-box"><div>左は短い</div></div>')
     assert "「右のマス" in d and "左は短い" not in d.split("詰まっているのは")[1], d

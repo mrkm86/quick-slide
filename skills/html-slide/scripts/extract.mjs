@@ -819,15 +819,27 @@ function contractMain() {
     // 箱の下端では見分けられない。中の文字・部品の下端で比べる）。直す側が、関係のない列を詰めて同じ誤りを繰り返さないため
     const shown = el => [...el.children].filter(k => k.namespaceURI === 'http://www.w3.org/1999/xhtml' &&
       (r => r.width > 0 || r.height > 0)(k.getBoundingClientRect()));
-    // 中身（文字・描いた部品）の下端。空の箱は伸びた分だけ下端が下がるので、中身に数えない
-    const hasContent = el => !!(el.textContent || '').trim() || el.matches('.f-cell, .f-bar-fill, .f-line') || !!el.querySelector('svg');
-    const leafBottom = el => { const ks = shown(el); return ks.length ? Math.max(...ks.map(leafBottom)) : hasContent(el) ? el.getBoundingClientRect().bottom : -Infinity; };
-    const tallest = el => {
+    // 中身（文字・描いた部品）の下端。箱の下端では測らない（伸びた箱・高さを書いた箱は、中身より下まで広がる）。
+    // 文字は文字の範囲で測り、部品はマス・線・アイコンの絵で測る。棒は残りの高さに合わせて伸びるので数えない
+    const contentBottom = node => {
+      if (node.nodeType === 3) {
+        if (!node.nodeValue.trim()) return -Infinity;
+        const rg = document.createRange();
+        rg.selectNodeContents(node);
+        const rs = [...rg.getClientRects()].filter(r => r.width > 0 && r.height > 0);
+        return rs.length ? Math.max(...rs.map(r => r.bottom)) : -Infinity;
+      }
+      if (node.nodeType !== 1) return -Infinity;
+      if (node.localName === 'svg' || node.matches('.f-cell, .f-line')) return node.getBoundingClientRect().bottom;
+      return Math.max(-Infinity, ...[...node.childNodes].map(contentBottom));
+    };
+    const tallest = (el, limit) => {
       for (let cur = el, guard = 0; guard < 40; guard++) {
         const ks = shown(cur);
         if (!ks.length) return '';
-        const lb = ks.map(leafBottom), mx = Math.max(...lb), top = ks[lb.indexOf(mx)];
-        if (mx === -Infinity) return '';
+        const lb = ks.map(contentBottom), mx = Math.max(...lb), top = ks[lb.indexOf(mx)];
+        // 中身が箱の下端の近く（内側の余白ぶん）まで来ていなければ、はみ出しの原因は中身ではない（高さを書いた箱など）。列を言わない
+        if (mx < limit - 64) return '';
         if (ks.length > 1 && getComputedStyle(cur).flexDirection === 'row' && mx - Math.min(...lb) > 8) {
           const t = (top.textContent || '').replace(/\s+/g, '').slice(0, 14);
           return `横に並ぶ列のうち、中身がいちばん下まで詰まっているのは「${t}…」の列（ここを減らす・詰める。ほかの列を直しても入らない）。`;
@@ -848,7 +860,7 @@ function contractMain() {
           let anc = false;
           for (let n = el.parentNode; n && n !== fb; n = n.parentNode) if (out.has(n)) { anc = true; break; }
           out.add(el);
-          if (!anc) V(no, el, 'free-outside', `中身の箱からはみ出す（箱 ${Math.round(b.width)}×${Math.round(b.height)} に対して 右 ${Math.round(r.right - b.right)}・下 ${Math.round(r.bottom - b.bottom)}px）。${r.bottom > b.bottom + 1 ? tallest(el) : ''}中身を減らすか、文字を小さい段にするか、箱を flex で割り直す`, 'error', sec);
+          if (!anc) V(no, el, 'free-outside', `中身の箱からはみ出す（箱 ${Math.round(b.width)}×${Math.round(b.height)} に対して 右 ${Math.round(r.right - b.right)}・下 ${Math.round(r.bottom - b.bottom)}px）。${r.bottom > b.bottom + 1 ? tallest(el, b.bottom) : ''}中身を減らすか、文字を小さい段にするか、箱を flex で割り直す`, 'error', sec);
         }
       }
       const kids = [...fb.children].map(k => k.getBoundingClientRect()).filter(r => r.width > 0 || r.height > 0);
