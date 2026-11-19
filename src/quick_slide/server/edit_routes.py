@@ -8,10 +8,13 @@
 - `POST /api/decks/<id>/adopt`         {choices: {slide_id: version_id}}  版スタックの前の姿に切り替える（描き直さない）
 - `POST /api/decks/<id>/pages/insert`  {after_slide_id, text, attachments?}  差し込み
 - `POST /api/decks/<id>/pages/<slide_id>/duplicate`・`/visibility` {hidden}・`/pages/reorder` {slide_ids}
+- `POST /api/decks/<id>/pages/<slide_id>/texts` {changes: [{ref, from, text}]}  文字を人が直接書き換える（台本係は通らない。
+                                        docs/adr/0036-direct-text-edits.md）
 - `POST /api/decks/<id>/resume`        いまの台本で描き直す（止まった回の再開）
 - `POST /api/conversations/deck`      {origin: {runtime, conversation_key}}  その会話の一番新しいスライド
 読み取り:
 - `GET /api/decks/<id>/jobs/<job_id>`  仕事の進み（会話の `--wait` が読む。ページの見出し・提案）
+- `GET /api/decks/<id>/pages/<slide_id>/texts`  そのページの書き換えられる文字（{editable, reason, fields: [{ref, label, text}]}）
 
 `lock_version` は受けるが照らさない（直しはページの id で指すので、前の直しの上に重なる。v1 の画面が送る形は保つ）。
 """
@@ -20,12 +23,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .. import edit_kinds
+from .. import edit_kinds, pagetext
 from ..engines import engine_for
 from ..enums import EDIT_SOURCES, ORIGIN_RUNTIMES
 from ..errors import NotFoundError, ValidationError
 from ..pins import PinRefused, pin_source
-from ..scriptdoc import IMPORTED_TYPE, one_page, screen_pages, with_hidden, with_order, with_restored
+from ..scriptdoc import IMPORTED_TYPE, one_page, screen_pages, slides_of, with_hidden, with_order, with_restored
 from ..security.secret_scan import find_secret_like
 from ..store.edits import TEMPLATE_RESTORE_REASON
 from .deck_routes import NO_PAGES_REASON, _counts, _tidy, _deck_not_found, _json, _live_deck_row, card_public, deck_view
@@ -302,6 +305,66 @@ def route_duplicate(server: "QuickSlideServer", req: "Request") -> "Response":
         result = store.create_edit(deck_id, {"op": "duplicate", "page": slide_id, "source": "screen",
                                              "positions": [page["position"]]})
     return _accepted(server, deck_id, result, f"{page['position']}ページを複製しています。")
+
+
+TEMPLATE_TEXT_REASON = "デザインテンプレートで作った資料は、ここでは書き換えられません。"
+
+
+def _page_spec(store: Any, deck_id: str, slide_id: str) -> dict[str, Any] | None:
+    """そのページの、いまの台本の中身。"""
+    head = store.head_script(deck_id)
+    key = store.page_key_of(slide_id)
+    if head is None or key is None:
+        return None
+    return next((s for s in slides_of(store.load_script(head)) if str(s.get("id")) == key), None)
+
+
+def _text_fields(store: Any, deck_id: str, slide_id: str) -> tuple[list[dict[str, Any]], str]:
+    """(書き換えられる文字, 書き換えられない理由)。錠を取ってから呼ぶ。"""
+    row = _live_deck_row(store, deck_id)
+    pages, args = _head_pages(store, deck_id)
+    _page(pages, slide_id)
+    if args.get("template_snapshot"):
+        return [], TEMPLATE_TEXT_REASON
+    if one_page(args):
+        return [], pagetext.NOT_EDITABLE["infographic"]
+    if row["mode"] in pagetext.NOT_EDITABLE:
+        return [], pagetext.NOT_EDITABLE[row["mode"]]
+    spec = _page_spec(store, deck_id, slide_id)
+    fields = pagetext.fields(spec) if spec is not None else []
+    return fields, "" if fields else pagetext.NO_FIELDS
+
+
+def route_page_texts(server: "QuickSlideServer", req: "Request") -> "Response":
+    deck_id, slide_id = req.params["deck_id"], req.params["slide_id"]
+    with server.store_lock:
+        fields, reason = _text_fields(server.store, deck_id, slide_id)
+    return _json(200, {"editable": not reason, "reason": reason, "fields": fields,
+                       "limits": {"text": pagetext.MAX_TEXT_CHARS}})
+
+
+def route_retext(server: "QuickSlideServer", req: "Request") -> "Response":
+    """人が書き換えた文字を当てる。仕事を 1 つ作る（当てて、検査して、そのページを描き直す）。"""
+    deck_id, slide_id = req.params["deck_id"], req.params["slide_id"]
+    body = req.json_object()
+    with server.store_lock:
+        store = server.store
+        fields, reason = _text_fields(store, deck_id, slide_id)
+        if reason:
+            raise ApiError(409, "text_not_editable", reason)
+        pages, _ = _head_pages(store, deck_id)
+        page = _page(pages, slide_id)
+        try:
+            changes = pagetext.check_changes(body.get("changes"))
+            pagetext.apply(_page_spec(store, deck_id, slide_id) or {}, changes)   # 欄が今もあるか・元の文字が同じか
+        except pagetext.TextEditRefused as exc:
+            raise ApiError(409, "text_changed", exc.message) from None
+        for c in changes:
+            if find_secret_like(c["text"], server.settings.intake.extra_secret_patterns):
+                raise ApiError(400, "secret_like_content", "文字に秘密情報らしい文字列が含まれています。除いてから保存してください。")
+        result = store.create_edit(deck_id, {"op": "retext", "page": slide_id, "pages": [slide_id], "changes": changes,
+                                             "source": "screen", "positions": [page["position"]]})
+    return _accepted(server, deck_id, result, f"{page['position']}ページの文字を書き換えています。")
 
 
 def _apply_now(server: "QuickSlideServer", deck_id: str, op: str, change: Any, detail: dict[str, Any]) -> dict[str, Any] | None:

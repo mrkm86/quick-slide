@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from .. import edit_kinds, freepage as FREEPAGE, importing, motion
+from .. import edit_kinds, freepage as FREEPAGE, importing, motion, pagetext
 from .. import page_images as PI
 from ..childenv import child_env
 from ..engines import RC_DEPENDENCY, engine_for
@@ -245,6 +245,8 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
             result = _reorder(ctx, deck_id, req, data)
         elif op == "restore":
             result = _restore(ctx, deck_id, req, data, engine.mode, args)
+        elif op == "retext":
+            result = _retext(ctx, run, req, data)
         elif op == "render":
             # 描き直し（再開・書き出しの形式が無いとき・描かない直しの後の組み直し）。台本はそのまま（版の印も残す）。
             # 設定（ブランド・スタイル・書式）はこの回の最初に読み直してある（settle_look）。描いた絵はキャッシュから
@@ -269,6 +271,8 @@ def edit(ctx: Context, job: dict[str, Any]) -> str:
         return _finish(ctx, run, op, script, result)
     except _Stopped:
         return fail(STOPPED_MESSAGE, "stopped")
+    except EditRefused as exc:   # ほかの直しが先に当たって、当て直せなかった（人が書き換えた文字の欄が変わっていた）
+        return fail(exc.message, exc.kind)
 
 
 def _apply(ctx: Context, run: dict[str, Any], req: dict[str, Any], head: dict[str, Any], data: dict[str, Any],
@@ -1066,6 +1070,39 @@ def _insert(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
 
 
 # --- 台本係を呼ばない直し --------------------------------------------------------------------------------------
+
+def _retext(ctx: Context, run: dict[str, Any], req: dict[str, Any], data: dict[str, Any]) -> EditResult | str:
+    """人が書き換えた文字を、そのページに当てる（docs/adr/0036-direct-text-edits.md）。台本係は通らない。
+    当てた台本はエンジンの検査に通す（決まりに合わなければ当てずに理由を返す。はみ出しの警告はページに出るだけ）。"""
+    deck_id = run["deck_id"]
+    key = _key(ctx, deck_id, req.get("page"), data)
+    changes = req.get("changes") or []
+
+    def apply(other: dict[str, Any]) -> dict[str, Any]:
+        out = deep(other)
+        slides = out.get("slides") or []
+        for i, s in enumerate(slides):
+            if isinstance(s, dict) and str(s.get("id")) == key:
+                try:
+                    slides[i] = pagetext.apply(s, changes)
+                except pagetext.TextEditRefused as exc:
+                    raise EditRefused(exc.message) from None
+                return without_pins(out, {key})
+        raise EditRefused("書き換えるページがありません。画面を読み込み直してください。")
+
+    new = apply(data)
+    checked = check_candidate(ctx, engine_for(run["mode"]), run, new)
+    if checked.stopped:
+        ctx.call(ctx.store.fail_run, run["id"], message=STOPPED_MESSAGE, failure_kind="stopped")
+        return "failed"
+    if checked.rc == RC_DEPENDENCY:
+        raise EditRefused(dependency_message(engine_for(run["mode"])), "dependency")
+    if checked.rc != 0:
+        why = (checked.problems or [""])[0]
+        raise EditRefused("書き換えた文字が、資料の決まりに合いませんでした。文字を短くするか、元に戻してください。"
+                          + (f"（{why}）" if why else ""))
+    return EditResult(data=new, plan=RenderPlan(), summary="文字を書き換えました。", routes={key: "script"}, rebase=apply)
+
 
 def _duplicate(ctx: Context, deck_id: str, req: dict[str, Any], data: dict[str, Any], mode: str) -> EditResult:
     key = _key(ctx, deck_id, req.get("page"), data)

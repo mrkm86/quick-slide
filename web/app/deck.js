@@ -24,6 +24,7 @@
   // 隙間にページを足すときの語（P11。正本は INSERT_WORDS）。ボタンの語だけは
   // `capabilities.insert_page.label` から取る（押せるかどうかと同じ答えに乗せ、語と可否を食い違わせない）
   function insertWords() { return (SS.vocab && SS.vocab.insert) || {}; }
+  function textEditWords() { return (SS.vocab && SS.vocab.text_edit) || {}; }
   // 書き出し（P9-b）の確認文・進行中・完了の語も同じ（正本は EXPORT_WORDS / EXPORT_FORMAT_LABELS）
   function exportWords() { return (SS.vocab && SS.vocab.export) || {}; }
 
@@ -2042,11 +2043,18 @@
         title: "次のページ（Alt+→）" }, SS.icon("chevron_right"));
       var media = h("div", { class: "panel__media" });
       var slot = h("div", { class: "panel__slot" });
+      // 直し方の切り替え（1 ページのときだけ）。「自分で直す」はページの文字を欄に並べて、人が書き換える（台本係は通らない）。
+      // 「AI に頼む」は今までの欄。どちらを選んだかは、この画面にいる間は覚える（ページを送っても同じ直し方のまま）
+      var tw = textEditWords();
+      var tabSelf = h("button", { class: "panel__tab", type: "button", role: "tab", id: "panel-tab-self", text: tw.tab_self });
+      var tabAi = h("button", { class: "panel__tab", type: "button", role: "tab", id: "panel-tab-ai", text: tw.tab_ai });
+      var tabs = h("div", { class: "panel__tabs", role: "tablist", "aria-label": tw.tabs_label, hidden: true }, tabSelf, tabAi);
+      var selfBox = h("div", { class: "panel__self", role: "tabpanel", "aria-labelledby": "panel-tab-self", hidden: true });
       var panel = h("aside", { class: "panel", id: "deck-panel", "aria-label": "直す" },
         h("div", { class: "panel__head" }, h("div", { class: "panel__who" }, pLabel, pDeck), closeBtn),
         // 対象の見出しの行。1 ページのときは左右の端に ‹ ›（絵にはかぶせない。絵はできるだけ大きく見せる）
         h("div", { class: "panel__nav" }, prevBtn, pTarget, nextBtn),
-        media, slot);
+        media, tabs, selfBox, slot);
       body.appendChild(panel);
       Object.keys(nodes).forEach(function (sid) { store.appendChild(nodes[sid].tools); });
       store.appendChild(pagesBox);
@@ -2126,6 +2134,121 @@
           nodes[sid].article.classList.toggle("page--editing", mode === "page" && sid === activeSlide);
         });
       };
+      // ---- 自分で直す（文字の欄）----
+      var how = "ai";            // "ai" / "self"
+      var drafts = {};           // slide_id → {ref: 書きかけの文字}（ページを送っても・直し方を替えても残す）
+      var selfSid = null, selfGen = 0, selfSending = false;
+      var selfDirty = function () {
+        return Array.prototype.some.call(selfBox.querySelectorAll("textarea"), function (ta) { return ta.value.trim() !== ta.dataset.from; });
+      };
+      var buildSelf = function (sid, got) {
+        SS.clear(selfBox);
+        if (!got.editable) { selfBox.appendChild(h("p", { class: "reason", text: got.reason || "" })); return; }
+        var draft = drafts[sid] || {};
+        var said = h("div", { class: "panel__self-said", "aria-live": "polite" });
+        var save = h("button", { class: "btn btn--primary panel__self-save", type: "button", text: tw.save, disabled: true });
+        var list = h("div", { class: "panel__self-fields" });
+        var sync = function () {
+          var d = {};
+          Array.prototype.forEach.call(list.querySelectorAll("textarea"), function (ta) {
+            if (ta.value.trim() !== ta.dataset.from) { d[ta.dataset.ref] = ta.value; }
+            ta.classList.toggle("is-changed", ta.value.trim() !== ta.dataset.from);
+            ta.style.height = "auto";
+            ta.style.height = (ta.scrollHeight + 2) + "px";
+          });
+          drafts[sid] = d;
+          save.disabled = selfSending || !Object.keys(d).length;
+        };
+        got.fields.forEach(function (f, i) {
+          var id = "panel-self-" + i;
+          var ta = h("textarea", { class: "panel__self-input", id: id, rows: "1", maxlength: String((got.limits || {}).text || 2000) });
+          ta.dataset.ref = f.ref;
+          ta.dataset.from = f.text;
+          // 書きかけは、開いたときの文字が同じ欄にだけ戻す（ほかの直しで文字が変わっていたら捨てる）
+          ta.value = Object.prototype.hasOwnProperty.call(draft, f.ref) ? draft[f.ref] : f.text;
+          ta.addEventListener("input", sync);
+          list.appendChild(h("div", { class: "panel__self-field" }, h("label", { class: "small", for: id, text: f.label }), ta));
+        });
+        save.addEventListener("click", function () {
+          if (selfSending) { return; }
+          var changes = [];
+          Array.prototype.forEach.call(list.querySelectorAll("textarea"), function (ta) {
+            if (ta.value.trim() !== ta.dataset.from) { changes.push({ ref: ta.dataset.ref, from: ta.dataset.from, text: ta.value }); }
+          });
+          if (!changes.length) { return; }
+          selfSending = true;
+          save.disabled = true;
+          save.setAttribute("aria-busy", "true");
+          save.textContent = tw.saving;
+          SS.clear(said);
+          SS.api("/api/decks/" + deckId + "/pages/" + sid + "/texts", { method: "POST", body: { changes: changes } }).then(function (r) {
+            selfSending = false;
+            save.removeAttribute("aria-busy");
+            save.textContent = tw.save;
+            drafts[sid] = {};
+            seenRevision(r.revision_id);
+            // 送った文字を、この欄の「元の文字」にする（描き終えたら、台本から読み直す）
+            Array.prototype.forEach.call(list.querySelectorAll("textarea"), function (ta) {
+              var v = ta.value.trim();
+              if (v !== ta.dataset.from) { ta.dataset.from = v.replace(/\s*\n\s*/g, " "); ta.value = ta.dataset.from; }
+            });
+            sync();
+            said.appendChild(h("p", { text: r.message || tw.saved }));
+            refresh().catch(function () {});
+            watchCfg.active = true;
+            startWatch(watchCfg);
+          }, function (e) {
+            selfSending = false;
+            save.removeAttribute("aria-busy");
+            save.textContent = tw.save;
+            sync();
+            said.appendChild(h("p", { class: "editbox__refused", text: e && e.message ? e.message : "" }));
+          });
+        });
+        selfBox.appendChild(list);
+        selfBox.appendChild(h("p", { class: "small panel__self-note", text: tw.note }));
+        // 保存は、欄が長くても見えるように下に留める
+        selfBox.appendChild(h("div", { class: "panel__self-foot" }, said, save));
+        sync();
+      };
+      var loadSelf = function (sid, force) {
+        if (!force && selfSid === sid) { return; }
+        selfSid = sid;
+        var gen = ++selfGen;
+        SS.clear(selfBox);
+        selfBox.appendChild(h("p", { class: "small", text: tw.loading }));
+        SS.api("/api/decks/" + deckId + "/pages/" + sid + "/texts").then(function (got) {
+          if (gen === selfGen) { buildSelf(sid, got); }
+        }, function (e) {
+          if (gen !== selfGen) { return; }
+          selfSid = null;
+          SS.clear(selfBox);
+          selfBox.appendChild(h("p", { class: "editbox__refused", text: (e && e.message) || tw.load_failed }));
+        });
+      };
+      var paintHow = function () {
+        var page = mode === "page" && !!activeSlide;
+        var self = page && how === "self";
+        tabs.hidden = !page;
+        tabSelf.setAttribute("aria-selected", self ? "true" : "false");
+        tabAi.setAttribute("aria-selected", self ? "false" : "true");
+        tabSelf.tabIndex = self ? 0 : -1;
+        tabAi.tabIndex = self ? -1 : 0;
+        selfBox.hidden = !self;
+        slot.hidden = self;
+        panel.dataset.how = page ? how : "";
+        if (self) { loadSelf(activeSlide, false); }
+      };
+      var setHow = function (v) { how = v; paintHow(); };
+      tabSelf.addEventListener("click", function () { setHow("self"); });
+      tabAi.addEventListener("click", function () { setHow("ai"); });
+      tabs.addEventListener("keydown", function (e) {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") { return; }
+        e.preventDefault();
+        e.stopPropagation();
+        setHow(how === "self" ? "ai" : "self");
+        (how === "self" ? tabSelf : tabAi).focus();
+      });
       // ▶ は絵のあるページだけ押せる（絵が来たら実況で押せるようにする）
       var paintPlay = function (sid) {
         var n = nodes[sid], b = n && n.article.querySelector(".page__play");
@@ -2136,7 +2259,12 @@
         else { b.setAttribute("aria-disabled", "true"); b.title = "絵ができたら再生できます"; }
       };
       Object.keys(nodes).forEach(paintPlay);
-      onPageHook = function (sid) { paintPlay(sid); if (mode) { paintPanel(); } };
+      onPageHook = function (sid) {
+        paintPlay(sid);
+        if (mode) { paintPanel(); }
+        // 開いているページが描き直されたら、欄を台本から読み直す（書きかけがあるとき・送っている間は触らない）
+        if (mode === "page" && how === "self" && sid === activeSlide && !selfSending && !selfDirty()) { loadSelf(sid, true); }
+      };
       // 欄をスロットに移す（前の欄は置き場へ戻す）。書きかけの文は節点ごと動くので消えない
       var mount = function (node) {
         var cur = slot.firstElementChild;
@@ -2177,7 +2305,9 @@
         mount(null);
         mode = null;
         mediaSig = "";
+        selfSid = null;   // 次に開いたときは、台本から読み直す
         paintPanel();
+        paintHow();
         panel.style.removeProperty("--vv-h");
         panel.style.removeProperty("--vv-top");
       };
@@ -2208,6 +2338,7 @@
         mount(m === "page" ? nodes[sid].tools : m === "pages" ? pagesBox : deckBox);
         mediaSig = "";
         paintPanel();
+        paintHow();
         if (isSide()) { sideOpen = true; applyLayout(); }
         else if (!panelSheet.isOpen()) { panelSheet.open(lastTrigger); }
         // PC は開いたらすぐ書けるよう欄へ。板（スマホ・タブレット）は欄へ移さない: 移すとキーボードがすぐ出て、
@@ -2251,6 +2382,7 @@
         mount(nodes[sid].tools);
         mediaSig = "";
         paintPanel();
+        paintHow();
         nodes[sid].article.scrollIntoView({ block: isSide() ? "center" : "nearest", behavior: "auto" });
         if (focusText) { var ta = slot.querySelector("textarea"); if (ta) { ta.focus({ preventScroll: true }); } }
       };
