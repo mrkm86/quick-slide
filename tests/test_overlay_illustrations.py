@@ -59,6 +59,10 @@ def _para(text, size=48, align="left"):
             f'<span style="font-size:{size}px">{text}</span></div>')
 
 
+FRAME = ('<div style="position:absolute;left:0;top:0;width:0;height:0"><div style="position:absolute;left:1152px;top:245px;'
+         'width:648px;height:634px;background:#dde6ec"></div></div>')
+
+
 class FreeSpaceTests(unittest.TestCase):
     """空いている所は、文字の箱の大きさでなく、文字が実際に占める範囲で見る（docs/adr/0038-overlay-free-space.md）。"""
 
@@ -92,38 +96,93 @@ class FreeSpaceTests(unittest.TestCase):
         (b,) = ILL.page_boxes(loose)
         self.assertEqual((b["w"], b["h"]), (900, 500), "段落として読めない箱は、箱の大きさのまま")
 
-    def test_a_labelled_frame_becomes_a_slot(self) -> None:
-        frame = ('<div style="position:absolute;left:0;top:0;width:0;height:0"><div style="position:absolute;left:1152px;top:245px;'
-                 'width:648px;height:634px;background:#dde6ec"></div></div>')
-        for label in ("（製品の写真）", "画像", "Photo", "【イメージ】"):
-            boxes = ILL.page_boxes(frame + _box(1152, 520, 648, 86, _para(label, 26, "center")))
-            self.assertEqual([(b["kind"], b["x"], b["y"], b["w"], b["h"]) for b in boxes], [("置き場", 1152, 245, 648, 634)], label)
-            self.assertEqual(boxes[0]["label"], label, "印の文字を控える（絵を置いたら消す）")
-        # 枠が無く、印の箱そのものが大きければ、それが置き場
-        boxes = ILL.page_boxes(_box(1152, 245, 648, 634, _para("写真", 26, "center"), justify="center"))
-        self.assertEqual([(b["kind"], b["w"], b["h"]) for b in boxes], [("置き場", 648, 634)])
-        # ふつうの文は印にしない
-        boxes = ILL.page_boxes(frame + _box(1152, 520, 648, 86, _para("写真で見る導入の事例", 26)))
-        self.assertEqual([b["kind"] for b in boxes], ["図形", "文字"])
+    def test_newlines_and_breaks_are_lines(self) -> None:
+        """段落は white-space: pre-wrap。文字の中の改行と <br> は、そこで行が変わる。"""
+        for inner in (_para("あ\nあ\nあ\nあ", 40), _para("あ<br>あ<br>あ<br>あ", 40)):
+            (b,) = ILL.page_boxes(_box(100, 200, 500, 800, inner))
+            self.assertGreaterEqual(b["h"], 4 * 48, inner)
+            self.assertLess(b["h"], 300)
 
-    def test_the_label_is_cleared_when_a_picture_lands_on_the_slot(self) -> None:
+    def test_empty_paragraphs_count_as_height(self) -> None:
+        spacer = '<div style="height:200px;flex:none"></div>'
+        (b,) = ILL.page_boxes(_box(100, 200, 900, 800, _para("上の段落") + spacer + _para("下の段落")))
+        self.assertGreaterEqual(b["h"], 200 + 2 * 57, "空の段落の高さも、文字の並びの中")
+
+    def test_indents_and_bullets_widen_the_reach(self) -> None:
+        indented = ('<div style="margin:0px 0 16px 0;margin-left:250px;text-align:left;font-size:48px;line-height:1.2;'
+                    'white-space:pre-wrap;flex:none;text-indent:100px"><span style="font-size:48px">文字</span></div>')
+        (b,) = ILL.page_boxes(_box(100, 200, 900, 600, indented))
+        self.assertEqual(b["x"], 100, "左の端は動かさない")
+        self.assertGreaterEqual(b["x"] + b["w"], 100 + 14 + 250 + 100 + 96, "字下げのぶん、右へ届く")
+        bullet = ('<div style="display:flex;margin:0px 0 16px 0;margin-left:60px;font-size:48px;line-height:1.2;white-space:pre-wrap;flex:none">'
+                  '<div style="flex:none;padding-right:16.8px;white-space:pre">•</div>'
+                  '<div style="flex:1 1 auto;min-width:0;text-align:left;white-space:pre-wrap"><span style="font-size:48px">項目の文字</span></div></div>')
+        (b,) = ILL.page_boxes(_box(100, 200, 900, 600, bullet))
+        self.assertGreaterEqual(b["x"] + b["w"], 100 + 14 + 60 + 72 + 5 * 48, "印と字下げのぶん、右へ届く")
+
+    def test_vertical_and_rotated_boxes_stay_as_they_are(self) -> None:
+        vertical = ('<div style="position:absolute;left:0;top:0;width:0;height:0"><div style="position:absolute;left:100px;top:200px;'
+                    'width:300px;height:600px;padding:7px;display:flex;flex-direction:row-reverse;justify-content:flex-start">'
+                    '<div style="flex:none;text-align:center;line-height:1.2;width:60px;font-size:48px"><span>縦</span><br><span>書</span></div></div></div>')
+        rotated = ('<div style="position:absolute;left:0;top:0;width:0;height:0"><div style="position:absolute;left:100px;top:200px;'
+                   'width:300px;height:600px;padding:7px;display:flex;flex-direction:column;justify-content:flex-start;'
+                   'transform:rotate(90deg)">' + _para("回した文字") + '</div></div>')
+        for html in (vertical, rotated):
+            (b,) = ILL.page_boxes(html)
+            self.assertEqual((b["x"], b["y"], b["w"], b["h"]), (100, 200, 300, 600))
+
+    def test_odd_numbers_do_not_break_the_estimate(self) -> None:
+        huge = "9" * 400
+        html = (f'<div style="position:absolute;left:0;top:0;width:0;height:0"><div style="position:absolute;left:100px;top:200px;'
+                f'width:900px;height:600px;padding:{huge}px;display:flex;flex-direction:column">'
+                f'<div style="margin:-500px 0 -500px 0;margin-left:{huge}px;font-size:48px;line-height:1.2;white-space:pre-wrap;flex:none">'
+                '<span>文字</span></div></div></div>')
+        (b,) = ILL.page_boxes(html)
+        self.assertTrue(0 < b["w"] <= 900 and 0 < b["h"] <= 600, b)
+        self.assertEqual(ILL.page_boxes(f'<div style="position:absolute;left:{huge}px;top:1px;width:{huge}px;height:{huge}px">x</div>'), [])
+
+    def test_a_labelled_frame_becomes_a_slot(self) -> None:
+        for label in ("（製品の写真）", "画像", "Photo", "【イメージ】"):
+            boxes = ILL.page_boxes(FRAME + _box(1152, 520, 648, 86, _para(label, 26, "center")))
+            self.assertEqual([(b["kind"], b["x"], b["y"], b["w"], b["h"]) for b in boxes], [("置き場", 1152, 245, 648, 634)], label)
+            self.assertEqual(boxes[0]["label"], label)
+        # 枠の無い 1 語の見出しは、置き場にしない（大きな文字の箱でも）
+        boxes = ILL.page_boxes(_box(600, 245, 700, 500, _para("Photo", 80, "center"), justify="center"))
+        self.assertEqual([b["kind"] for b in boxes], ["文字"])
+        # ふつうの文は印にしない
+        boxes = ILL.page_boxes(FRAME + _box(1152, 520, 648, 86, _para("写真で見る導入の事例", 26)))
+        self.assertEqual([b["kind"] for b in boxes], ["図形", "文字"])
+        # 枠に、印のほかの文字も載っていたら（見出しが「写真」のカード）、置き場にしない
+        card = FRAME + _box(1170, 260, 600, 80, _para("写真", 40)) + _box(1170, 400, 600, 200, _para("カードの本文の説明", 26))
+        self.assertEqual([b["kind"] for b in ILL.page_boxes(card)], ["図形", "文字", "文字"])
+
+    def test_only_the_label_of_that_slot_is_cleared(self) -> None:
         from quick_slide.worker import edit as worker_edit
 
-        frame = ('<div style="position:absolute;left:0;top:0;width:0;height:0"><div style="position:absolute;left:1152px;top:245px;'
-                 'width:648px;height:634px;background:#dde6ec"></div></div>')
-        html = frame + _box(1152, 520, 648, 86, _para("（製品の写真）", 26, "center")) + _box(100, 200, 800, 300, _para("本文の（製品の写真）"))
+        # 先に、本文の同じ言葉「写真」がある。あとに、置き場の印「写真」がある
+        html = (_box(100, 200, 800, 300, _para("写真")) + _box(100, 600, 800, 200, _para("本文の（写真）の話")) + FRAME
+                + _box(1152, 520, 648, 86, _para("写真", 26, "center")))
         boxes = ILL.page_boxes(html)
+        self.assertEqual([b["kind"] for b in boxes], ["文字", "文字", "置き場"])
         on_slot = {"x": 1200, "y": 300, "w": 500, "h": 500}
-        self.assertEqual(ILL.slot_under(boxes, on_slot)["label"], "（製品の写真）")
-        self.assertIsNone(ILL.slot_under(boxes, {"x": 100, "y": 600, "w": 300, "h": 300}))
+        self.assertEqual(ILL.slot_under(boxes, on_slot)["label"], "写真")
+        self.assertIsNone(ILL.slot_under(boxes, {"x": 100, "y": 850, "w": 300, "h": 200}))
         data = {"slides": [{"id": "p-001", "type": "html", "html": html}]}
-        item = {"image": {"path": "attachments/a.png"}, **on_slot}
-        got = worker_edit._add_overlay(data, "p-001", item, worker_edit._slot_label(boxes, on_slot))["slides"][0]
-        self.assertNotIn(">（製品の写真）<", got["html"], "置き場の印は消す")
-        self.assertIn("本文の（製品の写真）", got["html"], "本文の同じ言葉は消さない")
+        got = worker_edit._add_overlay(data, "p-001", {"image": {"path": "attachments/a.png"}, **on_slot})["slides"][0]
+        self.assertEqual(got["html"].count(">写真<"), 1, "消えるのは置き場の印だけ")
+        self.assertLess(got["html"].index(">写真<"), got["html"].index("本文の（写真）の話"), "残るのは、先にある本文の「写真」")
+        self.assertEqual([b["kind"] for b in ILL.page_boxes(got["html"])], ["文字", "文字", "図形", "図形"],
+                         "印が消えた枠は、ただの図形に戻る（文字の無くなった印の箱も図形）")
         self.assertEqual(len(got["illustrations"]), 1)
-        kept = worker_edit._add_overlay(data, "p-001", item, "")["slides"][0]
-        self.assertIn(">（製品の写真）<", kept["html"], "置き場でない所に置いたら、何も消さない")
+        off = {"image": {"path": "attachments/a.png"}, "x": 100, "y": 850, "w": 300, "h": 200}
+        self.assertEqual(worker_edit._add_overlay(data, "p-001", off)["slides"][0]["html"], html, "置き場でない所に置いたら、何も消さない")
+        # 文字参照で書かれた印・タグで分かれた印も、その文字だけを消す
+        split = FRAME + _box(1152, 520, 648, 86, '<div style="margin:0;text-align:center;font-size:26px;line-height:1.2;'
+                             'white-space:pre-wrap;flex:none"><span>&#65288;製品の</span><span>写真&#65289;</span></div>')
+        self.assertEqual(ILL.page_boxes(split)[0]["label"], "（製品の写真）")
+        cleared = ILL.clear_slot_label(split, on_slot)
+        self.assertNotIn("写真", cleared)
+        self.assertEqual(cleared.count("<span>"), 2, "タグは壊さない")
 
     def test_the_prompt_tells_the_slot(self) -> None:
         from pathlib import Path

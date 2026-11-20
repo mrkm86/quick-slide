@@ -69,16 +69,20 @@ def apply_overlays(data: dict[str, Any]) -> dict[str, Any]:
 class _Boxes(HTMLParser):
     """取り込んだページの HTML から、絶対配置の箱（位置・大きさ・中の文字）を拾う。座標は外側の箱からの足し算。
 
-    文字の箱は、段落（字の大きさ・行の高さ・余白・そろえ方・文字の幅の見積もり）も控える。PowerPoint の文字の箱は、中の文字より
-    ずっと大きく取ってあることが多い（3 行だけの本文の枠がページの下まである）。空いている所を見るときは、箱の大きさでなく、
-    文字が実際に占める範囲を使う（`_tight`）。"""
+    文字の箱は、中の並び（段落の字の大きさ・行の高さ・余白・字下げ・そろえ方・行ごとの文字の幅の見積もり、空の段落の高さ）も
+    控える。PowerPoint の文字の箱は、中の文字よりずっと大きく取ってあることが多い（3 行だけの本文の枠がページの下まである）。
+    空いている所を見るときは、箱の大きさでなく、文字が実際に占める範囲を使う（`_tight`）。読むのは、エンジンの取り込み
+    （`skills/html-slide/scripts/pptx_text.py`）が出す形。その形でないもの（縦書き・回した箱・表・段落の外の文字）は詰めない。"""
 
     _NUM = re.compile(r"(left|top|width|height)\s*:\s*(-?[\d.]+)px")
     _VOID = {"img", "br", "hr", "input", "meta", "link"}
     _FONT = re.compile(r"font-size\s*:\s*([\d.]+)px")
     _LH = re.compile(r"line-height\s*:\s*([\d.]+)(px)?")
-    _PAD = re.compile(r"padding\s*:\s*([^;]+)")
-    _MARGIN = re.compile(r"margin\s*:\s*([^;]+)")
+    _PAD = re.compile(r"(?<![a-z-])padding\s*:\s*([^;]+)")
+    _MARGIN = re.compile(r"(?<![a-z-])margin\s*:\s*([^;]+)")
+    _ML = re.compile(r"margin-left\s*:\s*(-?[\d.]+)px")
+    _INDENT = re.compile(r"text-indent\s*:\s*(-?[\d.]+)px")
+    _HEIGHT = re.compile(r"(?<![a-z-])height\s*:\s*([\d.]+)px")
     _JUSTIFY = re.compile(r"justify-content\s*:\s*([a-z-]+)")
     _ALIGN = re.compile(r"text-align\s*:\s*([a-z]+)")
 
@@ -87,14 +91,28 @@ class _Boxes(HTMLParser):
         # (タグ, 原点 x, 原点 y, 箱, 段落, 字の大きさ)
         self.stack: list[tuple[str, float, float, dict[str, Any] | None, dict[str, Any] | None, float | None]] = []
         self.boxes: list[dict[str, Any]] = []
+        self._lines: list[int] = [0]
+        self._src = ""
+
+    def feed(self, data: str) -> None:
+        self._src = data
+        self._lines = [0]
+        at = data.find("\n")
+        while at >= 0:
+            self._lines.append(at + 1)
+            at = data.find("\n", at + 1)
+        super().feed(data)
 
     def _origin(self) -> tuple[float, float]:
         return (self.stack[-1][1], self.stack[-1][2]) if self.stack else (0.0, 0.0)
 
+    def _owner(self) -> dict[str, Any] | None:
+        return next((b for _, _, _, b, _, _ in reversed(self.stack) if b is not None), None)
+
     @staticmethod
     def _four(text: str) -> tuple[float, float, float, float]:
         """`padding`・`margin` の省略形（px）を 上・右・下・左 に。読めなければ 0。"""
-        nums = [float(n) for n in re.findall(r"(-?[\d.]+)(?:px)?", text)][:4]
+        nums = [_num(n) for n in re.findall(r"(-?[\d.]+)(?:px)?", text)][:4]
         if not nums:
             return 0.0, 0.0, 0.0, 0.0
         if len(nums) == 1:
@@ -107,43 +125,58 @@ class _Boxes(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         style = dict(attrs).get("style") or ""
+        flat = style.replace(" ", "")
         ox, oy = self._origin()
         box = None
         para = self.stack[-1][4] if self.stack else None
         size = self.stack[-1][5] if self.stack else None
         font = self._FONT.search(style)
-        if "position:absolute" in style.replace(" ", ""):
-            got = {k: float(v) for k, v in self._NUM.findall(style)}
+        if "position:absolute" in flat:
+            got = {k: _num(v) for k, v in self._NUM.findall(style)}
             x, y = ox + got.get("left", 0.0), oy + got.get("top", 0.0)
             w, h = got.get("width", 0.0), got.get("height", 0.0)
             if w > 1 and h > 1:
                 pad = self._PAD.search(style)
                 just = self._JUSTIFY.search(style)
+                # 縦書き（row-reverse）・回した箱・表は、横書きの段落の並びとして見積もれない
+                loose = tag == "table" or "flex-direction:row-reverse" in flat or "transform:" in flat or "writing-mode" in flat
                 box = {"x": round(x), "y": round(y), "w": round(w), "h": round(h), "kind": "画像" if tag == "img" else "図形",
-                       "text": "", "_pad": self._four(pad.group(1)) if pad else (0.0, 0.0, 0.0, 0.0),
-                       "_justify": just.group(1) if just else "flex-start", "_paras": [], "_loose": tag == "table"}
+                       "text": "", "_pad": tuple(max(0.0, v) for v in (self._four(pad.group(1)) if pad else (0.0, 0.0, 0.0, 0.0))),
+                       "_justify": just.group(1) if just else "flex-start", "_items": [], "_loose": loose, "_spans": []}
                 self.boxes.append(box)
             ox, oy = x, y
             para, size = None, None
         else:
-            owner = next((b for _, _, _, b, _, _ in reversed(self.stack) if b is not None), None)
-            if tag in ("table", "ul", "ol") and owner is not None:
-                owner["_loose"] = True   # 表・箇条書きの入れ物は、段落の並びとして見積もれない（箱の大きさのまま使う）
+            owner = self._owner()
             lh = self._LH.search(style)
-            if para is None and owner is not None and font and lh and tag in ("div", "p"):
-                # 段落（字の大きさと行の高さを持つ、絶対配置でない入れ物）
-                margin = self._MARGIN.search(style)
-                mt, _, mb, _ = self._four(margin.group(1)) if margin else (0.0, 0.0, 0.0, 0.0)
+            if owner is not None and ("transform:" in flat or "writing-mode" in flat or tag in ("table", "ul", "ol")):
+                owner["_loose"] = True
+            if para is None and owner is not None and tag in ("div", "p"):
+                if font and lh:
+                    # 段落（字の大きさと行の高さを持つ、絶対配置でない入れ物）。箇条書きは、印と本文を横に並べた入れ物（display:flex）
+                    margin = self._MARGIN.search(style)
+                    mt, _, mb, _ = self._four(margin.group(1)) if margin else (0.0, 0.0, 0.0, 0.0)
+                    ml, ti, align = self._ML.search(style), self._INDENT.search(style), self._ALIGN.search(style)
+                    fs = _num(font.group(1))
+                    para = {"kind": "para", "font": fs, "lh": _num(lh.group(1)) if lh.group(2) else _num(lh.group(1)) * fs,
+                            "mt": max(0.0, mt), "mb": max(0.0, mb), "ml": max(0.0, _num(ml.group(1))) if ml else 0.0,
+                            "ti": _num(ti.group(1)) if ti else 0.0, "align": align.group(1) if align else "left",
+                            "nowrap": "white-space:pre;" in flat + ";", "bullet": "display:flex" in flat, "lines": [0.0]}
+                    owner["_items"].append(para)
+                    size = fs
+                else:
+                    # 空の段落（高さだけの入れ物）。その高さぶんは文字の並びの中の空き
+                    hgt = self._HEIGHT.search(style)
+                    if hgt and "flex:none" in flat:
+                        owner["_items"].append({"kind": "space", "h": _num(hgt.group(1))})
+            elif para is not None:
+                if font:
+                    size = _num(font.group(1))
                 align = self._ALIGN.search(style)
-                fs = float(font.group(1))
-                para = {"font": fs, "lh": float(lh.group(1)) if lh.group(2) else float(lh.group(1)) * fs, "mt": mt, "mb": mb,
-                        "align": align.group(1) if align else "left", "width": 0.0}
-                owner["_paras"].append(para)
-                size = fs
-            elif font:
-                size = float(font.group(1))
+                if align and para["bullet"]:
+                    para["align"] = align.group(1)   # 箇条書きのそろえ方は、本文の入れ物に付く
             if tag == "br" and para is not None:
-                para["breaks"] = para.get("breaks", 0) + 1
+                para["lines"].append(0.0)
         if tag not in self._VOID:
             self.stack.append((tag, ox, oy, box, para, size))
 
@@ -154,21 +187,41 @@ class _Boxes(HTMLParser):
                 break
 
     def handle_data(self, data: str) -> None:
+        para, size = (self.stack[-1][4], self.stack[-1][5]) if self.stack else (None, None)
+        if para is not None:
+            # 段落は white-space: pre-wrap。文字の中の改行は、そこで行が変わる
+            for i, part in enumerate(data.split("\n")):
+                if i:
+                    para["lines"].append(0.0)
+                para["lines"][-1] += _text_width(part, size or para["font"])
         text = data.strip()
         if not text:
             return
-        for _, _, _, box, _, _ in reversed(self.stack):
-            if box is not None:
-                box["text"] = (box["text"] + text)[:80]
-                box["kind"] = "文字"
-                break
-        para, size = (self.stack[-1][4], self.stack[-1][5]) if self.stack else (None, None)
-        if para is not None:
-            para["width"] += _text_width(data, size or para["font"])
-        else:   # 段落の外の文字（見積もれない作り）。箱の大きさのまま使う
-            owner = next((b for _, _, _, b, _, _ in reversed(self.stack) if b is not None), None)
-            if owner is not None:
-                owner["_loose"] = True
+        owner = self._owner()
+        if owner is None:
+            return
+        owner["text"] = (owner["text"] + text)[:80]
+        owner["kind"] = "文字"
+        if para is None:
+            owner["_loose"] = True   # 段落の外の文字（見積もれない作り）。箱の大きさのまま使う
+        # この文字の、HTML の中の位置（置き場の印を消すときに、その文字だけを指す）
+        line, col = self.getpos()
+        if 1 <= line <= len(self._lines):
+            start = self._lines[line - 1] + col
+            end = self._src.find("<", start)
+            owner["_spans"].append((start, len(self._src) if end < 0 else end))
+
+
+NUM_LIMIT = 100000.0   # ページの座標として意味のある大きさ（これを超える・数でない値は 0 にする）
+
+
+def _num(text: Any) -> float:
+    """CSS の数（有限で、ページの座標として意味のある大きさ）。読めない・大きすぎる値は 0。"""
+    try:
+        v = float(text)
+    except (TypeError, ValueError):
+        return 0.0
+    return v if v == v and abs(v) <= NUM_LIMIT else 0.0
 
 
 def _text_width(text: str, size: float) -> float:
@@ -177,7 +230,7 @@ def _text_width(text: str, size: float) -> float:
 
     total = 0.0
     for ch in text:
-        if ch in " \t\n\r":
+        if ch in " \t\r":
             total += 0.3
         elif unicodedata.east_asian_width(ch) in ("W", "F", "A"):
             total += 1.0
@@ -188,34 +241,45 @@ def _text_width(text: str, size: float) -> float:
 
 TEXT_WIDTH_SLACK = 1.1    # 幅の見積もりの余裕（字体の違いで行が増えることがある）
 TEXT_EDGE_SLACK = 12      # 詰めた箱の外側に足す余白（px）
+BULLET_ALLOWANCE = 1.5    # 箇条書きの印とその余白の幅（字の大きさの何倍か）
 
 
 def _tight(box: dict[str, Any]) -> dict[str, Any]:
     """文字の箱を、文字が実際に占める範囲に詰める（見積もり。箱より大きくはしない）。段落として読めない箱はそのまま。"""
     out = {k: v for k, v in box.items() if not k.startswith("_")}
-    paras = box.get("_paras") or []
+    items = box.get("_items") or []
+    paras = [p for p in items if p["kind"] == "para"]
     if box["kind"] != "文字" or box.get("_loose") or not paras:
         return out
     top, right, bottom, left = box["_pad"]
     inner = max(1.0, box["w"] - left - right)
-    used_h, widest, wrapped = top + bottom, 0.0, False
-    for p in paras:
-        width = p["width"] * TEXT_WIDTH_SLACK
-        lines = max(1, -(-int(width) // max(1, int(inner)))) + int(p.get("breaks", 0))
-        wrapped = wrapped or lines > 1
-        used_h += lines * p["lh"] + p["mt"] + p["mb"]
-        widest = max(widest, min(inner, width))
-    used_h = min(float(box["h"]), used_h + TEXT_EDGE_SLACK)
-    used_w = float(box["w"]) if wrapped else min(float(box["w"]), widest + left + right + TEXT_EDGE_SLACK)
+    used_h, reach, wrapped = top + bottom, 0.0, False
+    for p in items:
+        if p["kind"] == "space":
+            used_h += p["h"]
+            continue
+        # 段落の左の字下げ（margin-left）・1 行目の字下げ（text-indent）・箇条書きの印の幅を、使える幅から引く
+        lead = p["ml"] + (BULLET_ALLOWANCE * p["font"] if p["bullet"] else 0.0)
+        room = max(p["font"], inner - lead)
+        lines = 0
+        for i, width in enumerate(p["lines"]):
+            width = width * TEXT_WIDTH_SLACK + (max(0.0, p["ti"]) if i == 0 else 0.0)
+            n = 1 if p["nowrap"] else max(1, -(-int(width) // max(1, int(room))))
+            wrapped = wrapped or n > 1
+            lines += n
+            reach = max(reach, lead + (width if p["nowrap"] else min(room, width)))
+        used_h += lines * max(p["lh"], p["font"]) + p["mt"] + p["mb"]
+    used_h = max(1.0, min(float(box["h"]), used_h + TEXT_EDGE_SLACK))
+    used_w = float(box["w"]) if wrapped else max(1.0, min(float(box["w"]), reach + left + right + TEXT_EDGE_SLACK))
     y = box["y"] + {"center": (box["h"] - used_h) / 2, "flex-end": box["h"] - used_h}.get(box["_justify"], 0.0)
     aligns = {p["align"] for p in paras}
     if aligns == {"center"}:
         x = box["x"] + (box["w"] - used_w) / 2
     elif aligns == {"right"}:
         x = box["x"] + box["w"] - used_w
-    elif aligns <= {"left", "start", "justify"}:
+    elif aligns <= {"left", "start"}:
         x = float(box["x"])
-    else:   # そろえ方が混ざる箱は、横は詰めない
+    else:   # そろえ方が混ざる・両端ぞろえの箱は、横は詰めない
         x, used_w = float(box["x"]), float(box["w"])
     out.update(x=round(x), y=round(y), w=round(used_w), h=round(used_h))
     return out
@@ -238,37 +302,35 @@ def page_boxes(html: str) -> list[dict[str, Any]]:
     """取り込んだページの箱（{x, y, w, h, kind: 文字・画像・図形・置き場, text}）。ページ全体を覆う背景は除く。
 
     - 文字の箱は、文字が実際に占める範囲に詰めてある（`_tight`）
-    - 写真・画像を入れるための枠（「（製品の写真）」のような印の付いた図形か、その印の箱そのもの）は kind を「置き場」にする。
-      印の文字の箱は一覧から外す（そこに画像を重ねてよい）"""
+    - 写真・画像を入れるための枠は kind を「置き場」にする。条件は 3 つ全部: 「（製品の写真）」のような短い印の文字の箱がある・
+      その印を中に含む、文字を持たない図形（枠）がある・その枠に、印のほかの文字が載っていない。印の文字の箱は一覧から外す
+      （そこに絵を重ねてよい）。枠の無い「写真」という見出しや、文の載ったカードは置き場にしない"""
     p = _Boxes()
     p.feed(html or "")
     raw = [b for b in p.boxes if not (b["w"] >= PAGE_W * 0.95 and b["h"] >= PAGE_H * 0.95 and b["kind"] != "文字")]
+    tights = {id(b): _tight(b) for b in raw}
     labels = [b for b in raw if b["kind"] == "文字" and _SLOT_LABEL.match(b["text"] or "")]
-    slots: list[int] = []
-    drop: list[int] = []
-    labels_of: dict[int, str] = {}   # 置き場の箱 → 印の文字（そこに絵を置いたら、印は消す。`clear_slot_label`）
+    slots: dict[int, dict[str, Any]] = {}   # 置き場の枠 → 印の箱
     for lab in labels:
-        tight = _tight(lab)
-        # 印を囲む図形（文字を持たない・印の大半を中に含む・ページ全体でない）のうち、いちばん小さいもの
-        frames = [b for b in raw if b["kind"] == "図形" and _inside(tight, b) >= 0.5
+        frames = [b for b in raw if b["kind"] == "図形" and _inside(tights[id(lab)], b) >= 0.9
                   and min(b["w"], b["h"]) >= SLOT_MIN_SIDE and b["w"] * b["h"] < PAGE_W * PAGE_H * 0.7]
-        if frames:
-            frame = min(frames, key=lambda b: b["w"] * b["h"])
-            slots.append(id(frame))
-            labels_of[id(frame)] = lab["text"]
-            drop.append(id(lab))
-        elif min(lab["w"], lab["h"]) >= SLOT_MIN_SIDE:
-            slots.append(id(lab))   # 印の箱そのものが枠
-            labels_of[id(lab)] = lab["text"]
+        if not frames:
+            continue
+        frame = min(frames, key=lambda b: b["w"] * b["h"])
+        others = [b for b in raw if b["kind"] == "文字" and b is not lab and _inside(tights[id(b)], frame) > 0.0]
+        if not others and id(frame) not in slots:
+            slots[id(frame)] = lab
+    drop = {id(lab) for lab in slots.values()}
     out = []
     for b in raw:
         if id(b) in drop:
             continue
         if id(b) in slots:
-            out.append({"x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"], "kind": SLOT_KIND, "text": b["text"],
-                        "label": labels_of.get(id(b), "")})
+            lab = slots[id(b)]
+            out.append({"x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"], "kind": SLOT_KIND, "text": "",
+                        "label": lab["text"], "label_spans": list(lab["_spans"])})
         else:
-            out.append(_tight(b))
+            out.append(tights[id(b)])
     return out
 
 
@@ -279,13 +341,21 @@ def slot_under(boxes: list[dict[str, Any]], box: dict[str, Any]) -> dict[str, An
                  and b["y"] <= cy <= b["y"] + b["h"]), None)
 
 
-def clear_slot_label(html: str, label: str) -> str:
-    """置き場の印の文字（「（製品の写真）」など）を、ページの HTML から消す（そこに絵を置いたので、印が絵の後ろに残らないように）。
-    同じ文字のいちばん最初の 1 つだけ。見つからなければそのまま。"""
-    label = (label or "").strip()
-    if not label:
+def clear_slot_label(html: str, box: dict[str, Any]) -> str:
+    """重ねる箱が置き場に載るなら、その置き場の印の文字（「（製品の写真）」など）をページの HTML から消す（絵の後ろに印が
+    残らないように）。消すのは、その置き場の印の文字そのもの（HTML の中の位置で指す）。同じ言葉がほかにあっても消さない。"""
+    slot = slot_under(page_boxes(html or ""), box)
+    if slot is None:
         return html
-    return re.sub(r">(\s*)" + re.escape(htmllib.escape(label, quote=False)) + r"(\s*)<", r">\1\2<", html or "", count=1)
+    out = html
+    for start, end in sorted(slot.get("label_spans") or [], reverse=True):
+        raw = out[start:end]
+        if "<" in raw or ">" in raw:   # 位置がずれている（読み方の違い）。触らない
+            continue
+        lead = raw[:len(raw) - len(raw.lstrip())]
+        tail = raw[len(raw.rstrip()):] if raw.strip() else ""
+        out = out[:start] + lead + tail + out[end:]
+    return out
 
 
 def _slots(data: dict[str, Any]) -> list[tuple[str, dict[str, Any], str]]:

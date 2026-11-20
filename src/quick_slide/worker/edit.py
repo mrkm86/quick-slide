@@ -717,21 +717,16 @@ OVERLAY_WORDS = {"illustration": "挿絵", "diagram": "図解", "image": "画像
 GENERATE_TIMEOUT_SECONDS = 900
 
 
-def _add_overlay(other: dict[str, Any], key: str, item: dict[str, Any], clear_label: str = "") -> dict[str, Any]:
-    """重ねるものを 1 つ足す。`clear_label` は、置き場（写真を入れるための枠）に置いたときの、その枠の印の文字
-    （絵の後ろに残らないように、ページから消す。docs/adr/0038-overlay-free-space.md）。"""
+def _add_overlay(other: dict[str, Any], key: str, item: dict[str, Any]) -> dict[str, Any]:
+    """重ねるものを 1 つ足す。置き場（写真を入れるための枠）に載るときは、その枠の印の文字をページから消す
+    （絵の後ろに残らないように。どの枠かは、当てるページの HTML から見る。docs/adr/0038-overlay-free-space.md）。"""
     out = deep(other)
     for s in slides_of(out):
         if str(s.get("id")) == key:
             s[ILL.OVERLAY_KEY] = [*(s.get(ILL.OVERLAY_KEY) or []), item]
-            if clear_label:
-                s["html"] = ILL.clear_slot_label(s.get("html") or "", clear_label)
+            if isinstance(s.get("html"), str):
+                s["html"] = ILL.clear_slot_label(s["html"], item)
     return without_pins(out, {key})
-
-
-def _slot_label(boxes: list[dict[str, Any]], box: dict[str, Any]) -> str:
-    slot = ILL.slot_under(boxes, box)
-    return (slot or {}).get("label") or ""
 
 
 def _answer(answer: Any) -> dict[str, Any] | None:
@@ -867,9 +862,8 @@ def _overlay_image(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: 
         src = rel or _generate_picture(ctx, run, got["prompt"].strip(), portrait=box["h"] > box["w"])
         item = {"image": {"path": src}, **box, "fit": "cover"}
         summary = str(got.get("summary") or "画像を重ねた")[:200]
-        label = _slot_label(boxes, box)
-        return EditResult(data=_add_overlay(data, key, item, label), plan=RenderPlan(), summary=summary, routes={key: "script"},
-                          rebase=lambda other: _add_overlay(other, key, item, label)), []
+        return EditResult(data=_add_overlay(data, key, item), plan=RenderPlan(), summary=summary, routes={key: "script"},
+                          rebase=lambda other: _add_overlay(other, key, item)), []
 
     ctx.call(ctx.store.set_job_note, job["id"], {"keys": [key]})
     return _writer_loop(ctx, job, run, req, data, build, parse_and_apply)
@@ -1036,9 +1030,8 @@ def _overlay(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[s
             return None, ["NG: svg に SVG（<svg viewBox=…>…</svg>）を書く"]
         item = {"image": {"svg": svg}, **box}
         summary = str(got.get("summary") or f"{OVERLAY_WORDS[what]}を重ねた")[:200]
-        label = _slot_label(boxes, box)
-        return EditResult(data=_add_overlay(data, key, item, label), plan=RenderPlan(), summary=summary, routes={key: "script"},
-                          rebase=lambda other: _add_overlay(other, key, item, label)), []
+        return EditResult(data=_add_overlay(data, key, item), plan=RenderPlan(), summary=summary, routes={key: "script"},
+                          rebase=lambda other: _add_overlay(other, key, item)), []
 
     ctx.call(ctx.store.set_job_note, job["id"], {"keys": [key]})
     return _writer_loop(ctx, job, run, req, data, build, parse_and_apply)
