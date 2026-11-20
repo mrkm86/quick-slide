@@ -126,7 +126,8 @@ IMPORTED_IMAGE_LEAD_NO_GENERATE = "「＋」から渡した画像を使います
 IMPORTED_DIAGRAM_LEAD = "中身の流れや関係を図にします。"
 # 取り込んだページの画像・図解の選び方（docs/adr/0015）。差し替えるは、ページに画像があるときだけ画面が出す
 IMPORTED_WAYS = (("add", "空いた所に足す"), ("replace", "差し替える"), ("main", "主役にして組み直す"))
-REBUILD_CONFIRM = "このページは、元の見た目から型の見た目に組み直します（元の文字は見出しや中身として載せ直します）。よろしいですか？"
+# 「主役にして組み直す」を選んだときに、選び方の下に小さく出す一言（送る前に確かめる窓は出さない。前の版に戻せる）
+REBUILD_NOTE = "元の見た目から型の見た目に組み直します（元の文字は見出しや中身として載せ直します）。前の版にはいつでも戻せます。"
 IMPORTED_ATTACHMENT_REQUIRED = "この機械では画像を生成できません。「＋」から画像を渡してください。"
 
 
@@ -142,7 +143,7 @@ def offered_for_imported(mode: str, *, can_generate: bool = True) -> list[dict[s
             if v in values:
                 o: dict[str, Any] = {"value": v, "label": label}
                 if v == "main":
-                    o["confirm"] = REBUILD_CONFIRM
+                    o["note"] = REBUILD_NOTE
                 if v == "replace":
                     o["needs_picture"] = True
                 if attach:
