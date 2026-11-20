@@ -725,10 +725,14 @@ GENERATE_TIMEOUT_SECONDS = 900
 
 
 def _add_overlay(other: dict[str, Any], key: str, item: dict[str, Any]) -> dict[str, Any]:
+    """重ねるものを 1 つ足す。置き場（写真を入れるための枠）に載るときは、その枠の印の文字をページから消す
+    （絵の後ろに残らないように。どの枠かは、当てるページの HTML から見る。docs/adr/0038-overlay-free-space.md）。"""
     out = deep(other)
     for s in slides_of(out):
         if str(s.get("id")) == key:
             s[ILL.OVERLAY_KEY] = [*(s.get(ILL.OVERLAY_KEY) or []), item]
+            if isinstance(s.get("html"), str):
+                s["html"] = ILL.clear_slot_label(s["html"], item)
     return without_pins(out, {key})
 
 
@@ -778,6 +782,13 @@ def _overlay_box(answer: Any, texts: list[dict[str, Any]], position: int, what: 
             problems.append(f"NG: {word}が{what_box}に重なりすぎ。空いている場所へ動かすか小さくする")
             break
     return got, {k: round(v) for k, v in box.items()}, problems
+
+
+def _picture_fit(got: dict[str, Any], boxes: list[dict[str, Any]], box: dict[str, Any]) -> str:
+    """重ねる画像の置き方。台本係が書いていればそれ（指示で頼まれたとき）。無ければ、置き場に置くなら contain、ほかは cover。"""
+    if got.get("fit") in ("cover", "contain"):
+        return got["fit"]
+    return "contain" if ILL.slot_under(boxes, box) else "cover"
 
 
 def _picture_source(ctx: Context, run: dict[str, Any], req: dict[str, Any]) -> tuple[str | None, Path | None, bool]:
@@ -863,7 +874,9 @@ def _overlay_image(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: 
         if problems:
             return None, problems
         src = rel or _generate_picture(ctx, run, got["prompt"].strip(), portrait=box["h"] > box["w"])
-        item = {"image": {"path": src}, **box, "fit": "cover"}
+        # 置き方: 置き場（写真を入れるための枠）に置くときは、画像の全体が見えるように収める（製品の写真の端を切らない）。
+        # ほかの空きに置くときは、枠いっぱいに切り抜く。指示で頼まれたら、台本係が fit で替えられる
+        item = {"image": {"path": src}, **box, "fit": _picture_fit(got, boxes, box)}
         summary = str(got.get("summary") or "画像を重ねた")[:200]
         return EditResult(data=_add_overlay(data, key, item), plan=RenderPlan(), summary=summary, routes={key: "script"},
                           rebase=lambda other: _add_overlay(other, key, item)), []
@@ -942,8 +955,10 @@ def _replaceable(page: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _replace_overlay(items: list[Any], index: int, src: str) -> list[Any]:
-    """重ねたものの `index` 番目の中身を替え、その下に大半が隠れていた重ねたものを取り除く。"""
-    items[index] = {**{k: v for k, v in items[index].items() if k not in ("image", "fit")}, "image": {"path": src}, "fit": "cover"}
+    """重ねたものの `index` 番目の中身を替え、その下に大半が隠れていた重ねたものを取り除く。置き方（fit）は前のまま
+    （置き場に全体が見えるように収めた画像を替えても、収めたまま。前に置き方を持たないもの＝挿絵・図は、切り抜いて置く）。"""
+    fit = items[index].get("fit") if items[index].get("fit") in ("cover", "contain") else "cover"
+    items[index] = {**{k: v for k, v in items[index].items() if k not in ("image", "fit")}, "image": {"path": src}, "fit": fit}
     box = _box_of(items[index])
     return [it for j, it in enumerate(items) if j == index or not isinstance(it, dict) or not _mostly_under(_box_of(it), [box])]
 
