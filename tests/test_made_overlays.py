@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import io
+import time
 import unittest
 import zipfile
 
@@ -153,6 +154,38 @@ class EndToEndTests(edit_helpers.PresentationEditBase):
         data, _ = self.head(deck)
         self.assertEqual(len(data["slides"][2]["overlays"]), 1)
         self.assertEqual({k: v for k, v in data["slides"][2].items() if k != "overlays"}, before["slides"][2])
+
+    def test_a_failed_redraw_is_told_and_requests_do_not_pile_up(self) -> None:
+        """先の描き直しが失敗したら、足す仕事はその理由を言って止まる。続けて頼んでも、描き直しの仕事は 1 つだけ。"""
+        import shutil
+        from unittest import mock
+
+        from quick_slide.worker import edit as worker_edit
+
+        deck = self.make_deck()
+        with self.fx.server.store_lock:
+            first = self.fx.store.shown_run(deck)
+        shutil.rmtree(self.fx.root.run_dir(deck, first["id"]) / "parts")
+
+        def broken(ctx, run, *a, **k):   # 描く段だけを失敗させる（描き直しの回が失敗で終わる）
+            time.sleep(2.0)   # 2 つ目の頼みが届くまで、描き直しを走らせておく（走っているあいだは重ねないことを見る）
+            ctx.call(ctx.store.fail_run, run["id"], message="エンジンが止まりました（試験）", failure_kind="engine")
+            return "failed"
+
+        with mock.patch.object(worker_edit, "render_and_import", side_effect=broken):
+            self.page_request(deck, 3, kind="illustration", options=["add"])
+            self.page_request(deck, 4, kind="illustration", options=["add"])
+            run = self.wait(deck)
+        self.assertEqual(run["state"], "failed")
+        self.assertIn("描き直しが失敗した", run["message"])
+        self.assertIn("エンジンが止まりました（試験）", run["message"], "先の描き直しの理由を言う")
+        with self.fx.server.store_lock:
+            edits = [self.fx.store.run(x["id"])["args"].get("edit") for x in self.fx.store._all(
+                "SELECT id FROM runs WHERE deck_id=? AND id<>? ORDER BY number", (deck, first["id"]))]
+        self.assertEqual(edits.count("render"), 1, "描き直しの仕事は重ねない")
+        self.assertEqual(edits.count("revise"), 2)
+        data, _ = self.head(deck)
+        self.assertFalse(any("overlays" in s for s in data["slides"]), "何も足さない")
 
     def test_rebuild_still_goes_the_old_way(self) -> None:
         """「ページを組み直して入れる」は、今までどおり台本係がページを書き直す（重ねる頼みにはしない）。"""

@@ -764,7 +764,15 @@ JSON_NG = "NG: 返したものが JSON のオブジェクト 1 つではなか�
 
 
 MADE_NOT_DRAWN = ("このページは、いまの中身でまだ描き終えていないので、空いている所が分かりません。"
-                  "描き終わってから、もう一度頼んでください（先の描き直しが失敗していたら、その理由を直してから）。")
+                  "描き終わってから、もう一度頼んでください。")
+
+
+def _not_drawn(ctx: Context, run: dict[str, Any], shown: dict[str, Any] | None) -> EditRefused:
+    """空いている所が分からないときの断り。先に入れた描き直し（位置の記録を作るためのもの）が失敗していたら、その理由を言う。"""
+    why = ctx.call(ctx.store.failed_parts_render, run["deck_id"], shown["number"] if shown else 0)
+    if why:
+        return EditRefused(f"空いている所を見るための描き直しが失敗したので、足せませんでした（{why[:300]}）。")
+    return EditRefused(MADE_NOT_DRAWN)
 
 
 def _made_boxes(ctx: Context, run: dict[str, Any], page: dict[str, Any]) -> list[dict[str, Any]]:
@@ -773,13 +781,13 @@ def _made_boxes(ctx: Context, run: dict[str, Any], page: dict[str, Any]) -> list
     key = str(page.get("id"))
     shown = ctx.call(ctx.store.shown_run, run["deck_id"])
     if shown is None:
-        raise EditRefused(MADE_NOT_DRAWN)
+        raise _not_drawn(ctx, run, None)
     drawn = next((p for p in ctx.call(ctx.store.run_pages, shown["id"]) if p["key"] == key), None)
     if drawn is None or drawn.get("content_sha256") != content_sha(page):
-        raise EditRefused(MADE_NOT_DRAWN)
+        raise _not_drawn(ctx, run, shown)
     part = W.load_part(ctx.root.run_dir(run["deck_id"], shown["id"]), key)
     if part is None:
-        raise EditRefused(MADE_NOT_DRAWN)
+        raise _not_drawn(ctx, run, shown)
     return ILL.part_boxes(part["slide"])
 
 

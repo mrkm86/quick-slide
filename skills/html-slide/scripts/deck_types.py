@@ -3413,9 +3413,9 @@ def overlay_parts(s: Slide) -> list[str]:
 
     1 つずつ {"x", "y", "w", "h", "image": {"path": …}, "fit"?}。座標はページ（1920×1080）のもの。置き方 fit は
     cover（箱いっぱいに切り抜く。既定）か contain（全体が見えるように収める）。画像は持ち込みのファイルだけ（生成の枠は書けない）。"""
-    items = s.spec.get("overlays")
-    if items is None:
+    if "overlays" not in s.spec:
         return []
+    items = s.spec["overlays"]
     if not isinstance(items, list) or not all(isinstance(it, dict) for it in items):
         s.err("overlays は [{x, y, w, h, image: {path}}] の配列で書く")
     if len(items) > OVERLAY_MAX:
@@ -3427,10 +3427,10 @@ def overlay_parts(s: Slide) -> list[str]:
         extra = sorted(set(it) - OVERLAY_KEYS)
         if extra:
             s.err(f"overlays の {i} 個目に知らないキー: {', '.join(extra)}（使えるのは {', '.join(sorted(OVERLAY_KEYS))}）")
-        try:
-            x, y, w, h = (float(it[k]) for k in ("x", "y", "w", "h"))
-        except (KeyError, TypeError, ValueError):
+        nums = [it.get(k) for k in ("x", "y", "w", "h")]
+        if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in nums):   # 文字の "120"・true は数ではない
             s.err(f"overlays の {i} 個目: x・y・w・h を数で書く")
+        x, y, w, h = (float(v) for v in nums)
         if not all(v == v and abs(v) < 100000 for v in (x, y, w, h)):
             s.err(f"overlays の {i} 個目: x・y・w・h を、ページの座標の数で書く")
         if w < OVERLAY_MIN_SIDE or h < OVERLAY_MIN_SIDE:
@@ -3448,7 +3448,8 @@ def overlay_parts(s: Slide) -> list[str]:
         # 台本のフォルダの中の画像だけ（外を指すパス・絶対パス・外を指すリンクは通さない。書き出しに、関係のないファイルを
         # 巻き込まない）。実体のパスで確かめる
         root = s.script_dir.resolve()
-        if p.is_absolute() or re.match(r"^[a-zA-Z]:[\\/]", src) or src.startswith("~"):   # ドライブ（C:/・C:\）も絶対パス
+        # ドライブ（C:/・C:\）・先頭が / や \ のパス（Windows ではドライブの無い絶対パス）も断る
+        if p.is_absolute() or re.match(r"^[a-zA-Z]:[\\/]", src) or src.startswith(("~", "/", "\\")):
             s.err(f"overlays の {i} 個目: 画像は、台本のフォルダからの相対パスで書く: {src[:80]}")
         if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", src):
             s.err(f"overlays の {i} 個目: 画像に URL は使えない（ローカルのファイルを置いてパスで書く）: {src[:80]}")
