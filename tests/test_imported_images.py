@@ -2,7 +2,7 @@
 
 - 画像: 空いた所に足す（渡した画像か生成した画像）・差し替える（同じ枠のまま中身だけ）・主役にして組み直す（型のページ）
 - 図解: 空いた所に足す（SVG の図）・主役にして組み直す（図解の型）
-- 「差し替える」はページに画像があるときだけ画面が出す。組み直すは送る前に確かめる一言を持つ
+- 「差し替える」はページに画像があるときだけ画面が出す。組み直すは、選び方の下に出す一言（note）を持つ（確かめる窓は出さない）
 本物のエンジン（html-slide）と偽物の台本係・偽物の Codex で通す。
 """
 
@@ -67,7 +67,7 @@ class UnitTests(unittest.TestCase):
         self.assertEqual([i["image"] for i in out], [{"svg": "<svg/>"}, {"path": "attachments/new.png"}])
         self.assertEqual((out[1]["x"], out[1]["y"], out[1]["w"], out[1]["h"]), (1100, 288, 740, 576))
 
-    def test_imported_kinds_ways_and_confirmation(self) -> None:
+    def test_imported_kinds_ways_and_the_note(self) -> None:
         kinds = {k["kind"]: k for k in edit_kinds.offered_for_imported("presentation", can_generate=True)}
         self.assertEqual([o["value"] for o in kinds["image"]["options"]], ["add", "replace", "main"])
         self.assertEqual([o["value"] for o in kinds["diagram"]["options"]], ["add", "main"])
