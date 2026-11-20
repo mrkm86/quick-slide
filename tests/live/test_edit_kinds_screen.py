@@ -100,6 +100,16 @@ class EditKindsScreenTest(unittest.TestCase):
         self.assertIn("見せ方", page.eval(f"document.querySelector('{P}textarea').placeholder"))
         page.eval(click_option("流れ"))
         self.assertEqual(page.eval(f"Array.from(document.querySelectorAll('{P}.editkind__option.is-dim')).length"), 6, "選んでいない型は薄い")
+        # キーボードで選んでも、焦点は選んだ札に残る（札は選ぶたびに作り直すので、同じ札へ戻す）
+        page.eval(f"Array.from(document.querySelectorAll('{P}.editkind__option')).find(b => b.dataset.key === 'diagram:compare').focus()")
+        page.eval("document.activeElement.click()")
+        self.assertEqual(page.eval("document.activeElement.dataset.key"), "diagram:compare")
+        self.assertEqual(page.eval("document.activeElement.getAttribute('aria-pressed')"), "true")
+        page.eval(click_option("流れ"))
+        # 書く欄と送るボタンは、選ぶ所が短くても板の下の端にある
+        gap = page.eval(f"(function(){{ var p = document.querySelector('.panel.is-open').getBoundingClientRect(),"
+                        f" i = document.querySelector('{P}.editbox__input').getBoundingClientRect(); return Math.round(p.bottom - i.bottom); }})()")
+        self.assertLess(abs(gap), 40, "書く欄は板の下の端に留まる")
 
         # 絵や写真を足す: 線のイラスト・写真や絵を生成・手持ちの画像を使う。既定は線のイラスト（生成の要らないもの）
         page.eval(click_card("visual"))

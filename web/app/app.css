@@ -1511,7 +1511,11 @@ html.is-locked { overflow: hidden; }
    書く欄と送るボタンは下に留める */
 .panel[data-mode="page"] .panel__media { flex: none; padding-bottom: var(--space-2); }
 .panel[data-mode="page"] .panel__slot { flex: 1 1 auto; min-height: 0; overflow-y: auto; border-top: 0; padding-top: var(--space-1); padding-bottom: 0; }
-.panel[data-mode="page"] .panel__slot .editbox__input { position: sticky; bottom: 0; padding: var(--space-2) 0 var(--space-3); background: var(--color-surface); }
+/* 選ぶ所が短いときも、書く欄と送るボタンは板の下の端に置く（欄の入れ物を板の残りの高さまで伸ばし、書く欄を下へ寄せる） */
+.panel[data-mode="page"] .panel__slot:not([hidden]) { display: flex; flex-direction: column; }
+.panel[data-mode="page"] .panel__slot > *, .panel[data-mode="page"] .panel__slot .editbox,
+.panel[data-mode="page"] .panel__slot .editbox fieldset { flex: 1 0 auto; display: flex; flex-direction: column; }
+.panel[data-mode="page"] .panel__slot .editbox__input { margin-top: auto; flex-direction: row; position: sticky; bottom: 0; padding: var(--space-2) 0 var(--space-3); background: var(--color-surface); }
 .panel[data-mode="page"] .panel__self { border-top: 0; }
 /* 入力の 1 行は下に留める */
 .panel__slot { flex: none; padding: var(--space-3); border-top: 1px solid var(--color-border); }

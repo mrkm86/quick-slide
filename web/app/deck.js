@@ -561,18 +561,27 @@
     // 選択肢の札（絵と名前）。押せない選択肢（この機械では生成できない、など）は消さずに出し、押すと理由を下に出す。
     // 1 つだけ選ぶ段では、選んでいない札を薄くする（どれを選んだかが、色だけでなく濃さでも分かる）
     function tile(art, o, pressed, dim, onPick) {
-      var b = h("button", { class: "editkind__option" + (dim ? " is-dim" : ""), type: "button", "aria-pressed": String(pressed) },
+      var b = h("button", { class: "editkind__option" + (dim ? " is-dim" : ""), type: "button", "aria-pressed": String(pressed),
+        dataset: { key: art } },
         optionArt(art), h("span", { class: "editkind__option-name", text: o.label }),
         o.disabled && o.note ? h("span", { class: "editkind__option-note", text: o.note }) : null);   // 「現在利用できません」
       if (o.disabled) { b.setAttribute("aria-disabled", "true"); b.title = o.reason || ""; }
       b.addEventListener("click", function () {
-        if (o.disabled) { state.refused = o.reason || ""; paint(); return; }
+        // 札は選ぶたびに作り直す。押した札に焦点があったら、作り直したあとの同じ札へ戻す（キーボードで続けて選べるように）
+        var had = document.activeElement === b;
+        if (o.disabled) { state.refused = o.reason || ""; paint(); refocus(had, art); return; }
         state.refused = "";
         onPick();
         paint();
+        refocus(had, art);
         onChange();
       });
       return b;
+    }
+    function refocus(had, key) {
+      if (!had) { return; }
+      var again = Array.prototype.filter.call(picker.node.querySelectorAll(".editkind__option"), function (x) { return x.dataset.key === key; })[0];
+      if (again) { again.focus({ preventScroll: true }); }
     }
     function step(node, label) {
       SS.clear(node);

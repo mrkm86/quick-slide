@@ -196,7 +196,9 @@ def route_instructions(server: "QuickSlideServer", req: "Request") -> "Response"
         lack = edit_kinds.missing(kind, options, text=text, attachments=len(atts), imported=imported,
                                   can_generate=can_generate)
         if lack:
-            raise ApiError(400, "text_required" if kind == "text" else "attachment_required", lack)
+            # 足りないのが文か画像かで、コードを分ける（見せ方の「その他」は、文が要る）
+            wants_text = kind == "text" or lack == edit_kinds.DIAGRAM_OTHER_REQUIRED
+            raise ApiError(400, "text_required" if wants_text else "attachment_required", lack)
         positions = [p["position"] for p in chosen]
         result = store.create_edit(deck_id, {
             "op": "revise", "scope": scope, "pages": [p["slide_id"] for p in chosen], "positions": positions,

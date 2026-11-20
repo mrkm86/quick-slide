@@ -387,6 +387,7 @@ class EditKindApiTests(EditBase):
             return self.fx.post(f"/api/decks/{deck}/instructions", {"scope": "page", "slide_id": sid, "text": "", **body})
 
         cases = (({"kind": "text"}, "text_required"), ({"kind": "image", "options": ["attached"]}, "attachment_required"),
+                 ({"kind": "diagram", "options": ["other"]}, "text_required"),   # 見せ方の「その他」は、文が要る
                  ({"kind": "nazo"}, "edit_kind_invalid"), ({"kind": "diagram", "options": ["nazo"]}, "edit_kind_invalid"),
                  ({"options": ["flow"]}, "edit_kind_invalid"))
         for body, code in cases:
