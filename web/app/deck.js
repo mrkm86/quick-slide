@@ -634,8 +634,11 @@
         extra.appendChild(h("p", { class: "editkind__hint small",
           text: "「＋」から画像を渡してください。貼り付け・ドラッグや、画像の URL の貼り付けでも渡せます。" }));
       }
-      // その種類の一言（取り込んだページの「見せ方を変える」は、元の見た目が型の見た目に変わる、など）
-      if (e.note && !viaOption) { extra.appendChild(h("p", { class: "editkind__hint editkind__note small", text: e.note })); }
+      // その種類の一言（取り込んだページの「見せ方を変える」は、元の見た目が型の見た目に変わる）と、選んだ選び方の一言
+      // （画像を「主役にして組み直す」）。送る前に確かめる窓は出さず、選んだ所に小さく出す
+      var picked = shown.filter(function (x) { return x.value === state.options[0]; })[0];
+      var note = (picked && picked.note) || (!viaOption && e.note) || "";
+      if (note) { extra.appendChild(h("p", { class: "editkind__hint editkind__note small", text: note })); }
       if (state.refused) { extra.appendChild(h("p", { class: "editkind__hint editkind__refused small", role: "status", text: state.refused })); }
     }
     cards.forEach(function (c) {
@@ -673,12 +676,6 @@
     picker.read = function () {
       var e = entryOf(state.kind);
       return { kind: state.kind, options: state.options.concat(e && e.sources && state.source ? [state.source] : []) };
-    };
-    // 選んだ選び方の、送る前に確かめる一言（取り込んだページを「主役にして組み直す」。見た目が変わる）
-    picker.confirm = function () {
-      var e = entryOf(state.kind);
-      var o = e && e.options.filter(function (x) { return x.value === state.options[0]; })[0];
-      return (o && o.confirm) || "";
     };
     // 出せる札が 1 つだけなら、はじめから選んでおく
     var only = cards.length === 1 ? cards[0].id : null;
@@ -813,7 +810,6 @@
     }
     box.__sync = function () { grow(); sync(); };
     box.__kind = function () { return kind.read(); };
-    box.__confirm = function () { return kind.confirm ? kind.confirm() : ""; };
     box.__resetKind = function () { kind.reset(); };
     // 見出しの対象が変わったとき（並べ替えで番号が動いた・選び方が変わった）の読み上げの名前
     box.__target = function (text) { ta.setAttribute("aria-label", text + " " + words.section_label); };
@@ -3150,9 +3146,9 @@
       }
 
       // ---- 修正指示を送る（結線）----
-      // **1 ページはそのまま生成に入る。スライド全体は枚数を見せて確認を 1 つ挟む**（利用者の決定）。
-      // 確認に見せた枚数をそのまま `confirm_pages` に echo するので、見せた数と実際の対象が
-      // 食い違ったらサーバが 1 枚も投げない。1 ページのときは echo しない。
+      // **どれも、送る前に確かめる窓は出さずにそのまま生成に入る**（直しは版が 1 つ進むだけで、前の版に戻せる）。
+      // スライド全体は、画面が見せている枚数（板の見出しに出ている）をそのまま `confirm_pages` に echo するので、
+      // 見せた数と実際の対象が食い違ったらサーバが 1 枚も投げない。1 ページのときは echo しない。
       //
       // 断られたら**入力を消さない**（書いた文と添付を失わせない）。消すのは受け付けられたときだけ。
       // 送っている間はその器を押せなくする（連打で画像づくりが 2 本走らない）。
@@ -3239,8 +3235,6 @@
         // 直しを頼んだら、前の「更新」の印は外す（次に版が上がったら、また付く）
         var verEl = nodes[slideId] && nodes[slideId].article.querySelector(".page__ver--new");
         if (verEl) { verEl.classList.remove("page__ver--new"); verEl.textContent = "v" + verEl.dataset.version; }
-        var sure = box.__confirm ? box.__confirm() : "";
-        if (sure && !SS.confirm(sure)) { return; }
         var n = nodes[slideId];
         // 土台にする版は「いま映している版」。採用で動くので、送る瞬間の値を照合に渡す
         // （画面が映していた版とサーバが土台にする版が違っていたら、サーバが断る）
@@ -3258,15 +3252,12 @@
       };
       ctx.submitDeck = function (box, btn) {
         var read = readBox(box);
-        var words = instructionWords();
-        var shown = order.length;   // **画面が見せている枚数**。確認にもこの数を出す
+        // 送る前に確かめる窓は出さない（何ページに効くかは、板の見出し「デッキ全体（N ページ）」に出ている。直しは前の版に戻せる）。
+        // **画面が見せている枚数**はそのまま渡す（ほかの場所で枚数が変わっていたら、サーバが断る）
+        var shown = order.length;
         var body = { scope: "deck", edit_mode: read.edit_mode, text: read.text,
                      attachments: read.attachments, kind: read.kind, options: read.options, lock_version: lockVersion };
-        if (shown >= 2) {
-          var t = read.edit_mode === "remake" ? words.remake_confirm : words.minor_confirm;
-          if (!SS.confirm(String(t || "").replace("{n}", String(shown)))) { return; }
-          body.confirm_pages = shown;   // 見せた枚数をそのまま echo する
-        }
+        if (shown >= 2) { body.confirm_pages = shown; }
         postInstruction(box, btn, body);
       };
 

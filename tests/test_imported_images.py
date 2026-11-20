@@ -2,7 +2,7 @@
 
 - 画像: 空いた所に足す（渡した画像か生成した画像）・差し替える（同じ枠のまま中身だけ）・主役にして組み直す（型のページ）
 - 図解: 空いた所に足す（SVG の図）・主役にして組み直す（図解の型）
-- 「差し替える」はページに画像があるときだけ画面が出す。組み直すは送る前に確かめる一言を持つ
+- 「差し替える」はページに画像があるときだけ画面が出す。組み直すは、選び方の下に出す一言（note）を持つ（確かめる窓は出さない）
 本物のエンジン（html-slide）と偽物の台本係・偽物の Codex で通す。
 """
 
@@ -67,7 +67,7 @@ class UnitTests(unittest.TestCase):
         self.assertEqual([i["image"] for i in out], [{"svg": "<svg/>"}, {"path": "attachments/new.png"}])
         self.assertEqual((out[1]["x"], out[1]["y"], out[1]["w"], out[1]["h"]), (1100, 288, 740, 576))
 
-    def test_imported_kinds_ways_and_confirmation(self) -> None:
+    def test_imported_kinds_ways_and_the_note(self) -> None:
         kinds = {k["kind"]: k for k in edit_kinds.offered_for_imported("presentation", can_generate=True)}
         self.assertEqual([o["value"] for o in kinds["image"]["options"]], ["add", "replace", "main"])
         # 見せ方を変える: 取り込んだページでも型を選ぶ（その型のページに組み直す）。空いた所に図を足すのは「絵や写真を足す」の札で選ぶ
@@ -80,6 +80,9 @@ class UnitTests(unittest.TestCase):
                          edit_kinds.DIAGRAM_OTHER_REQUIRED)
         self.assertIsNone(edit_kinds.missing("diagram", ["add"], text="", attachments=0, imported=True))
         self.assertTrue(next(o for o in kinds["image"]["options"] if o["value"] == "replace")["needs_picture"])
+        main = next(o for o in kinds["image"]["options"] if o["value"] == "main")
+        self.assertIn("組み直します", main["note"])
+        self.assertNotIn("confirm", main, "送る前に確かめる窓は出さない（選び方の下の一言にする）")
         self.assertFalse(any("attachment_reason" in o for o in kinds["image"]["options"]), "生成できれば画像は要らない")
         no_codex = {k["kind"]: k for k in edit_kinds.offered_for_imported("presentation", can_generate=False)}
         self.assertTrue(all("attachment_reason" in o for o in no_codex["image"]["options"] if o["value"] != "main"))

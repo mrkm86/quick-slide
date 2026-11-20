@@ -194,9 +194,9 @@ IMPORTED_DIAGRAM_LEAD = "選んだ型のページに組み直します。"
 IMPORTED_DIAGRAM_ADD = "図を足す"
 # 取り込んだページの画像・図解の選び方（docs/adr/0015）。差し替えるは、ページに画像があるときだけ画面が出す
 IMPORTED_WAYS = (("add", "空いた所に足す"), ("replace", "差し替える"), ("main", "主役にして組み直す"))
-REBUILD_CONFIRM = "このページは、元の見た目から型の見た目に組み直します（元の文字は見出しや中身として載せ直します）。よろしいですか？"
-# 取り込んだページの「見せ方を変える」に、型の札の下へ小さく出す一言
-REBUILD_NOTE = "元の見た目から、選んだ型の見た目に組み直します（元の文字は見出しや中身として載せ直します）。前の版にはいつでも戻せます。"
+# 元の見た目が型の見た目に変わる選び方（画像を「主役にして組み直す」・「見せ方を変える」の型）に、札の下へ小さく出す一言
+# （送る前に確かめる窓は出さない。前の版に戻せる）
+REBUILD_NOTE = "元の見た目から型の見た目に組み直します（元の文字は見出しや中身として載せ直します）。前の版にはいつでも戻せます。"
 IMPORTED_ATTACHMENT_REQUIRED = "この機械では画像を生成できません。「＋」から画像を渡してください。"
 IMPORTED_GENERATE_WITH_ATTACHMENT = "渡した画像があります。生成するときは、渡した画像を外してください。"
 
@@ -213,7 +213,7 @@ def offered_for_imported(mode: str, *, can_generate: bool = True) -> list[dict[s
             if v in values:
                 o: dict[str, Any] = {"value": v, "label": label}
                 if v == "main":
-                    o["confirm"] = REBUILD_CONFIRM
+                    o["note"] = REBUILD_NOTE
                 if v == "replace":
                     o["needs_picture"] = True
                 if attach:
