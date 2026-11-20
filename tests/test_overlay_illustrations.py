@@ -215,6 +215,11 @@ class FreeSpaceTests(unittest.TestCase):
         self.assertEqual(worker_edit._picture_fit({"fit": "cover"}, boxes, on_slot), "cover", "指示で頼まれたら替えられる")
         self.assertEqual(worker_edit._picture_fit({"fit": "contain"}, boxes, off), "contain")
         self.assertEqual(worker_edit._picture_fit({"fit": "stretch"}, boxes, on_slot), "contain", "知らない値は使わない")
+        # 差し替えても、置き方は前のまま（置き場に収めた画像は、収めたまま）
+        kept = worker_edit._replace_overlay([{"image": {"path": "a.png"}, **on_slot, "fit": "contain"}], 0, "b.png")
+        self.assertEqual((kept[0]["image"]["path"], kept[0]["fit"]), ("b.png", "contain"))
+        drawn = worker_edit._replace_overlay([{"image": {"svg": "<svg/>"}, **on_slot}], 0, "b.png")
+        self.assertEqual(drawn[0]["fit"], "cover", "置き方を持たなかったもの（挿絵・図）を画像に替えたら、切り抜いて置く")
 
     def test_the_prompt_tells_the_slot(self) -> None:
         from pathlib import Path

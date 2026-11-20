@@ -948,8 +948,10 @@ def _replaceable(page: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _replace_overlay(items: list[Any], index: int, src: str) -> list[Any]:
-    """重ねたものの `index` 番目の中身を替え、その下に大半が隠れていた重ねたものを取り除く。"""
-    items[index] = {**{k: v for k, v in items[index].items() if k not in ("image", "fit")}, "image": {"path": src}, "fit": "cover"}
+    """重ねたものの `index` 番目の中身を替え、その下に大半が隠れていた重ねたものを取り除く。置き方（fit）は前のまま
+    （置き場に全体が見えるように収めた画像を替えても、収めたまま。前に置き方を持たないもの＝挿絵・図は、切り抜いて置く）。"""
+    fit = items[index].get("fit") if items[index].get("fit") in ("cover", "contain") else "cover"
+    items[index] = {**{k: v for k, v in items[index].items() if k not in ("image", "fit")}, "image": {"path": src}, "fit": fit}
     box = _box_of(items[index])
     return [it for j, it in enumerate(items) if j == index or not isinstance(it, dict) or not _mostly_under(_box_of(it), [box])]
 
