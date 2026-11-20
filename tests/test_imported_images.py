@@ -72,7 +72,9 @@ class UnitTests(unittest.TestCase):
         self.assertEqual([o["value"] for o in kinds["image"]["options"]], ["add", "replace", "main"])
         self.assertEqual([o["value"] for o in kinds["diagram"]["options"]], ["add", "main"])
         self.assertTrue(next(o for o in kinds["image"]["options"] if o["value"] == "replace")["needs_picture"])
-        self.assertIn("組み直します", next(o for o in kinds["diagram"]["options"] if o["value"] == "main")["confirm"])
+        main = next(o for o in kinds["diagram"]["options"] if o["value"] == "main")
+        self.assertIn("組み直します", main["note"])
+        self.assertNotIn("confirm", main, "送る前に確かめる窓は出さない（選び方の下の一言にする）")
         self.assertFalse(any("attachment_reason" in o for o in kinds["image"]["options"]), "生成できれば画像は要らない")
         no_codex = {k["kind"]: k for k in edit_kinds.offered_for_imported("presentation", can_generate=False)}
         self.assertTrue(all("attachment_reason" in o for o in no_codex["image"]["options"] if o["value"] != "main"))

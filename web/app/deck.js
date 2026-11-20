@@ -402,6 +402,10 @@
         extra.appendChild(h("p", { class: "editkind__hint small",
           text: "「＋」から画像を渡してください。貼り付け・ドラッグや、画像の URL の貼り付けでも渡せます。" }));
       }
+      // 選んだ選び方の一言（取り込んだページを「主役にして組み直す」と見た目が変わる、など）。送る前に確かめる窓は出さず、
+      // 選んだ所に小さく出す（直しは版が 1 つ進むだけで、前の版に戻せる）
+      var chosen = e.options.filter(function (x) { return x.value === state.options[0]; })[0];
+      if (chosen && chosen.note) { extra.appendChild(h("p", { class: "editkind__hint editkind__note small", text: chosen.note })); }
     }
     kinds.forEach(function (k) {
       var b = h("button", { class: "chip editkind__kind", type: "button", "aria-pressed": "false", dataset: { kind: k.kind } },
@@ -412,12 +416,6 @@
       row.appendChild(b);
     });
     picker.read = function () { return { kind: state.kind, options: state.options.slice() }; };
-    // 選んだ選び方の、送る前に確かめる一言（取り込んだページを「主役にして組み直す」。見た目が変わる）
-    picker.confirm = function () {
-      var e = entryOf(state.kind);
-      var o = e && e.options.filter(function (x) { return x.value === state.options[0]; })[0];
-      return (o && o.confirm) || "";
-    };
     // 出せる種類が 1 つだけなら、はじめから選んでおく
     var only = kinds.length === 1 ? kinds[0].kind : null;
     picker.reset = function () { state.kind = only; state.options = []; paint(); };
@@ -544,7 +542,6 @@
     }
     box.__sync = function () { grow(); sync(); };
     box.__kind = function () { return kind.read(); };
-    box.__confirm = function () { return kind.confirm ? kind.confirm() : ""; };
     box.__resetKind = function () { kind.reset(); };
     // 見出しの対象が変わったとき（並べ替えで番号が動いた・選び方が変わった）の読み上げの名前
     box.__target = function (text) { ta.setAttribute("aria-label", text + " " + words.section_label); };
@@ -2807,8 +2804,6 @@
         // 直しを頼んだら、前の「更新」の印は外す（次に版が上がったら、また付く）
         var verEl = nodes[slideId] && nodes[slideId].article.querySelector(".page__ver--new");
         if (verEl) { verEl.classList.remove("page__ver--new"); verEl.textContent = "v" + verEl.dataset.version; }
-        var sure = box.__confirm ? box.__confirm() : "";
-        if (sure && !SS.confirm(sure)) { return; }
         var n = nodes[slideId];
         // 土台にする版は「いま映している版」。採用で動くので、送る瞬間の値を照合に渡す
         // （画面が映していた版とサーバが土台にする版が違っていたら、サーバが断る）
@@ -2826,15 +2821,12 @@
       };
       ctx.submitDeck = function (box, btn) {
         var read = readBox(box);
-        var words = instructionWords();
-        var shown = order.length;   // **画面が見せている枚数**。確認にもこの数を出す
+        // 送る前に確かめる窓は出さない（何ページに効くかは、板の見出し「デッキ全体（N ページ）」に出ている。直しは前の版に戻せる）。
+        // **画面が見せている枚数**はそのまま渡す（ほかの場所で枚数が変わっていたら、サーバが断る）
+        var shown = order.length;
         var body = { scope: "deck", edit_mode: read.edit_mode, text: read.text,
                      attachments: read.attachments, kind: read.kind, options: read.options, lock_version: lockVersion };
-        if (shown >= 2) {
-          var t = read.edit_mode === "remake" ? words.remake_confirm : words.minor_confirm;
-          if (!SS.confirm(String(t || "").replace("{n}", String(shown)))) { return; }
-          body.confirm_pages = shown;   // 見せた枚数をそのまま echo する
-        }
+        if (shown >= 2) { body.confirm_pages = shown; }
         postInstruction(box, btn, body);
       };
 

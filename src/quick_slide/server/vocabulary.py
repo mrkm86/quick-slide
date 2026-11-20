@@ -141,8 +141,6 @@ MINOR_NEEDS_A_PICTURE_REASON = (f"絵ができていないページは「{EDIT_M
 
 # 修正指示の欄の固定ラベル。`{n}` だけは画面が数を入れる
 INSTRUCTION_WORDS: dict[str, str] = {
-    "remake_confirm": "{n}ページを作り直します。よろしいですか？",
-    "minor_confirm": "{n}ページを直します。よろしいですか？",
     "generate_label": "画像づくりを始める",
     "attach_hint": "画像は「＋」、ドラッグ&ドロップ、貼り付け（⌘V）で渡せます。画像の URL を貼り付けても取り込みます",
     "section_label": "修正指示",
