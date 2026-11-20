@@ -188,6 +188,20 @@ INSERT_WORDS: dict[str, str] = {
     "empty_reason": INSERT_TEXT_REQUIRED_REASON,
 }
 
+# 直す板の 2 つの直し方（docs/adr/0036-direct-text-edits.md）。「自分で直す」は文字を人が書き換える（台本係は通らない）
+TEXT_EDIT_WORDS: dict[str, str] = {
+    "tabs_label": "直し方",
+    "tab_self": "自分で直す",
+    "tab_ai": "AI に頼む",
+    "loading": "文字を読み込んでいます…",
+    "save": "保存して描き直す",
+    "saving": "保存して描き直しています…",
+    "note": "位置・色・大きさは変わりません。文字が箱からはみ出したら、描き直したあとでページに知らせが出ます。",
+    "saved": "受け付けました。確かめて、描き直しています。",
+    "failed": "書き換えられませんでした。文字は元のままです。",
+    "load_failed": "文字を読み込めませんでした。板を閉じて、もう一度開いてください。",
+}
+
 # ごみ箱からの完全削除。確認の窓は出さず、ボタンがその場で 2 段になる
 PURGE_WORDS: dict[str, str] = {
     "confirm": "本当に削除する",
@@ -395,6 +409,7 @@ def vocabulary(kind_refusals: Mapping[str, str] | None = None) -> dict[str, Any]
         "export": EXPORT_WORDS,
         "purge": PURGE_WORDS,
         "insert": dict(INSERT_WORDS),
+        "text_edit": dict(TEXT_EDIT_WORDS),
         "not_ready": NOT_READY_REASON,
         "source": "src/quick_slide/server/vocabulary.py",
     }
