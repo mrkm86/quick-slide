@@ -49,6 +49,99 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(edit_kinds.offered_for_imported("pitch"), [])
 
 
+def _box(x, y, w, h, inner, *, justify="flex-start", pad="7.2px 14.4px 7.2px 14.4px"):
+    return (f'<div style="position:absolute;left:0;top:0;width:0;height:0"><div style="position:absolute;left:{x}px;top:{y}px;'
+            f'width:{w}px;height:{h}px;padding:{pad};display:flex;flex-direction:column;justify-content:{justify}">{inner}</div></div>')
+
+
+def _para(text, size=48, align="left"):
+    return (f'<div style="margin:0px 0 16px 0;text-align:{align};font-size:{size}px;line-height:1.2;white-space:pre-wrap;flex:none">'
+            f'<span style="font-size:{size}px">{text}</span></div>')
+
+
+class FreeSpaceTests(unittest.TestCase):
+    """空いている所は、文字の箱の大きさでなく、文字が実際に占める範囲で見る（docs/adr/0038-overlay-free-space.md）。"""
+
+    def test_a_tall_text_box_with_three_lines_is_tightened(self) -> None:
+        html = _box(115, 230, 1685, 691, _para("短い 1 行目") + _para("短い 2 行目") + _para("短い 3 行目"))
+        (b,) = ILL.page_boxes(html)
+        self.assertEqual((b["kind"], b["x"], b["y"]), ("文字", 115, 230))
+        self.assertLess(b["h"], 300, "3 行ぶんの高さに詰まる（箱は 691）")
+        self.assertLess(b["w"], 600, "折り返さない行は、横も詰まる（箱は 1685）")
+
+    def test_wrapped_text_keeps_the_width_and_counts_the_lines(self) -> None:
+        html = _box(100, 200, 500, 800, _para("あ" * 30))   # 48px × 30 字 = 1440px。内側 471px に 4 行（余裕を見て）
+        (b,) = ILL.page_boxes(html)
+        self.assertEqual(b["w"], 500, "折り返す箱の横は詰めない")
+        self.assertTrue(4 * 57 < b["h"] < 400, b)
+
+    def test_the_anchor_follows_the_alignment(self) -> None:
+        (b,) = ILL.page_boxes(_box(100, 200, 1000, 600, _para("下にそろえる"), justify="flex-end"))
+        self.assertGreater(b["y"], 600, "下そろえの箱は、下の端に詰まる")
+        self.assertEqual(b["y"] + b["h"], 800)
+        (b,) = ILL.page_boxes(_box(100, 200, 1000, 600, _para("真ん中", align="center"), justify="center"))
+        self.assertAlmostEqual(b["x"] + b["w"] / 2, 600, delta=2)
+        self.assertAlmostEqual(b["y"] + b["h"] / 2, 500, delta=2)
+
+    def test_boxes_that_cannot_be_estimated_stay_as_they_are(self) -> None:
+        table = ('<div style="position:absolute;left:0;top:0;width:0;height:0"><table style="position:absolute;left:100px;top:200px;'
+                 'width:900px;height:500px"><tr><td>表の文字</td></tr></table></div>')
+        (b,) = ILL.page_boxes(table)
+        self.assertEqual((b["x"], b["y"], b["w"], b["h"]), (100, 200, 900, 500))
+        loose = _box(100, 200, 900, 500, "段落の外の文字")
+        (b,) = ILL.page_boxes(loose)
+        self.assertEqual((b["w"], b["h"]), (900, 500), "段落として読めない箱は、箱の大きさのまま")
+
+    def test_a_labelled_frame_becomes_a_slot(self) -> None:
+        frame = ('<div style="position:absolute;left:0;top:0;width:0;height:0"><div style="position:absolute;left:1152px;top:245px;'
+                 'width:648px;height:634px;background:#dde6ec"></div></div>')
+        for label in ("（製品の写真）", "画像", "Photo", "【イメージ】"):
+            boxes = ILL.page_boxes(frame + _box(1152, 520, 648, 86, _para(label, 26, "center")))
+            self.assertEqual([(b["kind"], b["x"], b["y"], b["w"], b["h"]) for b in boxes], [("置き場", 1152, 245, 648, 634)], label)
+            self.assertEqual(boxes[0]["label"], label, "印の文字を控える（絵を置いたら消す）")
+        # 枠が無く、印の箱そのものが大きければ、それが置き場
+        boxes = ILL.page_boxes(_box(1152, 245, 648, 634, _para("写真", 26, "center"), justify="center"))
+        self.assertEqual([(b["kind"], b["w"], b["h"]) for b in boxes], [("置き場", 648, 634)])
+        # ふつうの文は印にしない
+        boxes = ILL.page_boxes(frame + _box(1152, 520, 648, 86, _para("写真で見る導入の事例", 26)))
+        self.assertEqual([b["kind"] for b in boxes], ["図形", "文字"])
+
+    def test_the_label_is_cleared_when_a_picture_lands_on_the_slot(self) -> None:
+        from quick_slide.worker import edit as worker_edit
+
+        frame = ('<div style="position:absolute;left:0;top:0;width:0;height:0"><div style="position:absolute;left:1152px;top:245px;'
+                 'width:648px;height:634px;background:#dde6ec"></div></div>')
+        html = frame + _box(1152, 520, 648, 86, _para("（製品の写真）", 26, "center")) + _box(100, 200, 800, 300, _para("本文の（製品の写真）"))
+        boxes = ILL.page_boxes(html)
+        on_slot = {"x": 1200, "y": 300, "w": 500, "h": 500}
+        self.assertEqual(ILL.slot_under(boxes, on_slot)["label"], "（製品の写真）")
+        self.assertIsNone(ILL.slot_under(boxes, {"x": 100, "y": 600, "w": 300, "h": 300}))
+        data = {"slides": [{"id": "p-001", "type": "html", "html": html}]}
+        item = {"image": {"path": "attachments/a.png"}, **on_slot}
+        got = worker_edit._add_overlay(data, "p-001", item, worker_edit._slot_label(boxes, on_slot))["slides"][0]
+        self.assertNotIn(">（製品の写真）<", got["html"], "置き場の印は消す")
+        self.assertIn("本文の（製品の写真）", got["html"], "本文の同じ言葉は消さない")
+        self.assertEqual(len(got["illustrations"]), 1)
+        kept = worker_edit._add_overlay(data, "p-001", item, "")["slides"][0]
+        self.assertIn(">（製品の写真）<", kept["html"], "置き場でない所に置いたら、何も消さない")
+
+    def test_the_prompt_tells_the_slot(self) -> None:
+        from pathlib import Path
+
+        from quick_slide.writer import prompt as P
+
+        root = Path(__file__).resolve().parent.parent / "skills"
+        boxes = [{"x": 1152, "y": 245, "w": 648, "h": 634, "kind": "置き場", "text": ""}]
+        args = {"mode": "presentation", "images": True}
+        page = {"id": "p-001", "position": 1, "title": "商品紹介"}
+        text = P.build_overlay_prompt(args, page=page, boxes=boxes, instruction="", what="image", skills_dir=root, generate=True)
+        self.assertIn("置き場: x=1152 y=245 幅=648 高さ=634", text)
+        self.assertIn("置き場があれば、画像はその枠に置く", text)
+        plain = P.build_overlay_prompt(args, page=page, boxes=[{**boxes[0], "kind": "図形"}], instruction="", what="image",
+                                       skills_dir=root, generate=True)
+        self.assertNotIn("置き場があれば", plain)
+
+
 class EndToEndTests(unittest.TestCase):
     def test_an_illustration_is_laid_over_an_imported_page(self) -> None:
         why = html_slide_ready()
