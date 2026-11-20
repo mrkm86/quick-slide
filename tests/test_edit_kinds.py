@@ -37,12 +37,51 @@ class OfferedTests(unittest.TestCase):
         """「画像を使わない」は作るときだけの指定。直しでは機械（Codex の有無）だけで決まる（docs/adr/0010）。"""
         self.assertIn("image", [k["kind"] for k in E.offered("presentation", can_generate=False)])
 
-    def test_generate_is_hidden_without_codex(self) -> None:
-        def sources(can: bool) -> list[str]:
+    def test_generate_is_shown_but_disabled_without_codex(self) -> None:
+        """作れない機械でも「作ってもらう」は消さない（作れることがあると分かるように）。押せない選択肢と理由で出す。"""
+        def sources(can: bool) -> list[tuple[str, bool]]:
             image = next(k for k in E.offered("presentation", can_generate=can) if k["kind"] == "image")
-            return [o["value"] for o in image["options"]]
-        self.assertEqual(sources(True), ["generate", "attached"])
-        self.assertEqual(sources(False), ["attached"])
+            return [(o["value"], bool(o.get("disabled"))) for o in image["options"]]
+        self.assertEqual(sources(True), [("generate", False), ("attached", False)])
+        self.assertEqual(sources(False), [("generate", True), ("attached", False)])
+        image = next(k for k in E.offered("presentation", can_generate=False) if k["kind"] == "image")
+        self.assertEqual(image["options"][0]["reason"], E.GENERATE_UNAVAILABLE)
+        self.assertEqual(E.parse("presentation", "image", None, can_generate=False), ("image", ["attached"]), "既定は押せる先頭")
+        with self.assertRaises(ValueError) as cm:
+            E.parse("presentation", "image", ["generate"], can_generate=False)
+        self.assertEqual(str(cm.exception), E.GENERATE_UNAVAILABLE)
+
+    def test_other_diagram_shapes_are_written_in_words(self) -> None:
+        """図の形は数が多いので、札に無い形は「その他」を選んで書いて伝える（文が要る）。"""
+        diagram = next(k for k in E.offered("pitch", can_generate=True) if k["kind"] == "diagram")
+        other = diagram["options"][-1]
+        self.assertEqual((other["value"], other["text_reason"]), ("other", E.DIAGRAM_OTHER_REQUIRED))
+        self.assertTrue(other["placeholder"])
+        miss = lambda text: E.missing("diagram", ["other"], text=text, attachments=0)  # noqa: E731
+        self.assertEqual(miss(""), E.DIAGRAM_OTHER_REQUIRED)
+        self.assertEqual(miss("  "), E.DIAGRAM_OTHER_REQUIRED)
+        self.assertIsNone(miss("3 つの輪が重なる図"))
+        self.assertIsNone(E.missing("diagram", ["flow"], text="", attachments=0), "ほかの形は選ぶだけで送れる")
+        self.assertIn("指示の文に書かれたとおり", "\n".join(E.direction("presentation", "diagram", ["other"])))
+        self.assertEqual(E.summary("diagram", ["other"]), "図解（その他）")
+        no_codex = next(k for k in E.offered("presentation", can_generate=False) if k["kind"] == "image")
+        self.assertEqual(no_codex["options"][0]["note"], "現在利用できません")
+
+    def test_three_cards_by_how_much_the_page_changes(self) -> None:
+        """札は 3 つ（文字を整える・絵や写真を足す・見せ方を変える）。種類は 4 つのままで、挿絵と画像が同じ札に入る。
+        版の控えの名前（図解 など）は変えない。"""
+        for mode, imported in (("presentation", False), ("pitch", False), ("presentation", True)):
+            kinds = E.offered_for_imported(mode) if imported else E.offered(mode, can_generate=True)
+            self.assertEqual([(k["kind"], k["card"], k["card_label"]) for k in kinds],
+                             [("text", "text", "文字を整える"), ("diagram", "layout", "見せ方を変える"),
+                              ("illustration", "visual", "絵や写真を足す"), ("image", "visual", "絵や写真を足す")])
+            self.assertTrue(all(k["card_brief"] for k in kinds))
+            self.assertEqual({k["card_step"] for k in kinds if k["card"] == "visual"}, {"どんな絵にしますか"})
+        self.assertEqual(E.summary("image", ["generate"]), "画像（生成する）")
+        shapes = [o["label"] for k in E.offered("pitch", can_generate=True) if k["kind"] == "diagram" for o in k["options"]]
+        self.assertEqual(shapes, ["おまかせ", "流れ", "関係", "比較", "前と後", "数字", "その他（書いて伝える）"])
+        self.assertIn("前と後", E.shape_words("presentation", "before_after"))
+        self.assertEqual(E.summary("diagram", ["before_after"]), "図解（前と後）")
 
     def test_parse_checks_kind_and_options(self) -> None:
         self.assertEqual(E.parse("pitch", None, None, can_generate=True), (None, []))
@@ -210,7 +249,7 @@ class ImagesFollowTheMachineTests(unittest.TestCase):
         from quick_slide.writer import jlint
         from quick_slide.writer import prompt as P
         shapes = lambda mode, gen: [o["value"] for e in E.offered(mode, can_generate=gen) if e["kind"] == "diagram" for o in e["options"]]
-        self.assertEqual(shapes("presentation", True)[-1], "picture")
+        self.assertEqual(shapes("presentation", True)[-2:], ["picture", "other"], "その他（書いて伝える）はいつも最後")
         for mode, gen in (("presentation", False), ("pitch", True), ("motion", True)):
             self.assertNotIn("picture", shapes(mode, gen), (mode, gen))
         self.assertEqual(E.parse("presentation", "diagram", ["picture"], can_generate=True), ("diagram", ["picture"]))
@@ -348,6 +387,7 @@ class EditKindApiTests(EditBase):
             return self.fx.post(f"/api/decks/{deck}/instructions", {"scope": "page", "slide_id": sid, "text": "", **body})
 
         cases = (({"kind": "text"}, "text_required"), ({"kind": "image", "options": ["attached"]}, "attachment_required"),
+                 ({"kind": "diagram", "options": ["other"]}, "text_required"),   # 見せ方の「その他」は、文が要る
                  ({"kind": "nazo"}, "edit_kind_invalid"), ({"kind": "diagram", "options": ["nazo"]}, "edit_kind_invalid"),
                  ({"options": ["flow"]}, "edit_kind_invalid"))
         for body, code in cases:

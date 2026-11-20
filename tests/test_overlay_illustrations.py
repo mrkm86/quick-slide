@@ -253,7 +253,7 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual([k["kind"] for k in view["imported_edit_kinds"]], ["text", "diagram", "illustration", "image"])
         sid = view["pages"][0]["slide_id"]
         url = f"/api/decks/{deck}/instructions"
-        for body in ({"scope": "page", "slide_id": sid, "text": "", "kind": "image", "options": ["generate"]},
+        for body in ({"scope": "page", "slide_id": sid, "text": "", "kind": "image", "options": ["flow"]},
                      {"scope": "pages", "slide_ids": [sid], "text": "", "kind": "illustration"}):
             r = fx.post(url, body)
             self.assertEqual((r.status, r.json()["error"]["code"]), (409, "imported_page"), body)

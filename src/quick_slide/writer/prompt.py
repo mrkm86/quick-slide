@@ -711,7 +711,8 @@ def build_replace_prompt(*, page: dict[str, Any], images: list[dict[str, Any]], 
 
 def build_rebuild_prompt(engine: Engine, args: dict[str, Any], *, page: dict[str, Any], texts: list[str], what: str,
                          picture: str | None, generate: bool, instruction: str, skills_dir: Path,
-                         previous: dict[str, Any] | str | None = None, problems: list[str] | None = None) -> str:
+                         previous: dict[str, Any] | str | None = None, problems: list[str] | None = None,
+                         shape: str | None = None) -> str:
     """取り込んだページを、画像か図解を主役にした型のページに組み直す（docs/adr/0015）。見た目は型のものに変わる。
 
     `texts` はページの文字（元の言葉の材料）。`picture` は利用者が渡した画像の相対パス（画像を主役にするとき）。"""
@@ -726,6 +727,8 @@ def build_rebuild_prompt(engine: Engine, args: dict[str, Any], *, page: dict[str
     else:
         lead = ("中身に合う図解にする（自由なページ free で中身に合う形に組むか、形の決まっている型"
                 "（table・bar-chart・line-chart・layers・hub・matrix・timeline など）にする）")
+        if shape:   # 利用者が選んだ型（`edit_kinds.shape_words` の 1 行。docs/adr/0037-ask-ai-cards.md）
+            lead += f"。利用者が選んだ見せ方: {shape}"
     out = [
         "# あなたの仕事",
         "",

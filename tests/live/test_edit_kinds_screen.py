@@ -1,10 +1,10 @@
-"""直すときの「何を直しますか？」を**本物のブラウザ**で使う（docs/adr/0008-edit-kinds.md）。
+"""直す板の「AI に頼む」の札を**本物のブラウザ**で使う（docs/adr/0008-edit-kinds.md・docs/adr/0037-ask-ai-cards.md）。
 
-ピッチの 1 冊（偽物の台本係・本物の image-slide・絵は偽物の codex）の 2 枚目の「直す」を開くと、欄の上に
-文字・図解・挿絵・画像の札（アイコンつき）と「？」の説明が出る。絵のあるページには「今の絵をもとに直す」の切り替えが出る。
-図解を選ぶと選び方が出て、書かなくても送れる。送った直しの種類と選び方がサーバに届く。送っても欄は閉じず、ページの絵に「編集中」の札が出る。
-‹ › で前後のページへ送れる（元のスライドの強調もついてくる）。
-画像の「渡した画像を入れる」は、画像を渡すまで送れない。画像の URL を欄に貼り付けると取り込みを試みる。JavaScript の例外が 1 つも出ないこと。
+ピッチの 1 冊（偽物の台本係・本物の image-slide・絵は偽物の codex）の 2 枚目の「直す」を開くと、「どう直しますか？」に
+札が 3 つ出る（文字を整える・絵や写真を足す・見せ方を変える。絵と名前と一言）。札を選ぶと、ほかの札は薄くなり、名前だけの
+小さな札に畳まれて、次に選ぶものが絵の札で出る。「絵や写真を足す」は線のイラスト・写真や絵を生成・手持ちの画像を使うから選ぶ。
+「見せ方を変える」は型を選び、書かなくても送れる。「その他」は書かないと送れない。送った種類と選び方がサーバに届く。
+送っても欄は閉じず、ページの絵に「編集中」の札が出る。‹ › で前後のページへ送れる。JavaScript の例外が 1 つも出ないこと。
 
 Chrome が無い環境では skip する。
 """
@@ -26,13 +26,22 @@ from quick_slide.settings import Settings, WorkerSettings  # noqa: E402
 
 from . import browser  # noqa: E402
 
-KINDS = "Array.from(document.querySelectorAll('.panel.is-open .editkind__kind')).map(b => b.textContent)"
-OPTIONS = "Array.from(document.querySelectorAll('.panel.is-open .editkind__option')).map(b => b.textContent)"
-SEND = "document.querySelector('.panel.is-open .editbox__send')"
+P = ".panel.is-open "
+CARDS = f"Array.from(document.querySelectorAll('{P}.editkind__kind')).map(b => b.querySelector('.editkind__name').textContent)"
+STEPS = f"Array.from(document.querySelectorAll('{P}.editkind__step')).map(p => p.textContent)"
+OPTIONS = f"Array.from(document.querySelectorAll('{P}.editkind__option')).map(b => b.querySelector('.editkind__option-name').textContent)"
+PRESSED = (f"Array.from(document.querySelectorAll('{P}.editkind__option[aria-pressed=true]'))"
+           ".map(b => b.querySelector('.editkind__option-name').textContent)")
+SEND = f"document.querySelector('{P}.editbox__send')"
 
 
-def click_text(selector: str, label: str) -> str:
-    return f"Array.from(document.querySelectorAll({selector!r})).find(b => b.textContent === {label!r}).click()"
+def click_card(card: str) -> str:
+    return f"document.querySelector('{P}.editkind__kind[data-card={card}]').click()"
+
+
+def click_option(label: str) -> str:
+    return (f"Array.from(document.querySelectorAll('{P}.editkind__option'))"
+            f".find(b => b.querySelector('.editkind__option-name').textContent === {label!r}).click()")
 
 
 class EditKindsScreenTest(unittest.TestCase):
@@ -52,7 +61,7 @@ class EditKindsScreenTest(unittest.TestCase):
         from quick_slide.server.edit_routes import can_generate_images
         return can_generate_images(self.fx.server)
 
-    def test_pick_a_kind_and_send_without_writing(self) -> None:
+    def test_pick_a_card_and_send_without_writing(self) -> None:
         r = self.fx.post("/api/intakes", intake_payload(runtime="codex", mode="pitch"))
         self.assertEqual(r.status, 201, r.body)
         deck = r.json()["deck_id"]
@@ -61,33 +70,65 @@ class EditKindsScreenTest(unittest.TestCase):
         page = self.br.open(f"{self.fx.base_url}/slides/{deck}")
         page.until("document.querySelectorAll('.pages article.page .frame img').length >= 2", seconds=30, what="ページの絵")
         page.eval("document.querySelectorAll('.pages article.page .page__edit')[1].click()")
-        page.until("!!document.querySelector('.panel.is-open .editkind')", what="何を直しますか？")
-        self.assertEqual(page.eval(KINDS), ["文字", "図解", "挿絵", "画像"])
+        page.until(f"!!document.querySelector('{P}.editkind')", what="どう直しますか？")
+        self.assertEqual(page.eval(f"document.querySelector('{P}.editkind__q').textContent"), "どう直しますか？")
+        self.assertEqual(page.eval(CARDS), ["文字を整える", "絵や写真を足す", "見せ方を変える"], "変わる大きさの小さい順")
+        self.assertEqual(page.eval(f"document.querySelectorAll('{P}.editkind__kind .kart').length"), 3, "どの札にも絵")
+        self.assertEqual(page.eval(f"document.querySelectorAll('{P}.editkind .help-tip').length"), 0, "「？」の説明は置かない")
         self.assertTrue(page.eval(SEND + ".disabled"), "何も選ばず書かなければ送れない")
-        # 「？」を押すと、このスライドで出す種類の説明が出る
-        page.eval("document.querySelector('.panel.is-open .editkind .help-tip summary').click()")
-        self.assertIn("挿絵:", page.eval("document.querySelector('.panel.is-open .editkind .help-tip__panel').textContent"))
-        page.eval("document.querySelector('.panel.is-open .editkind .help-tip summary').click()")
         # 絵のあるページは「今の絵をもとに直す」の切り替え（既定はオン）。オフにすると作り直す
-        self.assertTrue(page.eval("!document.querySelector('.panel.is-open .editbox__keep').hidden"))
-        self.assertTrue(page.eval("document.querySelector('.panel.is-open .editbox__keep input').checked"))
-        page.eval("document.querySelector('.panel.is-open .editbox__keep input').click()")
-        self.assertTrue(page.eval("document.querySelector('.panel.is-open .editbox__remake-box').checked"), "オフは作り直す")
-        page.eval("document.querySelector('.panel.is-open .editbox__keep input').click()")
-        self.assertFalse(page.eval("document.querySelector('.panel.is-open .editbox__remake-box').checked"))
+        self.assertTrue(page.eval(f"!document.querySelector('{P}.editbox__keep').hidden"))
+        self.assertTrue(page.eval(f"document.querySelector('{P}.editbox__keep input').checked"))
+        page.eval(f"document.querySelector('{P}.editbox__keep input').click()")
+        self.assertTrue(page.eval(f"document.querySelector('{P}.editbox__remake-box').checked"), "オフは作り直す")
+        page.eval(f"document.querySelector('{P}.editbox__keep input').click()")
+        self.assertFalse(page.eval(f"document.querySelector('{P}.editbox__remake-box').checked"))
 
-        # 図解: 選び方が出て、先頭（おまかせ）が選ばれている。書かなくても送れる
-        page.eval(click_text(".panel.is-open .editkind__kind", "図解"))
-        self.assertEqual(page.eval(OPTIONS), ["おまかせ", "流れ", "関係", "比較", "数字"])
-        self.assertEqual(page.eval("document.querySelector('.panel.is-open .editkind__option[aria-pressed=true]').textContent"),
-                         "おまかせ")
-        self.assertFalse(page.eval(SEND + ".disabled"), "図解は選ぶだけで送れる")
+        # 見せ方を変える: ほかの札は薄くなり、札は畳まれ、型の札が絵つきで出る。先頭（おまかせ）が選ばれていて、書かなくても送れる
+        page.eval(click_card("layout"))
+        self.assertTrue(page.eval(f"document.querySelector('{P}.editkind').classList.contains('editkind--picked')"))
+        self.assertEqual(page.eval(f"Array.from(document.querySelectorAll('{P}.editkind__kind.is-dim')).map(b => b.dataset.card)"),
+                         ["text", "visual"])
+        self.assertEqual(page.eval(STEPS), ["どの型にしますか"])
+        self.assertEqual(page.eval(OPTIONS), ["おまかせ", "流れ", "関係", "比較", "前と後", "数字", "その他（書いて伝える）"])
+        self.assertEqual(page.eval(f"document.querySelectorAll('{P}.editkind__option svg.oart').length"), 7, "どの選択肢にも絵")
+        self.assertEqual(page.eval(PRESSED), ["おまかせ"])
+        self.assertFalse(page.eval(SEND + ".disabled"), "型は選ぶだけで送れる")
+        # その他: 書かないと送れない。欄の案内が変わる
+        page.eval(click_option("その他（書いて伝える）"))
+        self.assertTrue(page.eval(SEND + ".disabled"))
+        self.assertIn("見せ方", page.eval(f"document.querySelector('{P}textarea').placeholder"))
+        page.eval(click_option("流れ"))
+        self.assertEqual(page.eval(f"Array.from(document.querySelectorAll('{P}.editkind__option.is-dim')).length"), 6, "選んでいない型は薄い")
+        # キーボードで選んでも、焦点は選んだ札に残る（札は選ぶたびに作り直すので、同じ札へ戻す）
+        page.eval(f"Array.from(document.querySelectorAll('{P}.editkind__option')).find(b => b.dataset.key === 'diagram:compare').focus()")
+        page.eval("document.activeElement.click()")
+        self.assertEqual(page.eval("document.activeElement.dataset.key"), "diagram:compare")
+        self.assertEqual(page.eval("document.activeElement.getAttribute('aria-pressed')"), "true")
+        page.eval(click_option("流れ"))
+        # 書く欄と送るボタンは、選ぶ所が短くても板の下の端にある
+        gap = page.eval(f"(function(){{ var p = document.querySelector('.panel.is-open').getBoundingClientRect(),"
+                        f" i = document.querySelector('{P}.editbox__input').getBoundingClientRect(); return Math.round(p.bottom - i.bottom); }})()")
+        self.assertLess(abs(gap), 40, "書く欄は板の下の端に留まる")
+        # 非表示のページの欄は、板の中でも出さない（下の端に留める並べ方が、隠す決まりを上書きしない）
+        shown = (f"getComputedStyle(document.querySelector('{P}.panel__slot .editbox')).display")
+        self.assertNotEqual(page.eval(shown), "none")
+        page.eval(f"document.querySelector('{P}.panel__slot .page-tools').classList.add('page-tools--hidden')")
+        self.assertEqual(page.eval(shown), "none")
+        page.eval(f"document.querySelector('{P}.panel__slot .page-tools').classList.remove('page-tools--hidden')")
 
-        # 画像 → 渡した画像を入れる: 画像を渡すまでは送れない（入口は「＋」の 1 つ。案内を小さく出す）
-        page.eval(click_text(".panel.is-open .editkind__kind", "画像"))
-        self.assertEqual(page.eval(OPTIONS), ["生成する", "渡した画像を入れる"] if self.can_generate() else ["渡した画像を入れる"])
-        page.eval(click_text(".panel.is-open .editkind__option", "渡した画像を入れる"))
-        self.assertIn("「＋」", page.eval("document.querySelector('.panel.is-open .editkind__hint').textContent"))
+        # 絵や写真を足す: 線のイラスト・写真や絵を生成・手持ちの画像を使う。既定は線のイラスト（生成の要らないもの）
+        page.eval(click_card("visual"))
+        self.assertEqual(page.eval(STEPS), ["どんな絵にしますか"])
+        self.assertEqual(page.eval(OPTIONS), ["線のイラスト", "写真・絵を生成", "手持ちの画像を使う"])
+        self.assertEqual(page.eval(PRESSED), ["線のイラスト"])
+        self.assertFalse(page.eval(SEND + ".disabled"))
+        if not self.can_generate():
+            self.assertEqual(page.eval(f"document.querySelector('{P}.editkind__option[aria-disabled=true] .editkind__option-note').textContent"),
+                             "現在利用できません")
+        # 手持ちの画像を使う: 画像を渡すまでは送れない（入口は「＋」の 1 つ。案内を小さく出す）
+        page.eval(click_option("手持ちの画像を使う"))
+        self.assertIn("「＋」", page.eval(f"document.querySelector('{P}.editkind__hint').textContent"))
         self.assertTrue(page.eval(SEND + ".disabled"), "画像を渡すまでは送れない")
         # 画像の URL を欄に貼り付けると取り込みを試みる。自機の URL は取り込まず、文字のまま残して理由を小さく出す
         page.eval("(function(){ var ta = document.querySelector('.panel.is-open textarea'); ta.focus();"
@@ -97,10 +138,12 @@ class EditKindsScreenTest(unittest.TestCase):
                           " return n && n.textContent.indexOf('取り込めませんでした') >= 0 && n.textContent; })()",
                           what="URL を取り込めなかった知らせ")
         self.assertIn("公開", note)
+        page.eval("(function(){ var ta = document.querySelector('.panel.is-open textarea'); ta.value = '';"
+                  " ta.dispatchEvent(new Event('input', {bubbles: true})); })()")
 
-        # 図解の流れを選んで送る
-        page.eval(click_text(".panel.is-open .editkind__kind", "図解"))
-        page.eval(click_text(".panel.is-open .editkind__option", "流れ"))
+        # 見せ方を変える → 流れ を選んで送る
+        page.eval(click_card("layout"))
+        page.eval(click_option("流れ"))
         page.eval(SEND + ".click()")
         # 1 ページの直しは、送っても欄を閉じない。文は出さず、ページの絵の上に「編集中」（か「編集待ち」）の札が出る
         page.until("!!document.querySelector('.pages article.page.page--editing .frame .edit-badge')", seconds=20, what="ページの札")
@@ -108,6 +151,7 @@ class EditKindsScreenTest(unittest.TestCase):
                       ("編集中", "編集待ち"))
         self.assertEqual(page.eval("document.querySelector('.panel.is-open .editbox__said').textContent"), "", "送れたら文は出さない")
         self.assertEqual(page.eval("document.querySelectorAll('.panel.is-open .editkind__kind[aria-pressed=true]').length"), 0)
+        self.assertFalse(page.eval(f"document.querySelector('{P}.editkind').classList.contains('editkind--picked')"), "送ったら札は元の大きさに戻る")
         # ‹ › で前後のページへ送る。元のスライドの強調もついてくる
         self.assertIn("2 / ", page.eval("document.querySelector('.panel__target').textContent"))
         page.eval("document.querySelector('.panel .panel__step[aria-label=\"次のページを直す\"]').click()")
