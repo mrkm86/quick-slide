@@ -769,7 +769,9 @@
       var reason = "";
       var picked = kind.read(), entry = kind.entry();
       // 取り込んだページで画像を渡したら、出どころを「手持ちの画像を使う」に寄せる（渡した画像は、そのまま入れる画像になる）
-      if (entry && entry.sources && counted() && kind.pickSource("attached")) { picked = kind.read(); }
+      // （型のページは「空いた所に足す」のときだけ。「ページを組み直して入れる」では、渡した画像を参考にして生成できる）
+      if (entry && entry.sources && counted() && (entry.attach_is_picture || picked.options[0] === "add")
+          && kind.pickSource("attached")) { picked = kind.read(); }
       var source = kind.source(), chosen = kind.option();
       if (att.over) { reason = words.too_many_attachments_reason; }
       else if (text.length > textLimit) { reason = words.text_too_long_reason; }

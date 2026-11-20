@@ -633,6 +633,7 @@ def build_html(script_path, out_dir, theme=None, mode=None, placeholder=False, s
                         still=(mode == "handout"), image_look=image_look,   # 配る資料は動きなし（読む・直す・PDF にする用）
                         gen_dir=gen_dir, look=sty["look"])
             parts, chrome = T.build_slide(s)
+            parts += T.overlay_parts(s)   # ページに重ねる絵（どの型にも。型の中身の上・下の文字やページ番号の下）
             if s.chars and not s.chars_used:
                 img_warns.append(f"{no}枚目（{spec['type']}）: _characters を描き込まなかった（絵で描く図解の枠には、キャラを描かない）"
                                  if s.chars_skipped else

@@ -84,6 +84,7 @@ deck "steps: false の1枚は step 0（talk は1つ）" steps_false
 deck "talk の数が段の数と合わなければ rc=2・省けば空" talk_mismatch
 deck "未知の型は rc=2" unknown_type
 deck "未知のキーは rc=2" unknown_key
+deck "overlays: どの型のページにも絵を重ねる（型の中身は変えない・座標と画像の検査は rc=2）" overlays
 deck "必須の欠け・数の範囲・値の型は rc=2" missing_required
 deck "写真の URL は rc=2" photo_url
 deck "photo の全面の hide_text は画像だけの扉絵（見出しはページの名前・出典は右下）・左右には使えない" photo_image_only

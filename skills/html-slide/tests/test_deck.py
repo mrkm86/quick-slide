@@ -3308,6 +3308,45 @@ def case_diagram_labels():
         expect_error(fig(image), "dl-bad", word)
 
 
+def case_overlays():
+    """どの型のページにも、絵を重ねられる（`overlays`。ADR 0032）。型の中身は変えず、ページの座標に画像を置く。"""
+    base = {"type": "bullets", "headline": "箇条書きに絵を重ねる", "items": ["一つ目", "二つ目"], "steps": False}
+    ok = one({**base, "overlays": [{"x": 1200, "y": 400, "w": 520, "h": 360, "image": {"path": "assets/meeting.png"}, "fit": "contain"},
+                                   {"x": 1300, "y": 800, "w": 200, "h": 120, "image": {"path": "assets/calendar.png"}}]}, [""])
+    html_path, _ = build(ok, "overlays_ok")
+    html = html_path.read_text(encoding="utf-8")
+    assert html.count('data-name="重ねた絵"') == 1, "重ねた絵は 1 つの入れ物にまとめる"
+    assert "left:1200px;top:400px;width:520px;height:360px;object-fit:contain" in html
+    assert "left:1300px;top:800px;width:200px;height:120px;object-fit:cover" in html, "fit を省けば cover"
+    assert html.index("一つ目") < html.index('data-name="重ねた絵"'), "型の中身の上に重ねる"
+    plain, _ = build(one(base, [""]), "overlays_none")
+    assert "重ねた絵" not in plain.read_text(encoding="utf-8")
+    # 重ねても、型の中身の組み方（見出しの大きさ・中身の広げ方）は 1 文字も変わらない。違いは、重ねた絵の入れ物だけ
+    for kind in ({"type": "big-number", "headline": "見出しは 1 行", "value": "31", "unit": "種", "label": "型"},
+                 {"type": "cards", "headline": "カードの見出し", "items": [{"title": "一", "body": "あ"}, {"title": "二", "body": "い"}]},
+                 base):
+        page = {**kind, "steps": False}
+        without = build(one(page, [""]), "overlays_same_a")[0].read_text(encoding="utf-8")
+        with_it = build(one({**page, "overlays": [{"x": 1300, "y": 800, "w": 200, "h": 120, "image": {"path": "assets/calendar.png"}}]},
+                            [""]), "overlays_same_b")[0].read_text(encoding="utf-8")
+        cut = re.sub(r'\s*<div style="position:absolute;left:0;top:0;width:0;height:0" data-name="重ねた絵">.*?</div>', "", with_it)
+        assert cut.replace("overlays_same_b", "overlays_same_a") == without, f"{kind['type']}: 重ねたら、型の中身が変わった"
+    # 表のページにも置ける（型を選ばない）
+    table = one({"type": "table", "headline": "表に重ねる", "columns": ["観点", "A"], "rows": [["速さ", "速い"]], "steps": False,
+                 "overlays": [{"x": 1300, "y": 700, "w": 400, "h": 240, "image": {"path": "assets/meeting.png"}}]}, [""])
+    assert "重ねた絵" in build(table, "overlays_table")[0].read_text(encoding="utf-8")
+    item = {"x": 1200, "y": 400, "w": 520, "h": 360, "image": {"path": "assets/meeting.png"}}
+    bad = (({"overlays": {"x": 1}}, "配列"), ({"overlays": [{**item, "z": 1}]}, "知らないキー"),
+           ({"overlays": [{**item, "x": "左"}]}, "数で書く"), ({"overlays": [{**item, "w": 10}]}, "40 以上"),
+           ({"overlays": [{**item, "x": 1700}]}, "はみ出している"), ({"overlays": [{**item, "fit": "stretch"}]}, "cover か contain"),
+           ({"overlays": [{**item, "image": {"prompt": "生成"}}]}, "持ち込みの画像"),
+           ({"overlays": [{**item, "image": {"path": "https://example.com/a.png"}}]}, "URL"),
+           ({"overlays": [{**item, "image": {"path": "assets/none.png"}}]}, "画像が無い"),
+           ({"overlays": [item] * 9}, "8 個まで"))
+    for i, (extra, word) in enumerate(bad):
+        expect_error(one({**base, **extra}, [""]), f"overlays_bad_{i}", word)
+
+
 CASES = {k[5:]: v for k, v in globals().items() if k.startswith("case_")}
 
 

@@ -31,6 +31,7 @@ IMPORTED_TYPE = "html"     # 取り込んだページの型（エンジンの im
 _NOT_CONTENT = {"type", "talk", "transition", "steps", "fx", "id", "role", "image", "_visual", "_characters", "_layout",
                 "layout", "split", "side", "text_side", "tone", "fit", "widths", "focus", "accent", "highlight",
                 "current", "arrow", "value_labels", "min", "max", "x", "y", "trend", "initials", "path", "prompt", "alt",
+                "overlays",
                 *_MARKS}
 
 # 構成（会話で合意したページ割り）の見出し: `## 3. 会議の4割は何も決めずに終わっている`

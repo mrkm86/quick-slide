@@ -35,7 +35,7 @@ VISIBLE_KEYS = frozenset({
 })
 # 表示しない（台本のキーのうち、文字ではないもの）。`TYPES` の全キーはどちらかに入っている（試験で確かめる）
 HIDDEN_KEYS = frozenset({
-    "type", "id", "talk", "transition", "steps", "fx", "image", "layout", "text_side", "tone", "motif", "split", "hide_text",
+    "type", "id", "talk", "transition", "steps", "fx", "image", "overlays", "layout", "text_side", "tone", "motif", "split", "hide_text",
     "highlight", "current", "accent", "reference", "arrow", "max", "min", "widths", "align", "dim_rows", "fit", "value_labels", "focus", "takeaway_icon", "label_style",
 })
 # 一番外では表示しない（章の ID）が、入れ子の中では表示する（team の members[].role は肩書き）

@@ -346,6 +346,30 @@ def page_boxes(html: str) -> list[dict[str, Any]]:
     return out
 
 
+MADE_OVERLAY_KEY = "overlays"   # 型のページ（取り込んでいないページ）に重ねる絵。エンジンが描く（html-slide の ADR 0032）
+MADE_OVERLAY_MAX = 8
+
+
+def part_boxes(slide: dict[str, Any]) -> list[dict[str, Any]]:
+    """型のページの箱（{x, y, w, h, kind: 文字・画像・図形, text}）。エンジンが描いた結果の部品（`parts/<ページ>.json` の
+    `slide`）から作る。位置は描いた結果そのものなので、見積もりではない。ページ全体を覆う地・ごく小さい飾りは除く。"""
+    out = []
+    for p in slide.get("prims") or []:
+        r = p.get("rect") if isinstance(p, dict) else None
+        if not isinstance(r, dict):
+            continue
+        try:
+            x, y, w, h = (float(r[k]) for k in ("x", "y", "w", "h"))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if w < 8 or h < 8 or (w >= PAGE_W * 0.95 and h >= PAGE_H * 0.95):
+            continue
+        kind = {"text": "文字", "img": "画像"}.get(p.get("type"), "図形")
+        text = "".join(str(run.get("text") or "") for run in p.get("runs") or [] if isinstance(run, dict))[:80] if kind == "文字" else ""
+        out.append({"x": round(x), "y": round(y), "w": round(w), "h": round(h), "kind": kind, "text": text})
+    return out
+
+
 def slot_under(boxes: list[dict[str, Any]], box: dict[str, Any]) -> dict[str, Any] | None:
     """重ねる箱が載る置き場（箱の真ん中が置き場の中にあるもの）。無ければ None。"""
     cx, cy = box["x"] + box["w"] / 2, box["y"] + box["h"] / 2

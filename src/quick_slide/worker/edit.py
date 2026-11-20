@@ -46,6 +46,7 @@ from ..scriptdoc import (
     IMPORTED_TYPE,
     HIDDEN_KEY,
     PIN_KEY,
+    content_sha,
     deep,
     dumps,
     engine_view,
@@ -599,6 +600,15 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
             return _rebuild_imported(ctx, job, run, req, data, key, positions[key], what="diagram",
                                      shape=edit_kinds.shape_words("presentation", option))
         return _imported_text(ctx, job, run, req, data, key, positions[key])
+    # 型のページ（取り込んでいないページ）の「絵や写真を足す → 空いた所に足す」: 型の中身は変えずに、空いている所へ重ねる
+    # （docs/adr/0039-add-pictures-to-made-pages.md）。1 ページを指した直しだけ。「ページを組み直して入れる」は下の今までの道
+    made_add = (engine.mode == "presentation" and template is None and not one_page(args) and len(keys) == 1
+                and req.get("scope") == "page" and page_types.get(keys[0]) != IMPORTED_TYPE
+                and req.get("kind") in ("illustration", "image") and (req.get("options") or [None])[0] == "add")
+    if made_add:
+        if req.get("kind") == "illustration":
+            return _overlay(ctx, job, run, req, data, keys[0], positions[keys[0]])
+        return _overlay_image(ctx, job, run, req, data, keys[0], positions[keys[0]])
     rels, paths = _attachments(ctx, deck_id, req.get("attachments") or [])
     # 指示に書かれたページの本文の画像（頼まれたときだけ。台本の path に書ける。docs/adr/0016）
     page_pics = _page_pictures(ctx, deck_id, engine, req)
@@ -730,6 +740,13 @@ def _add_overlay(other: dict[str, Any], key: str, item: dict[str, Any]) -> dict[
     out = deep(other)
     for s in slides_of(out):
         if str(s.get("id")) == key:
+            if s.get("type") != IMPORTED_TYPE:
+                # 型のページ: エンジンが描く `overlays` に足す（型の中身は変えない。docs/adr/0039-add-pictures-to-made-pages.md）
+                laid = s.get(ILL.MADE_OVERLAY_KEY) or []
+                if len(laid) >= ILL.MADE_OVERLAY_MAX:
+                    raise EditRefused(f"1 ページに重ねられる絵は {ILL.MADE_OVERLAY_MAX} 個までです。前の版に戻すか、ページを分けてください。")
+                s[ILL.MADE_OVERLAY_KEY] = [*laid, item]
+                continue
             s[ILL.OVERLAY_KEY] = [*(s.get(ILL.OVERLAY_KEY) or []), item]
             if isinstance(s.get("html"), str):
                 s["html"] = ILL.clear_slot_label(s["html"], item)
@@ -746,9 +763,35 @@ def _answer(answer: Any) -> dict[str, Any] | None:
 JSON_NG = "NG: 返したものが JSON のオブジェクト 1 つではなかった。決まった形の JSON オブジェクトだけを返す"
 
 
-def _page_boxes(page: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """(台本係に渡す箱, 重ねてはいけない箱)。箱は元のページの HTML から拾ったものに、前に重ねた挿絵・図解・画像を足す
-    （重ねたものはページの `illustrations` にあり、HTML にはまだ無い）。重ねてはいけないのは、文字の箱と重ねたもの。"""
+MADE_NOT_DRAWN = ("このページは、いまの中身でまだ描き終えていないので、空いている所が分かりません。"
+                  "描き終わってから、もう一度頼んでください。")
+
+
+def _made_boxes(ctx: Context, run: dict[str, Any], page: dict[str, Any]) -> list[dict[str, Any]]:
+    """型のページ（取り込んでいないページ）の箱。画面に見せている回が描いた結果の部品から作る。その回が描いたのが、いまの
+    台本のこのページと同じ中身のときだけ使う（違えば、位置がずれているので断る）。"""
+    key = str(page.get("id"))
+    shown = ctx.call(ctx.store.shown_run, run["deck_id"])
+    if shown is None:
+        raise EditRefused(MADE_NOT_DRAWN)
+    drawn = next((p for p in ctx.call(ctx.store.run_pages, shown["id"]) if p["key"] == key), None)
+    if drawn is None or drawn.get("content_sha256") != content_sha(page):
+        raise EditRefused(MADE_NOT_DRAWN)
+    part = W.load_part(ctx.root.run_dir(run["deck_id"], shown["id"]), key)
+    if part is None:
+        raise EditRefused(MADE_NOT_DRAWN)
+    return ILL.part_boxes(part["slide"])
+
+
+def _page_boxes(ctx: Context, run: dict[str, Any], page: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """(台本係に渡す箱, 重ねてはいけない箱)。重ねてはいけないのは、文字の箱と、前に重ねたもの。
+
+    - 取り込んだページ: 元のページの HTML から拾った箱に、前に重ねた挿絵・図解・画像を足す（重ねたものはページの
+      `illustrations` にあり、HTML にはまだ無い）
+    - 型のページ: 描いた結果の部品から作る（前に重ねたものも、描いた結果に画像として入っている）"""
+    if page.get("type") != IMPORTED_TYPE:
+        boxes = _made_boxes(ctx, run, page)
+        return boxes, [b for b in boxes if b["kind"] in ("文字", "画像")]
     boxes = ILL.page_boxes(page.get("html") or "")
     laid = [{"x": int(it.get("x") or 0), "y": int(it.get("y") or 0), "w": int(it.get("w") or 0), "h": int(it.get("h") or 0),
              "kind": "重ねた絵", "text": ""} for it in page.get(ILL.OVERLAY_KEY) or [] if isinstance(it, dict)]
@@ -857,13 +900,14 @@ def _overlay_image(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: 
                    key: str, position: int):
     """取り込んだページの空いた所に、渡した画像か生成した画像を重ねる（docs/adr/0015）。"""
     page = next(s for s in slides_of(data) if str(s.get("id")) == key)
-    boxes, texts = _page_boxes(page)
+    boxes, texts = _page_boxes(ctx, run, page)
+    imported = page.get("type") == IMPORTED_TYPE
     rel, path, generate = _picture_source(ctx, run, req)
     aspect = _aspect(path)
     target = {"id": key, "position": position, "title": headline_of(page)}
 
     def build(previous, problems):
-        return build_overlay_prompt(run["args"], page=target, boxes=boxes, instruction=req.get("text") or "", what="image",
+        return build_overlay_prompt(run["args"], page=target, boxes=boxes, imported=imported, instruction=req.get("text") or "", what="image",
                                     aspect=aspect, generate=generate, skills_dir=ctx.tools.skills_dir,
                                     previous=previous, problems=problems)
 
@@ -1031,12 +1075,13 @@ def _overlay(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[s
     """取り込んだページに挿絵（か図解）を 1 つ重ねる。台本係が空いている場所・大きさ・SVG を決め、ページの
     `illustrations` に足す（描く前にサーバが PNG にしてページの HTML に重ねる。元の文字・図形・画像は変えない）。"""
     page = next(s for s in slides_of(data) if str(s.get("id")) == key)
-    boxes, texts = _page_boxes(page)
+    boxes, texts = _page_boxes(ctx, run, page)
+    imported = page.get("type") == IMPORTED_TYPE
     instruction = req.get("text") or ""
     target = {"id": key, "position": position, "title": headline_of(page)}
 
     def build(previous, problems):
-        return build_overlay_prompt(run["args"], page=target, boxes=boxes, instruction=instruction, what=what,
+        return build_overlay_prompt(run["args"], page=target, boxes=boxes, imported=imported, instruction=instruction, what=what,
                                     skills_dir=ctx.tools.skills_dir, previous=previous, problems=problems)
 
     def parse_and_apply(answer):
