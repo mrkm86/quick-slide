@@ -204,6 +204,9 @@ def parse_revision(answer: Any, *, script: dict[str, Any], targets: list[str], p
     return patch
 
 
+OVERLAYS_KEY = "overlays"   # ページに重ねた絵（エンジンの共通のキー。html-slide の ADR 0032）
+
+
 def apply_revision(script: dict[str, Any], patch: Patch) -> dict[str, Any]:
     """指定したページだけを差し替える（分けたページは、そのすぐ後ろに入れる）。ほかのページは同じオブジェクトのまま。"""
     out: list[Any] = []
@@ -219,6 +222,12 @@ def apply_revision(script: dict[str, Any], patch: Patch) -> dict[str, Any]:
             first[REF_KEY] = page[REF_KEY]   # 省略は元の参照を引き継ぐ
         if page.get(HIDDEN_KEY) is True:
             first[HIDDEN_KEY] = True   # 非表示の印は台本係ではなく画面が持つ
+        # 重ねた絵（overlays）は、台本係が書き落としても消さない（省略は引き継ぐ）。外すのは、空の配列を明示したときだけ
+        # （docs/adr/0039-add-pictures-to-made-pages.md）。分けて増えたページには持ち越さない
+        if OVERLAYS_KEY not in first and isinstance(page, dict) and page.get(OVERLAYS_KEY):
+            first[OVERLAYS_KEY] = page[OVERLAYS_KEY]
+        elif first.get(OVERLAYS_KEY) == []:
+            del first[OVERLAYS_KEY]
         # 版の印（_pin）は持ち越さない: 直したページは新しい姿なので、前の版の絵は使わない
         out.append(first)
         out.extend(rest)

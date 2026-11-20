@@ -3342,7 +3342,17 @@ def case_overlays():
            ({"overlays": [{**item, "image": {"prompt": "生成"}}]}, "持ち込みの画像"),
            ({"overlays": [{**item, "image": {"path": "https://example.com/a.png"}}]}, "URL"),
            ({"overlays": [{**item, "image": {"path": "assets/none.png"}}]}, "画像が無い"),
+           ({"overlays": [{**item, "image": {"path": "../outside.png"}}]}, "台本のフォルダの中"),
+           ({"overlays": [{**item, "image": {"path": "/etc/hosts.png"}}]}, "相対パス"),
+           ({"overlays": [{**item, "image": {"path": "C:/pic/a.png"}}]}, "相対パス"),
+           ({"overlays": [{**item, "image": {"path": "assets/link.png"}}]}, "台本のフォルダの中"),
            ({"overlays": [item] * 9}, "8 個まで"))
+    outside = TMP.parent / "html-slide-overlay-outside.png"            # 台本のフォルダの外の画像と、それを指すリンク
+    shutil.copyfile(TMP / "assets" / "meeting.png", outside)
+    shutil.copyfile(outside, TMP.parent / "outside.png")
+    link = TMP / "assets" / "link.png"
+    if not link.exists():
+        os.symlink(outside, link)
     for i, (extra, word) in enumerate(bad):
         expect_error(one({**base, **extra}, [""]), f"overlays_bad_{i}", word)
 

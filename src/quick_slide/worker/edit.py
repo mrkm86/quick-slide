@@ -764,7 +764,7 @@ JSON_NG = "NG: 返したものが JSON のオブジェクト 1 つではなか�
 
 
 MADE_NOT_DRAWN = ("このページは、いまの中身でまだ描き終えていないので、空いている所が分かりません。"
-                  "描き終わってから、もう一度頼んでください。")
+                  "描き終わってから、もう一度頼んでください（先の描き直しが失敗していたら、その理由を直してから）。")
 
 
 def _made_boxes(ctx: Context, run: dict[str, Any], page: dict[str, Any]) -> list[dict[str, Any]]:

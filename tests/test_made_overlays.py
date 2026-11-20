@@ -36,6 +36,35 @@ class UnitTests(unittest.TestCase):
         self.assertEqual([(b["kind"], b["x"], b["y"], b["w"], b["h"], b["text"]) for b in ILL.part_boxes(slide)],
                          [("文字", 120, 146, 960, 80, "見出しの続き"), ("画像", 1200, 300, 600, 400, ""), ("図形", 120, 306, 528, 518, "")])
         self.assertEqual(ILL.part_boxes({}), [])
+        # 全面の写真は箱に残す（その上は空いた所ではない）。ページ全体の地の図形だけを除く
+        full = {"prims": [{"type": "img", "rect": {"x": 0, "y": 0, "w": 1920, "h": 1080}},
+                          {"type": "rect", "rect": {"x": 0, "y": 0, "w": 1920, "h": 1080}},
+                          {"type": "text", "rect": {"x": 120, "y": 800, "w": 900, "h": 80}, "runs": [{"text": "写真の上の文字"}]}]}
+        self.assertEqual([(b["kind"], b["w"], b["h"]) for b in ILL.part_boxes(full)], [("画像", 1920, 1080), ("文字", 900, 80)])
+
+    def test_overlays_survive_a_later_rewrite(self) -> None:
+        """足したあとで台本係がページを直しても、重ねた絵は消えない（書き落としは引き継ぐ。外すのは空の配列を明示したとき）。"""
+        from quick_slide.writer.patch import Patch, PagePatch, apply_revision
+
+        item = {"x": 1200, "y": 400, "w": 400, "h": 300, "image": {"path": "overlays/a.png"}}
+        script = {"slides": [{"id": "p1", "type": "bullets", "headline": "前", "items": ["a"], "overlays": [item]},
+                             {"id": "p2", "type": "bullets", "headline": "ほか", "items": ["b"]}]}
+
+        def revise(new_pages: list[dict]) -> list[dict]:
+            patch = Patch()
+            patch.pages["p1"] = PagePatch(key="p1", route="script", slides=new_pages)
+            return apply_revision(script, patch)["slides"]
+
+        kept = revise([{"id": "p1", "type": "bullets", "headline": "後", "items": ["a"]}])
+        self.assertEqual((kept[0]["headline"], kept[0]["overlays"]), ("後", [item]), "書き落としても引き継ぐ")
+        gone = revise([{"id": "p1", "type": "bullets", "headline": "後", "items": ["a"], "overlays": []}])
+        self.assertNotIn("overlays", gone[0], "空の配列を明示したら外す")
+        moved = {**item, "x": 100}
+        self.assertEqual(revise([{"id": "p1", "type": "bullets", "headline": "後", "items": ["a"], "overlays": [moved]}])[0]["overlays"], [moved])
+        split = revise([{"id": "p1", "type": "bullets", "headline": "後", "items": ["a"]},
+                        {"id": "p1-b", "type": "bullets", "headline": "分けた", "items": ["c"]}])
+        self.assertEqual((split[0]["overlays"], "overlays" in split[1]), ([item], False), "分けて増えたページには持ち越さない")
+        self.assertNotIn("overlays", kept[1])
 
 
 class EndToEndTests(edit_helpers.PresentationEditBase):
@@ -117,6 +146,9 @@ class EndToEndTests(edit_helpers.PresentationEditBase):
             runs = [r for r in (self.fx.store.run(x["id"]) for x in self.fx.store._all(
                 "SELECT id FROM runs WHERE deck_id=? ORDER BY number", (deck,))) if r["id"] != first["id"]]
         self.assertEqual([r["args"].get("edit") for r in runs], ["render", "revise"], "先に描き直し、そのあとで足す")
+        with self.fx.server.store_lock:
+            reasons = [self.fx.store.run_requests(deck)[r["id"]].get("reason") for r in runs]
+        self.assertEqual(reasons[0], "parts")
         self.assertEqual([r["state"] for r in runs], ["done", "done"])
         data, _ = self.head(deck)
         self.assertEqual(len(data["slides"][2]["overlays"]), 1)

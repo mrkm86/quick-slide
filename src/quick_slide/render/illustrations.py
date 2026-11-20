@@ -362,9 +362,10 @@ def part_boxes(slide: dict[str, Any]) -> list[dict[str, Any]]:
             x, y, w, h = (float(r[k]) for k in ("x", "y", "w", "h"))
         except (KeyError, TypeError, ValueError):
             continue
-        if w < 8 or h < 8 or (w >= PAGE_W * 0.95 and h >= PAGE_H * 0.95):
-            continue
         kind = {"text": "文字", "img": "画像"}.get(p.get("type"), "図形")
+        # ページ全体を覆う地の図形と、ごく小さい飾りは除く。全面の写真（画像）は除かない（その上は空いた所ではない）
+        if w < 8 or h < 8 or (kind == "図形" and w >= PAGE_W * 0.95 and h >= PAGE_H * 0.95):
+            continue
         text = "".join(str(run.get("text") or "") for run in p.get("runs") or [] if isinstance(run, dict))[:80] if kind == "文字" else ""
         out.append({"x": round(x), "y": round(y), "w": round(w), "h": round(h), "kind": kind, "text": text})
     return out

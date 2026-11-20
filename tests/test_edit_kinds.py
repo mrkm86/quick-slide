@@ -80,10 +80,15 @@ class OfferedTests(unittest.TestCase):
             self.assertNotIn("note", kinds[kind]["options"][0])
         self.assertEqual([o["value"] for o in kinds["image"]["sources"]], ["generate", "attached"])
         parse = lambda k, o: E.parse("presentation", k, o, can_generate=True)  # noqa: E731
-        self.assertEqual(parse("illustration", None), ("illustration", ["add"]))
-        self.assertEqual(parse("image", None), ("image", ["add"]))
         self.assertEqual(parse("image", ["attached", "main"]), ("image", ["main", "attached"]), "入れ方が先・出どころが後")
-        self.assertEqual(parse("image", ["generate"]), ("image", ["add", "generate"]), "前の画面の送り方（出どころだけ）も受ける")
+        self.assertEqual(parse("image", ["add"]), ("image", ["add"]))
+        # 入れ方を言わない頼み方（前の画面・会話の入口）は、今までの意味のまま（ページを組み直して入れる）
+        self.assertEqual(parse("illustration", None), ("illustration", ["main"]))
+        self.assertEqual(parse("image", None), ("image", ["main"]))
+        self.assertEqual(parse("image", ["generate"]), ("image", ["main", "generate"]))
+        self.assertEqual(parse("image", ["attached"]), ("image", ["main", "attached"]))
+        self.assertEqual(E.parse("presentation", "image", None, can_generate=True, imported=True), ("image", ["add"]),
+                         "取り込んだページの既定は、今までどおり空いた所に足す")
         miss = lambda o, n: E.missing("image", o, text="", attachments=n)  # noqa: E731
         self.assertEqual(miss(["add", "attached"], 0), E.ATTACHMENT_REQUIRED["attached"])
         self.assertEqual(miss(["add", "generate"], 1), E.IMPORTED_GENERATE_WITH_ATTACHMENT, "空いた所に足す生成は、渡した画像を外す")

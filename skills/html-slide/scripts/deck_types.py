@@ -3444,15 +3444,23 @@ def overlay_parts(s: Slide) -> list[str]:
         src = image.get("path") if isinstance(image, dict) and set(image) == {"path"} else None
         if not isinstance(src, str) or not src.strip():
             s.err(f"overlays の {i} 個目: image は {{\"path\": …}}（持ち込みの画像）で書く")
-        if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", src) and not re.match(r"^[a-zA-Z]:\\", src):
+        p = pathlib.Path(src)
+        # 台本のフォルダの中の画像だけ（外を指すパス・絶対パス・外を指すリンクは通さない。書き出しに、関係のないファイルを
+        # 巻き込まない）。実体のパスで確かめる
+        root = s.script_dir.resolve()
+        if p.is_absolute() or re.match(r"^[a-zA-Z]:[\\/]", src) or src.startswith("~"):   # ドライブ（C:/・C:\）も絶対パス
+            s.err(f"overlays の {i} 個目: 画像は、台本のフォルダからの相対パスで書く: {src[:80]}")
+        if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", src):
             s.err(f"overlays の {i} 個目: 画像に URL は使えない（ローカルのファイルを置いてパスで書く）: {src[:80]}")
-        p = pathlib.Path(src).expanduser()
-        p = p if p.is_absolute() else s.script_dir / p
+        p = s.script_dir / p
         ext = p.suffix.lower()
         if ext not in IMAGE_EXTS:
             s.err(f"overlays の {i} 個目: 画像は {' / '.join(IMAGE_EXTS)} のどれか: {p.name}")
         if not p.is_file():
             s.err(f"overlays の {i} 個目: 画像が無い: {p}")
+        real = p.resolve()
+        if real != root and root not in real.parents:
+            s.err(f"overlays の {i} 個目: 画像は、台本のフォルダの中に置く: {src[:80]}")
         name = f"h-{hashlib.sha256(str(p).encode()).hexdigest()[:16]}{'.jpg' if ext == '.jpeg' else ext}"
         if (p, name) not in s.assets:
             s.assets.append((p, name))

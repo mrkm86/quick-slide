@@ -146,7 +146,7 @@ def offered(mode: str, *, can_generate: bool) -> list[dict[str, Any]]:
                          options_label=OPTION_LABELS["shape"])
         elif kind == "illustration" and mode == "presentation":
             # 型のページに絵を足す入れ方（docs/adr/0039-add-pictures-to-made-pages.md）。先頭（既定）は、型の中身を変えずに重ねる
-            entry.update(options=made_ways(), options_label=OPTION_LABELS["way"])
+            entry.update(options=made_ways(), options_label=OPTION_LABELS["way"], default_option="main")
         elif kind == "image":
             entry["options_label"] = OPTION_LABELS["source"]
             # `attachment_reason`: 添えた画像が要る出どころの、画像が無いときの文
@@ -154,7 +154,7 @@ def offered(mode: str, *, can_generate: bool) -> list[dict[str, Any]]:
                 entry["lead"] = IMAGE_LEAD_NO_GENERATE
             if mode == "presentation":
                 # 入れ方を選び、出どころは別に選ぶ（取り込んだページと同じ形。options は [入れ方, 出どころ]）
-                entry.update(options=made_ways(), options_label=OPTION_LABELS["way"],
+                entry.update(options=made_ways(), options_label=OPTION_LABELS["way"], default_option="main",
                              sources=image_sources(can_generate), sources_label=OPTION_LABELS["source"])
             else:
                 entry["options"] = image_sources(can_generate)
@@ -299,7 +299,9 @@ def parse(mode: str, raw_kind: Any, raw_options: Any, *, can_generate: bool, imp
         if len(options) > 1:
             raise ValueError("選択肢は 1 つだけ選んでください。")
         if not options and allowed:
-            first = _first_enabled(entry["options"])
+            # 入れ方を言わない頼み方（前の画面・会話の入口）の既定。型のページの絵・画像は、今までの意味（ページを組み直して入れる）
+            # のまま（`default_option`）。画面は入れ方を必ず送る（画面の既定は先頭＝空いた所に足す）
+            first = entry.get("default_option") or _first_enabled(entry["options"])
             options = [first] if first is not None else []
     return raw_kind, options + picked_sources
 

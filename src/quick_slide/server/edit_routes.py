@@ -203,7 +203,8 @@ def route_instructions(server: "QuickSlideServer", req: "Request") -> "Response"
         # 型のページに「空いた所に足す」: 空いている所は、描いた結果の部品（回の parts）から見る。見せている回にその部品が
         # 無ければ（同梱の見本・部品を控える前に描いた資料）、先にいまの台本を描き直す仕事を 1 つ入れる（docs/adr/0039）
         if (row["mode"] == "presentation" and scope == "page" and not imported and kind in ("illustration", "image")
-                and options[:1] == ["add"] and not _has_part(server, store, deck_id, chosen[0]["slide_id"])):
+                and options[:1] == ["add"] and not _has_part(server, store, deck_id, chosen[0]["slide_id"])
+                and not any(_parts_render(j) for j in store.open_jobs(deck_id))):   # 待っている・走っているものがあれば足さない
             store.create_edit(deck_id, {"op": "render", "source": source, "reason": "parts"})
         result = store.create_edit(deck_id, {
             "op": "revise", "scope": scope, "pages": [p["slide_id"] for p in chosen], "positions": positions,
@@ -212,6 +213,12 @@ def route_instructions(server: "QuickSlideServer", req: "Request") -> "Response"
         })
     what = "スライド全体" if scope == "deck" else f"{_numbers(positions)}ページ"
     return _accepted(server, deck_id, result, f"{what}の直しを受け付けました。直し終えると画面の絵が替わります。")
+
+
+def _parts_render(job: dict[str, Any]) -> bool:
+    """位置の記録（parts）を作るための描き直しの仕事か。"""
+    req = job.get("request") or {}
+    return req.get("op") == "render" and req.get("reason") == "parts"
 
 
 def _has_part(server: "QuickSlideServer", store: Any, deck_id: str, slide_id: str) -> bool:
