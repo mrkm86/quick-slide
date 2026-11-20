@@ -41,8 +41,10 @@ class DeckViewsMixin(StoreBase):
     def deck_card(self, deck_row: dict[str, Any]) -> dict[str, Any]:
         """`decks` の 1 行に、画面のカードに要る派生値を足す。"""
         did = deck_row["id"]
-        brand = self._one("SELECT b.id,b.name FROM brand_revisions br JOIN brands b ON b.id=br.brand_id WHERE br.id=?",
-                          (deck_row["brand_revision_id"],))
+        # ブランドなしのデッキ（取り込んだ資料）は、ブランドを出さない（docs/adr/0035-brandless-decks.md）
+        brand = None if deck_row.get("brandless") else self._one(
+            "SELECT b.id,b.name FROM brand_revisions br JOIN brands b ON b.id=br.brand_id WHERE br.id=?",
+            (deck_row["brand_revision_id"],))
         style = self._one("SELECT t.id,t.name FROM style_revisions tr JOIN styles t ON t.id=tr.style_id WHERE tr.id=?",
                           (deck_row["style_revision_id"],))
         pages = self.deck_page_summary(did)
@@ -130,7 +132,7 @@ class DeckViewsMixin(StoreBase):
             " AND (:pinned IS NULL OR d.pinned=:pinned)"
             " AND (:status IS NULL OR d.status=:status)"
             " AND (:mode IS NULL OR d.mode=:mode)"
-            " AND (:brand IS NULL OR br.brand_id=:brand)"
+            " AND (:brand IS NULL OR (br.brand_id=:brand AND d.brandless=0))"
             " AND (:q IS NULL OR d.title LIKE :q ESCAPE '\\' OR d.subtitle LIKE :q ESCAPE '\\'"
             "      OR d.purpose LIKE :q ESCAPE '\\' OR d.audience LIKE :q ESCAPE '\\'"
             "      OR EXISTS(SELECT 1 FROM deck_tags dt JOIN tags t ON t.id=dt.tag_id WHERE dt.deck_id=d.id AND t.name LIKE :q ESCAPE '\\'))"

@@ -728,6 +728,7 @@ class MigrationTests(unittest.TestCase):
         # 0013 が足した列（デザインテンプレートの控え。旧い行は NULL）は、これまでの列の中身と分けて見る
         for row in after["decks"]:
             self.assertIsNone(row.pop("template_snapshot_id"))
+            self.assertEqual(row.pop("brandless"), 0, "0014 が足した列（ブランドなし）。取り込みでない旧い行は 0")
         self.assertEqual(after, before, "中身はそのまま")
         # モーションの 1 冊・描いた回・HTML の書き出しを受ける。参照（デッキ ← 描いた回 ← 書き出し）も効く
         t = "2026-10-11T00:00:00Z"
