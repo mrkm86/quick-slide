@@ -110,6 +110,12 @@ class EditKindsScreenTest(unittest.TestCase):
         gap = page.eval(f"(function(){{ var p = document.querySelector('.panel.is-open').getBoundingClientRect(),"
                         f" i = document.querySelector('{P}.editbox__input').getBoundingClientRect(); return Math.round(p.bottom - i.bottom); }})()")
         self.assertLess(abs(gap), 40, "書く欄は板の下の端に留まる")
+        # 非表示のページの欄は、板の中でも出さない（下の端に留める並べ方が、隠す決まりを上書きしない）
+        shown = (f"getComputedStyle(document.querySelector('{P}.panel__slot .editbox')).display")
+        self.assertNotEqual(page.eval(shown), "none")
+        page.eval(f"document.querySelector('{P}.panel__slot .page-tools').classList.add('page-tools--hidden')")
+        self.assertEqual(page.eval(shown), "none")
+        page.eval(f"document.querySelector('{P}.panel__slot .page-tools').classList.remove('page-tools--hidden')")
 
         # 絵や写真を足す: 線のイラスト・写真や絵を生成・手持ちの画像を使う。既定は線のイラスト（生成の要らないもの）
         page.eval(click_card("visual"))

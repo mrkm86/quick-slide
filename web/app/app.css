@@ -1513,8 +1513,9 @@ html.is-locked { overflow: hidden; }
 .panel[data-mode="page"] .panel__slot { flex: 1 1 auto; min-height: 0; overflow-y: auto; border-top: 0; padding-top: var(--space-1); padding-bottom: 0; }
 /* 選ぶ所が短いときも、書く欄と送るボタンは板の下の端に置く（欄の入れ物を板の残りの高さまで伸ばし、書く欄を下へ寄せる） */
 .panel[data-mode="page"] .panel__slot:not([hidden]) { display: flex; flex-direction: column; }
-.panel[data-mode="page"] .panel__slot > *, .panel[data-mode="page"] .panel__slot .editbox,
-.panel[data-mode="page"] .panel__slot .editbox fieldset { flex: 1 0 auto; display: flex; flex-direction: column; }
+.panel[data-mode="page"] .panel__slot > *, .panel[data-mode="page"] .panel__slot > :not(.page-tools--hidden) .editbox,
+.panel[data-mode="page"] .panel__slot > :not(.page-tools--hidden) .editbox fieldset { flex: 1 0 auto; display: flex; flex-direction: column; }
+/* 非表示のページの欄は、板に移しても出さない（`.page-tools--hidden .editbox` の決まりを、上の並べ方で上書きしない） */
 .panel[data-mode="page"] .panel__slot .editbox__input { margin-top: auto; flex-direction: row; position: sticky; bottom: 0; padding: var(--space-2) 0 var(--space-3); background: var(--color-surface); }
 .panel[data-mode="page"] .panel__self { border-top: 0; }
 /* 入力の 1 行は下に留める */
