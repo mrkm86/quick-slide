@@ -139,7 +139,8 @@ class _Boxes(HTMLParser):
                 pad = self._PAD.search(style)
                 just = self._JUSTIFY.search(style)
                 # 縦書き（row-reverse）・回した箱・表は、横書きの段落の並びとして見積もれない
-                loose = tag == "table" or "flex-direction:row-reverse" in flat or "transform:" in flat or "writing-mode" in flat
+                loose = (tag == "table" or "flex-direction:row-reverse" in flat or "transform:" in flat or "writing-mode" in flat
+                         or "letter-spacing" in flat)
                 box = {"x": round(x), "y": round(y), "w": round(w), "h": round(h), "kind": "画像" if tag == "img" else "図形",
                        "text": "", "_pad": tuple(max(0.0, v) for v in (self._four(pad.group(1)) if pad else (0.0, 0.0, 0.0, 0.0))),
                        "_justify": just.group(1) if just else "flex-start", "_items": [], "_loose": loose, "_spans": []}
@@ -149,8 +150,9 @@ class _Boxes(HTMLParser):
         else:
             owner = self._owner()
             lh = self._LH.search(style)
-            if owner is not None and ("transform:" in flat or "writing-mode" in flat or tag in ("table", "ul", "ol")):
-                owner["_loose"] = True
+            if owner is not None and ("transform:" in flat or "writing-mode" in flat or "letter-spacing" in flat
+                                      or tag in ("table", "ul", "ol")):
+                owner["_loose"] = True   # 回した文字・縦書き・字間を広げた文字・表は、幅を見積もれない
             if para is None and owner is not None and tag in ("div", "p"):
                 if font and lh:
                     # 段落（字の大きさと行の高さを持つ、絶対配置でない入れ物）。箇条書きは、印と本文を横に並べた入れ物（display:flex）
@@ -253,7 +255,8 @@ def _tight(box: dict[str, Any]) -> dict[str, Any]:
         return out
     top, right, bottom, left = box["_pad"]
     inner = max(1.0, box["w"] - left - right)
-    used_h, reach, wrapped = top + bottom, 0.0, False
+    used_h, wrapped = top + bottom, False
+    leads, widest = [], 0.0   # 段落ごとの左の字下げ（印の幅を含む）・いちばん長い行の幅（字下げを除く）
     for p in items:
         if p["kind"] == "space":
             used_h += p["h"]
@@ -261,27 +264,33 @@ def _tight(box: dict[str, Any]) -> dict[str, Any]:
         # 段落の左の字下げ（margin-left）・1 行目の字下げ（text-indent）・箇条書きの印の幅を、使える幅から引く
         lead = p["ml"] + (BULLET_ALLOWANCE * p["font"] if p["bullet"] else 0.0)
         room = max(p["font"], inner - lead)
+        leads.append(lead)
         lines = 0
         for i, width in enumerate(p["lines"]):
             width = width * TEXT_WIDTH_SLACK + (max(0.0, p["ti"]) if i == 0 else 0.0)
             n = 1 if p["nowrap"] else max(1, -(-int(width) // max(1, int(room))))
             wrapped = wrapped or n > 1
             lines += n
-            reach = max(reach, lead + (width if p["nowrap"] else min(room, width)))
+            widest = max(widest, width if p["nowrap"] else min(room, width))
         used_h += lines * max(p["lh"], p["font"]) + p["mt"] + p["mb"]
     used_h = max(1.0, min(float(box["h"]), used_h + TEXT_EDGE_SLACK))
-    used_w = float(box["w"]) if wrapped else max(1.0, min(float(box["w"]), reach + left + right + TEXT_EDGE_SLACK))
     y = box["y"] + {"center": (box["h"] - used_h) / 2, "flex-end": box["h"] - used_h}.get(box["_justify"], 0.0)
+    out.update(y=round(y), h=round(used_h))
     aligns = {p["align"] for p in paras}
+    lo, hi = min(leads), max(leads)
+    # 横: 文字は、字下げのあとの幅の中でそろう。字下げが段落で違うぶん（hi - lo）は、広いほうに合わせて見込む
+    span = widest + (hi - lo) + TEXT_EDGE_SLACK
+    if wrapped or not (aligns <= {"left", "start"} or aligns == {"center"} or aligns == {"right"}):
+        return out   # 折り返す箱・そろえ方が混ざる箱・両端ぞろえの箱は、横は詰めない
     if aligns == {"center"}:
-        x = box["x"] + (box["w"] - used_w) / 2
+        x = box["x"] + left + lo + (inner - lo) / 2 - span / 2
     elif aligns == {"right"}:
-        x = box["x"] + box["w"] - used_w
-    elif aligns <= {"left", "start"}:
-        x = float(box["x"])
-    else:   # そろえ方が混ざる・両端ぞろえの箱は、横は詰めない
-        x, used_w = float(box["x"]), float(box["w"])
-    out.update(x=round(x), y=round(y), w=round(used_w), h=round(used_h))
+        x = box["x"] + box["w"] - right - span
+    else:   # 左そろえ: 左の端は動かさない（字下げのぶんも箱に含める）
+        x, span = float(box["x"]), left + hi + widest + right + TEXT_EDGE_SLACK
+    x = max(float(box["x"]), x)
+    span = max(1.0, min(box["x"] + box["w"] - x, span))
+    out.update(x=round(x), w=round(span))
     return out
 
 
@@ -289,6 +298,7 @@ def _tight(box: dict[str, Any]) -> dict[str, Any]:
 _SLOT_LABEL = re.compile(r"^[\s（(\[【「]*(?:[^\s（()）\[\]【】「」]{0,6}の)?(?:写真|画像|イメージ|イラスト|photo|image|picture)[\s）)\]】」]*$", re.I)
 SLOT_KIND = "置き場"
 SLOT_MIN_SIDE = 160
+LABEL_COVERED = 0.5   # 絵が印の文字のこの割合より多くを覆ったら、印を消す
 
 
 def _inside(inner: dict[str, Any], outer: dict[str, Any]) -> float:
@@ -327,8 +337,10 @@ def page_boxes(html: str) -> list[dict[str, Any]]:
             continue
         if id(b) in slots:
             lab = slots[id(b)]
+            t = tights[id(lab)]
             out.append({"x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"], "kind": SLOT_KIND, "text": "",
-                        "label": lab["text"], "label_spans": list(lab["_spans"])})
+                        "label": lab["text"], "label_spans": list(lab["_spans"]),
+                        "label_box": {k: t[k] for k in ("x", "y", "w", "h")}})
         else:
             out.append(tights[id(b)])
     return out
@@ -345,7 +357,8 @@ def clear_slot_label(html: str, box: dict[str, Any]) -> str:
     """重ねる箱が置き場に載るなら、その置き場の印の文字（「（製品の写真）」など）をページの HTML から消す（絵の後ろに印が
     残らないように）。消すのは、その置き場の印の文字そのもの（HTML の中の位置で指す）。同じ言葉がほかにあっても消さない。"""
     slot = slot_under(page_boxes(html or ""), box)
-    if slot is None:
+    # 消すのは、絵が印を覆うときだけ（枠の端に小さく置いただけで、見えている印を消さない）
+    if slot is None or _inside(slot["label_box"], box) < LABEL_COVERED:
         return html
     out = html
     for start, end in sorted(slot.get("label_spans") or [], reverse=True):

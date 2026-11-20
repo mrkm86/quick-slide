@@ -120,6 +120,23 @@ class FreeSpaceTests(unittest.TestCase):
         (b,) = ILL.page_boxes(_box(100, 200, 900, 600, bullet))
         self.assertGreaterEqual(b["x"] + b["w"], 100 + 14 + 60 + 72 + 5 * 48, "印と字下げのぶん、右へ届く")
 
+    def test_wide_letter_spacing_is_not_tightened(self) -> None:
+        spaced = ('<div style="margin:0;text-align:left;font-size:40px;line-height:1.2;white-space:pre-wrap;flex:none">'
+                  '<span style="font-size:40px;letter-spacing:24px">AAAAAAAAAAAA</span></div>')
+        (b,) = ILL.page_boxes(_box(100, 200, 900, 300, spaced))
+        self.assertEqual((b["x"], b["w"], b["h"]), (100, 900, 300), "字間を広げた文字の箱は、幅を見積もれないので詰めない")
+
+    def test_centered_and_right_text_with_an_indent(self) -> None:
+        def para(align: str) -> str:
+            return (f'<div style="margin:0;margin-left:300px;text-align:{align};font-size:40px;line-height:1.2;white-space:pre-wrap;flex:none">'
+                    '<span style="font-size:40px">文字</span></div>')
+        (c,) = ILL.page_boxes(_box(100, 200, 900, 300, para("center"), pad="0px"))
+        self.assertAlmostEqual(c["x"] + c["w"] / 2, 100 + 300 + 300, delta=3, msg="字下げのあとの幅（600）の真ん中")
+        self.assertLess(c["w"], 140)
+        (r,) = ILL.page_boxes(_box(100, 200, 900, 300, para("right"), pad="0px"))
+        self.assertEqual(r["x"] + r["w"], 1000, "右の端にそろう")
+        self.assertLess(r["w"], 140)
+
     def test_vertical_and_rotated_boxes_stay_as_they_are(self) -> None:
         vertical = ('<div style="position:absolute;left:0;top:0;width:0;height:0"><div style="position:absolute;left:100px;top:200px;'
                     'width:300px;height:600px;padding:7px;display:flex;flex-direction:row-reverse;justify-content:flex-start">'
@@ -176,6 +193,10 @@ class FreeSpaceTests(unittest.TestCase):
         self.assertEqual(len(got["illustrations"]), 1)
         off = {"image": {"path": "attachments/a.png"}, "x": 100, "y": 850, "w": 300, "h": 200}
         self.assertEqual(worker_edit._add_overlay(data, "p-001", off)["slides"][0]["html"], html, "置き場でない所に置いたら、何も消さない")
+        # 枠の端に小さく置いただけ（印を覆わない）なら、印は消さない
+        edge = {"image": {"path": "attachments/a.png"}, "x": 1640, "y": 250, "w": 160, "h": 160}
+        self.assertIsNotNone(ILL.slot_under(boxes, edge))
+        self.assertEqual(worker_edit._add_overlay(data, "p-001", edge)["slides"][0]["html"], html)
         # 文字参照で書かれた印・タグで分かれた印も、その文字だけを消す
         split = FRAME + _box(1152, 520, 648, 86, '<div style="margin:0;text-align:center;font-size:26px;line-height:1.2;'
                              'white-space:pre-wrap;flex:none"><span>&#65288;製品の</span><span>写真&#65289;</span></div>')
@@ -183,6 +204,17 @@ class FreeSpaceTests(unittest.TestCase):
         cleared = ILL.clear_slot_label(split, on_slot)
         self.assertNotIn("写真", cleared)
         self.assertEqual(cleared.count("<span>"), 2, "タグは壊さない")
+
+    def test_a_picture_on_a_slot_is_shown_whole(self) -> None:
+        from quick_slide.worker import edit as worker_edit
+
+        boxes = ILL.page_boxes(FRAME + _box(1152, 520, 648, 86, _para("（製品の写真）", 26, "center")))
+        on_slot, off = {"x": 1200, "y": 300, "w": 500, "h": 500}, {"x": 100, "y": 300, "w": 500, "h": 500}
+        self.assertEqual(worker_edit._picture_fit({}, boxes, on_slot), "contain", "置き場では、全体が見えるように収める")
+        self.assertEqual(worker_edit._picture_fit({}, boxes, off), "cover", "ほかの空きでは、枠いっぱいに切り抜く")
+        self.assertEqual(worker_edit._picture_fit({"fit": "cover"}, boxes, on_slot), "cover", "指示で頼まれたら替えられる")
+        self.assertEqual(worker_edit._picture_fit({"fit": "contain"}, boxes, off), "contain")
+        self.assertEqual(worker_edit._picture_fit({"fit": "stretch"}, boxes, on_slot), "contain", "知らない値は使わない")
 
     def test_the_prompt_tells_the_slot(self) -> None:
         from pathlib import Path

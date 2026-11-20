@@ -777,6 +777,13 @@ def _overlay_box(answer: Any, texts: list[dict[str, Any]], position: int, what: 
     return got, {k: round(v) for k, v in box.items()}, problems
 
 
+def _picture_fit(got: dict[str, Any], boxes: list[dict[str, Any]], box: dict[str, Any]) -> str:
+    """重ねる画像の置き方。台本係が書いていればそれ（指示で頼まれたとき）。無ければ、置き場に置くなら contain、ほかは cover。"""
+    if got.get("fit") in ("cover", "contain"):
+        return got["fit"]
+    return "contain" if ILL.slot_under(boxes, box) else "cover"
+
+
 def _picture_source(ctx: Context, run: dict[str, Any], req: dict[str, Any]) -> tuple[str | None, Path | None, bool]:
     """画像の出どころ: (渡した画像の台本からの相対パス, その絶対パス, 生成するか)。渡していなければ生成（Codex が要る）。"""
     rels, paths = _attachments(ctx, run["deck_id"], req.get("attachments") or [])
@@ -860,7 +867,9 @@ def _overlay_image(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: 
         if problems:
             return None, problems
         src = rel or _generate_picture(ctx, run, got["prompt"].strip(), portrait=box["h"] > box["w"])
-        item = {"image": {"path": src}, **box, "fit": "cover"}
+        # 置き方: 置き場（写真を入れるための枠）に置くときは、画像の全体が見えるように収める（製品の写真の端を切らない）。
+        # ほかの空きに置くときは、枠いっぱいに切り抜く。指示で頼まれたら、台本係が fit で替えられる
+        item = {"image": {"path": src}, **box, "fit": _picture_fit(got, boxes, box)}
         summary = str(got.get("summary") or "画像を重ねた")[:200]
         return EditResult(data=_add_overlay(data, key, item), plan=RenderPlan(), summary=summary, routes={key: "script"},
                           rebase=lambda other: _add_overlay(other, key, item)), []
