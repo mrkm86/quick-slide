@@ -66,13 +66,19 @@ class NoConfirmScreenTest(unittest.TestCase):
         page.until("document.querySelectorAll('.pages article.page .frame img').length >= 1", seconds=30, what="ページの絵")
         page.eval(TRAP)
         page.eval("document.querySelectorAll('.pages article.page .page__edit')[0].click()")
-        page.until(f"!!document.querySelector('{P}.editkind')", what="何を直しますか？")
-        page.eval(click_text(f"{P}.editkind__kind", "画像"))
-        self.assertEqual(page.eval(f"document.querySelectorAll('{P}.editkind__note').length"), 0, "足す・差し替えるには一言は無い")
-        page.eval(click_text(f"{P}.editkind__option", "主役にして組み直す"))
+        page.until(f"!!document.querySelector('{P}.editkind')", what="どう直しますか？")
+        # 絵や写真を足す → 写真・絵を生成（か、生成できない機械では手持ちの画像）→ 入れ方
+        page.eval(f"document.querySelector('{P}.editkind__kind[data-card=visual]').click()")
+        source = "image:generate" if page.eval(
+            f"!document.querySelector('{P}.editkind__option[data-key=\"image:generate\"]').hasAttribute('aria-disabled')") else "image:attached"
+        page.eval(f"document.querySelector('{P}.editkind__option[data-key=\"{source}\"]').click()")
+        self.assertEqual(page.eval(f"document.querySelectorAll('{P}.editkind__note').length"), 0, "足すには一言は無い")
+        page.eval(f"document.querySelector('{P}.editkind__option[data-key=\"image:main\"]').click()")
         note = page.eval(f"document.querySelector('{P}.editkind__note').textContent")
         self.assertIn("組み直します", note)
         self.assertIn("前の版にはいつでも戻せます", note)
+        if source == "image:attached":
+            self.skipTest("この機械では画像を生成できない（手持ちの画像が要るので、送る所までは見ない）")
         self.assertFalse(page.eval(SEND + ".disabled"))
         page.eval(SEND + ".click()")
         page.until("!!document.querySelector('.pages article.page.page--editing .frame .edit-badge')", seconds=20, what="ページの札")
@@ -80,7 +86,7 @@ class NoConfirmScreenTest(unittest.TestCase):
         last = wait_until_idle(self.fx, deck, seconds=300)
         self.assertNotEqual(last["id"], first["id"])
         req = self.request_of(last["id"])
-        self.assertEqual((req["kind"], req["options"]), ("image", ["main"]))
+        self.assertEqual((req["kind"], req["options"]), ("image", ["main", "generate"]))
         self.assertEqual(page.errors, [])
 
     def test_a_deck_wide_edit_sends_without_asking_and_echoes_the_page_count(self) -> None:
