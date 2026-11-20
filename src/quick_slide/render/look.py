@@ -131,16 +131,22 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
     fmt = brand_cfg.get("format") or {}
     footer = ((brand_cfg.get("footer") or {}).get("text") or "").strip()
 
-    if args.get("imported"):
-        # 取り込んだデッキ（docs/adr/0011-import-pptx.md）: ロゴ・フッタ・ページ番号は元の PPTX にもう入っているので足さない。
-        # テーマは PPTX のテーマ（取り込みが書いて、エンジンのテーマにできたときだけ）。透かしはブランドのまま
+    brandless = bool(deck.get("brandless")) or bool(args.get("imported"))
+    watermark = (fmt.get("watermark") or "").strip()
+    if brandless:
+        # ブランドなしのデッキ（取り込んだ資料。docs/adr/0035-brandless-decks.md）: ロゴ・フッタ・ページ番号・透かしを足さない
+        # （元の PPTX にもう入っている）。デッキが持つ印で見る（回の引数の imported は直しの回に渡らない。0014 より前の回のために残す）。
+        # テーマは PPTX のテーマ（取り込みが書いて、エンジンのテーマにできたときだけ。取り込みの回そのものでは、まだ無い）
         logo_path = logo_sha = white_path = white_sha = None
         footer = ""
+        watermark = ""
         fmt = {**fmt, "page_numbers": False}
         imported_theme = root.imported_dir(run["deck_id"]) / "theme.yaml"
         if imported_theme.is_file() and _imported_theme_ok(root, run["deck_id"]):
             theme_path.write_text(imported_theme.read_text(encoding="utf-8") + font_yaml(font), encoding="utf-8")
-            notes.append("取り込んだ PPTX のテーマの色で組みます（ロゴ・フッタ・ページ番号は足しません）")
+            notes.append("取り込んだ PPTX のテーマの色で組みます（ロゴ・フッタ・ページ番号・透かしは足しません）")
+        else:
+            notes.append("ブランドなしの資料です（ロゴ・フッタ・ページ番号・透かしは足しません）")
 
     allowed = contenttypes.allowed(style_cfg.get("allowed_layouts"))
     plan = {
@@ -150,7 +156,7 @@ def resolve(store: Any, root: DataRoot, run: dict[str, Any], *, previous_style: 
         "logo_position": corner,
         "footer": footer,
         "page_numbers": bool(fmt.get("page_numbers")),
-        "watermark": (fmt.get("watermark") or "").strip(),
+        "watermark": watermark,
         "allowed_types": allowed,
         "emphasis": (style_cfg.get("emphasis_prompt") or "").strip(),
         "tone": style_cfg.get("tone") or "standard",

@@ -180,7 +180,8 @@ class IntakesMixin(StoreBase):
         with self.transaction():
             now = self.now()
             deck = self.create_deck(title, mode="presentation", brand_revision_id=self._intake_brand_revision(None),
-                                    style_revision_id=self._intake_style_revision(attrs), deck_id=deck_id)
+                                    style_revision_id=self._intake_style_revision(attrs), deck_id=deck_id,
+                                    brandless=True)   # 取り込んだ資料はブランドなし（docs/adr/0035-brandless-decks.md）
             deck_id = deck["id"]
             launch_id = launch_token = None
             if launch_requested_via is not None:
