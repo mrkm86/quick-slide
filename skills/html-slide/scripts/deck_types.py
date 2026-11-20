@@ -3430,9 +3430,9 @@ def overlay_parts(s: Slide) -> list[str]:
         nums = [it.get(k) for k in ("x", "y", "w", "h")]
         if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in nums):   # 文字の "120"・true は数ではない
             s.err(f"overlays の {i} 個目: x・y・w・h を数で書く")
-        x, y, w, h = (float(v) for v in nums)
-        if not all(v == v and abs(v) < 100000 for v in (x, y, w, h)):
+        if not all(-100000 < v < 100000 for v in nums):   # 大きすぎる数・数でない値（NaN）。小数にする前に見る（桁の多い整数は、小数にできない）
             s.err(f"overlays の {i} 個目: x・y・w・h を、ページの座標の数で書く")
+        x, y, w, h = (float(v) for v in nums)
         if w < OVERLAY_MIN_SIDE or h < OVERLAY_MIN_SIDE:
             s.err(f"overlays の {i} 個目: 幅・高さは {OVERLAY_MIN_SIDE} 以上")
         if x < 0 or y < 0 or x + w > W + 1 or y + h > H + 1:

@@ -3338,7 +3338,8 @@ def case_overlays():
     item = {"x": 1200, "y": 400, "w": 520, "h": 360, "image": {"path": "assets/meeting.png"}}
     bad = (({"overlays": {"x": 1}}, "配列"), ({"overlays": None}, "配列"), ({"overlays": [{**item, "z": 1}]}, "知らないキー"),
            ({"overlays": [{**item, "x": "左"}]}, "数で書く"), ({"overlays": [{**item, "x": "120"}]}, "数で書く"),
-           ({"overlays": [{**item, "w": True}]}, "数で書く"), ({"overlays": [{k: v for k, v in item.items() if k != "h"}]}, "数で書く"),
+           ({"overlays": [{**item, "w": True}]}, "数で書く"), ({"overlays": [{**item, "x": int("9" * 400)}]}, "ページの座標の数"),
+           ({"overlays": [{**item, "y": 1e300}]}, "ページの座標の数"), ({"overlays": [{k: v for k, v in item.items() if k != "h"}]}, "数で書く"),
            ({"overlays": [{**item, "image": {"path": "\\\\server\\pic.png"}}]}, "相対パス"), ({"overlays": [{**item, "w": 10}]}, "40 以上"),
            ({"overlays": [{**item, "x": 1700}]}, "はみ出している"), ({"overlays": [{**item, "fit": "stretch"}]}, "cover か contain"),
            ({"overlays": [{**item, "image": {"prompt": "生成"}}]}, "持ち込みの画像"),
