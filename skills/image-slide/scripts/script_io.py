@@ -24,7 +24,8 @@ SKILL = pathlib.Path(__file__).resolve().parent.parent
 THEMES = SKILL / "themes"
 
 TOP_KEYS = {"title", "theme", "mode", "footer", "page_numbers", "outline", "slides"}
-COMMON_KEYS = {"type", "talk", "transition", "steps", "fx", "id", "role"}
+# overlays は html-slide のキー（どの型のページにも重ねる絵。html-slide の ADR 0032）。同じ台本を受けるために通すが、描かない
+COMMON_KEYS = {"type", "talk", "transition", "steps", "fx", "id", "role", "overlays"}
 HEAD_KEYS = {"kicker", "headline", "sub", "source", "footnote"}
 THEME_KEYS = {"background", "ink", "primary", "accent", "muted", "surface", "font", "font_files"}
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")

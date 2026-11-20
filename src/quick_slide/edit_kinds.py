@@ -144,12 +144,20 @@ def offered(mode: str, *, can_generate: bool) -> list[dict[str, Any]]:
         elif kind == "diagram":
             entry.update(options=diagram_shapes(picture=mode == "presentation" and can_generate),
                          options_label=OPTION_LABELS["shape"])
+        elif kind == "illustration" and mode == "presentation":
+            # 型のページに絵を足す入れ方（docs/adr/0039-add-pictures-to-made-pages.md）。先頭（既定）は、型の中身を変えずに重ねる
+            entry.update(options=made_ways(), options_label=OPTION_LABELS["way"], default_option="main")
         elif kind == "image":
             entry["options_label"] = OPTION_LABELS["source"]
             # `attachment_reason`: 添えた画像が要る出どころの、画像が無いときの文
             if not can_generate:
                 entry["lead"] = IMAGE_LEAD_NO_GENERATE
-            entry["options"] = image_sources(can_generate)
+            if mode == "presentation":
+                # 入れ方を選び、出どころは別に選ぶ（取り込んだページと同じ形。options は [入れ方, 出どころ]）
+                entry.update(options=made_ways(), options_label=OPTION_LABELS["way"], default_option="main",
+                             sources=image_sources(can_generate), sources_label=OPTION_LABELS["source"])
+            else:
+                entry["options"] = image_sources(can_generate)
         out.append(entry)
     return out
 
@@ -169,6 +177,22 @@ def shape_words(mode: str, shape: str | None) -> str:
     """台本係に渡す、選んだ型の 1 行。"""
     shapes = _DIAGRAM_SHAPE_WORDS.get(mode, _DIAGRAM_SHAPE_WORDS["_"])
     return shapes.get(shape or "auto", shapes["auto"])
+
+
+# 型のページ（プレゼン）に絵・写真を足す入れ方。add は型の中身を変えずに空いた所へ重ねる。main は、絵を置ける型に組み直す
+MADE_WAYS = (("add", "空いた所に足す"), ("main", "ページを組み直して入れる"))
+MADE_MAIN_NOTE = "絵を置ける形にページを組み直します（表や図は、文字に組み直されることがあります）。前の版にはいつでも戻せます。"
+
+
+def made_ways() -> list[dict[str, Any]]:
+    out = _options(MADE_WAYS)
+    out[1]["note"] = MADE_MAIN_NOTE
+    return out
+
+
+def image_source_of(options: list[str]) -> str | None:
+    """選択肢の中の、画像の出どころ（generate・attached）。無ければ None。"""
+    return next((o for o in options if o in ("generate", "attached")), None)
 
 
 def image_sources(can_generate: bool) -> list[dict[str, Any]]:
@@ -240,7 +264,7 @@ def offered_for_imported(mode: str, *, can_generate: bool = True) -> list[dict[s
                   ways("add", "replace", "main", attach=True),
                   # 画像の出どころは、入れ方とは別に選ぶ（options の 2 つ目で送る。docs/adr/0037-ask-ai-cards.md）
                   sources=image_sources(can_generate), sources_label=OPTION_LABELS["source"],
-                  options_label=OPTION_LABELS["way"])]
+                  options_label=OPTION_LABELS["way"], attach_is_picture=True)]
 
 
 def parse(mode: str, raw_kind: Any, raw_options: Any, *, can_generate: bool, imported: bool = False
@@ -275,7 +299,9 @@ def parse(mode: str, raw_kind: Any, raw_options: Any, *, can_generate: bool, imp
         if len(options) > 1:
             raise ValueError("選択肢は 1 つだけ選んでください。")
         if not options and allowed:
-            first = _first_enabled(entry["options"])
+            # 入れ方を言わない頼み方（前の画面・会話の入口）の既定。型のページの絵・画像は、今までの意味（ページを組み直して入れる）
+            # のまま（`default_option`）。画面は入れ方を必ず送る（画面の既定は先頭＝空いた所に足す）
+            first = entry.get("default_option") or _first_enabled(entry["options"])
             options = [first] if first is not None else []
     return raw_kind, options + picked_sources
 
@@ -298,8 +324,11 @@ def missing(kind: str | None, options: list[str], *, text: str, attachments: int
         if source == "generate" and attachments:
             return IMPORTED_GENERATE_WITH_ATTACHMENT
         return None
-    if kind == "image" and options and options[0] in NEEDS_ATTACHMENT and not attachments:
-        return ATTACHMENT_REQUIRED[options[0]]
+    if kind == "image" and image_source_of(options) in NEEDS_ATTACHMENT and not attachments:
+        return ATTACHMENT_REQUIRED["attached"]
+    # 型のページの「空いた所に足す」で生成するとき: 渡した画像は、そのまま入れる画像になってしまうので、外してもらう
+    if kind == "image" and options[:1] == ["add"] and image_source_of(options) == "generate" and attachments:
+        return IMPORTED_GENERATE_WITH_ATTACHMENT
     return None
 
 
@@ -318,7 +347,7 @@ def direction(mode: str, kind: str | None, options: list[str], *, scope: str = "
     elif kind == "illustration":
         lines.append(_ILLUSTRATION[mode])
     elif kind == "image":
-        source = options[0] if options else "generate"
+        source = image_source_of(options) or "generate"
         lines.append(_IMAGE[mode]["generate" if source == "generate" else "attached"])
     if scope == "deck" and kind in ("diagram", "illustration", "image"):
         lines.insert(0, "スライド全体への直し: 当てはまると伝わりやすくなるページだけを選んで直す（全部のページを同じにしない）")

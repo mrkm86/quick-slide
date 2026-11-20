@@ -41,12 +41,16 @@ class OfferedTests(unittest.TestCase):
         """作れない機械でも「作ってもらう」は消さない（作れることがあると分かるように）。押せない選択肢と理由で出す。"""
         def sources(can: bool) -> list[tuple[str, bool]]:
             image = next(k for k in E.offered("presentation", can_generate=can) if k["kind"] == "image")
-            return [(o["value"], bool(o.get("disabled"))) for o in image["options"]]
+            return [(o["value"], bool(o.get("disabled"))) for o in image["sources"]]
         self.assertEqual(sources(True), [("generate", False), ("attached", False)])
         self.assertEqual(sources(False), [("generate", True), ("attached", False)])
         image = next(k for k in E.offered("presentation", can_generate=False) if k["kind"] == "image")
-        self.assertEqual(image["options"][0]["reason"], E.GENERATE_UNAVAILABLE)
-        self.assertEqual(E.parse("presentation", "image", None, can_generate=False), ("image", ["attached"]), "既定は押せる先頭")
+        self.assertEqual(image["sources"][0]["reason"], E.GENERATE_UNAVAILABLE)
+        # ピッチ（1 枚の絵として描き直す）は、入れ方を持たない。出どころが選択肢そのもの
+        pitch = next(k for k in E.offered("pitch", can_generate=False) if k["kind"] == "image")
+        self.assertEqual([(o["value"], bool(o.get("disabled"))) for o in pitch["options"]], [("generate", True), ("attached", False)])
+        self.assertNotIn("sources", pitch)
+        self.assertEqual(E.parse("pitch", "image", None, can_generate=False), ("image", ["attached"]), "既定は押せる先頭")
         with self.assertRaises(ValueError) as cm:
             E.parse("presentation", "image", ["generate"], can_generate=False)
         self.assertEqual(str(cm.exception), E.GENERATE_UNAVAILABLE)
@@ -65,7 +69,35 @@ class OfferedTests(unittest.TestCase):
         self.assertIn("指示の文に書かれたとおり", "\n".join(E.direction("presentation", "diagram", ["other"])))
         self.assertEqual(E.summary("diagram", ["other"]), "図解（その他）")
         no_codex = next(k for k in E.offered("presentation", can_generate=False) if k["kind"] == "image")
-        self.assertEqual(no_codex["options"][0]["note"], "現在利用できません")
+        self.assertEqual(no_codex["sources"][0]["note"], "現在利用できません")
+
+    def test_made_pages_choose_how_a_picture_goes_in(self) -> None:
+        """型のページ（プレゼン）に絵・写真を足す入れ方（docs/adr/0039）。既定は、型の中身を変えずに空いた所へ重ねる。"""
+        kinds = {k["kind"]: k for k in E.offered("presentation", can_generate=True)}
+        for kind in ("illustration", "image"):
+            self.assertEqual([o["value"] for o in kinds[kind]["options"]], ["add", "main"], kind)
+            self.assertIn("組み直します", kinds[kind]["options"][1]["note"])
+            self.assertNotIn("note", kinds[kind]["options"][0])
+        self.assertEqual([o["value"] for o in kinds["image"]["sources"]], ["generate", "attached"])
+        parse = lambda k, o: E.parse("presentation", k, o, can_generate=True)  # noqa: E731
+        self.assertEqual(parse("image", ["attached", "main"]), ("image", ["main", "attached"]), "入れ方が先・出どころが後")
+        self.assertEqual(parse("image", ["add"]), ("image", ["add"]))
+        # 入れ方を言わない頼み方（前の画面・会話の入口）は、今までの意味のまま（ページを組み直して入れる）
+        self.assertEqual(parse("illustration", None), ("illustration", ["main"]))
+        self.assertEqual(parse("image", None), ("image", ["main"]))
+        self.assertEqual(parse("image", ["generate"]), ("image", ["main", "generate"]))
+        self.assertEqual(parse("image", ["attached"]), ("image", ["main", "attached"]))
+        self.assertEqual(E.parse("presentation", "image", None, can_generate=True, imported=True), ("image", ["add"]),
+                         "取り込んだページの既定は、今までどおり空いた所に足す")
+        miss = lambda o, n: E.missing("image", o, text="", attachments=n)  # noqa: E731
+        self.assertEqual(miss(["add", "attached"], 0), E.ATTACHMENT_REQUIRED["attached"])
+        self.assertEqual(miss(["add", "generate"], 1), E.IMPORTED_GENERATE_WITH_ATTACHMENT, "空いた所に足す生成は、渡した画像を外す")
+        self.assertIsNone(miss(["main", "generate"], 1), "組み直して入れる生成は、渡した画像を参考にできる")
+        self.assertIsNone(miss(["add", "generate"], 0))
+        self.assertIn("添えた画像", E.direction("presentation", "image", ["main", "attached"])[0])
+        # ピッチ・モーションの挿絵は、入れ方を持たない（今までどおり）
+        for mode in ("pitch", "motion"):
+            self.assertEqual(next(k for k in E.offered(mode, can_generate=True) if k["kind"] == "illustration")["options"], [])
 
     def test_three_cards_by_how_much_the_page_changes(self) -> None:
         """札は 3 つ（文字を整える・絵や写真を足す・見せ方を変える）。種類は 4 つのままで、挿絵と画像が同じ札に入る。

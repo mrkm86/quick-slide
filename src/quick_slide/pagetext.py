@@ -30,7 +30,7 @@ _TEXT_KEYS = {"headline", "title", "subtitle", "kicker", "lead", "caption", "tak
               # 文字の並び（文字列がそのまま並ぶ配列）
               "items", "points", "rows", "columns", "labels", "legend"}
 # この下は読まない（話す台本・動き・画像の枠・取り込んだページの HTML など。中に文字の名前のキーがあっても欄にしない）
-_SKIP_KEYS = {"talk", "transition", "steps", "fx", "image", "html", "notes", "svg", "illustrations"}
+_SKIP_KEYS = {"talk", "transition", "steps", "fx", "image", "html", "notes", "svg", "illustrations", "overlays"}
 # グラフの棒・線の中は、描いてある名前だけを欄にする（値は数で、文字の名前のキーでも欄にしない）
 _CHART_KEYS = {"bars": {"label", "display"}, "series": {"name"}}
 # 欄の見出し（キーの名前 → 画面の言葉）。無いものは「文字」

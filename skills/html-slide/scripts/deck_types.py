@@ -76,7 +76,11 @@ IMAGE_KEYS = {"path", "prompt", "focus", "alt"}
 LABELS_KEY = "labels"
 MAX_LABELS, MAX_LABEL_CHARS = 30, 30
 FOCUS_WORDS = {"center": "50% 50%", "left": "0% 50%", "right": "100% 50%", "top": "50% 0%", "bottom": "50% 100%"}
-COMMON_KEYS = {"type", "talk", "transition", "steps", "fx", "id", "role"}
+COMMON_KEYS = {"type", "talk", "transition", "steps", "fx", "id", "role", "overlays"}
+# どの型のページにも重ねられる絵（`overlays`。ADR 0032）: ページの座標（1920×1080）に置く画像。型の中身は変えない
+OVERLAY_KEYS = {"x", "y", "w", "h", "image", "fit"}
+OVERLAY_MIN_SIDE = 40
+OVERLAY_MAX = 8
 
 
 class DeckError(Exception):
@@ -3404,6 +3408,70 @@ for _t in TAKEAWAY_TYPES:
 IMPORTED_TYPES = {"html": (t_html, HTML_KEYS, False)}
 
 
+def overlay_parts(s: Slide) -> list[str]:
+    """ページに重ねる絵（`overlays`）の部品。型の中身の上・下の文字やページ番号の下に置く。無ければ空。
+
+    1 つずつ {"x", "y", "w", "h", "image": {"path": …}, "fit"?}。座標はページ（1920×1080）のもの。置き方 fit は
+    cover（箱いっぱいに切り抜く。既定）か contain（全体が見えるように収める）。画像は持ち込みのファイルだけ（生成の枠は書けない）。"""
+    if "overlays" not in s.spec:
+        return []
+    items = s.spec["overlays"]
+    if not isinstance(items, list) or not all(isinstance(it, dict) for it in items):
+        s.err("overlays は [{x, y, w, h, image: {path}}] の配列で書く")
+    if len(items) > OVERLAY_MAX:
+        s.err(f"overlays は {OVERLAY_MAX} 個まで")
+    import hashlib
+
+    tags = []
+    for i, it in enumerate(items, 1):
+        extra = sorted(set(it) - OVERLAY_KEYS)
+        if extra:
+            s.err(f"overlays の {i} 個目に知らないキー: {', '.join(extra)}（使えるのは {', '.join(sorted(OVERLAY_KEYS))}）")
+        nums = [it.get(k) for k in ("x", "y", "w", "h")]
+        if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in nums):   # 文字の "120"・true は数ではない
+            s.err(f"overlays の {i} 個目: x・y・w・h を数で書く")
+        if not all(-100000 < v < 100000 for v in nums):   # 大きすぎる数・数でない値（NaN）。小数にする前に見る（桁の多い整数は、小数にできない）
+            s.err(f"overlays の {i} 個目: x・y・w・h を、ページの座標の数で書く")
+        x, y, w, h = (float(v) for v in nums)
+        if w < OVERLAY_MIN_SIDE or h < OVERLAY_MIN_SIDE:
+            s.err(f"overlays の {i} 個目: 幅・高さは {OVERLAY_MIN_SIDE} 以上")
+        if x < 0 or y < 0 or x + w > W + 1 or y + h > H + 1:
+            s.err(f"overlays の {i} 個目: ページ（{W}×{H}）からはみ出している")
+        fit = it.get("fit", "cover")
+        if fit not in ("cover", "contain"):
+            s.err(f"overlays の {i} 個目: fit は cover か contain")
+        image = it.get("image")
+        src = image.get("path") if isinstance(image, dict) and set(image) == {"path"} else None
+        if not isinstance(src, str) or not src.strip():
+            s.err(f"overlays の {i} 個目: image は {{\"path\": …}}（持ち込みの画像）で書く")
+        p = pathlib.Path(src)
+        # 台本のフォルダの中の画像だけ（外を指すパス・絶対パス・外を指すリンクは通さない。書き出しに、関係のないファイルを
+        # 巻き込まない）。実体のパスで確かめる
+        root = s.script_dir.resolve()
+        # ドライブ（C:/・C:\）・先頭が / や \ のパス（Windows ではドライブの無い絶対パス）も断る
+        if p.is_absolute() or re.match(r"^[a-zA-Z]:[\\/]", src) or src.startswith(("~", "/", "\\")):
+            s.err(f"overlays の {i} 個目: 画像は、台本のフォルダからの相対パスで書く: {src[:80]}")
+        if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", src):
+            s.err(f"overlays の {i} 個目: 画像に URL は使えない（ローカルのファイルを置いてパスで書く）: {src[:80]}")
+        p = s.script_dir / p
+        ext = p.suffix.lower()
+        if ext not in IMAGE_EXTS:
+            s.err(f"overlays の {i} 個目: 画像は {' / '.join(IMAGE_EXTS)} のどれか: {p.name}")
+        if not p.is_file():
+            s.err(f"overlays の {i} 個目: 画像が無い: {p}")
+        real = p.resolve()
+        if real != root and root not in real.parents:
+            s.err(f"overlays の {i} 個目: 画像は、台本のフォルダの中に置く: {src[:80]}")
+        name = f"h-{hashlib.sha256(str(p).encode()).hexdigest()[:16]}{'.jpg' if ext == '.jpeg' else ext}"
+        if (p, name) not in s.assets:
+            s.assets.append((p, name))
+        tags.append(f'<img src="assets/{name}" alt="" style="position:absolute;left:{x:g}px;top:{y:g}px;'
+                    f'width:{w:g}px;height:{h:g}px;object-fit:{fit}" />')
+    if not tags:
+        return []
+    return ['<div style="position:absolute;left:0;top:0;width:0;height:0" data-name="重ねた絵">' + "".join(tags) + "</div>"]
+
+
 def build_slide(s: Slide) -> tuple[list[str], bool]:
     """chrome（上の帯・下の文字・ページ番号）は型の既定。置き方で型が s.chrome を変える。上の帯だけ外すときは s.no_band"""
     """1枚の部品と、帯・下の文字を付けるかを返す。未知の型・未知のキーは DeckError。"""
@@ -3466,6 +3534,7 @@ def _compose(s: Slide, fn) -> list[str]:
 
 
 def _has_image(v) -> bool:
+    """型の中身に画像の枠があるか。重ねる絵（`overlays`）は数えない（重ねても、型の中身の組み方は変えない。ADR 0032）。"""
     if isinstance(v, dict):
-        return "image" in v or any(_has_image(x) for x in v.values())
+        return "image" in v or any(_has_image(x) for k, x in v.items() if k != "overlays")
     return isinstance(v, list) and any(_has_image(x) for x in v)

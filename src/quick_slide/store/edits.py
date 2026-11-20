@@ -106,6 +106,16 @@ class EditsMixin(StoreBase):
                 return True
         return False
 
+    def failed_parts_render(self, deck_id: str, after_number: int) -> str | None:
+        """位置の記録（parts）を作るための描き直し（`render` の `reason: parts`）のうち、`after_number` より後の回で失敗した
+        いちばん新しいものの理由。無ければ None。"""
+        row = self._one(
+            "SELECT r.message FROM jobs j JOIN runs r ON r.id=j.run_id"
+            " WHERE j.deck_id=? AND j.kind='edit' AND r.state='failed' AND r.number>?"
+            "  AND json_extract(j.request_json,'$.op')='render' AND json_extract(j.request_json,'$.reason')='parts'"
+            " ORDER BY r.number DESC LIMIT 1", (deck_id, after_number))
+        return None if row is None else (row["message"] or "")
+
     def open_jobs(self, deck_id: str) -> list[dict[str, Any]]:
         """待っている・走っている仕事（古い順）。画面の「待っている差し込み」と、どのページを直している途中かに使う。"""
         rows = self._all("SELECT id FROM jobs WHERE deck_id=? AND state IN ('queued','running') ORDER BY created_at,rowid",

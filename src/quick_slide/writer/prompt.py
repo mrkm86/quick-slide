@@ -583,7 +583,7 @@ OVERLAY_WORDS = {"illustration": "挿絵", "diagram": "図解", "image": "画像
 def build_overlay_prompt(args: dict[str, Any], *, page: dict[str, Any], boxes: list[dict[str, Any]],
                          instruction: str, skills_dir: Path, what: str = "illustration", aspect: float | None = None,
                          generate: bool = False, previous: dict[str, Any] | str | None = None,
-                         problems: list[str] | None = None) -> str:
+                         problems: list[str] | None = None, imported: bool = True) -> str:
     """取り込んだページ（PPTX から）に、挿絵・図解・画像を 1 つ重ねる（docs/adr/0013・0015）。
 
     `page` は {"id", "position", "title"}、`boxes` はページの中の箱（{x, y, w, h, kind, text}・1920×1080 の座標）。
@@ -617,7 +617,8 @@ def build_overlay_prompt(args: dict[str, Any], *, page: dict[str, Any], boxes: l
     out = [
         "# あなたの仕事",
         "",
-        f"あなたは資料の「台本係」です。PowerPoint から取り込んだページに、**{word}を 1 つ重ねます**。",
+        # `imported` が偽なら、型で組んだページ（箱は、描いた結果の位置そのもの）
+        f"あなたは資料の「台本係」です。{'PowerPoint から取り込んだページ' if imported else '資料のページ'}に、**{word}を 1 つ重ねます**。",
         f"元のページの文字・図形・画像は動かさず、変えません。空いている場所に、ページの中身に合う{word}を置きます。",
         "",
         "# 守ること",
@@ -626,7 +627,9 @@ def build_overlay_prompt(args: dict[str, Any], *, page: dict[str, Any], boxes: l
         "- 道具を使わない。ファイルを読まない・書かない。コマンドを実行しない。調べものをしない",
         f"- ページは 1920×1080。{word}の箱（x・y・w・h）はページの中に収め、**文字の箱と、前に重ねた絵に重ねない**"
         "（重なりは面積の 1 割まで）。画像・図形の箱にもなるべく重ねない",
-        "- 文字の箱は、文字が実際に占める範囲に詰めてある（見積もり）。箱の外は空いている",
+        ("- 文字の箱は、文字が実際に占める範囲に詰めてある（見積もり）。箱の外は空いている" if imported else
+         "- 箱の位置は、描いた結果そのもの。文字・画像の箱の外は空いている。図形の箱（カードの地・帯）の上には、置いてもよいが、"
+         "中の文字や画像には重ねない"),
         *([f"- 「置き場」の箱は、写真・画像を入れるための枠。**置き場があれば、{word}はその枠に置く**（x・y・幅・高さを枠と同じにする。"
            "縦横比が決まっているときは、枠の中に収まるいちばん大きい大きさで、枠の真ん中に置く）"]
           if any(b.get("kind") == "置き場" for b in boxes) and what != "diagram" else []),
