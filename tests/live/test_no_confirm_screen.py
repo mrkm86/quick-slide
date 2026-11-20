@@ -105,14 +105,23 @@ class NoConfirmScreenTest(unittest.TestCase):
         self.assertIn(f"{pages} ページ", page.eval("document.querySelector('.panel__target').textContent"), "枚数は板の見出しに出ている")
         type_in = ("(function(v){ var ta = document.querySelector('" + P + "textarea'); ta.value = v;"
                    " ta.dispatchEvent(new Event('input', {bubbles: true})); })")
-        # ほかの場所で枚数が変わっていたら、サーバが断る。書いた文は消えない
+        # 先に文を書いておく（書きかけがあるあいだ、画面は読み込み直さない）。そのあと、ほかの場所で枚数が変わる。
+        # サーバは、見せた枚数と違うので断る（409 page_count_changed）。書いた文は消えない
+        page.eval(type_in + "('全体を、やさしい言葉にして')")
+        page.eval("window.__codes = []; (function(){ var f = window.fetch; window.fetch = function (u, o) {"
+                  " var p = f.apply(this, arguments);"
+                  " if (String(u).indexOf('/instructions') >= 0) { p.then(function (r) { r.clone().json().then(function (j) {"
+                  " window.__codes.push([r.status, j && j.error && j.error.code]); }); }); }"
+                  " return p; }; })()")
         sid = self.fx.get(f"/api/decks/{deck}").json()["pages"][0]["slide_id"]
         r = self.fx.post(f"/api/decks/{deck}/pages/{sid}/duplicate", {})
         self.assertEqual(r.status, 200, r.body)
         wait_until_idle(self.fx, deck, seconds=300)
-        page.eval(type_in + "('全体を、やさしい言葉にして')")
+        self.assertEqual(page.eval(f"document.querySelector('{P}textarea').value"), "全体を、やさしい言葉にして", "読み込み直されていない")
         page.eval(SEND + ".click()")
         page.until(f"!!document.querySelector('{P}.editbox__refused')", seconds=20, what="断られた理由")
+        page.until("window.__codes.length > 0", what="サーバの答え")
+        self.assertEqual(page.eval("window.__codes[0]"), [409, "page_count_changed"])
         self.assertEqual(page.eval("window.__asked"), [], "確かめる窓は出さない")
         self.assertEqual(page.eval("window.__sent[0].confirm_pages"), pages, "画面が見せていた枚数を渡す")
         self.assertEqual(page.eval(f"document.querySelector('{P}textarea').value"), "全体を、やさしい言葉にして", "書いた文は消えない")
