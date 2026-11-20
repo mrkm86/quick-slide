@@ -347,81 +347,337 @@
   // 出す種類と選択肢は**サーバが決める**（デッキの答えの `edit_kinds`。モードと機械でできるものだけ）。
   // 画面は渡されたものだけを並べ、できない種類は出さない。選ばなければ、これまでどおり書いた指示だけで送る。
   // 文字以外は書かなくても送れる（選んだ方針がそのまま指示になる）
+  // 札の絵（直す前 → 直した後）。小さなページの略図で、押すと何が起きるかを見せる（docs/adr/0037-ask-ai-cards.md）。
+  // 形は [要素, 属性] の並び。色は CSS のクラスで付ける（要素に色を書かない）
+  var KIND_ART = (function () {
+    var bar = [["rect", { x: 0, y: 0, width: 96, height: 10, class: "kart__bar" }], ["rect", { x: 8, y: 3, width: 30, height: 4, class: "kart__barline" }]];
+    var rows = function (widths, cls, hgt) {
+      return widths.map(function (w, i) { return ["rect", { x: 8, y: 18 + i * (hgt ? 10 : 9), width: w, height: hgt || 4, class: cls }]; });
+    };
+    var full = bar.concat(rows([70, 60, 66], "kart__line")), half = bar.concat(rows([40, 34, 38], "kart__line"));
+    return {
+      text: [full, bar.concat(rows([44, 36, 40], "kart__hi", 5))],
+      diagram: [full, bar.concat([
+        ["rect", { x: 6, y: 22, width: 22, height: 16, rx: 3, class: "kart__box" }], ["rect", { x: 37, y: 22, width: 22, height: 16, rx: 3, class: "kart__box" }],
+        ["rect", { x: 68, y: 22, width: 22, height: 16, rx: 3, class: "kart__box" }],
+        ["path", { d: "M29 30h6m-2-2l2 2-2 2M60 30h6m-2-2l2 2-2 2", class: "kart__stroke" }]])],
+      illustration: [half, half.concat([
+        ["circle", { cx: 72, cy: 30, r: 11, class: "kart__draw" }], ["path", { d: "M66 31q6 6 12 0", class: "kart__stroke" }],
+        ["circle", { cx: 68, cy: 27, r: 1.3, class: "kart__dot" }], ["circle", { cx: 76, cy: 27, r: 1.3, class: "kart__dot" }]])],
+      image: [half, half.concat([
+        ["rect", { x: 56, y: 16, width: 34, height: 28, rx: 2, class: "kart__photo" }],
+        ["path", { d: "M58 42l10-12 7 8 5-5 8 9z", class: "kart__hill" }], ["circle", { cx: 82, cy: 23, r: 3, class: "kart__sun" }]])]
+    };
+  })();
+  KIND_ART.visual = KIND_ART.image;    // 絵や写真を足す
+  KIND_ART.layout = KIND_ART.diagram;  // 見せ方を変える
+  function kindArt(kind) {
+    var pair = KIND_ART[kind];
+    if (!pair) { return null; }
+    var NS = "http://www.w3.org/2000/svg";
+    var draw = function (shapes) {
+      var svg = document.createElementNS(NS, "svg");
+      svg.setAttribute("viewBox", "0 0 96 54");
+      svg.setAttribute("class", "kart__page");
+      svg.setAttribute("aria-hidden", "true");
+      svg.setAttribute("focusable", "false");
+      shapes.forEach(function (sh) {
+        var el = document.createElementNS(NS, sh[0]);
+        Object.keys(sh[1]).forEach(function (k) { el.setAttribute(k, String(sh[1][k])); });
+        svg.appendChild(el);
+      });
+      return svg;
+    };
+    return h("span", { class: "kart", "aria-hidden": "true" }, draw(pair[0]), h("span", { class: "kart__arrow", text: "→" }), draw(pair[1]));
+  }
+
+  // 選択肢の絵（1 枚）。種類と値で引く（"image:generate" など）。無いものは絵なしで名前だけ出す
+  var OPTION_ART = (function () {
+    var page = [["rect", { x: 1, y: 1, width: 62, height: 34, rx: 3, class: "oart__page" }]];
+    var lines = function (x, w, n) {
+      var out = [];
+      for (var i = 0; i < (n || 3); i++) { out.push(["rect", { x: x, y: 9 + i * 7, width: w - i * 3, height: 3, class: "oart__line" }]); }
+      return out;
+    };
+    var photo = function (x, y, w, hgt) {
+      return [["rect", { x: x, y: y, width: w, height: hgt, rx: 2, class: "oart__photo" }],
+              ["path", { d: "M" + (x + 2) + " " + (y + hgt - 2) + "l" + (w * 0.3) + " -" + (hgt * 0.5) + " " + (w * 0.22) + " " + (hgt * 0.3)
+                + " " + (w * 0.14) + " -" + (hgt * 0.18) + " " + (w * 0.26) + " " + (hgt * 0.38) + "z", class: "oart__hill" }]];
+    };
+    var spark = function (cx, cy, r) {
+      var k = r * 0.28;
+      return [["path", { d: "M" + cx + " " + (cy - r) + "l" + k + " " + (r - k) + " " + (r - k) + " " + k + " -" + (r - k) + " " + k + " -" + k + " " + (r - k)
+        + " -" + k + " -" + (r - k) + " -" + (r - k) + " -" + k + " " + (r - k) + " -" + k + "z", class: "oart__spark" }]];
+    };
+    var box = function (x, y, w, hgt) { return ["rect", { x: x, y: y, width: w, height: hgt, rx: 2, class: "oart__box" }]; };
+    var art = {
+      "image:generate": page.concat(photo(14, 7, 36, 22), spark(50, 9, 7)),
+      // 線のイラスト（生成ではなく、線と形で描く絵）
+      "visual:illustration": page.concat([["circle", { cx: 32, cy: 18, r: 11, class: "oart__outline" }], ["path", { d: "M26 20q6 6 12 0", class: "oart__stroke" }],
+        ["circle", { cx: 28, cy: 15, r: 1.400, class: "oart__dotk" }], ["circle", { cx: 36, cy: 15, r: 1.400, class: "oart__dotk" }]]),
+      // 図を足す（空いた所に小さな図）
+      "visual:diagram": page.concat(lines(7, 24), [box(36, 16, 9, 8), box(49, 16, 9, 8), ["path", { d: "M45 20h4", class: "oart__stroke" }]]),
+      "image:attached": page.concat(photo(8, 9, 28, 20), [["path", { d: "M48 27v-14m-6 6l6-6 6 6", class: "oart__stroke" }]]),
+      "image:add": page.concat(lines(7, 28), photo(40, 16, 18, 14)),
+      "image:replace": page.concat(photo(6, 10, 20, 16), photo(38, 10, 20, 16), [["path", { d: "M28 15h8m-3-3l3 3-3 3M36 23h-8m3-3l-3 3 3 3", class: "oart__stroke" }]]),
+      "image:main": page.concat(photo(6, 6, 34, 24), lines(44, 14)),
+      "diagram:add": page.concat(lines(7, 26), [box(38, 17, 8, 7), box(50, 17, 8, 7), ["path", { d: "M46 20.500h4", class: "oart__stroke" }]]),
+      "diagram:main": page.concat([box(6, 12, 14, 12), box(25, 12, 14, 12), box(44, 12, 14, 12), ["path", { d: "M20 18h5M39 18h5", class: "oart__stroke" }]]),
+      // おまかせ: 形を決めていない（点線の丸・四角・三角）。きらめきは「生成する」ものだけに使う（おまかせには付けない）
+      "diagram:auto": page.concat([["circle", { cx: 14, cy: 18, r: 7, class: "oart__dashbox" }], ["rect", { x: 25, y: 11, width: 14, height: 14, rx: 2, class: "oart__dashbox" }],
+        ["path", { d: "M50 11l8 14h-16z", class: "oart__dashbox" }]]),
+      "diagram:flow": page.concat([box(6, 13, 13, 10), box(25, 13, 13, 10), box(44, 13, 13, 10), ["path", { d: "M19 18h6m-2-2l2 2-2 2M38 18h6m-2-2l2 2-2 2", class: "oart__stroke" }]]),
+      "diagram:relation": page.concat([["path", { d: "M32 18L14 9M32 18l18-9M32 18v12", class: "oart__stroke" }], ["circle", { cx: 32, cy: 18, r: 6, class: "oart__box" }],
+        ["circle", { cx: 14, cy: 9, r: 4, class: "oart__box2" }], ["circle", { cx: 50, cy: 9, r: 4, class: "oart__box2" }], ["circle", { cx: 32, cy: 30, r: 3.500, class: "oart__box2" }]]),
+      "diagram:compare": page.concat([["rect", { x: 7, y: 7, width: 22, height: 22, rx: 2, class: "oart__box2" }], box(35, 7, 22, 22),
+        ["path", { d: "M11 13h14M11 18h14M11 23h10", class: "oart__thin" }], ["path", { d: "M39 13h14M39 18h14M39 23h10", class: "oart__thinw" }]]),
+      // 前と後: 左に薄い箱（前）、右に濃い箱（後）、あいだに太い矢印
+      "diagram:before_after": page.concat([["rect", { x: 6, y: 9, width: 20, height: 18, rx: 2, class: "oart__box2" }], box(38, 9, 20, 18),
+        ["path", { d: "M28 18h8m-3-3l3 3-3 3", class: "oart__stroke" }]]),
+      "diagram:numbers": page.concat([box(9, 20, 9, 10), box(22, 14, 9, 16), box(35, 8, 9, 22), ["path", { d: "M6 30h46", class: "oart__stroke" }]]),
+      "diagram:other": page.concat([["rect", { x: 8, y: 8, width: 30, height: 20, rx: 3, class: "oart__dashbox" }],
+        ["path", { d: "M44 26l10-12 4 3-10 12-5 2z", class: "oart__pen" }], ["path", { d: "M14 15h18M14 21h12", class: "oart__dash" }]]),
+      // 絵で描く: 図を 1 枚の絵として生成する（額に入った、手描きの丸と曲がった矢印。生成なので、きらめきを付ける）
+      "diagram:picture": page.concat([["rect", { x: 6, y: 5, width: 42, height: 26, rx: 2, class: "oart__frame" }],
+        ["ellipse", { cx: 17, cy: 18, rx: 6, ry: 5, class: "oart__blob" }], ["ellipse", { cx: 37, cy: 18, rx: 6, ry: 5, class: "oart__blob2" }],
+        ["path", { d: "M23 16q4-5 8 0m-2.500-2.500l2.500 2.500-3.500.800", class: "oart__stroke" }]], spark(54, 10, 7)),
+      "text:short": page.concat([["rect", { x: 8, y: 11, width: 30, height: 4, class: "oart__hi" }], ["rect", { x: 8, y: 21, width: 22, height: 4, class: "oart__hi" }],
+        ["path", { d: "M44 18h12m-4-4l4 4-4 4", class: "oart__dash" }]]),
+      "text:firm": page.concat([["rect", { x: 8, y: 15, width: 38, height: 6, class: "oart__hi" }], ["circle", { cx: 52, cy: 20, r: 3, class: "oart__ring" }]]),
+      "text:plain": page.concat([["text", { x: 32, y: 26, class: "oart__glyph", "text-anchor": "middle", text: "あ" }]]),
+      "text:numbers": page.concat([["text", { x: 9, y: 26, class: "oart__glyph", text: "12" }], ["rect", { x: 36, y: 13, width: 20, height: 3, class: "oart__line" }],
+        ["rect", { x: 36, y: 20, width: 15, height: 3, class: "oart__line" }]])
+    };
+    return art;
+  })();
+  function optionArt(key) {
+    var shapes = OPTION_ART[key];
+    if (!shapes) { return null; }
+    var NS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 64 36");
+    svg.setAttribute("class", "oart");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    shapes.forEach(function (sh) {
+      var el = document.createElementNS(NS, sh[0]);
+      Object.keys(sh[1]).forEach(function (k) { if (k === "text") { el.textContent = sh[1][k]; } else { el.setAttribute(k, String(sh[1][k])); } });
+      svg.appendChild(el);
+    });
+    return svg;
+  }
+
+  // 「どう直しますか？」の札（docs/adr/0037-ask-ai-cards.md）。札は 3 つ: 文字を整える・絵や写真を足す・見せ方を変える。
+  // 分け方は「押したあとにページがどれだけ変わるか」。サーバの種類（kind）は 4 つのままで、挿絵と画像が同じ札（card）に入り、
+  // 札の中の次の段（どんな絵にしますか）でどちらかに決まる。選んだ札以外は薄くし、次に選ぶものを下に出す
+  var CARD_ORDER = ["text", "visual", "layout"];
+  var CARD_ICONS = { text: "article", visual: "image", layout: "hub" };
   function kindPicker(kinds, onChange) {
-    var state = { kind: null, options: [] };
+    var state = { card: null, kind: null, options: [], source: null, refused: "" };
     var picker = { node: null, entry: function () { return null; }, read: function () { return { kind: null, options: [] }; },
-                   reset: function () {} };
+                   reset: function () {}, source: function () { return null; }, pickSource: function () {},
+                   option: function () { return null; } };
     if (!kinds || !kinds.length) { return picker; }
+    // 種類を札にまとめる（サーバの card。無ければ種類そのものが札）
+    var cards = [];
+    kinds.forEach(function (k) {
+      var id = k.card || k.kind;
+      var c = cards.filter(function (x) { return x.id === id; })[0];
+      if (!c) { c = { id: id, label: k.card_label || k.label, brief: k.card_brief || "", step: k.card_step || "", entries: [] }; cards.push(c); }
+      c.entries.push(k);
+    });
+    cards.sort(function (x, y) { return (CARD_ORDER.indexOf(x.id) + 99) % 99 - (CARD_ORDER.indexOf(y.id) + 99) % 99; });
     var row = h("div", { class: "editkind__kinds" });
-    var lead = h("p", { class: "editkind__lead small" });
+    var choicesRow = h("div", { class: "editkind__sources", role: "group", hidden: true });
     var options = h("div", { class: "editkind__options", role: "group" });
     var extra = h("div", { class: "editkind__extra" });
-    // 「？」の説明は、このスライドで出す種類の説明（サーバの文）から組む。出さない種類の話はしない
-    var help = kinds.map(function (k) { return k.label + ": " + k.lead; })
-      .concat(["文字以外は、選ぶだけで送れます。下の欄に補足を書き足すこともできます。",
-               "どれも選ばずに、下の欄に書いて送ることもできます。もう一度押すと選ぶのをやめます。"]);
-    picker.node = h("div", { class: "editkind", role: "group", "aria-label": "何を直しますか？" },
-      h("div", { class: "title-row editkind__head" }, h("p", { class: "editkind__q small", text: "何を直しますか？" }),
-        SS.helpTip("何を直しますか", help)),
-      row, lead, options, extra);
-    var kindButtons = [];
+    picker.node = h("div", { class: "editkind", role: "group", "aria-label": "どう直しますか？" },
+      h("p", { class: "editkind__q small", text: "どう直しますか？" }),
+      row, choicesRow, options, extra);
+    var cardButtons = [];
 
     function entryOf(kind) { return kinds.filter(function (k) { return k.kind === kind; })[0] || null; }
+    function cardOf(id) { return cards.filter(function (c) { return c.id === id; })[0] || null; }
+    function firstEnabled(list) { var o = (list || []).filter(function (x) { return !x.disabled; })[0]; return o ? o.value : null; }
     picker.entry = function () { return entryOf(state.kind); };
-    function choose(kind) {
+    // 札の中の次の段の選択肢（絵や写真を足す → 線のイラスト・写真や絵を生成・手持ちの画像）。段の無い札は null
+    function choicesOf(card) {
+      if (!card || !card.step) { return null; }
+      var out = [];
+      card.entries.forEach(function (e) {
+        if (e.kind === "image") {
+          (e.sources || e.options).forEach(function (o) {
+            out.push({ kind: "image", value: o.value, label: o.label, disabled: !!o.disabled, reason: o.reason, note: o.note, art: "image:" + o.value });
+          });
+        } else {
+          out.push({ kind: e.kind, value: null, label: e.label, art: "visual:" + e.kind });
+        }
+      });
+      // ほかの種類の選択肢のうち、この札で選ぶもの（取り込んだページの「図を足す」。種類は図解だが、足す操作なのでここに出す）
+      kinds.forEach(function (e) {
+        e.options.forEach(function (o) {
+          if (o.card === card.id) { out.push({ kind: e.kind, value: o.value, label: o.label, art: card.id + ":" + e.kind, viaOption: true }); }
+        });
+      });
+      return out;
+    }
+    // その種類の札の中で選ぶ選択肢（ほかの札に出すものを除く）
+    function ownOptions(e) { return e ? e.options.filter(function (o) { return !o.card; }) : []; }
+    function setKind(kind) {
       var e = entryOf(kind);
       state.kind = kind;
-      // 1 つだけ選ぶ選択肢は先頭（おまかせ・生成するなど）を既定にする。いくつでも選べるもの（文字）は空から
-      state.options = e && !e.many && e.options.length ? [e.options[0].value] : [];
+      // 1 つだけ選ぶ選択肢は、押せる先頭（おまかせ・空いた所に足すなど）を既定にする。いくつでも選べるもの（文字）は空から
+      var first = e && !e.many ? firstEnabled(ownOptions(e)) : null;
+      state.options = first !== null ? [first] : [];
+      state.source = e && e.sources ? firstEnabled(e.sources) : null;
+    }
+    function applyChoice(ch) {
+      setKind(ch.kind);
+      if (ch.viaOption) { state.options = [ch.value]; return; }
+      if (ch.kind !== "image") { return; }
+      var e = entryOf("image");
+      if (e.sources) { state.source = ch.value; } else { state.options = [ch.value]; }
+    }
+    function chosen(ch) {
+      if (ch.kind !== state.kind) { return false; }
+      if (ch.viaOption) { return state.options[0] === ch.value; }
+      if (ch.kind !== "image") { return true; }
+      var e = entryOf("image");
+      return (e.sources ? state.source : state.options[0]) === ch.value;
+    }
+    function chooseCard(id) {
+      var card = cardOf(id);
+      state.card = card ? id : null;
+      state.refused = "";
+      if (!card) { state.kind = null; state.options = []; state.source = null; }
+      else {
+        var list = choicesOf(card);
+        if (list) { applyChoice(list.filter(function (c) { return !c.disabled; })[0] || list[0]); }
+        else { setKind(card.entries[0].kind); }
+      }
       paint();
       onChange();
     }
-    function paint() {
-      var e = entryOf(state.kind);
-      kindButtons.forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.kind === state.kind)); });
-      lead.textContent = e ? e.lead : "";
-      lead.hidden = !e;
-      SS.clear(options);
-      SS.clear(extra);
-      if (!e) { options.hidden = true; return; }
-      options.hidden = !e.options.length;
-      options.setAttribute("aria-label", e.label + "の選び方");
-      e.options.forEach(function (o) {
-        var b = h("button", { class: "chip editkind__option", type: "button", text: o.label,
-          "aria-pressed": String(state.options.indexOf(o.value) >= 0) });
-        b.addEventListener("click", function () {
-          var i = state.options.indexOf(o.value);
-          if (e.many) { if (i >= 0) { state.options.splice(i, 1); } else { state.options.push(o.value); } }
-          else { state.options = [o.value]; }
-          paint();
-          onChange();
-        });
-        options.appendChild(b);
+    // 選択肢の札（絵と名前）。押せない選択肢（この機械では生成できない、など）は消さずに出し、押すと理由を下に出す。
+    // 1 つだけ選ぶ段では、選んでいない札を薄くする（どれを選んだかが、色だけでなく濃さでも分かる）
+    function tile(art, o, pressed, dim, onPick) {
+      var b = h("button", { class: "editkind__option" + (dim ? " is-dim" : ""), type: "button", "aria-pressed": String(pressed) },
+        optionArt(art), h("span", { class: "editkind__option-name", text: o.label }),
+        o.disabled && o.note ? h("span", { class: "editkind__option-note", text: o.note }) : null);   // 「現在利用できません」
+      if (o.disabled) { b.setAttribute("aria-disabled", "true"); b.title = o.reason || ""; }
+      b.addEventListener("click", function () {
+        if (o.disabled) { state.refused = o.reason || ""; paint(); return; }
+        state.refused = "";
+        onPick();
+        paint();
+        onChange();
       });
+      return b;
+    }
+    function step(node, label) {
+      SS.clear(node);
+      if (label) { node.appendChild(h("p", { class: "editkind__step small", text: label })); }
+      var grid = h("div", { class: "editkind__tiles" });
+      node.appendChild(grid);
+      return grid;
+    }
+    function paint() {
+      var card = cardOf(state.card), e = entryOf(state.kind);
+      cardButtons.forEach(function (b) {
+        b.setAttribute("aria-pressed", String(b.dataset.card === state.card));
+        b.classList.toggle("is-dim", !!state.card && b.dataset.card !== state.card);   // 選んでいない札は薄くする
+      });
+      // 札を選んだら、名前だけの小さな札に畳む（次に選ぶものを、スクロールせずに見せる。押せば選び直せる）
+      picker.node.classList.toggle("editkind--picked", !!state.card);
+      SS.clear(options);
+      SS.clear(choicesRow);
+      SS.clear(extra);
+      choicesRow.hidden = true;
+      options.hidden = true;
+      if (!card || !e) { return; }
+      // 札の中の次の段（どんな絵にしますか）
+      var list = choicesOf(card);
+      if (list) {
+        choicesRow.hidden = false;
+        choicesRow.setAttribute("aria-label", card.step);
+        var cgrid = step(choicesRow, card.step);
+        list.forEach(function (ch) { cgrid.appendChild(tile(ch.art, ch, chosen(ch), !chosen(ch), function () { applyChoice(ch); })); });
+      }
+      // その種類の選び方（整え方・型・入れ方）。画像の出どころは、上の段でもう選んでいる
+      var viaOption = !!list && list.some(function (ch) { return ch.viaOption && chosen(ch); });
+      var shown = (e.kind === "image" && list && !e.sources) || viaOption ? [] : ownOptions(e);
+      if (shown.length) {
+        options.hidden = false;
+        options.setAttribute("aria-label", e.options_label || (e.label + "の選び方"));
+        var grid = step(options, e.options_label);
+        shown.forEach(function (o) {
+          var on = state.options.indexOf(o.value) >= 0;
+          grid.appendChild(tile(e.kind + ":" + o.value, o, on, !e.many && state.options.length > 0 && !on, function () {
+            var i = state.options.indexOf(o.value);
+            if (e.many) { if (i >= 0) { state.options.splice(i, 1); } else { state.options.push(o.value); } }
+            else { state.options = [o.value]; }
+          }));
+        });
+      }
+      var src = picker.source();
       // 画像を渡す入口は「＋」の 1 つ（貼り付け・ドラッグ・URL の貼り付けも同じ）。ここでは案内を小さく出すだけ
-      if (state.kind === "image" && state.options[0] === "attached") {
+      if (src && src.value === "attached") {
         extra.appendChild(h("p", { class: "editkind__hint small",
           text: "「＋」から画像を渡してください。貼り付け・ドラッグや、画像の URL の貼り付けでも渡せます。" }));
       }
+      // その種類の一言（取り込んだページの「見せ方を変える」は、元の見た目が型の見た目に変わる、など）
+      if (e.note && !viaOption) { extra.appendChild(h("p", { class: "editkind__hint editkind__note small", text: e.note })); }
+      if (state.refused) { extra.appendChild(h("p", { class: "editkind__hint editkind__refused small", role: "status", text: state.refused })); }
     }
-    kinds.forEach(function (k) {
-      var b = h("button", { class: "chip editkind__kind", type: "button", "aria-pressed": "false", dataset: { kind: k.kind } },
-        SS.icon(k.icon || "image", "editkind__icon"), h("span", { text: k.label }));
+    cards.forEach(function (c) {
+      // 札は、絵（直す前 → 直した後）・名前・一言。絵は飾りなので、読み上げには名前と一言だけを渡す。
+      // 畳んだあと（名前だけの小さな札）は、名前の前にアイコンを出す
+      var b = h("button", { class: "editkind__kind", type: "button", "aria-pressed": "false", dataset: { card: c.id, kind: c.entries[0].kind } },
+        kindArt(c.id), h("span", { class: "editkind__name" }, SS.icon(CARD_ICONS[c.id] || c.entries[0].icon || "image", "editkind__icon"),
+          h("span", { text: c.label })),
+        c.brief ? h("span", { class: "editkind__brief small", text: c.brief }) : null);
       // もう一度押すと選ぶのをやめる（書いた指示だけで送る、に戻る）
-      b.addEventListener("click", function () { choose(state.kind === k.kind ? null : k.kind); });
-      kindButtons.push(b);
+      b.addEventListener("click", function () { chooseCard(state.card === c.id ? null : c.id); });
+      cardButtons.push(b);
       row.appendChild(b);
     });
-    picker.read = function () { return { kind: state.kind, options: state.options.slice() }; };
+    // 画像の出どころ: 取り込んだページは sources、作ったページは選択肢そのもの
+    picker.source = function () {
+      var e = entryOf(state.kind);
+      if (!e || e.kind !== "image") { return null; }
+      var pool = e.sources || e.options, val = e.sources ? state.source : state.options[0];
+      return pool.filter(function (o) { return o.value === val; })[0] || null;
+    };
+    // 画像を渡したら「手持ちの画像を使う」に寄せる（取り込んだページ。渡した画像は、そのまま入れる画像になる）
+    picker.pickSource = function (value) {
+      var e = entryOf(state.kind);
+      if (!e || !e.sources || state.source === value || !e.sources.some(function (o) { return o.value === value && !o.disabled; })) { return false; }
+      state.source = value;
+      paint();
+      return true;
+    };
+    // 選んだ選択肢（1 つだけ選ぶ段の）。文が要る選択肢（型の「その他」）の案内と、送れない理由に使う
+    picker.option = function () {
+      var e = entryOf(state.kind);
+      return e && !e.many ? (e.options.filter(function (o) { return o.value === state.options[0]; })[0] || null) : null;
+    };
+    picker.read = function () {
+      var e = entryOf(state.kind);
+      return { kind: state.kind, options: state.options.concat(e && e.sources && state.source ? [state.source] : []) };
+    };
     // 選んだ選び方の、送る前に確かめる一言（取り込んだページを「主役にして組み直す」。見た目が変わる）
     picker.confirm = function () {
       var e = entryOf(state.kind);
       var o = e && e.options.filter(function (x) { return x.value === state.options[0]; })[0];
       return (o && o.confirm) || "";
     };
-    // 出せる種類が 1 つだけなら、はじめから選んでおく
-    var only = kinds.length === 1 ? kinds[0].kind : null;
-    picker.reset = function () { state.kind = only; state.options = []; paint(); };
+    // 出せる札が 1 つだけなら、はじめから選んでおく
+    var only = cards.length === 1 ? cards[0].id : null;
+    picker.reset = function () {
+      state.card = null; state.kind = null; state.options = []; state.source = null; state.refused = "";
+      if (only) { var c = cardOf(only), list = choicesOf(c); if (list) { state.card = only; applyChoice(list[0]); } else { state.card = only; setKind(c.entries[0].kind); } }
+      paint();
+    };
     picker.reset();
     return picker;
   }
@@ -506,22 +762,25 @@
       // 送れない理由は 1 つだけ出す（上から順に、最初に当たったもの）。文はすべてサーバのもの
       var reason = "";
       var picked = kind.read(), entry = kind.entry();
-      var source = entry && entry.kind === "image" ? entry.options.filter(function (o) { return o.value === (picked.options[0] || (entry.options[0] || {}).value); })[0] : null;
+      // 取り込んだページで画像を渡したら、出どころを「手持ちの画像を使う」に寄せる（渡した画像は、そのまま入れる画像になる）
+      if (entry && entry.sources && counted() && kind.pickSource("attached")) { picked = kind.read(); }
+      var source = kind.source(), chosen = kind.option();
       if (att.over) { reason = words.too_many_attachments_reason; }
       else if (text.length > textLimit) { reason = words.text_too_long_reason; }
       // 種類を選んだら、足りないものは種類ごとの文（サーバの文）。文字以外は選ぶだけで送れる
       else if (entry && entry.empty_reason && !text.trim() && !picked.options.length && !counted()) { reason = entry.empty_reason; }
       else if (source && source.attachment_reason && !counted()) { reason = source.attachment_reason; }
+      else if (chosen && chosen.text_reason && !text.trim()) { reason = chosen.text_reason; }   // 図の「その他」は、書いて伝える
       else if (!entry && !text.trim() && !counted()) { reason = words.empty_reason; }
-      ta.placeholder = entry ? "補足（任意）" : basePlaceholder;
+      ta.placeholder = chosen && chosen.placeholder ? chosen.placeholder : (entry ? "補足（任意）" : basePlaceholder);
       // 渡した画像の役割は、選んだ札で決まる（画像 → 渡した画像を入れる なら「入れる」、ほかは「参考」）
-      att.paintRoles(source && (source.attachment_reason || source.uses_attachment) ? "入れる" : "参考");
+      att.paintRoles(source && source.value === "attached" ? "入れる" : "参考");
       if (why.textContent !== reason) { why.textContent = reason; }
       // **何も書いていないだけの行は、書き始めるまで静かにしておく。**押せない理由は
       // 押せないボタン自身（title）といつでも読める場所に残すが、毎回同じ 1 文を出さない
       // （間違えているとき＝長すぎ・枚数超過の行は、焦点が無くても出す）
       why.classList.toggle("editbox__why--quiet", reason === words.empty_reason || (!!entry && reason === entry.empty_reason)
-        || (!!source && reason === source.attachment_reason));   // 画像の案内は札の下に出している
+        || (!!source && reason === source.attachment_reason) || (!!chosen && reason === chosen.text_reason));   // 案内は札・欄に出している
       send.title = reason || (c.available ? null : c.reason) || "";
       send.disabled = !!reason || box.dataset.sending === "1";
       paintRemake();

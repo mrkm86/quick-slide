@@ -70,9 +70,16 @@ class UnitTests(unittest.TestCase):
     def test_imported_kinds_ways_and_confirmation(self) -> None:
         kinds = {k["kind"]: k for k in edit_kinds.offered_for_imported("presentation", can_generate=True)}
         self.assertEqual([o["value"] for o in kinds["image"]["options"]], ["add", "replace", "main"])
-        self.assertEqual([o["value"] for o in kinds["diagram"]["options"]], ["add", "main"])
+        # 見せ方を変える: 取り込んだページでも型を選ぶ（その型のページに組み直す）。空いた所に図を足すのは「絵や写真を足す」の札で選ぶ
+        self.assertEqual([o["value"] for o in kinds["diagram"]["options"]],
+                         ["add", "auto", "flow", "relation", "compare", "before_after", "numbers", "other"])
+        self.assertEqual(kinds["diagram"]["options"][0]["card"], "visual")
+        self.assertIn("組み直します", kinds["diagram"]["note"])
+        self.assertEqual(edit_kinds.parse("presentation", "diagram", None, can_generate=True, imported=True), ("diagram", ["add"]))
+        self.assertEqual(edit_kinds.missing("diagram", ["other"], text="", attachments=0, imported=True),
+                         edit_kinds.DIAGRAM_OTHER_REQUIRED)
+        self.assertIsNone(edit_kinds.missing("diagram", ["add"], text="", attachments=0, imported=True))
         self.assertTrue(next(o for o in kinds["image"]["options"] if o["value"] == "replace")["needs_picture"])
-        self.assertIn("組み直します", next(o for o in kinds["diagram"]["options"] if o["value"] == "main")["confirm"])
         self.assertFalse(any("attachment_reason" in o for o in kinds["image"]["options"]), "生成できれば画像は要らない")
         no_codex = {k["kind"]: k for k in edit_kinds.offered_for_imported("presentation", can_generate=False)}
         self.assertTrue(all("attachment_reason" in o for o in no_codex["image"]["options"] if o["value"] != "main"))
@@ -80,8 +87,26 @@ class UnitTests(unittest.TestCase):
                          edit_kinds.IMPORTED_ATTACHMENT_REQUIRED)
         self.assertIsNone(edit_kinds.missing("image", ["main"], text="", attachments=0, imported=True, can_generate=False))
         self.assertEqual(edit_kinds.parse("presentation", "image", None, can_generate=True, imported=True), ("image", ["add"]))
-        with self.assertRaises(ValueError):
-            edit_kinds.parse("presentation", "image", ["generate"], can_generate=True, imported=True)
+        # 画像の出どころ（作ってもらう・手持ちの画像を使う）は、入れ方とは別に選べる（options の 2 つ目。docs/adr/0037）
+        self.assertEqual([o["value"] for o in kinds["image"]["sources"]], ["generate", "attached"])
+        self.assertFalse(any(o.get("disabled") for o in kinds["image"]["sources"]))
+        self.assertEqual([(o["value"], bool(o.get("disabled"))) for o in no_codex["image"]["sources"]],
+                         [("generate", True), ("attached", False)], "作れない機械でも、作ってもらうは消さずに押せない選択肢で出す")
+        parse = lambda o, can=True: edit_kinds.parse("presentation", "image", o, can_generate=can, imported=True)  # noqa: E731
+        self.assertEqual(parse(["generate"]), ("image", ["add", "generate"]), "出どころだけを送ったら、入れ方は先頭")
+        self.assertEqual(parse(["attached", "main"]), ("image", ["main", "attached"]), "入れ方が先・出どころが後にそろえる")
+        for bad in (["generate", "attached"], ["flow"], ["add", "replace"]):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                parse(bad)
+        with self.assertRaises(ValueError) as cm:
+            parse(["add", "generate"], can=False)
+        self.assertEqual(str(cm.exception), edit_kinds.GENERATE_UNAVAILABLE)
+        miss = lambda o, n: edit_kinds.missing("image", o, text="", attachments=n, imported=True, can_generate=True)  # noqa: E731
+        self.assertEqual(miss(["add", "attached"], 0), edit_kinds.ATTACHMENT_REQUIRED["attached"])
+        self.assertEqual(miss(["add", "generate"], 1), edit_kinds.IMPORTED_GENERATE_WITH_ATTACHMENT)
+        self.assertIsNone(miss(["add", "generate"], 0))
+        self.assertIsNone(miss(["add", "attached"], 1))
+        self.assertIsNone(miss(["add"], 1), "出どころを送らない頼み方（前の画面・会話）は、今までどおり")
 
 
 class EndToEndTests(unittest.TestCase):
@@ -162,7 +187,7 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(page["type"], "photo")
         self.assertTrue(page["image"]["path"].startswith("attachments/"))
         self.assertEqual(page["id"], self.view["pages"][0]["key"], "ページの id は保つ")
-        page = self.send(2, "diagram", "main")
+        page = self.send(2, "diagram", "flow")   # 見せ方を変える → 流れ: その型のページに組み直す
         self.assertEqual(page["type"], "flow")
         view = self.fx.get(f"/api/decks/{self.deck}").json()
         self.assertEqual(view["imported_images"], {}, "組み直したページは取り込んだページでなくなる")

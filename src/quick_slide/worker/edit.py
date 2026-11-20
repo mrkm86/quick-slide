@@ -595,6 +595,9 @@ def _revise(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[st
             return _replace_image(ctx, job, run, req, data, key, positions[key])
         if kind in ("image", "diagram") and option == "main":
             return _rebuild_imported(ctx, job, run, req, data, key, positions[key], what=kind)
+        if kind == "diagram":   # 見せ方を変える: 選んだ型のページに組み直す（docs/adr/0037-ask-ai-cards.md）
+            return _rebuild_imported(ctx, job, run, req, data, key, positions[key], what="diagram",
+                                     shape=edit_kinds.shape_words("presentation", option))
         return _imported_text(ctx, job, run, req, data, key, positions[key])
     rels, paths = _attachments(ctx, deck_id, req.get("attachments") or [])
     # 指示に書かれたページの本文の画像（頼まれたときだけ。台本の path に書ける。docs/adr/0016）
@@ -956,7 +959,7 @@ def _mostly_under(box: dict[str, Any], covers: list[dict[str, Any]]) -> bool:
 
 
 def _rebuild_imported(ctx: Context, job: dict[str, Any], run: dict[str, Any], req: dict[str, Any], data: dict[str, Any],
-                      key: str, position: int, *, what: str):
+                      key: str, position: int, *, what: str, shape: str | None = None):
     """取り込んだページを、画像か図解を主役にした型のページに組み直す（docs/adr/0015。見た目は型のものに変わる）。"""
     engine = engine_for(run["mode"])
     page = next(s for s in slides_of(data) if str(s.get("id")) == key)
@@ -972,7 +975,7 @@ def _rebuild_imported(ctx: Context, job: dict[str, Any], run: dict[str, Any], re
     def build(previous, problems):
         return build_rebuild_prompt(engine, args, page=target, texts=texts, what=what, picture=picture, generate=generate,
                                     instruction=req.get("text") or "", skills_dir=ctx.tools.skills_dir,
-                                    previous=previous, problems=problems)
+                                    previous=previous, problems=problems, shape=shape)
 
     def swap(other: dict[str, Any], new_page: dict[str, Any]) -> dict[str, Any]:
         out = deep(other)

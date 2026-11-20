@@ -760,17 +760,88 @@ body[data-route="deck"] main { max-width: var(--deck-max-w); }
 /* 「何を直しますか？」（docs/adr/0008-edit-kinds.md）。種類と選び方は札。選んだ札は枠と地の色に加え、aria-pressed で伝える */
 .editkind { display: grid; gap: var(--space-2); }
 .editkind__q { margin: 0; font-weight: var(--font-weight-700); }
-.editkind__kinds, .editkind__options { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.editkind__options[hidden], .editkind__lead[hidden] { display: none; }
+.editkind__kinds { display: grid; gap: var(--space-2); }
+/* 札を選ぶ前: 絵を左・名前と一言を右に置いた行を、縦に 3 つ。選んだあと: 名前だけの小さな札を横に並べる */
+.editkind:not(.editkind--picked) .editkind__kind { grid-template-columns: 112px minmax(0, 1fr); grid-template-areas: "art name" "art brief"; align-items: center; column-gap: var(--space-2); }
+.editkind:not(.editkind--picked) .kart { grid-area: art; margin: 0; }
+.editkind:not(.editkind--picked) .editkind__name { grid-area: name; align-self: end; }
+.editkind:not(.editkind--picked) .editkind__brief { grid-area: brief; align-self: start; }
+.editkind--picked .editkind__kinds { grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: var(--space-1); }
+.editkind--picked .editkind__kind { justify-items: center; text-align: center; font-size: var(--font-size-14); }
+.editkind--picked .editkind__name { flex-direction: column; gap: 2px; }
+.editkind__options, .editkind__sources { display: grid; gap: var(--space-1); }
+.editkind__options[hidden], .editkind__sources[hidden] { display: none; }
+.editkind__step { margin: 0; color: var(--color-text-muted); font-weight: var(--font-weight-700); }
+/* 選択肢の札（絵と名前）。指で押しやすい大きさにし、横に 3 つまで並べる */
+.editkind__tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--space-2); }
+.editkind__option {
+  display: grid; gap: 2px; justify-items: center; align-content: start; min-height: var(--tap); padding: var(--space-1) var(--space-1) var(--space-2);
+  font: inherit; font-size: var(--font-size-14); line-height: var(--line-height-150); text-align: center; color: var(--color-text);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--border-radius-8);
+}
+.editkind__option:focus-visible { outline: 4px solid var(--color-neutral-black); outline-offset: 2px; box-shadow: 0 0 0 2px var(--color-primitive-yellow-300); }
 .editkind__kind, .editkind__option { cursor: pointer; }
-.editkind__kind:hover:not(:disabled), .editkind__option:hover:not(:disabled) { background: var(--brand-soft); }
+.editkind__kind:hover, .editkind__option:hover:not([aria-disabled="true"]) { background: var(--brand-soft); }
 .editkind__kind[aria-pressed="true"], .editkind__option[aria-pressed="true"] {
   border-color: var(--color-primary); background: var(--brand-soft); box-shadow: inset 0 0 0 1px var(--color-primary);
-  font-weight: var(--font-weight-700);
 }
-.editkind__kind { min-height: 40px; padding: 4px 10px 4px 8px; gap: var(--space-1); }
-.editkind__icon { width: 20px; height: 20px; fill: currentColor; flex: none; }
-.editkind__head { margin-bottom: calc(-1 * var(--space-2)); }
+.editkind__option[aria-pressed="true"] { font-weight: var(--font-weight-700); }
+/* 選んでいない札は薄くする（選んだものが分かる。押せば選び直せる）。文字は読める濃さを保ち、絵だけをさらに薄くする */
+.editkind__kind.is-dim, .editkind__option.is-dim { background: var(--color-surface-muted); color: var(--color-text-muted); border-color: var(--line-weak); }
+.editkind__kind.is-dim .kart, .editkind__option.is-dim .oart { opacity: .45; }
+.editkind__kind.is-dim .editkind__name { font-weight: var(--font-weight-400, 400); }
+/* 押せない選択肢（この機械では作れない、など）。消さずに出し、線を破線にする（押すと理由が下に出る） */
+.editkind__option[aria-disabled="true"] { color: var(--color-text-muted); border-style: dashed; cursor: not-allowed; }
+.editkind__option[aria-disabled="true"] .oart { opacity: .45; }
+.editkind__option-note { font-size: var(--font-size-14); color: var(--color-text-muted); }
+.oart { width: 100%; max-width: 96px; height: auto; }
+.oart__dashbox { fill: none; stroke: var(--color-neutral-solid-gray-536); stroke-width: 1.2; stroke-dasharray: 3 2; }
+.oart__pen { fill: var(--color-primary); }
+.oart__outline { fill: var(--color-primitive-yellow-300); stroke: var(--color-neutral-solid-gray-800); stroke-width: 1.6; }
+.oart__dotk { fill: var(--color-neutral-solid-gray-800); }
+.oart__frame { fill: var(--color-primitive-blue-50); stroke: var(--color-neutral-solid-gray-800); stroke-width: 1.6; }
+.oart__blob { fill: var(--color-primary); }
+.oart__blob2 { fill: var(--color-primitive-blue-400); }
+.oart__page { fill: var(--color-neutral-white); stroke: var(--line-weak); }
+.oart__line { fill: var(--color-neutral-solid-gray-536); }
+.oart__photo { fill: var(--color-primitive-blue-50); stroke: var(--color-primitive-blue-400); stroke-width: .5; }
+.oart__hill { fill: var(--color-primitive-blue-400); }
+.oart__spark { fill: var(--color-primitive-yellow-300); stroke: var(--color-neutral-solid-gray-800); stroke-width: .6; }
+.oart__box, .oart__hi { fill: var(--color-primary); }
+.oart__box2 { fill: var(--color-primitive-blue-400); }
+.oart__stroke { fill: none; stroke: var(--color-neutral-solid-gray-800); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.oart__dash { fill: none; stroke: var(--color-neutral-solid-gray-536); stroke-width: 1.4; stroke-dasharray: 2 2; }
+.oart__thin { fill: none; stroke: var(--color-neutral-white); stroke-width: 1.4; }
+.oart__thinw { fill: none; stroke: var(--color-neutral-white); stroke-width: 1.4; }
+.oart__ring { fill: none; stroke: var(--color-primary); stroke-width: 2; }
+.oart__glyph { fill: var(--color-primary); font-size: 20px; font-weight: 700; }
+.editkind__refused { color: var(--danger); }
+/* 種類の札: 絵（直す前 → 直した後）・名前・一言を縦に並べる。選んだ札は枠と地の色に加え、aria-pressed で伝える */
+.editkind__kind {
+  display: grid; gap: 2px; justify-items: start; text-align: left; min-height: var(--tap); padding: var(--space-2);
+  font: inherit; color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--border-radius-8);
+}
+.editkind__kind:focus-visible { outline: 4px solid var(--color-neutral-black); outline-offset: 2px; box-shadow: 0 0 0 2px var(--color-primitive-yellow-300); }
+.editkind__name { display: inline-flex; align-items: center; gap: var(--space-1); font-weight: var(--font-weight-700); }
+.editkind__icon { display: none; flex: none; width: 20px; height: 20px; fill: currentColor; }
+.editkind--picked .editkind__icon { display: block; }
+/* 種類を選んだあと: 絵と一言を畳み、名前だけの小さな札にする（次に選ぶものに場所を譲る） */
+.editkind--picked .editkind__kind { min-height: var(--tap); align-content: center; padding: var(--space-1) var(--space-2); }
+.editkind--picked .editkind__kind .kart, .editkind--picked .editkind__brief { display: none; }
+.editkind__brief { color: var(--color-text-muted); font-size: var(--font-size-14); line-height: var(--line-height-150); }
+.kart { display: flex; align-items: center; gap: var(--space-1); width: 100%; margin-bottom: 2px; }
+.kart__page { flex: 1 1 0; min-width: 0; background: var(--color-neutral-white); border: 1px solid var(--line-weak); border-radius: 4px; }
+.kart__arrow { flex: none; color: var(--color-primary); font-weight: var(--font-weight-700); }
+.kart__bar { fill: var(--color-neutral-solid-gray-800); }
+.kart__barline { fill: var(--color-neutral-white); }
+.kart__line { fill: var(--color-neutral-solid-gray-536); }
+.kart__hi, .kart__box { fill: var(--color-primary); }
+.kart__stroke { fill: none; stroke: var(--color-neutral-solid-gray-800); stroke-width: 1.5; }
+.kart__draw { fill: var(--color-primitive-yellow-300); }
+.kart__dot { fill: var(--color-neutral-solid-gray-800); }
+.kart__photo { fill: var(--color-primitive-blue-50); }
+.kart__hill { fill: var(--color-primitive-blue-400); }
+.kart__sun { fill: var(--color-neutral-white); }
 
 /* 切り替え（オン・オフ）。中身は checkbox（role=switch）で、見た目だけを線路とつまみにする。状態は位置と色の両方で伝える */
 .switch { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--tap); cursor: pointer; align-self: flex-start; }
@@ -1436,6 +1507,12 @@ html.is-locked { overflow: hidden; }
 .panel__self-said p { margin: 0; }
 .panel__self-foot { position: sticky; bottom: 0; margin-top: auto; display: grid; gap: var(--space-2); padding: var(--space-2) 0 var(--space-3); background: var(--color-surface); }
 .panel__self-save { width: 100%; }
+/* 1 ページを直すとき: 絵のすぐ下に切り替え、その下に選ぶ所を続ける（間を空けない）。選ぶ所が長くなったら中をスクロールし、
+   書く欄と送るボタンは下に留める */
+.panel[data-mode="page"] .panel__media { flex: none; padding-bottom: var(--space-2); }
+.panel[data-mode="page"] .panel__slot { flex: 1 1 auto; min-height: 0; overflow-y: auto; border-top: 0; padding-top: var(--space-1); padding-bottom: 0; }
+.panel[data-mode="page"] .panel__slot .editbox__input { position: sticky; bottom: 0; padding: var(--space-2) 0 var(--space-3); background: var(--color-surface); }
+.panel[data-mode="page"] .panel__self { border-top: 0; }
 /* 入力の 1 行は下に留める */
 .panel__slot { flex: none; padding: var(--space-3); border-top: 1px solid var(--color-border); }
 .panel__slot:empty { display: none; }
