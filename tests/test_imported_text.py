@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 
 from helpers import fake_tools, start_server, temp_dir, wait_until_idle, writer_calls
@@ -19,6 +20,17 @@ from test_import_pptx import pptx_bytes
 
 HTML = ('<div style="position:absolute;left:10px;top:10px;width:500px;height:80px"><span style="color:#000">見出し &amp; 題</span></div>'
         '<div style="display:flex"><div><span>•</span></div><div><span> 要点 </span><span>の続き</span></div></div>')
+
+
+def logo_png() -> bytes:
+    """ロゴに見立てた横長の PNG（毎回同じバイト列）。"""
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (800, 140), (200, 30, 30)).save(buf, "PNG")
+    return buf.getvalue()
 
 
 class UnitTests(unittest.TestCase):
@@ -70,6 +82,70 @@ class EndToEndTests(unittest.TestCase):
         page = fx.get(f"/api/decks/{deck}").json()["pages"][0]
         self.assertEqual(page["title"], "取り込みの見出し（直し）")
 
+
+    def test_an_imported_deck_stays_brandless_after_edits_and_copies(self) -> None:
+        """取り込んだ資料は「ブランドなし」をデッキが持つ（docs/adr/0035-brandless-decks.md）。直しの回でも複製でも、
+        ロゴ・フッタ・ページ番号・透かしを足さず、色は PPTX のテーマを使う。"""
+        why = html_slide_ready()
+        if why:
+            self.skipTest(why)
+        tools, _ = fake_tools(self, mode="imported_text")
+        fx = start_server(self, tools=tools, settings=Settings(worker=WorkerSettings(parallel=1)))
+        with fx.server.store_lock:   # 既定になるブランド（利用者の最新）に、足されたら分かる書式を入れておく
+            cfg = json.loads(json.dumps(fx.store.brand_revision(fx.store.preset_brand_revision_id())["config"]))
+            cfg["footer"] = {"text": "足されては困るフッタ"}
+            cfg["format"] = {**(cfg.get("format") or {}), "page_numbers": True, "watermark": "社外秘"}
+            cfg["logo"] = {**(cfg.get("logo") or {}), "variant": "normal"}
+        logo = fx.request("POST", "/api/settings/images", raw_body=logo_png(), session=True)
+        self.assertEqual(logo.status, 201, logo.body)
+        with fx.server.store_lock:
+            brand_id = fx.store.create_brand("試験のブランド", cfg,
+                                             assets=[{"role": "logo_normal", "asset_id": logo.json()["asset_id"]}])["id"]
+        r = fx.request("POST", "/api/imports?runtime=cli&name=deck.pptx", raw_body=pptx_bytes(temp_dir(self)), session=True)
+        self.assertEqual(r.status, 201, r.body)
+        deck = r.json()["deck_id"]
+        self.assertEqual(wait_until_idle(fx, deck, seconds=300)["state"], "done")
+        view = fx.get(f"/api/decks/{deck}").json()
+        self.assertIsNone(view["deck"]["brand"], "取り込んだ資料はブランドを出さない")
+
+        def bare(run: dict) -> None:
+            look = run["args"]["look"]
+            self.assertEqual((look["logo"], look["footer"], look["page_numbers"], look["watermark"]), (None, "", False, ""))
+            # 描いたもの（書き出す PPTX の中の XML の全部）にも、ブランドのフッタ・透かしの文字が入っていない
+            import zipfile
+
+            with zipfile.ZipFile(fx.root.run_dir(run["deck_id"], run["id"]) / "deck.pptx") as z:
+                xml = "".join(z.read(n).decode("utf-8", "replace") for n in z.namelist() if n.endswith(".xml"))
+                media = [z.read(n) for n in z.namelist() if n.startswith("ppt/media/")]
+            self.assertIn("取り込み", xml, "ページの文字は入っている")
+            self.assertNotIn(logo_png(), media, "ブランドのロゴの画像は入っていない")
+            self.assertNotIn("足されては困るフッタ", xml)
+            self.assertNotIn("社外秘", xml)
+
+        # 一覧: ブランドで絞ると、ブランドなしの資料は出ない（絞らなければ出る）
+        self.assertIn(deck, [d["id"] for d in fx.get("/api/decks").json()["items"]])
+        self.assertNotIn(deck, [d["id"] for d in fx.get(f"/api/decks?brand={brand_id}").json()["items"]])
+
+        sid = view["pages"][0]["slide_id"]
+        r = fx.post(f"/api/decks/{deck}/instructions", {"scope": "page", "slide_id": sid, "text": "見出しを言い切って"})
+        self.assertEqual(r.status, 200, r.body)
+        run = wait_until_idle(fx, deck, seconds=300)
+        self.assertEqual(run["state"], "done", run["message"])
+        self.assertFalse(run["args"].get("imported"), "直しの回には取り込みの印が渡らない（デッキの印で見る）")
+        bare(run)
+        theme = (fx.root.run_settings_dir(deck, run["id"]) / "theme.yaml").read_text(encoding="utf-8")
+        self.assertIn("取り込んだ PPTX のテーマ", theme, "直しの回は PPTX のテーマで組む")
+
+        r = fx.post(f"/api/decks/{deck}/duplicate", {})
+        self.assertEqual(r.status, 201, r.body)
+        copy = r.json()["deck"]
+        self.assertIsNone(copy["brand"], "複製もブランドなし")
+        sid = fx.get(f"/api/decks/{copy['id']}").json()["pages"][0]["slide_id"]
+        r = fx.post(f"/api/decks/{copy['id']}/instructions", {"scope": "page", "slide_id": sid, "text": "見出しを言い切って"})
+        self.assertEqual(r.status, 200, r.body)
+        run = wait_until_idle(fx, copy["id"], seconds=300)
+        self.assertEqual(run["state"], "done", run["message"])
+        bare(run)
 
     def test_an_edited_text_that_overflows_its_box_is_rewritten(self) -> None:
         why = html_slide_ready()

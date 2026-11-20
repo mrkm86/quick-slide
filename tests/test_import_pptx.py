@@ -186,3 +186,57 @@ class ImportStoreTests(unittest.TestCase):
         self.assertEqual(importing.title_of("【提案】研修 v1.2.pptx"), "【提案】研修 v1.2")
         self.assertEqual(importing.title_of("a.PPTX"), "a")
         self.assertEqual(len(importing.title_of("あ" * 300 + ".pptx")), importing.MAX_TITLE_CHARS)
+
+class BrandlessBackfillTests(unittest.TestCase):
+    """0014 より前（版 13）に取り込んだデッキとその複製は、移行で「ブランドなし」になる（docs/adr/0035-brandless-decks.md）。"""
+
+    def test_decks_with_an_imported_run_become_brandless(self) -> None:
+        import shutil
+
+        from quick_slide.db.migrate import LATEST_VERSION, load_migrations, user_version
+        from quick_slide.db.migrate import migrate as run_migrate
+
+        tmp = temp_dir(self)
+        old = tmp / "m13"
+        old.mkdir()
+        for m in load_migrations():
+            if m.version <= 13:
+                shutil.copyfile(m.path, old / m.path.name)
+        conn = sqlite3.connect(tmp / "old.db", isolation_level=None)
+        self.addCleanup(conn.close)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        run_migrate(conn, directory=old)
+        self.assertEqual(user_version(conn), 13)
+        t = "2026-10-20T00:00:00Z"
+        conn.execute("BEGIN")
+        conn.execute("INSERT INTO brands(id,name,current_revision_id,kind,created_at,updated_at) VALUES('b','b','br','user',?,?)", (t, t))
+        conn.execute("INSERT INTO brand_revisions(id,brand_id,revision,config_json,created_at) VALUES('br','b',1,'{}',?)", (t,))
+        conn.execute("INSERT INTO styles(id,name,current_revision_id,kind,created_at,updated_at) VALUES('s','s','sr','user',?,?)", (t, t))
+        conn.execute("INSERT INTO style_revisions(id,style_id,revision,config_json,created_at) VALUES('sr','s',1,'{}',?)", (t,))
+        # 取り込んだデッキ（取り込みの回のあとに直しの回がある）・ふつうのデッキ
+        # 直したあとの複製（写した回に imported が無い）と、その複製。ふつうのデッキの複製
+        runs = {"took": [{"mode": "presentation", "imported": True}, {"mode": "presentation", "edit": {}}],
+                "made": [{"mode": "presentation"}],
+                "took-copy": [{"mode": "presentation", "edit": "revise"}], "took-copy-copy": [{"mode": "presentation", "edit": "revise"}],
+                "made-copy": [{"mode": "presentation"}],
+                # 複製元を完全に消した複製（複製元を指していない・取り込みの回も無い）。台本の取り込んだページで見分ける
+                "orphan-copy": [{"mode": "presentation", "edit": "revise"}]}
+        origin = {"took-copy": "took", "took-copy-copy": "took-copy", "made-copy": "made"}
+        for did, args in runs.items():
+            conn.execute("INSERT INTO decks(id,title,mode,brand_revision_id,style_revision_id,origin_deck_id,created_at,updated_at)"
+                         " VALUES(?,?,'presentation','br','sr',?,?,?)", (did, did, origin.get(did), t, t))
+            for n, a in enumerate(args, 1):
+                conn.execute("INSERT INTO runs(id,deck_id,number,mode,engine,args_json,state,created_at,updated_at,ended_at)"
+                             " VALUES(?,?,?,'presentation','html-slide',?,'failed',?,?,?)",
+                             (f"r-{did}-{n}", did, n, json.dumps(a), t, t, t))
+        for did, kind in (("orphan-copy", "html"), ("made", "cover")):
+            conn.execute("INSERT INTO scripts(id,deck_id,version,path,sha256,written_by,page_count,created_at)"
+                         " VALUES(?,?,1,'1.json',?,'screen',1,?)", (f"s-{did}", did, "a" * 64, t))
+            conn.execute("INSERT INTO page_ids(id,deck_id,key,created_at) VALUES(?,?,'p-001',?)", (f"pg-{did}", did, t))
+            conn.execute("INSERT INTO script_pages(script_id,page_no,page_id,type) VALUES(?,1,?,?)", (f"s-{did}", f"pg-{did}", kind))
+        conn.execute("COMMIT")
+        run_migrate(conn)
+        self.assertEqual(user_version(conn), LATEST_VERSION)
+        self.assertEqual({r[0]: r[1] for r in conn.execute("SELECT id,brandless FROM decks")},
+                         {"took": 1, "took-copy": 1, "took-copy-copy": 1, "orphan-copy": 1, "made": 0, "made-copy": 0})

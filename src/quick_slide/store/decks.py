@@ -29,6 +29,7 @@ class DecksMixin(StoreBase):
         audience: str = "",
         origin_deck_id: str | None = None,
         deck_id: str | None = None,
+        brandless: bool = False,
     ) -> dict[str, Any]:
         if not isinstance(title, str) or not title.strip():
             raise ValidationError("decks.title は空にできない")
@@ -42,9 +43,9 @@ class DecksMixin(StoreBase):
             did = deck_id or self.new_id()
             self._exec(
                 "INSERT INTO decks(id,title,subtitle,purpose,audience,mode,brand_revision_id,style_revision_id,"
-                " status,origin_deck_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                " status,origin_deck_id,brandless,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (did, title, subtitle, purpose, audience, mode, brand_revision_id, style_revision_id,
-                 "draft", origin_deck_id, now, now),
+                 "draft", origin_deck_id, 1 if brandless else 0, now, now),
             )
             self.append_event("deck_created", {"deck_id": did, "title": title, "mode": mode}, deck_id=did)
             return self.deck(did)

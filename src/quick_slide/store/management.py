@@ -158,6 +158,7 @@ class DeckManagementMixin(StoreBase):
                     purpose=src["purpose"],
                     audience=src["audience"],
                     origin_deck_id=deck_id,
+                    brandless=bool(src["brandless"]),   # ブランドなし（取り込んだ資料）は、複製もブランドなし
                 )
                 new_id = new["id"]
                 ref = self.deck_template_snapshot_ref(deck_id)
